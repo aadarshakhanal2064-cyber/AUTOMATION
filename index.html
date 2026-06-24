@@ -194,7 +194,7 @@
 <div id="loading-screen">
   <div class="logo-icon">📋</div>
   <div class="spinner" style="border-color:rgba(255,255,255,0.2); border-top-color:var(--gold); width:22px; height:22px;"></div>
-  <p>Initialising…</p>
+  <p id="loading-msg">Checking your session…</p>
 </div>
 
 <!-- HEADER -->
@@ -223,6 +223,10 @@
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.8 0 6.9 5.4 3 13.3l7.8 6C12.7 13.1 17.9 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.8 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7L2.5 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.7l8.3-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.1 0-11.3-3.6-13.2-9.2l-7.8 6C6.9 42.6 14.8 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
       Sign in with Google
     </button>
+    <label style="display:inline-flex; align-items:center; gap:8px; margin-top:16px; font-size:13px; color:var(--muted); cursor:pointer;">
+      <input type="checkbox" id="rememberMeCheck" style="width:15px; height:15px; accent-color:var(--navy); cursor:pointer;" />
+      Keep me signed in on this device
+    </label>
     <p style="margin-top:16px; font-size:12px;">
       <a href="#" onclick="showSetup()" style="color:var(--gold); font-weight:600;">⚙️ First time? Set up Google Cloud credentials first</a>
     </p>
@@ -473,11 +477,57 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 //  BOOT
 // ════════════════════════════════════════════
 window.addEventListener('load', () => {
-  // Hide loading screen after a moment; show auth
+  const tryAutoSignIn = () => {
+    if (!CLIENT_ID) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('auth-section').style.display = 'block';
+      return;
+    }
+
+    // Only attempt silent sign-in if user previously ticked "Remember me"
+    const rememberMe = localStorage.getItem('rememberMe') === 'true';
+    if (!rememberMe) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('auth-section').style.display = 'block';
+      return;
+    }
+
+    // Silent token request — uses existing Google browser session, no popup
+    const silentClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      prompt: '',
+      callback: async (resp) => {
+        if (resp.error || !resp.access_token) {
+          // Session expired or cookies cleared — fall back to sign-in screen
+          document.getElementById('loading-screen').style.display = 'none';
+          document.getElementById('auth-section').style.display = 'block';
+          return;
+        }
+        accessToken = resp.access_token;
+        document.getElementById('loading-screen').style.display = 'none';
+        await afterGoogleSignIn();
+      },
+    });
+    silentClient.requestAccessToken({ prompt: '' });
+  };
+
+  // GIS loads async — poll until ready
+  const interval = setInterval(() => {
+    if (window.google?.accounts?.oauth2) {
+      clearInterval(interval);
+      tryAutoSignIn();
+    }
+  }, 100);
+
+  // Safety timeout — if GIS never loads in 5s, show auth screen
   setTimeout(() => {
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('auth-section').style.display = 'block';
-  }, 600);
+    clearInterval(interval);
+    if (document.getElementById('loading-screen').style.display !== 'none') {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('auth-section').style.display = 'block';
+    }
+  }, 5000);
 });
 
 // ════════════════════════════════════════════
@@ -512,6 +562,10 @@ function signIn() {
         return;
       }
       accessToken = resp.access_token;
+      // Save "remember me" flag so next page load attempts silent sign-in
+      if (document.getElementById('rememberMeCheck')?.checked) {
+        localStorage.setItem('rememberMe', 'true');
+      }
       await afterGoogleSignIn();
     },
   });
@@ -523,6 +577,8 @@ function signOut() {
   currentUser = null;
   clientsList = [];
   allLogs     = [];
+  // Clear remember-me so next visit shows sign-in screen
+  localStorage.removeItem('rememberMe');
 
   if (tokenClient) google.accounts.oauth2.revoke(accessToken, () => {});
 
