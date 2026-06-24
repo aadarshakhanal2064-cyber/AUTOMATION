@@ -1031,67 +1031,131 @@ function renderLogs(logs) {
 }
 
 // ════════════════════════════════════════════
-//  DRIVE SEARCH (unchanged from original)
+//  DRIVE SEARCH
+//  Path: My Drive → Audit Data → 2081.082 → Scan
+//  Inside Scan there are 4 folders:
+//    1. Devi Sir Sign
+//    2. Lila Sir Sign
+//    3. Sailesh Sir
+//    4. Tax clearance
+//  For ALL doc types except Tax Clearance → search all 3 sign folders
+//  For Tax Clearance → search only the Tax clearance folder
 // ════════════════════════════════════════════
 async function searchDrive(clientName, docType, year) {
-  const auditDataId = await findFolderByName(null, ['Audit Data', 'AUDIT DATA']);
-  if (!auditDataId) throw new Error('Could not find "Audit Data" folder in your Google Drive.');
+  // Step 1: Find "Audit Data" in My Drive root
+  const auditDataId = await findFolderByName(null, [
+    'Audit Data', 'AUDIT DATA', 'audit data'
+  ]);
+  if (!auditDataId) throw new Error(
+    'Could not find "Audit Data" folder in your Google Drive. Make sure the folder exists in My Drive.'
+  );
 
-  const yearFolderId = await findFolderByName(auditDataId, ['2081.082', '2081/082', '2081-082', '2081.82', '2081/82']);
-  if (!yearFolderId) throw new Error('Could not find "2081.082" folder inside Audit Data.');
+  // Step 2: Find the year folder inside Audit Data
+  // Handles all common naming variations: 2081.082 / 2081-082 / 2081/082 / 2081_082
+  const yearFolderId = await findFolderByName(auditDataId, [
+    '2081.082', '2081-082', '2081/082', '2081_082',
+    '2081.82',  '2081-82',  '2081/82',  '2081_82',
+    '2081.083', '2081-083', // future year variants
+  ]);
+  if (!yearFolderId) throw new Error(
+    'Could not find the year folder (e.g. "2081.082") inside "Audit Data".'
+  );
 
-  const scanFolderId = await findFolderByName(yearFolderId, ['Scan', 'SCAN', 'scan']);
-  if (!scanFolderId) throw new Error('Could not find "Scan" folder inside 2081.082.');
+  // Step 3: Find "Scan" folder inside the year folder
+  const scanFolderId = await findFolderByName(yearFolderId, [
+    'Scan', 'SCAN', 'scan', 'Scans', 'SCANS'
+  ]);
+  if (!scanFolderId) throw new Error(
+    'Could not find "Scan" folder inside the year folder.'
+  );
 
-  let searchFolderIds = [];
+  // Step 4: Resolve which subfolders to search based on doc type
   const dt = docType.toLowerCase();
+  let searchFolderIds = [];
 
   if (dt === 'tax clearance') {
-    const tcId = await findFolderByName(scanFolderId, ['Tax clearance', 'Tax Clearance', 'TAX CLEARANCE']);
-    if (!tcId) throw new Error('Could not find "Tax clearance" folder inside Scan.');
+    // Tax Clearance → only look in the Tax clearance folder
+    const tcId = await findFolderByName(scanFolderId, [
+      'Tax clearance', 'Tax Clearance', 'TAX CLEARANCE',
+      'tax clearance', 'TaxClearance'
+    ]);
+    if (!tcId) throw new Error(
+      'Could not find "Tax clearance" folder inside Scan. Check the folder name in Drive.'
+    );
     searchFolderIds = [tcId];
-  } else if (dt === 'audit report') {
-    const signFolders = [
-      ['Devi Sir Sign', 'Devi Sir', 'DEVI SIR'],
-      ['Lila Sir Sign', 'Lila Sir', 'LILA SIR'],
-      ['Sailesh Sir', 'SAILESH SIR', 'Sailesh'],
-      ['Surya Bhattarai Sir', 'Surya Bhattarai', 'SURYA BHATTARAI', 'Surya Sir'],
-    ];
-    for (const names of signFolders) {
-      const fid = await findFolderByName(scanFolderId, names);
-      if (fid) searchFolderIds.push(fid);
-    }
-    if (searchFolderIds.length === 0) throw new Error('Could not find any sign folders inside Scan.');
+
   } else {
-    searchFolderIds = [scanFolderId];
+    // Audit Report / Financial Statements / VAT Returns / anything else
+    // → search ALL THREE sign folders because files for all these doc types
+    //   are stored inside them
+    const signFolderVariants = [
+      // Devi Sir
+      ['Devi Sir Sign', 'Devi sir sign', 'DEVI SIR SIGN', 'Devi Sir', 'devi sir sign', 'Devi'],
+      // Lila Sir
+      ['Lila Sir Sign', 'Lila sir sign', 'LILA SIR SIGN', 'Lila Sir', 'lila sir sign', 'Lila'],
+      // Sailesh Sir
+      ['Sailesh Sir', 'sailesh sir', 'SAILESH SIR', 'Sailesh Sir Sign', 'Sailesh'],
+    ];
+
+    for (const variants of signFolderVariants) {
+      const fid = await findFolderByName(scanFolderId, variants);
+      if (fid) {
+        searchFolderIds.push(fid);
+      } else {
+        console.warn('Could not find sign folder:', variants[0]);
+      }
+    }
+
+    if (searchFolderIds.length === 0) throw new Error(
+      'Could not find any of the sign folders (Devi Sir Sign, Lila Sir Sign, Sailesh Sir) inside Scan. Check folder names in Drive.'
+    );
   }
 
+  // Step 5: Recursively list all files from the resolved folders
   let allFiles = [];
   for (const fid of searchFolderIds) {
-    allFiles = allFiles.concat(await listAllFilesInFolder(fid));
+    const files = await listAllFilesInFolder(fid);
+    allFiles = allFiles.concat(files);
   }
-  if (allFiles.length === 0) throw new Error(`No files found in the ${docType} folder(s).`);
 
+  if (allFiles.length === 0) throw new Error(
+    `No files found in the ${docType} folder(s). Make sure files exist inside the correct subfolders.`
+  );
+
+  // Step 6: Score and match files against the client name
   const cn = clientName.toLowerCase().trim();
   const cnWords = cn.split(/\s+/).filter(w => w.length > 1);
+
   const scored = allFiles.map(file => {
     const n = file.name.toLowerCase();
     let score = 0, clientMatch = false;
-    if (n.includes(cn)) { score += 20; clientMatch = true; }
-    else if (cnWords.every(w => n.includes(w))) { score += 14; clientMatch = true; }
-    else {
+
+    if (n.includes(cn)) {
+      // Full name found in filename — best match
+      score += 20; clientMatch = true;
+    } else if (cnWords.every(w => n.includes(w))) {
+      // All words of client name found in filename
+      score += 14; clientMatch = true;
+    } else {
+      // Partial match — at least 80% of words found
       const matched = cnWords.filter(w => n.includes(w)).length;
-      if (matched >= Math.ceil(cnWords.length * 0.8)) {
+      if (matched > 0 && matched >= Math.ceil(cnWords.length * 0.8)) {
         score += matched * 3;
         if (matched === cnWords.length) clientMatch = true;
       }
     }
+
+    // Bonus: if fiscal year is mentioned in filename, rank it higher
+    if (year && n.includes(year.toLowerCase())) score += 5;
+
     return { file, score, clientMatch };
   });
 
   const matches = scored.filter(s => s.clientMatch);
-  if (matches.length > 0) { matches.sort((a, b) => b.score - a.score); return matches[0].file; }
-  return null;
+  if (matches.length === 0) return null;
+
+  matches.sort((a, b) => b.score - a.score);
+  return matches[0].file;
 }
 
 async function findFolderByName(parentId, nameVariants) {
