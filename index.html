@@ -1051,14 +1051,16 @@ async function searchDrive(clientName, docType, year) {
   );
 
   // Step 2: Find the year folder inside Audit Data
-  // Handles all common naming variations: 2081.082 / 2081-082 / 2081/082 / 2081_082
+  // Covers every separator variation someone might use when naming the folder
   const yearFolderId = await findFolderByName(auditDataId, [
-    '2081.082', '2081-082', '2081/082', '2081_082',
-    '2081.82',  '2081-82',  '2081/82',  '2081_82',
-    '2081.083', '2081-083', // future year variants
+    '2081.082',  '2081-082',  '2081/082',  '2081_082',  '2081 082',
+    '2081.82',   '2081-82',   '2081/82',   '2081_82',   '2081 82',
+    '2081082',
+    '2082.083',  '2082-083',  '2082/083',  '2082_083',  // next year
   ]);
   if (!yearFolderId) throw new Error(
-    'Could not find the year folder (e.g. "2081.082") inside "Audit Data".'
+    'Could not find the year folder (e.g. "2081.082") inside "Audit Data". ' +
+    'Make sure the folder name matches one of the expected formats.'
   );
 
   // Step 3: Find "Scan" folder inside the year folder
@@ -1127,23 +1129,29 @@ async function searchDrive(clientName, docType, year) {
   const cnWords = cn.split(/\s+/).filter(w => w.length > 1);
 
   const scored = allFiles.map(file => {
-    // Normalise filename: strip extension, replace underscores/dashes with spaces
+    // Normalise filename: strip extension, replace underscores/dashes/dots with spaces
     const rawName = file.name.toLowerCase().replace(/\.[^.]+$/, '');
-    const n = rawName.replace(/[_\-]+/g, ' ');
+    const n = rawName.replace(/[_.\-]+/g, ' ');
+
+    // Strip year-like patterns (e.g. "2081 082", "2081 82", "208182") from the
+    // normalised name so they don't interfere with client name word matching
+    const nNoYear = n.replace(/\b20\d{2}[\s._\-]?0?\d{2,3}\b/g, '').trim();
+
     let score = 0, clientMatch = false;
 
     // ── TIER 1: Exact substring match (highest confidence) ──
-    if (n.includes(cn)) {
+    if (nNoYear.includes(cn)) {
       score += 100; clientMatch = true;
 
     // ── TIER 2: All words present in filename ──
-    } else if (cnWords.length > 0 && cnWords.every(w => n.includes(w))) {
+    } else if (cnWords.length > 0 && cnWords.every(w => nNoYear.includes(w))) {
       score += 80; clientMatch = true;
 
     } else {
       // ── TIER 3: Fuzzy word-level matching ──
       // For each word in client name, find best fuzzy match in filename words
-      const fileWords = n.split(/\s+/).filter(w => w.length > 1);
+      // Use year-stripped name so year digits don't confuse the matching
+      const fileWords = nNoYear.split(/\s+/).filter(w => w.length > 1);
       let wordScore = 0;
       let strongMatches = 0;
 
@@ -1173,10 +1181,18 @@ async function searchDrive(clientName, docType, year) {
     }
 
     // ── BONUS: fiscal year in filename ──
+    // Normalise BOTH the typed year and the filename year to digits-only
+    // so 2081-82, 2081.082, 2081/082, 208182 all match each other
     if (year && clientMatch) {
-      const normYear = year.toLowerCase().replace(/[_\-\/\.]+/g, '');
-      const normFile = n.replace(/[_\-\/\.]+/g, '');
-      if (normFile.includes(normYear)) score += 15;
+      const digits = s => s.replace(/\D+/g, '');          // strip non-digits
+      const yearDigits = digits(year);                     // "208182" or "2081082"
+      const fileDigits = digits(rawName);                  // digits in filename
+
+      // Try full year digits match OR short form (208182 inside 2081082)
+      if (
+        fileDigits.includes(yearDigits) ||
+        yearDigits.includes(fileDigits.slice(0, 7))
+      ) score += 15;
     }
 
     return { file, score, clientMatch };
