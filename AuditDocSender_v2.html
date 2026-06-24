@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Audit Doc Sender</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy:   #0f2744;
+    --navy2:  #1a3a5c;
+    --gold:   #c9a84c;
+    --gold2:  #e8c97a;
+    --white:  #ffffff;
+    --off:    #f4f6f9;
+    --text:   #1e2d3d;
+    --muted:  #6b7f93;
+    --green:  #1a7a4a;
+    --red:    #c0392b;
+    --border: #d8e0ea;
+    --radius: 12px;
+  }
+
+  body { font-family: 'Inter', sans-serif; background: var(--off); color: var(--text); min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--navy); padding: 18px 32px;
+    display: flex; align-items: center; gap: 14px;
+    border-bottom: 3px solid var(--gold);
+  }
+  .logo-icon { width:40px; height:40px; background:var(--gold); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+  header h1 { font-family:'Playfair Display',serif; color:var(--white); font-size:20px; letter-spacing:0.3px; }
+  header .header-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+  #header-tag { color:var(--gold); font-size:12px; font-weight:500; letter-spacing:1px; text-transform:uppercase; }
+  #user-pill { display:none; align-items:center; gap:8px; background:rgba(255,255,255,0.1); border-radius:20px; padding:5px 12px 5px 5px; }
+  #user-avatar { width:26px; height:26px; border-radius:50%; background:var(--gold); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--navy); }
+  #user-name { color:white; font-size:12px; font-weight:500; }
+  #role-badge { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; padding:2px 8px; border-radius:10px; background:rgba(201,168,76,0.25); color:var(--gold2); }
+  #signout-btn { background:none; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.7); font-size:11px; font-weight:500; padding:4px 10px; border-radius:6px; cursor:pointer; font-family:'Inter',sans-serif; }
+  #signout-btn:hover { border-color:rgba(255,255,255,0.5); color:white; }
+
+  /* ── TABS ── */
+  .tabs { display:flex; gap:4px; margin-bottom:20px; background:var(--white); border:1px solid var(--border); border-radius:var(--radius); padding:5px; }
+  .tab-btn { flex:1; padding:9px 16px; border:none; background:transparent; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; color:var(--muted); border-radius:9px; cursor:pointer; transition:all 0.18s; }
+  .tab-btn.active { background:var(--navy); color:white; }
+  .tab-btn:hover:not(.active) { color:var(--text); background:var(--off); }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+
+  /* ── MAIN LAYOUT ── */
+  main { max-width: 820px; margin: 36px auto; padding: 0 20px; }
+
+  /* ── CARD ── */
+  .card { background:var(--white); border-radius:var(--radius); border:1px solid var(--border); padding:32px; margin-bottom:20px; box-shadow:0 2px 12px rgba(15,39,68,0.07); }
+  .card-title { font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:1.2px; color:var(--muted); margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+
+  /* ── AUTH SECTION ── */
+  #auth-section { text-align:center; padding:48px 32px; }
+  #auth-section .big-icon { font-size:52px; margin-bottom:16px; }
+  #auth-section h2 { font-family:'Playfair Display',serif; font-size:26px; color:var(--navy); margin-bottom:10px; }
+  #auth-section p { color:var(--muted); font-size:14px; line-height:1.6; margin-bottom:28px; max-width:400px; margin-left:auto; margin-right:auto; }
+
+  /* ── BUTTONS ── */
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:12px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; border:none; transition:all 0.2s; font-family:'Inter',sans-serif; }
+  .btn-primary { background:var(--navy); color:var(--white); }
+  .btn-primary:hover { background:var(--navy2); transform:translateY(-1px); box-shadow:0 4px 16px rgba(15,39,68,0.25); }
+  .btn-gold { background:var(--gold); color:var(--navy); }
+  .btn-gold:hover { background:var(--gold2); transform:translateY(-1px); }
+  .btn-outline { background:transparent; color:var(--navy); border:1.5px solid var(--border); }
+  .btn-outline:hover { border-color:var(--navy); }
+  .btn-danger { background:#fdecea; color:var(--red); border:1.5px solid #f5b7b1; }
+  .btn-danger:hover { background:#fbd5d2; }
+  .btn:disabled { opacity:0.5; cursor:not-allowed; transform:none !important; }
+  .btn-google { background:white; color:#444; border:1.5px solid var(--border); font-size:15px; padding:13px 28px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+  .btn-google:hover { box-shadow:0 4px 16px rgba(0,0,0,0.12); transform:translateY(-1px); }
+  .btn-sm { padding:7px 14px; font-size:12px; }
+
+  /* ── FORM ── */
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .form-group { display:flex; flex-direction:column; gap:6px; position:relative; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; }
+  input, select, textarea { padding:11px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:14px; font-family:'Inter',sans-serif; color:var(--text); background:var(--white); transition:border-color 0.2s; outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--navy); box-shadow:0 0 0 3px rgba(15,39,68,0.08); }
+  textarea { resize:vertical; min-height:100px; }
+
+  /* ── AUTOCOMPLETE ── */
+  .autocomplete-list { position:absolute; top:100%; left:0; right:0; z-index:50; background:white; border:1.5px solid var(--navy); border-top:none; border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; box-shadow:0 8px 24px rgba(15,39,68,0.12); }
+  .autocomplete-item { padding:10px 14px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--border); }
+  .autocomplete-item:last-child { border-bottom:none; }
+  .autocomplete-item:hover, .autocomplete-item.selected { background:var(--off); }
+  .autocomplete-item .ac-name { font-weight:600; color:var(--navy); }
+  .autocomplete-item .ac-email { color:var(--muted); font-size:12px; margin-top:1px; }
+
+  /* ── ACTION ROW ── */
+  .action-row { display:flex; align-items:center; gap:12px; margin-top:24px; flex-wrap:wrap; }
+
+  /* ── STATUS AREA ── */
+  #status-area { margin-top:20px; }
+  .status-box { padding:14px 18px; border-radius:8px; font-size:14px; font-weight:500; display:flex; align-items:flex-start; gap:10px; line-height:1.5; }
+  .status-searching { background:#e8f0fe; color:#1a56c4; border:1px solid #c5d8fd; }
+  .status-success   { background:#e8f5ee; color:var(--green); border:1px solid #b7dfc9; }
+  .status-error     { background:#fdecea; color:var(--red); border:1px solid #f5b7b1; }
+  .status-info      { background:#fff8e6; color:#8a6200; border:1px solid #fde89a; }
+
+  /* ── FILE PREVIEW ── */
+  #file-preview { display:none; background:var(--off); border:1.5px solid var(--border); border-radius:8px; padding:14px 18px; margin-top:16px; align-items:center; gap:14px; }
+  #file-preview .file-icon { font-size:28px; }
+  #file-preview .file-info { flex:1; }
+  #file-preview .file-name { font-weight:600; font-size:14px; color:var(--navy); }
+  #file-preview .file-meta { font-size:12px; color:var(--muted); margin-top:2px; }
+
+  /* ── HISTORY / LOGS ── */
+  .log-item { display:flex; align-items:flex-start; gap:12px; padding:14px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .log-item:last-child { border-bottom:none; }
+  .log-badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; flex-shrink:0; margin-top:1px; }
+  .badge-sent { background:#e8f5ee; color:var(--green); }
+  .badge-error { background:#fdecea; color:var(--red); }
+  .log-details { flex:1; }
+  .log-client { font-weight:600; color:var(--navy); }
+  .log-sub { color:var(--muted); font-size:12px; margin-top:3px; line-height:1.5; }
+  .log-time { color:var(--muted); font-size:11px; flex-shrink:0; white-space:nowrap; }
+  .log-empty { color:var(--muted); font-size:13px; text-align:center; padding:28px; }
+
+  /* ── CLIENTS TABLE ── */
+  .client-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .client-table th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); padding:8px 12px; border-bottom:2px solid var(--border); }
+  .client-table td { padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .client-table tr:last-child td { border-bottom:none; }
+  .client-table tr:hover td { background:var(--off); }
+  .client-name-cell { font-weight:600; color:var(--navy); }
+  .client-actions { display:flex; gap:6px; }
+  .search-bar { width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:13px; font-family:'Inter',sans-serif; outline:none; margin-bottom:16px; }
+  .search-bar:focus { border-color:var(--navy); }
+
+  /* ── ADD CLIENT FORM ── */
+  .add-client-form { background:var(--off); border:1.5px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; display:none; }
+  .add-client-form.open { display:block; }
+  .add-client-form h4 { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:16px; }
+
+  /* ── ACCESS DENIED ── */
+  #access-denied { text-align:center; padding:48px 32px; }
+  #access-denied .big-icon { font-size:52px; margin-bottom:16px; }
+  #access-denied h2 { font-family:'Playfair Display',serif; font-size:24px; color:var(--red); margin-bottom:10px; }
+  #access-denied p { color:var(--muted); font-size:14px; line-height:1.6; max-width:400px; margin:0 auto 20px; }
+
+  /* ── MODALS ── */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,39,68,0.5); z-index:100; align-items:center; justify-content:center; padding:20px; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:white; border-radius:var(--radius); max-width:560px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+  .modal-header { background:var(--navy); color:white; padding:20px 24px; border-radius:var(--radius) var(--radius) 0 0; display:flex; align-items:center; justify-content:space-between; }
+  .modal-header h3 { font-size:16px; font-weight:600; }
+  .modal-close { background:none; border:none; color:white; font-size:20px; cursor:pointer; }
+  .modal-body { padding:24px; }
+  .step { display:flex; gap:14px; margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border); }
+  .step:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .step-num { width:28px; height:28px; background:var(--navy); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; }
+  .step-content h4 { font-size:14px; font-weight:600; margin-bottom:6px; color:var(--navy); }
+  .step-content p { font-size:13px; color:var(--muted); line-height:1.6; }
+  .step-content code { background:var(--off); padding:2px 6px; border-radius:4px; font-size:12px; color:var(--navy); font-family:monospace; }
+  .step-content a { color:var(--gold); text-decoration:none; font-weight:500; }
+
+  /* ── SPINNER ── */
+  .spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:white; border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; }
+  .spinner-navy { border-color:rgba(15,39,68,0.2); border-top-color:var(--navy); }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── LOADING OVERLAY ── */
+  #loading-screen { position:fixed; inset:0; background:var(--navy); display:flex; align-items:center; justify-content:center; z-index:200; flex-direction:column; gap:16px; }
+  #loading-screen .logo-icon { width:52px; height:52px; background:var(--gold); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+  #loading-screen p { color:rgba(255,255,255,0.6); font-size:13px; }
+
+  /* ── LOG FILTER ── */
+  .log-filters { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+  .log-filters select, .log-filters input { flex:1; min-width:120px; font-size:13px; padding:8px 12px; }
+
+  @media (max-width:600px) {
+    .form-grid { grid-template-columns:1fr; }
+    main { margin:20px auto; }
+    .card { padding:20px; }
+    header { padding:14px 20px; }
+    .tabs { flex-direction:column; }
+    .log-filters { flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <div class="logo-icon">📋</div>
+  <div class="spinner" style="border-color:rgba(255,255,255,0.2); border-top-color:var(--gold); width:22px; height:22px;"></div>
+  <p>Initialising…</p>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo-icon">📋</div>
+  <h1>Audit Doc Sender</h1>
+  <div class="header-right">
+    <span id="header-tag">Secure · Google Drive</span>
+    <div id="user-pill">
+      <div id="user-avatar">?</div>
+      <span id="user-name"></span>
+      <span id="role-badge"></span>
+    </div>
+    <button id="signout-btn" onclick="signOut()" style="display:none;">Sign out</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- AUTH SECTION -->
+  <div id="auth-section" class="card" style="display:none;">
+    <div class="big-icon">🔐</div>
+    <h2>Connect Your Google Account</h2>
+    <p>Sign in with your company Google account. Access is restricted to registered staff only.</p>
+    <button class="btn btn-google" onclick="signIn()">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.8 0 6.9 5.4 3 13.3l7.8 6C12.7 13.1 17.9 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.8 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7L2.5 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.7l8.3-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.1 0-11.3-3.6-13.2-9.2l-7.8 6C6.9 42.6 14.8 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+      Sign in with Google
+    </button>
+    <p style="margin-top:16px; font-size:12px;">
+      <a href="#" onclick="showSetup()" style="color:var(--gold); font-weight:600;">⚙️ First time? Set up Google Cloud credentials first</a>
+    </p>
+  </div>
+
+  <!-- ACCESS DENIED -->
+  <div id="access-denied" class="card" style="display:none;">
+    <div class="big-icon">🚫</div>
+    <h2>Access Denied</h2>
+    <p id="access-denied-msg">Your Google account is not registered as an authorised user. Please contact your administrator.</p>
+    <button class="btn btn-outline" onclick="signOut()">Sign out and try a different account</button>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app-section" style="display:none;">
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('send')">📤 Send Document</button>
+      <button class="tab-btn" onclick="switchTab('clients')" id="tab-clients">👥 Clients</button>
+      <button class="tab-btn" onclick="switchTab('logs')" id="tab-logs">📋 Send Logs</button>
+    </div>
+
+    <!-- ── TAB: SEND ── -->
+    <div id="tab-send" class="tab-panel active">
+      <div class="card">
+        <div class="card-title">📤 Send Document to Client</div>
+        <div class="form-grid">
+          <div class="form-group" id="clientName-group">
+            <label>Client Name</label>
+            <input type="text" id="clientName" placeholder="Start typing to search clients…" autocomplete="off" oninput="handleClientSearch(this.value)" onkeydown="handleClientKey(event)" />
+            <div class="autocomplete-list" id="autocomplete-list" style="display:none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Document Type</label>
+            <select id="docType">
+              <option value="">Select document...</option>
+              <option value="Tax Clearance">Tax Clearance</option>
+              <option value="Audit Report">Audit Report</option>
+              <option value="Financial Statements">Financial Statements</option>
+              <option value="VAT Returns">VAT Returns</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fiscal Year</label>
+            <input type="text" id="fiscalYear" placeholder="e.g. 2081-82" />
+          </div>
+          <div class="form-group">
+            <label>Client Email</label>
+            <input type="email" id="clientEmail" placeholder="auto-filled when you pick a client" />
+          </div>
+          <div class="form-group full">
+            <label>Email Message (optional — leave blank for default)</label>
+            <textarea id="emailMessage" placeholder="Leave blank to use the default professional message..."></textarea>
+          </div>
+        </div>
+
+        <div id="file-preview">
+          <div class="file-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name" id="preview-name">—</div>
+            <div class="file-meta" id="preview-meta">—</div>
+          </div>
+          <button class="btn btn-outline" onclick="clearFile()" style="padding:8px 14px; font-size:12px;">✕ Wrong file</button>
+        </div>
+
+        <div class="action-row">
+          <button class="btn btn-primary" id="searchBtn" onclick="findDocument()">🔍 Find Document</button>
+          <button class="btn btn-gold" id="sendBtn" onclick="sendFoundDocument()" style="display:none;">📤 Send to Client</button>
+          <button class="btn btn-outline" onclick="clearForm()">Clear</button>
+        </div>
+        <div id="status-area"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: CLIENTS ── -->
+    <div id="tab-clients-panel" class="tab-panel">
+      <div class="card">
+        <div class="card-title">
+          <span>👥 Client Directory</span>
+          <button class="btn btn-primary btn-sm" id="add-client-btn" onclick="toggleAddClient()" style="display:none;">+ Add Client</button>
+        </div>
+
+        <!-- Add/Edit Form (admin only, hidden by default) -->
+        <div class="add-client-form" id="add-client-form">
+          <h4 id="add-client-title">Add New Client</h4>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Client Name *</label>
+              <input type="text" id="ac-name" placeholder="e.g. Shikhar Traders" />
+            </div>
+            <div class="form-group">
+              <label>Email *</label>
+              <input type="email" id="ac-email" placeholder="client@example.com" />
+            </div>
+            <div class="form-group">
+              <label>PAN Number</label>
+              <input type="text" id="ac-pan" placeholder="Optional" />
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input type="text" id="ac-phone" placeholder="Optional" />
+            </div>
+            <div class="form-group full">
+              <label>Address</label>
+              <input type="text" id="ac-address" placeholder="Optional" />
+            </div>
+          </div>
+          <div class="action-row" style="margin-top:16px;">
+            <button class="btn btn-gold btn-sm" onclick="saveClient()">Save Client</button>
+            <button class="btn btn-outline btn-sm" onclick="cancelAddClient()">Cancel</button>
+          </div>
+          <div id="client-form-status" style="margin-top:12px;"></div>
+        </div>
+
+        <input type="text" class="search-bar" id="client-search-bar" placeholder="🔍 Search clients by name or email…" oninput="filterClientTable(this.value)" />
+
+        <div id="clients-table-wrap">
+          <div class="log-empty">Loading clients…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: LOGS ── -->
+    <div id="tab-logs-panel" class="tab-panel">
+      <div class="card">
+        <div class="card-title">
+          <span>📋 Send Logs</span>
+          <button class="btn btn-outline btn-sm" onclick="loadLogs()">↻ Refresh</button>
+        </div>
+
+        <div class="log-filters">
+          <input type="text" id="log-filter-client" placeholder="Filter by client…" oninput="applyLogFilters()" style="flex:2;" />
+          <select id="log-filter-status" onchange="applyLogFilters()">
+            <option value="">All statuses</option>
+            <option value="sent">Sent only</option>
+            <option value="error">Errors only</option>
+          </select>
+          <select id="log-filter-sender" onchange="applyLogFilters()" style="display:none;" id="log-filter-sender">
+            <option value="">All staff</option>
+          </select>
+        </div>
+
+        <div id="logs-list">
+          <div class="log-empty">Loading logs…</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /app-section -->
+
+</main>
+
+<!-- SETUP MODAL -->
+<div class="modal-overlay" id="setup-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>⚙️ First-Time Google Cloud Setup</h3>
+      <button class="modal-close" onclick="closeSetup()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Go to Google Cloud Console</h4>
+          <p>Open <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> and sign in with your company Google account.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Create a New Project</h4>
+          <p>Click the project dropdown → <strong>New Project</strong> → Name it <code>Audit Doc Sender</code> → Click <strong>Create</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Enable APIs</h4>
+          <p>Go to <strong>APIs &amp; Services → Library</strong>. Enable both <strong>Google Drive API</strong> and <strong>Gmail API</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h4>Configure OAuth Consent Screen</h4>
+          <p>Go to <strong>APIs &amp; Services → OAuth consent screen</strong> → Choose <strong>External</strong> → Fill in app name <code>Audit Doc Sender</code> and your email → Save.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <h4>Create OAuth Credentials</h4>
+          <p>Go to <strong>Credentials → Create Credentials → OAuth Client ID</strong> → Choose <strong>Web application</strong> → Add the URL of this app under <em>Authorized JavaScript origins</em> → Create.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-content">
+          <h4>Paste Your Client ID</h4>
+          <p>Copy the <strong>Client ID</strong> (looks like <code>123456-abc.apps.googleusercontent.com</code>) and paste below:</p>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <input type="text" id="clientIdInput" placeholder="Paste your Client ID here…" style="flex:1; font-size:13px;"/>
+            <button class="btn btn-primary" onclick="saveClientId()" style="padding:10px 16px; font-size:13px;">Save</button>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-content">
+          <h4>Register Yourself in Supabase</h4>
+          <p>In your Supabase project, go to <strong>Table Editor → app_users</strong> and insert a row with your Google email and role <code>admin</code>. This is required to access the app.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Google API -->
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+<!-- Supabase JS v2 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+// ════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════
+const SUPABASE_URL = 'https://rennqzmwyhkdsizvlqwd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send';
+
+let CLIENT_ID    = localStorage.getItem('gClientId') || '';
+let tokenClient;
+let accessToken  = null;
+let foundFile    = null;
+let currentUser  = null;   // { email, role }
+let clientsList  = [];     // loaded from Supabase
+let allLogs      = [];     // loaded from Supabase
+let editingClientId = null;
+let acSelectedIdx   = -1;
+
+// Init Supabase client
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════
+window.addEventListener('load', () => {
+  // Hide loading screen after a moment; show auth
+  setTimeout(() => {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('auth-section').style.display = 'block';
+  }, 600);
+});
+
+// ════════════════════════════════════════════
+//  SETUP MODAL
+// ════════════════════════════════════════════
+function showSetup() {
+  document.getElementById('setup-modal').classList.add('open');
+  if (CLIENT_ID) document.getElementById('clientIdInput').value = CLIENT_ID;
+}
+function closeSetup() { document.getElementById('setup-modal').classList.remove('open'); }
+function saveClientId() {
+  const val = document.getElementById('clientIdInput').value.trim();
+  if (!val) return alert('Please paste your Client ID first.');
+  CLIENT_ID = val;
+  localStorage.setItem('gClientId', val);
+  closeSetup();
+  alert('✅ Client ID saved! Now click "Sign in with Google".');
+}
+
+// ════════════════════════════════════════════
+//  GOOGLE AUTH
+// ════════════════════════════════════════════
+function signIn() {
+  if (!CLIENT_ID) { showSetup(); return; }
+
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp) => {
+      if (resp.error) {
+        showAuthError('Google sign-in failed: ' + resp.error);
+        return;
+      }
+      accessToken = resp.access_token;
+      await afterGoogleSignIn();
+    },
+  });
+  tokenClient.requestAccessToken();
+}
+
+function signOut() {
+  accessToken = null;
+  currentUser = null;
+  clientsList = [];
+  allLogs     = [];
+
+  if (tokenClient) google.accounts.oauth2.revoke(accessToken, () => {});
+
+  document.getElementById('user-pill').style.display    = 'none';
+  document.getElementById('signout-btn').style.display  = 'none';
+  document.getElementById('header-tag').style.display   = 'inline';
+  document.getElementById('app-section').style.display  = 'none';
+  document.getElementById('access-denied').style.display= 'none';
+  document.getElementById('auth-section').style.display = 'block';
+}
+
+async function afterGoogleSignIn() {
+  // 1. Get Google user info
+  const infoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  const info = await infoResp.json();
+  const email = info.email || '';
+
+  // 2. Check app_users table in Supabase
+  const { data, error } = await sb
+    .from('app_users')
+    .select('email, role')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (error || !data) {
+    // Not in app_users — show access denied
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('access-denied-msg').textContent =
+      `"${email}" is not registered as an authorised user. Ask your admin to add you in Supabase → app_users.`;
+    document.getElementById('access-denied').style.display = 'block';
+    return;
+  }
+
+  // 3. Authorised — store user
+  currentUser = { email: data.email, role: data.role };
+
+  // Update header UI
+  document.getElementById('user-avatar').textContent = (info.name || email)[0].toUpperCase();
+  document.getElementById('user-name').textContent   = email;
+  document.getElementById('role-badge').textContent  = data.role;
+  document.getElementById('user-pill').style.display = 'flex';
+  document.getElementById('signout-btn').style.display = 'inline-block';
+  document.getElementById('header-tag').style.display  = 'none';
+
+  // Show/hide admin-only UI
+  if (currentUser.role === 'admin') {
+    document.getElementById('add-client-btn').style.display = 'inline-flex';
+    document.getElementById('log-filter-sender').style.display = 'block';
+  }
+
+  // Show app
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('app-section').style.display  = 'block';
+
+  // Load data
+  await loadClients();
+  await loadLogs();
+}
+
+function showAuthError(msg) {
+  document.getElementById('auth-section').style.display = 'block';
+  alert('❌ ' + msg);
+}
+
+// ════════════════════════════════════════════
+//  TAB SWITCHING
+// ════════════════════════════════════════════
+function switchTab(tab) {
+  ['send','clients','logs'].forEach(t => {
+    document.getElementById('tab-' + (t === 'send' ? 'send' : t + '-panel')).classList.toggle('active', t === tab);
+  });
+  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', ['send','clients','logs'][i] === tab);
+  });
+}
+
+// ════════════════════════════════════════════
+//  CLIENT AUTOCOMPLETE
+// ════════════════════════════════════════════
+function handleClientSearch(val) {
+  acSelectedIdx = -1;
+  const list = document.getElementById('autocomplete-list');
+  if (!val || val.length < 1) { list.style.display = 'none'; return; }
+
+  const matches = clientsList.filter(c =>
+    c.name.toLowerCase().includes(val.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(val.toLowerCase())
+  ).slice(0, 8);
+
+  if (matches.length === 0) { list.style.display = 'none'; return; }
+
+  list.innerHTML = matches.map((c, i) => `
+    <div class="autocomplete-item" data-idx="${i}" onmousedown="selectClient('${escHtml(c.name)}','${escHtml(c.email||'')}')">
+      <div class="ac-name">${escHtml(c.name)}</div>
+      <div class="ac-email">${escHtml(c.email || 'No email on file')}</div>
+    </div>
+  `).join('');
+  list.style.display = 'block';
+}
+
+function handleClientKey(e) {
+  const list = document.getElementById('autocomplete-list');
+  const items = list.querySelectorAll('.autocomplete-item');
+  if (!items.length || list.style.display === 'none') return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acSelectedIdx = Math.min(acSelectedIdx + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acSelectedIdx = Math.max(acSelectedIdx - 1, 0);
+  } else if (e.key === 'Enter' && acSelectedIdx >= 0) {
+    e.preventDefault();
+    items[acSelectedIdx].dispatchEvent(new Event('mousedown'));
+    return;
+  } else if (e.key === 'Escape') {
+    list.style.display = 'none'; return;
+  }
+  items.forEach((el, i) => el.classList.toggle('selected', i === acSelectedIdx));
+}
+
+function selectClient(name, email) {
+  document.getElementById('clientName').value  = name;
+  document.getElementById('clientEmail').value = email;
+  document.getElementById('autocomplete-list').style.display = 'none';
+}
+
+// Close autocomplete on outside click
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#clientName-group')) {
+    document.getElementById('autocomplete-list').style.display = 'none';
+  }
+});
+
+// ════════════════════════════════════════════
+//  FIND + SEND DOCUMENT (unchanged logic)
+// ════════════════════════════════════════════
+async function findDocument() {
+  const clientName  = document.getElementById('clientName').value.trim();
+  const docType     = document.getElementById('docType').value;
+  const fiscalYear  = document.getElementById('fiscalYear').value.trim();
+  const clientEmail = document.getElementById('clientEmail').value.trim();
+
+  if (!clientName || !docType) { showStatus('⚠️ Please fill in Client Name and Document Type.', 'info'); return; }
+  if (!clientEmail) { showStatus('⚠️ Please fill in the Client Email before searching.', 'info'); return; }
+
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Searching…';
+  document.getElementById('sendBtn').style.display = 'none';
+  document.getElementById('file-preview').style.display = 'none';
+  foundFile = null;
+
+  try {
+    showStatus('<span class="spinner spinner-navy"></span> Searching inside your Drive folders…', 'searching');
+    const file = await searchDrive(clientName, docType, fiscalYear);
+
+    if (!file) {
+      showStatus(`❌ No file found for "<strong>${clientName}</strong>" (<strong>${docType}</strong>). Check the file name contains the client name inside the correct folder.`, 'error');
+      btn.disabled = false; btn.innerHTML = '🔍 Find Document';
+      return;
+    }
+
+    foundFile = file;
+    document.getElementById('preview-name').textContent = file.name;
+    document.getElementById('preview-meta').textContent = '✅ Found in Google Drive · Click "Send to Client" to send';
+    document.getElementById('file-preview').style.display = 'flex';
+
+    if (file._warning) {
+      showStatus('⚠️ ' + file._warning + ' — Please verify before sending.', 'info');
+    } else {
+      showStatus(`✅ File found: <strong>${file.name}</strong> — Confirm this is correct then click <strong>Send to Client</strong>.`, 'success');
+    }
+    document.getElementById('sendBtn').style.display = 'inline-flex';
+
+  } catch (err) { showStatus('❌ ' + err.message, 'error'); }
+
+  btn.disabled = false; btn.innerHTML = '🔍 Find Document';
+}
+
+async function sendFoundDocument() {
+  if (!foundFile) { showStatus('⚠️ Please find a document first.', 'info'); return; }
+
+  const clientName  = document.getElementById('clientName').value.trim();
+  const docType     = document.getElementById('docType').value;
+  const fiscalYear  = document.getElementById('fiscalYear').value.trim();
+  const clientEmail = document.getElementById('clientEmail').value.trim();
+
+  const sendBtn   = document.getElementById('sendBtn');
+  const searchBtn = document.getElementById('searchBtn');
+  sendBtn.disabled = true; searchBtn.disabled = true;
+  sendBtn.innerHTML = '<span class="spinner"></span> Sending…';
+  showStatus(`<span class="spinner spinner-navy"></span> Sending <strong>${foundFile.name}</strong> to <strong>${clientEmail}</strong>…`, 'searching');
+
+  const logEntry = {
+    sent_by:       currentUser.email,
+    client_name:   clientName,
+    client_email:  clientEmail,
+    doc_type:      docType,
+    fiscal_year:   fiscalYear,
+    file_name:     foundFile.name,
+    drive_file_id: foundFile.id,
+    status:        'pending',
+    error_msg:     null,
+  };
+
+  try {
+    await sendEmail(foundFile, clientName, docType, fiscalYear, clientEmail);
+    logEntry.status = 'sent';
+    showStatus(`✅ Successfully sent <strong>${foundFile.name}</strong> to <strong>${clientEmail}</strong>`, 'success');
+    sendBtn.style.display = 'none';
+    foundFile = null;
+  } catch (err) {
+    logEntry.status    = 'error';
+    logEntry.error_msg = err.message;
+    showStatus('❌ Failed to send: ' + err.message, 'error');
+  }
+
+  // Write to Supabase send_logs
+  await sb.from('send_logs').insert(logEntry);
+
+  sendBtn.disabled = false; sendBtn.innerHTML = '📤 Send to Client';
+  searchBtn.disabled = false;
+
+  // Refresh logs in background
+  loadLogs();
+}
+
+// ════════════════════════════════════════════
+//  SUPABASE: LOAD CLIENTS
+// ════════════════════════════════════════════
+async function loadClients() {
+  const { data, error } = await sb
+    .from('clients')
+    .select('*')
+    .order('name');
+
+  if (error) {
+    console.error('Failed to load clients:', error.message);
+    document.getElementById('clients-table-wrap').innerHTML =
+      '<div class="log-empty" style="color:var(--red);">Failed to load clients. Check your Supabase table and RLS policies.</div>';
+    return;
+  }
+
+  clientsList = data || [];
+  renderClientsTable(clientsList);
+}
+
+function renderClientsTable(list) {
+  const wrap = document.getElementById('clients-table-wrap');
+  if (!list.length) {
+    wrap.innerHTML = '<div class="log-empty">No clients yet. Add your first client above.</div>';
+    return;
+  }
+
+  const isAdmin = currentUser?.role === 'admin';
+  wrap.innerHTML = `
+    <table class="client-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>PAN</th>
+          <th>Phone</th>
+          ${isAdmin ? '<th></th>' : ''}
+        </tr>
+      </thead>
+      <tbody>
+        ${list.map(c => `
+          <tr>
+            <td class="client-name-cell">${escHtml(c.name)}</td>
+            <td>${escHtml(c.email || '—')}</td>
+            <td>${escHtml(c.pan || '—')}</td>
+            <td>${escHtml(c.phone || '—')}</td>
+            ${isAdmin ? `
+            <td>
+              <div class="client-actions">
+                <button class="btn btn-outline btn-sm" onclick="editClient('${c.id}')">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteClient('${c.id}', '${escHtml(c.name)}')">Delete</button>
+              </div>
+            </td>` : ''}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function filterClientTable(val) {
+  const filtered = clientsList.filter(c =>
+    c.name.toLowerCase().includes(val.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(val.toLowerCase())
+  );
+  renderClientsTable(filtered);
+}
+
+// ════════════════════════════════════════════
+//  SUPABASE: ADD / EDIT / DELETE CLIENTS
+// ════════════════════════════════════════════
+function toggleAddClient() {
+  const form = document.getElementById('add-client-form');
+  form.classList.toggle('open');
+  if (form.classList.contains('open') && !editingClientId) {
+    clearClientForm();
+    document.getElementById('add-client-title').textContent = 'Add New Client';
+  }
+}
+
+function cancelAddClient() {
+  editingClientId = null;
+  clearClientForm();
+  document.getElementById('add-client-form').classList.remove('open');
+}
+
+function clearClientForm() {
+  ['ac-name','ac-email','ac-pan','ac-phone','ac-address'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('client-form-status').innerHTML = '';
+}
+
+async function saveClient() {
+  const name  = document.getElementById('ac-name').value.trim();
+  const email = document.getElementById('ac-email').value.trim();
+  if (!name || !email) {
+    document.getElementById('client-form-status').innerHTML =
+      '<div class="status-box status-info" style="margin-top:0;">Name and Email are required.</div>';
+    return;
+  }
+
+  const payload = {
+    name,
+    email,
+    pan:     document.getElementById('ac-pan').value.trim() || null,
+    phone:   document.getElementById('ac-phone').value.trim() || null,
+    address: document.getElementById('ac-address').value.trim() || null,
+  };
+
+  let error;
+  if (editingClientId) {
+    ({ error } = await sb.from('clients').update(payload).eq('id', editingClientId));
+  } else {
+    ({ error } = await sb.from('clients').insert(payload));
+  }
+
+  if (error) {
+    document.getElementById('client-form-status').innerHTML =
+      `<div class="status-box status-error" style="margin-top:0;">❌ ${escHtml(error.message)}</div>`;
+    return;
+  }
+
+  cancelAddClient();
+  await loadClients();
+}
+
+function editClient(id) {
+  const c = clientsList.find(x => x.id == id);
+  if (!c) return;
+  editingClientId = id;
+  document.getElementById('ac-name').value    = c.name || '';
+  document.getElementById('ac-email').value   = c.email || '';
+  document.getElementById('ac-pan').value     = c.pan || '';
+  document.getElementById('ac-phone').value   = c.phone || '';
+  document.getElementById('ac-address').value = c.address || '';
+  document.getElementById('add-client-title').textContent = 'Edit Client';
+  document.getElementById('add-client-form').classList.add('open');
+  document.getElementById('add-client-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function deleteClient(id, name) {
+  if (!confirm(`Delete client "${name}"? This cannot be undone.`)) return;
+  const { error } = await sb.from('clients').delete().eq('id', id);
+  if (error) { alert('Failed to delete: ' + error.message); return; }
+  await loadClients();
+}
+
+// ════════════════════════════════════════════
+//  SUPABASE: LOAD + RENDER LOGS
+// ════════════════════════════════════════════
+async function loadLogs() {
+  const isAdmin = currentUser?.role === 'admin';
+  let query = sb.from('send_logs').select('*').order('sent_at', { ascending: false }).limit(200);
+
+  // Staff see only their own sends
+  if (!isAdmin) query = query.eq('sent_by', currentUser.email);
+
+  const { data, error } = await query;
+  if (error) {
+    document.getElementById('logs-list').innerHTML =
+      '<div class="log-empty" style="color:var(--red);">Failed to load logs. Check your Supabase table and RLS policies.</div>';
+    return;
+  }
+
+  allLogs = data || [];
+
+  // Populate staff filter for admin
+  if (isAdmin && allLogs.length > 0) {
+    const senders = [...new Set(allLogs.map(l => l.sent_by))].sort();
+    const sel = document.getElementById('log-filter-sender');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All staff</option>' +
+      senders.map(s => `<option value="${escHtml(s)}" ${s===cur?'selected':''}>${escHtml(s)}</option>`).join('');
+  }
+
+  applyLogFilters();
+}
+
+function applyLogFilters() {
+  const clientFilter = document.getElementById('log-filter-client').value.toLowerCase();
+  const statusFilter = document.getElementById('log-filter-status').value;
+  const senderFilter = document.getElementById('log-filter-sender').value;
+
+  let filtered = allLogs.filter(l => {
+    if (clientFilter && !(l.client_name || '').toLowerCase().includes(clientFilter)) return false;
+    if (statusFilter && l.status !== statusFilter) return false;
+    if (senderFilter && l.sent_by !== senderFilter) return false;
+    return true;
+  });
+
+  renderLogs(filtered);
+}
+
+function renderLogs(logs) {
+  const el = document.getElementById('logs-list');
+  if (!logs.length) {
+    el.innerHTML = '<div class="log-empty">No log entries match your filters.</div>';
+    return;
+  }
+  const isAdmin = currentUser?.role === 'admin';
+  el.innerHTML = logs.map(l => {
+    const d = new Date(l.sent_at);
+    const timeStr = isNaN(d) ? '—' : d.toLocaleString();
+    return `
+      <div class="log-item">
+        <span class="log-badge ${l.status === 'sent' ? 'badge-sent' : 'badge-error'}">
+          ${l.status === 'sent' ? '✅ Sent' : '❌ Error'}
+        </span>
+        <div class="log-details">
+          <div class="log-client">${escHtml(l.client_name || '—')} — ${escHtml(l.doc_type || '—')}${l.fiscal_year ? ' (' + escHtml(l.fiscal_year) + ')' : ''}</div>
+          <div class="log-sub">
+            To: ${escHtml(l.client_email || '—')} · ${escHtml(l.file_name || '—')}
+            ${isAdmin ? `<br>By: ${escHtml(l.sent_by || '—')}` : ''}
+            ${l.error_msg ? `<br><span style="color:var(--red);">Error: ${escHtml(l.error_msg)}</span>` : ''}
+          </div>
+        </div>
+        <div class="log-time">${timeStr}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ════════════════════════════════════════════
+//  DRIVE SEARCH (unchanged from original)
+// ════════════════════════════════════════════
+async function searchDrive(clientName, docType, year) {
+  const auditDataId = await findFolderByName(null, ['Audit Data', 'AUDIT DATA']);
+  if (!auditDataId) throw new Error('Could not find "Audit Data" folder in your Google Drive.');
+
+  const yearFolderId = await findFolderByName(auditDataId, ['2081.082', '2081/082', '2081-082', '2081.82', '2081/82']);
+  if (!yearFolderId) throw new Error('Could not find "2081.082" folder inside Audit Data.');
+
+  const scanFolderId = await findFolderByName(yearFolderId, ['Scan', 'SCAN', 'scan']);
+  if (!scanFolderId) throw new Error('Could not find "Scan" folder inside 2081.082.');
+
+  let searchFolderIds = [];
+  const dt = docType.toLowerCase();
+
+  if (dt === 'tax clearance') {
+    const tcId = await findFolderByName(scanFolderId, ['Tax clearance', 'Tax Clearance', 'TAX CLEARANCE']);
+    if (!tcId) throw new Error('Could not find "Tax clearance" folder inside Scan.');
+    searchFolderIds = [tcId];
+  } else if (dt === 'audit report') {
+    const signFolders = [
+      ['Devi Sir Sign', 'Devi Sir', 'DEVI SIR'],
+      ['Lila Sir Sign', 'Lila Sir', 'LILA SIR'],
+      ['Sailesh Sir', 'SAILESH SIR', 'Sailesh'],
+      ['Surya Bhattarai Sir', 'Surya Bhattarai', 'SURYA BHATTARAI', 'Surya Sir'],
+    ];
+    for (const names of signFolders) {
+      const fid = await findFolderByName(scanFolderId, names);
+      if (fid) searchFolderIds.push(fid);
+    }
+    if (searchFolderIds.length === 0) throw new Error('Could not find any sign folders inside Scan.');
+  } else {
+    searchFolderIds = [scanFolderId];
+  }
+
+  let allFiles = [];
+  for (const fid of searchFolderIds) {
+    allFiles = allFiles.concat(await listAllFilesInFolder(fid));
+  }
+  if (allFiles.length === 0) throw new Error(`No files found in the ${docType} folder(s).`);
+
+  const cn = clientName.toLowerCase().trim();
+  const cnWords = cn.split(/\s+/).filter(w => w.length > 1);
+  const scored = allFiles.map(file => {
+    const n = file.name.toLowerCase();
+    let score = 0, clientMatch = false;
+    if (n.includes(cn)) { score += 20; clientMatch = true; }
+    else if (cnWords.every(w => n.includes(w))) { score += 14; clientMatch = true; }
+    else {
+      const matched = cnWords.filter(w => n.includes(w)).length;
+      if (matched >= Math.ceil(cnWords.length * 0.8)) {
+        score += matched * 3;
+        if (matched === cnWords.length) clientMatch = true;
+      }
+    }
+    return { file, score, clientMatch };
+  });
+
+  const matches = scored.filter(s => s.clientMatch);
+  if (matches.length > 0) { matches.sort((a, b) => b.score - a.score); return matches[0].file; }
+  return null;
+}
+
+async function findFolderByName(parentId, nameVariants) {
+  for (const name of nameVariants) {
+    let q = `mimeType='application/vnd.google-apps.folder' and name = '${name}' and trashed=false`;
+    if (parentId) q += ` and '${parentId}' in parents`;
+    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=5`, { headers:{ Authorization:'Bearer '+accessToken } });
+    const data = await resp.json();
+    if (data.files?.length > 0) return data.files[0].id;
+  }
+  for (const name of nameVariants) {
+    let q = `mimeType='application/vnd.google-apps.folder' and name contains '${name}' and trashed=false`;
+    if (parentId) q += ` and '${parentId}' in parents`;
+    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=5`, { headers:{ Authorization:'Bearer '+accessToken } });
+    const data = await resp.json();
+    if (data.files?.length > 0) return data.files[0].id;
+  }
+  return null;
+}
+
+async function listAllFilesInFolder(folderId) {
+  const allFiles = [], queue = [folderId];
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${currentId}' in parents and trashed=false`)}&fields=files(id,name,mimeType,size,parents)&pageSize=100`, { headers:{ Authorization:'Bearer '+accessToken } });
+    const data = await resp.json();
+    if (data.files) {
+      for (const file of data.files) {
+        if (file.mimeType === 'application/vnd.google-apps.folder') queue.push(file.id);
+        else allFiles.push(file);
+      }
+    }
+  }
+  return allFiles;
+}
+
+// ════════════════════════════════════════════
+//  SEND EMAIL (unchanged from original)
+// ════════════════════════════════════════════
+async function sendEmail(file, clientName, docType, year, toEmail) {
+  const dlResp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, { headers:{ Authorization:'Bearer '+accessToken } });
+  if (!dlResp.ok) throw new Error('Could not download file from Drive.');
+
+  const blob = await dlResp.blob();
+  const base64File = await blobToBase64(blob);
+  const mimeType = file.mimeType || 'application/octet-stream';
+
+  const customMsg = document.getElementById('emailMessage').value.trim();
+  const bodyText  = customMsg ||
+    `Dear ${clientName},\n\nPlease find attached your ${docType}${year ? ' for the fiscal year ' + year : ''}.\n\nIf you have any questions, please do not hesitate to contact us.\n\nBest regards,\nAudit Team`;
+
+  const subject  = `${docType} — ${clientName}${year ? ' (' + year + ')' : ''}`;
+  const boundary = 'AuditDocSender_' + Date.now();
+
+  const rawEmail = [
+    `To: ${toEmail}`, `Subject: ${subject}`, `MIME-Version: 1.0`,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`, ``,
+    `--${boundary}`, `Content-Type: text/plain; charset="UTF-8"`, ``, bodyText, ``,
+    `--${boundary}`, `Content-Type: ${mimeType}; name="${file.name}"`,
+    `Content-Disposition: attachment; filename="${file.name}"`,
+    `Content-Transfer-Encoding: base64`, ``, base64File, `--${boundary}--`
+  ].join('\r\n');
+
+  const encodedEmail = btoa(unescape(encodeURIComponent(rawEmail))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+
+  const sendResp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method:'POST',
+    headers:{ Authorization:'Bearer '+accessToken, 'Content-Type':'application/json' },
+    body: JSON.stringify({ raw: encodedEmail })
+  });
+  if (!sendResp.ok) {
+    const err = await sendResp.json();
+    throw new Error(err.error?.message || 'Gmail send failed.');
+  }
+}
+
+// ════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function showStatus(msg, type) {
+  document.getElementById('status-area').innerHTML = `<div class="status-box status-${type}">${msg}</div>`;
+}
+
+function clearForm() {
+  ['clientName','fiscalYear','clientEmail','emailMessage'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('docType').value = '';
+  document.getElementById('status-area').innerHTML = '';
+  document.getElementById('file-preview').style.display = 'none';
+  document.getElementById('sendBtn').style.display = 'none';
+  document.getElementById('autocomplete-list').style.display = 'none';
+  foundFile = null;
+}
+
+function clearFile() {
+  document.getElementById('file-preview').style.display = 'none';
+  document.getElementById('sendBtn').style.display = 'none';
+  document.getElementById('status-area').innerHTML = '';
+  foundFile = null;
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
