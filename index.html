@@ -1233,37 +1233,67 @@ function stringSimilarity(a, b) {
   return 1 - dist / maxLen;
 }
 
+// ── Shared Drive-aware fetch helper ──
+// Every Drive API call MUST include these params or Shared Drive files are invisible
+async function driveGet(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  const fullUrl = url + sep + 'supportsAllDrives=true&includeItemsFromAllDrives=true';
+  const resp = await fetch(fullUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
+  return resp.json();
+}
+
 async function findFolderByName(parentId, nameVariants) {
+  // Pass 1: exact name match
   for (const name of nameVariants) {
     let q = `mimeType='application/vnd.google-apps.folder' and name = '${name}' and trashed=false`;
     if (parentId) q += ` and '${parentId}' in parents`;
-    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=5`, { headers:{ Authorization:'Bearer '+accessToken } });
-    const data = await resp.json();
+    const data = await driveGet(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`
+    );
     if (data.files?.length > 0) return data.files[0].id;
   }
+  // Pass 2: fuzzy contains match
   for (const name of nameVariants) {
     let q = `mimeType='application/vnd.google-apps.folder' and name contains '${name}' and trashed=false`;
     if (parentId) q += ` and '${parentId}' in parents`;
-    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=5`, { headers:{ Authorization:'Bearer '+accessToken } });
-    const data = await resp.json();
+    const data = await driveGet(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`
+    );
     if (data.files?.length > 0) return data.files[0].id;
   }
   return null;
 }
 
 async function listAllFilesInFolder(folderId) {
-  const allFiles = [], queue = [folderId];
+  const allFiles = [];
+  const queue = [folderId];
+
   while (queue.length > 0) {
     const currentId = queue.shift();
-    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${currentId}' in parents and trashed=false`)}&fields=files(id,name,mimeType,size,parents)&pageSize=100`, { headers:{ Authorization:'Bearer '+accessToken } });
-    const data = await resp.json();
-    if (data.files) {
-      for (const file of data.files) {
-        if (file.mimeType === 'application/vnd.google-apps.folder') queue.push(file.id);
-        else allFiles.push(file);
+    let pageToken = null;
+
+    // Keep fetching pages until Drive says there are no more
+    do {
+      const q = encodeURIComponent(`'${currentId}' in parents and trashed=false`);
+      let url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,size,parents)&pageSize=1000`;
+      if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+
+      const data = await driveGet(url);
+
+      if (data.files) {
+        for (const file of data.files) {
+          if (file.mimeType === 'application/vnd.google-apps.folder') {
+            queue.push(file.id);   // recurse into subfolders
+          } else {
+            allFiles.push(file);
+          }
+        }
       }
-    }
+
+      pageToken = data.nextPageToken || null;
+    } while (pageToken);   // loop until all pages fetched
   }
+
   return allFiles;
 }
 
