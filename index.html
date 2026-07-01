@@ -142,6 +142,34 @@
   .add-client-form.open { display:block; }
   .add-client-form h4 { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:16px; }
 
+  /* ── ENTITY TYPE BADGE ── */
+  .entity-badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; background:#eef2f8; color:var(--navy2); white-space:nowrap; }
+
+  /* ── IMPORT MODAL ── */
+  #import-modal .modal { max-width:820px; }
+  .import-step { display:none; }
+  .import-step.active { display:block; }
+  .dropzone { border:2px dashed var(--border); border-radius:10px; padding:36px 20px; text-align:center; cursor:pointer; transition:all 0.18s; background:var(--off); }
+  .dropzone:hover, .dropzone.dragover { border-color:var(--gold); background:#fffaf0; }
+  .dropzone .dz-icon { font-size:34px; margin-bottom:10px; }
+  .dropzone .dz-text { font-size:14px; font-weight:600; color:var(--navy); margin-bottom:4px; }
+  .dropzone .dz-sub { font-size:12px; color:var(--muted); }
+  .import-stats { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+  .import-stat { flex:1; min-width:110px; background:var(--off); border:1px solid var(--border); border-radius:8px; padding:10px 14px; text-align:center; }
+  .import-stat .num { font-size:20px; font-weight:700; color:var(--navy); }
+  .import-stat.warn .num { color:#8a6200; }
+  .import-stat.bad .num { color:var(--red); }
+  .import-stat .lbl { font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin-top:2px; }
+  .import-map-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .import-map-row .col-label { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; }
+  .import-preview-wrap { max-height:340px; overflow:auto; border:1px solid var(--border); border-radius:8px; margin-top:12px; }
+  .import-preview-wrap table { width:100%; border-collapse:collapse; font-size:12px; }
+  .import-preview-wrap th { position:sticky; top:0; background:var(--navy); color:white; padding:8px 10px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; }
+  .import-preview-wrap td { padding:7px 10px; border-bottom:1px solid var(--border); }
+  .import-preview-wrap tr.row-dupe td { background:#fff8e6; color:#8a6200; }
+  .import-preview-wrap tr.row-bad td { background:#fdecea; color:var(--red); }
+  .import-row-tag { font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:4px; }
+
   /* ── ACCESS DENIED ── */
   #access-denied { text-align:center; padding:48px 32px; }
   #access-denied .big-icon { font-size:52px; margin-bottom:16px; }
@@ -469,7 +497,10 @@
       <div class="card">
         <div class="card-title">
           <span>👥 Client Directory</span>
-          <button class="btn btn-primary btn-sm" id="add-client-btn" onclick="toggleAddClient()" style="display:none;">+ Add Client</button>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-outline btn-sm" id="import-client-btn" onclick="openImportModal()" style="display:none;">📥 Import from Excel</button>
+            <button class="btn btn-primary btn-sm" id="add-client-btn" onclick="toggleAddClient()" style="display:none;">+ Add Client</button>
+          </div>
         </div>
 
         <!-- Add/Edit Form (admin only, hidden by default) -->
@@ -481,8 +512,8 @@
               <input type="text" id="ac-name" placeholder="e.g. Shikhar Traders" />
             </div>
             <div class="form-group">
-              <label>Email *</label>
-              <input type="email" id="ac-email" placeholder="client@example.com" />
+              <label>Email</label>
+              <input type="email" id="ac-email" placeholder="client@example.com (optional)" />
             </div>
             <div class="form-group">
               <label>PAN Number</label>
@@ -491,6 +522,23 @@
             <div class="form-group">
               <label>Phone</label>
               <input type="text" id="ac-phone" placeholder="Optional" />
+            </div>
+            <div class="form-group">
+              <label>Entity Type</label>
+              <select id="ac-entity-type">
+                <option value="">— Select —</option>
+                <option>Pvt. Ltd. Company</option>
+                <option>Public Ltd. Company</option>
+                <option>Firms</option>
+                <option>NPOs</option>
+                <option>Cooperatives</option>
+                <option>Individuals</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Nature of Business</label>
+              <input type="text" id="ac-business" placeholder="Optional" />
             </div>
             <div class="form-group full">
               <label>Address</label>
@@ -504,7 +552,7 @@
           <div id="client-form-status" style="margin-top:12px;"></div>
         </div>
 
-        <input type="text" class="search-bar" id="client-search-bar" placeholder="🔍 Search clients by name or email…" oninput="filterClientTable(this.value)" />
+        <input type="text" class="search-bar" id="client-search-bar" placeholder="🔍 Search clients by name, email, PAN or entity type…" oninput="filterClientTable(this.value)" />
 
         <div id="clients-table-wrap">
           <div class="log-empty">Loading clients…</div>
@@ -607,11 +655,65 @@
   </div>
 </div>
 
+<!-- ── IMPORT CLIENTS FROM EXCEL MODAL ── -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>📥 Import Clients from Excel</h3>
+      <button class="modal-close" onclick="closeImportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- STEP 1: FILE PICK -->
+      <div class="import-step active" id="import-step-1">
+        <div class="dropzone" id="import-dropzone" onclick="document.getElementById('import-file-input').click()">
+          <div class="dz-icon">📊</div>
+          <div class="dz-text">Click to choose an Excel or CSV file</div>
+          <div class="dz-sub">.xlsx, .xls or .csv — first row should be column headers</div>
+        </div>
+        <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this.files[0])" />
+        <div id="import-file-status" style="margin-top:14px;"></div>
+      </div>
+
+      <!-- STEP 2: MAP COLUMNS -->
+      <div class="import-step" id="import-step-2">
+        <p style="font-size:13px; color:var(--muted); margin-bottom:12px;">We matched your spreadsheet columns to client fields automatically — double check them below, especially <strong>Client Name</strong>.</p>
+        <div id="import-map-rows"></div>
+        <div class="action-row" style="margin-top:18px;">
+          <button class="btn btn-gold btn-sm" onclick="buildImportPreview()">Next: Preview →</button>
+          <button class="btn btn-outline btn-sm" onclick="closeImportModal()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: PREVIEW & CONFIRM -->
+      <div class="import-step" id="import-step-3">
+        <div class="import-stats" id="import-stats"></div>
+        <div id="import-warning"></div>
+        <div class="import-preview-wrap">
+          <table>
+            <thead id="import-preview-head"></thead>
+            <tbody id="import-preview-body"></tbody>
+          </table>
+        </div>
+        <div class="action-row" style="margin-top:18px;">
+          <button class="btn btn-gold btn-sm" id="import-confirm-btn" onclick="confirmImport()">Import Clients</button>
+          <button class="btn btn-outline btn-sm" onclick="showImportStep(2)">← Back</button>
+          <button class="btn btn-outline btn-sm" onclick="closeImportModal()">Cancel</button>
+        </div>
+        <div id="import-result-status" style="margin-top:12px;"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- Google API -->
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- SheetJS (Excel/CSV parsing) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
 // ════════════════════════════════════════════
@@ -790,6 +892,7 @@ async function afterGoogleSignIn() {
   // Show/hide admin-only UI
   if (currentUser.role === 'admin') {
     document.getElementById('add-client-btn').style.display = 'inline-flex';
+    document.getElementById('import-client-btn').style.display = 'inline-flex';
     document.getElementById('log-filter-sender').style.display = 'block';
   }
 
@@ -1006,6 +1109,7 @@ function renderClientsTable(list) {
       <thead>
         <tr>
           <th>Name</th>
+          <th>Entity Type</th>
           <th>Email</th>
           <th>PAN</th>
           <th>Phone</th>
@@ -1016,6 +1120,7 @@ function renderClientsTable(list) {
         ${list.map(c => `
           <tr>
             <td class="client-name-cell">${escHtml(c.name)}</td>
+            <td>${c.entity_type ? `<span class="entity-badge">${escHtml(c.entity_type)}</span>` : '—'}</td>
             <td>${escHtml(c.email || '—')}</td>
             <td>${escHtml(c.pan || '—')}</td>
             <td>${escHtml(c.phone || '—')}</td>
@@ -1034,9 +1139,12 @@ function renderClientsTable(list) {
 }
 
 function filterClientTable(val) {
+  const v = val.toLowerCase();
   const filtered = clientsList.filter(c =>
-    c.name.toLowerCase().includes(val.toLowerCase()) ||
-    (c.email || '').toLowerCase().includes(val.toLowerCase())
+    c.name.toLowerCase().includes(v) ||
+    (c.email || '').toLowerCase().includes(v) ||
+    (c.pan || '').toLowerCase().includes(v) ||
+    (c.entity_type || '').toLowerCase().includes(v)
   );
   renderClientsTable(filtered);
 }
@@ -1060,25 +1168,27 @@ function cancelAddClient() {
 }
 
 function clearClientForm() {
-  ['ac-name','ac-email','ac-pan','ac-phone','ac-address'].forEach(id => document.getElementById(id).value = '');
+  ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-address'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('client-form-status').innerHTML = '';
 }
 
 async function saveClient() {
   const name  = document.getElementById('ac-name').value.trim();
   const email = document.getElementById('ac-email').value.trim();
-  if (!name || !email) {
+  if (!name) {
     document.getElementById('client-form-status').innerHTML =
-      '<div class="status-box status-info" style="margin-top:0;">Name and Email are required.</div>';
+      '<div class="status-box status-info" style="margin-top:0;">Client Name is required.</div>';
     return;
   }
 
   const payload = {
     name,
-    email,
-    pan:     document.getElementById('ac-pan').value.trim() || null,
-    phone:   document.getElementById('ac-phone').value.trim() || null,
-    address: document.getElementById('ac-address').value.trim() || null,
+    email:         email || null,
+    pan:           document.getElementById('ac-pan').value.trim() || null,
+    phone:         document.getElementById('ac-phone').value.trim() || null,
+    entity_type:   document.getElementById('ac-entity-type').value.trim() || null,
+    business_nature: document.getElementById('ac-business').value.trim() || null,
+    address:       document.getElementById('ac-address').value.trim() || null,
   };
 
   let error;
@@ -1102,11 +1212,13 @@ function editClient(id) {
   const c = clientsList.find(x => x.id == id);
   if (!c) return;
   editingClientId = id;
-  document.getElementById('ac-name').value    = c.name || '';
-  document.getElementById('ac-email').value   = c.email || '';
-  document.getElementById('ac-pan').value     = c.pan || '';
-  document.getElementById('ac-phone').value   = c.phone || '';
-  document.getElementById('ac-address').value = c.address || '';
+  document.getElementById('ac-name').value        = c.name || '';
+  document.getElementById('ac-email').value       = c.email || '';
+  document.getElementById('ac-pan').value         = c.pan || '';
+  document.getElementById('ac-phone').value       = c.phone || '';
+  document.getElementById('ac-entity-type').value = c.entity_type || '';
+  document.getElementById('ac-business').value    = c.business_nature || '';
+  document.getElementById('ac-address').value     = c.address || '';
   document.getElementById('add-client-title').textContent = 'Edit Client';
   document.getElementById('add-client-form').classList.add('open');
   document.getElementById('add-client-form').scrollIntoView({ behavior: 'smooth' });
@@ -1117,6 +1229,230 @@ async function deleteClient(id, name) {
   const { error } = await sb.from('clients').delete().eq('id', id);
   if (error) { alert('Failed to delete: ' + error.message); return; }
   await loadClients();
+}
+
+// ════════════════════════════════════════════
+//  IMPORT CLIENTS FROM EXCEL
+// ════════════════════════════════════════════
+const IMPORT_FIELDS = [
+  { key:'name',            label:'Client Name *', required:true,  keywords:['client name','party name','name','entity name','customer'] },
+  { key:'email',           label:'Email',         required:false, keywords:['email','e-mail','mail'] },
+  { key:'pan',             label:'PAN Number',    required:false, keywords:['pan no','pan number','pan'] },
+  { key:'phone',           label:'Phone',         required:false, keywords:['phone','mobile','contact no','contact number','tel'] },
+  { key:'entity_type',     label:'Entity Type',   required:false, keywords:['entity type','entitry type','type','category'] },
+  { key:'business_nature', label:'Nature of Business', required:false, keywords:['nature of bussiness','nature of business','business','industry'] },
+  { key:'address',         label:'Address',       required:false, keywords:['address','location'] },
+];
+
+let importHeaders    = [];   // raw header strings from the file
+let importDataRows   = [];   // raw row arrays (excludes header row)
+let importFieldMap   = {};   // { fieldKey: headerIndex | -1 }
+let importPreviewRows = [];  // processed rows ready for review
+
+function openImportModal() {
+  importHeaders = []; importDataRows = []; importFieldMap = {}; importPreviewRows = [];
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-file-status').innerHTML = '';
+  document.getElementById('import-result-status').innerHTML = '';
+  showImportStep(1);
+  document.getElementById('import-modal').classList.add('open');
+}
+
+function closeImportModal() {
+  document.getElementById('import-modal').classList.remove('open');
+}
+
+function showImportStep(n) {
+  [1,2,3].forEach(i => document.getElementById('import-step-' + i).classList.toggle('active', i === n));
+}
+
+function handleImportFile(file) {
+  if (!file) return;
+  document.getElementById('import-file-status').innerHTML =
+    '<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Reading file…</div>';
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'binary' });
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: '' });
+      if (!rows.length) throw new Error('The file appears to be empty.');
+
+      importHeaders  = rows[0].map(h => String(h || '').trim());
+      importDataRows = rows.slice(1).filter(r => r.some(cell => String(cell || '').trim() !== ''));
+
+      if (!importDataRows.length) throw new Error('No data rows found below the header row.');
+
+      document.getElementById('import-file-status').innerHTML =
+        `<div class="status-box status-success">✅ Loaded <strong>${importDataRows.length}</strong> rows from <strong>${escHtml(file.name)}</strong></div>`;
+
+      autoMapColumns();
+      renderColumnMapping();
+      showImportStep(2);
+    } catch (err) {
+      document.getElementById('import-file-status').innerHTML =
+        `<div class="status-box status-error">❌ Could not read file: ${escHtml(err.message)}</div>`;
+    }
+  };
+  reader.onerror = () => {
+    document.getElementById('import-file-status').innerHTML =
+      '<div class="status-box status-error">❌ Failed to read the file.</div>';
+  };
+  reader.readAsBinaryString(file);
+}
+
+function autoMapColumns() {
+  importFieldMap = {};
+  const lowerHeaders = importHeaders.map(h => h.toLowerCase());
+  IMPORT_FIELDS.forEach(f => {
+    let bestIdx = -1;
+    for (const kw of f.keywords) {
+      const idx = lowerHeaders.findIndex(h => h === kw);
+      if (idx !== -1) { bestIdx = idx; break; }
+    }
+    if (bestIdx === -1) {
+      for (const kw of f.keywords) {
+        const idx = lowerHeaders.findIndex(h => h.includes(kw));
+        if (idx !== -1) { bestIdx = idx; break; }
+      }
+    }
+    importFieldMap[f.key] = bestIdx;
+  });
+}
+
+function renderColumnMapping() {
+  const wrap = document.getElementById('import-map-rows');
+  wrap.innerHTML = IMPORT_FIELDS.map(f => `
+    <div class="import-map-row">
+      <div class="col-label">${f.label}</div>
+      <select id="import-map-${f.key}" onchange="importFieldMap['${f.key}'] = parseInt(this.value)">
+        <option value="-1">— Not in file / Skip —</option>
+        ${importHeaders.map((h, i) => `<option value="${i}" ${importFieldMap[f.key] === i ? 'selected' : ''}>${escHtml(h || '(column ' + (i+1) + ')')}</option>`).join('')}
+      </select>
+    </div>
+  `).join('');
+}
+
+function buildImportPreview() {
+  const nameIdx = importFieldMap['name'];
+  if (nameIdx === -1 || nameIdx === undefined) {
+    alert('Please map a column to "Client Name" before continuing — it\'s required.');
+    return;
+  }
+
+  const existingNames = new Set(clientsList.map(c => (c.name || '').trim().toLowerCase()));
+  const seenInFile = new Set();
+
+  importPreviewRows = importDataRows.map(row => {
+    const rec = {};
+    IMPORT_FIELDS.forEach(f => {
+      const idx = importFieldMap[f.key];
+      rec[f.key] = (idx !== undefined && idx !== -1) ? String(row[idx] || '').trim() : '';
+    });
+
+    let status = 'valid';
+    if (!rec.name) {
+      status = 'bad';
+    } else {
+      const key = rec.name.toLowerCase();
+      if (existingNames.has(key) || seenInFile.has(key)) {
+        status = 'dupe';
+      }
+      seenInFile.add(key);
+    }
+    return { ...rec, status };
+  });
+
+  renderImportPreview();
+  showImportStep(3);
+}
+
+function renderImportPreview() {
+  const valid = importPreviewRows.filter(r => r.status === 'valid').length;
+  const dupes = importPreviewRows.filter(r => r.status === 'dupe').length;
+  const bad   = importPreviewRows.filter(r => r.status === 'bad').length;
+  const noEmail = importPreviewRows.filter(r => r.status === 'valid' && !r.email).length;
+
+  document.getElementById('import-stats').innerHTML = `
+    <div class="import-stat"><div class="num">${importPreviewRows.length}</div><div class="lbl">Rows in File</div></div>
+    <div class="import-stat"><div class="num">${valid}</div><div class="lbl">Will Import</div></div>
+    <div class="import-stat warn"><div class="num">${dupes}</div><div class="lbl">Duplicates Skipped</div></div>
+    <div class="import-stat bad"><div class="num">${bad}</div><div class="lbl">Missing Name</div></div>
+  `;
+
+  document.getElementById('import-warning').innerHTML = noEmail
+    ? `<div class="status-box status-info">⚠️ ${noEmail} of the clients being imported have no email address. You can add emails later from the Client Directory — the "Send Document" feature needs an email before it can be used for that client.</div>`
+    : '';
+
+  document.getElementById('import-preview-head').innerHTML = `
+    <tr><th></th><th>Name</th><th>Entity Type</th><th>Email</th><th>PAN</th><th>Phone</th></tr>
+  `;
+
+  const MAX_SHOW = 60;
+  const rowsToShow = importPreviewRows.slice(0, MAX_SHOW);
+  document.getElementById('import-preview-body').innerHTML = rowsToShow.map(r => {
+    const cls = r.status === 'dupe' ? 'row-dupe' : (r.status === 'bad' ? 'row-bad' : '');
+    const tag = r.status === 'dupe'
+      ? '<span class="import-row-tag" style="background:#fde89a;color:#8a6200;">DUPLICATE</span>'
+      : r.status === 'bad'
+        ? '<span class="import-row-tag" style="background:#f5b7b1;color:var(--red);">NO NAME</span>'
+        : '<span class="import-row-tag" style="background:#b7dfc9;color:var(--green);">NEW</span>';
+    return `<tr class="${cls}">
+      <td>${tag}</td>
+      <td>${escHtml(r.name || '—')}</td>
+      <td>${escHtml(r.entity_type || '—')}</td>
+      <td>${escHtml(r.email || '—')}</td>
+      <td>${escHtml(r.pan || '—')}</td>
+      <td>${escHtml(r.phone || '—')}</td>
+    </tr>`;
+  }).join('') + (importPreviewRows.length > MAX_SHOW
+    ? `<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:10px;">…and ${importPreviewRows.length - MAX_SHOW} more rows not shown (all will still be processed)</td></tr>`
+    : '');
+
+  document.getElementById('import-confirm-btn').disabled = valid === 0;
+  document.getElementById('import-confirm-btn').textContent = valid
+    ? `Import ${valid} Client${valid === 1 ? '' : 's'}`
+    : 'Nothing to Import';
+}
+
+async function confirmImport() {
+  const rowsToInsert = importPreviewRows
+    .filter(r => r.status === 'valid')
+    .map(r => ({
+      name:            r.name,
+      email:           r.email || null,
+      pan:             r.pan || null,
+      phone:           r.phone || null,
+      entity_type:     r.entity_type || null,
+      business_nature: r.business_nature || null,
+      address:         r.address || null,
+    }));
+
+  if (!rowsToInsert.length) return;
+
+  const btn = document.getElementById('import-confirm-btn');
+  btn.disabled = true;
+  const statusEl = document.getElementById('import-result-status');
+
+  const CHUNK = 100;
+  let inserted = 0;
+  for (let i = 0; i < rowsToInsert.length; i += CHUNK) {
+    const chunk = rowsToInsert.slice(i, i + CHUNK);
+    statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Importing ${inserted}/${rowsToInsert.length}…</div>`;
+    const { error } = await sb.from('clients').insert(chunk);
+    if (error) {
+      statusEl.innerHTML = `<div class="status-box status-error">❌ Stopped after ${inserted} rows: ${escHtml(error.message)}</div>`;
+      btn.disabled = false;
+      await loadClients();
+      return;
+    }
+    inserted += chunk.length;
+  }
+
+  statusEl.innerHTML = `<div class="status-box status-success">✅ Imported ${inserted} client${inserted === 1 ? '' : 's'} successfully.</div>`;
+  await loadClients();
+  setTimeout(closeImportModal, 1200);
 }
 
 // ════════════════════════════════════════════
