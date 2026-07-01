@@ -214,6 +214,18 @@
     .tabs { flex-direction:column; }
     .log-filters { flex-direction:column; }
   }
+  /* ── COMPANY REGISTRAR (sub-tabs + placeholder panels) ── */
+  .subtabs { display:flex; flex-wrap:wrap; gap:6px; padding:16px 24px; border-bottom:1px solid var(--border); background:var(--off); }
+  .subtab-btn { padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--white); font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer; transition:all 0.18s; }
+  .subtab-btn:hover:not(.active) { color:var(--text); border-color:var(--navy2); }
+  .subtab-btn.active { background:var(--navy); color:var(--white); border-color:var(--navy); }
+  .regd-sub-panel { display:none; }
+  .regd-sub-panel.active { display:block; }
+  .regd-badge { display:inline-block; font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--gold2); background:var(--navy); padding:3px 9px; border-radius:20px; margin-left:8px; vertical-align:middle; }
+  .regd-preview-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; height:100%; min-height:400px; color:var(--muted); }
+  .regd-preview-placeholder .icon { font-size:38px; margin-bottom:12px; opacity:0.6; }
+  .regd-preview-placeholder p { font-size:13px; max-width:280px; line-height:1.5; }
+
   /* ── AUDIT REPORT PREVIEW (Generate Report tab) ── */
   .rep-sheet{
     background:#fff;
@@ -322,6 +334,7 @@
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('send')">📤 Send Document</button>
       <button class="tab-btn" onclick="switchTab('report')" id="tab-report">🧾 Generate Report</button>
+      <button class="tab-btn" onclick="switchTab('regd')" id="tab-regd">🏛️ Company Registrar</button>
       <button class="tab-btn" onclick="switchTab('clients')" id="tab-clients">👥 Clients</button>
       <button class="tab-btn" onclick="switchTab('logs')" id="tab-logs">📋 Send Logs</button>
     </div>
@@ -410,6 +423,7 @@
                 <option value="partnership">Partnership Firm</option>
                 <option value="ngo">NGO</option>
                 <option value="npo">NPO / Association</option>
+                <option value="cooperative">Cooperative</option>
               </select>
             </div>
 
@@ -490,6 +504,250 @@
           </div>
 
         </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: COMPANY REGISTRAR ── -->
+    <div id="tab-regd-panel" class="tab-panel">
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div class="card-title" style="margin:0; padding:20px 24px; border-bottom:1px solid var(--border);">
+          🏛️ Company Registrar Automations
+          <span class="regd-badge">In Progress</span>
+        </div>
+
+        <!-- Sub-tab bar -->
+        <div class="subtabs">
+          <button class="subtab-btn active" onclick="switchRegdSub('shareTransfer')" id="subtab-shareTransfer">🔄 Share Transfer</button>
+          <button class="subtab-btn" onclick="switchRegdSub('increaseCapital')" id="subtab-increaseCapital">📈 Increase Capital</button>
+          <button class="subtab-btn" onclick="switchRegdSub('companyRegistration')" id="subtab-companyRegistration">🏢 Company Registration</button>
+          <button class="subtab-btn" onclick="switchRegdSub('auditorChange')" id="subtab-auditorChange">🧑‍💼 Auditor Change</button>
+          <button class="subtab-btn" onclick="switchRegdSub('pinReset')" id="subtab-pinReset">🔑 PIN Reset</button>
+        </div>
+
+        <!-- ── SUB: SHARE TRANSFER ── -->
+        <div id="regd-shareTransfer-panel" class="regd-sub-panel active">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="card-title" style="border:none; padding:0; margin-bottom:16px;">🔄 Share Transfer</div>
+              <div class="form-group" style="margin-bottom:14px; position:relative;">
+                <label>Company Name</label>
+                <input type="text" id="st-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Transferor Name (Selling Shareholder)</label>
+                <input type="text" id="st-transferorName" placeholder="e.g. Ram Bahadur Thapa" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Transferee Name (Buying Shareholder)</label>
+                <input type="text" id="st-transfereeName" placeholder="e.g. Sita Kumari Rai" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px;">
+                <div class="form-group">
+                  <label>No. of Shares</label>
+                  <input type="text" id="st-numShares" placeholder="e.g. 100" />
+                </div>
+                <div class="form-group">
+                  <label>Face Value / Share</label>
+                  <input type="text" id="st-faceValue" placeholder="e.g. 100" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Transfer Date (B.S.)</label>
+                <input type="text" id="st-transferDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <div class="form-group" style="margin-bottom:18px;">
+                <label>Reason / Remarks</label>
+                <textarea id="st-remarks" placeholder="Optional notes…"></textarea>
+              </div>
+              <button class="btn btn-gold" style="width:100%; justify-content:center;" onclick="regdComingSoon('Share Transfer')">⚙️ Generate</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin-top:8px;">Automation logic coming soon.</p>
+            </div>
+            <div style="background:#ece8df; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🔄</div>
+                <p>Share Transfer preview &amp; document generation will appear here once this automation is built.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: INCREASE CAPITAL ── -->
+        <div id="regd-increaseCapital-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="card-title" style="border:none; padding:0; margin-bottom:16px;">📈 Increase Capital</div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="ic-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px;">
+                <div class="form-group">
+                  <label>Current Authorized Capital</label>
+                  <input type="text" id="ic-curAuthCapital" placeholder="e.g. 10,00,000" />
+                </div>
+                <div class="form-group">
+                  <label>New Authorized Capital</label>
+                  <input type="text" id="ic-newAuthCapital" placeholder="e.g. 25,00,000" />
+                </div>
+              </div>
+              <div class="form-grid" style="margin-bottom:14px;">
+                <div class="form-group">
+                  <label>Current Paid-up Capital</label>
+                  <input type="text" id="ic-curPaidCapital" placeholder="e.g. 10,00,000" />
+                </div>
+                <div class="form-group">
+                  <label>New Paid-up Capital</label>
+                  <input type="text" id="ic-newPaidCapital" placeholder="e.g. 25,00,000" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>AGM / Board Approval Date (B.S.)</label>
+                <input type="text" id="ic-approvalDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <div class="form-group" style="margin-bottom:18px;">
+                <label>Reason / Remarks</label>
+                <textarea id="ic-remarks" placeholder="Optional notes…"></textarea>
+              </div>
+              <button class="btn btn-gold" style="width:100%; justify-content:center;" onclick="regdComingSoon('Increase Capital')">⚙️ Generate</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin-top:8px;">Automation logic coming soon.</p>
+            </div>
+            <div style="background:#ece8df; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">📈</div>
+                <p>Increase Capital preview &amp; document generation will appear here once this automation is built.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: COMPANY REGISTRATION ── -->
+        <div id="regd-companyRegistration-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="card-title" style="border:none; padding:0; margin-bottom:16px;">🏢 Company Registration</div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Proposed Company Name</label>
+                <input type="text" id="cr-companyName" placeholder="e.g. Chitwan Trade Concern Pvt. Ltd." />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Type</label>
+                <select id="cr-companyType">
+                  <option value="private_company">Private Company</option>
+                  <option value="public_company">Public Company</option>
+                  <option value="proprietorship">Proprietorship</option>
+                  <option value="partnership">Partnership Firm</option>
+                  <option value="ngo">NGO</option>
+                  <option value="cooperative">Cooperative</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Registered Address</label>
+                <input type="text" id="cr-address" placeholder="e.g. Bharatpur-10, Chitwan, Nepal" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Promoter(s) Name</label>
+                <input type="text" id="cr-promoters" placeholder="e.g. Ram Bahadur Thapa, Sita Kumari Rai" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Nature of Business</label>
+                <input type="text" id="cr-business" placeholder="e.g. General Trading" />
+              </div>
+              <div class="form-group" style="margin-bottom:18px;">
+                <label>Preferred Registration Date (B.S.)</label>
+                <input type="text" id="cr-regDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <button class="btn btn-gold" style="width:100%; justify-content:center;" onclick="regdComingSoon('Company Registration')">⚙️ Generate</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin-top:8px;">Automation logic coming soon.</p>
+            </div>
+            <div style="background:#ece8df; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🏢</div>
+                <p>Company Registration preview &amp; document generation will appear here once this automation is built.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: AUDITOR CHANGE ── -->
+        <div id="regd-auditorChange-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="card-title" style="border:none; padding:0; margin-bottom:16px;">🧑‍💼 Auditor Change</div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="ac-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Previous Auditor</label>
+                <input type="text" id="ac-prevAuditor" placeholder="e.g. Shailesh &amp; Associates" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>New Auditor</label>
+                <input type="text" id="ac-newAuditor" placeholder="e.g. Dallakoti &amp; Company" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Reason for Change</label>
+                <input type="text" id="ac-reason" placeholder="e.g. Rotation as per statute" />
+              </div>
+              <div class="form-grid" style="margin-bottom:18px;">
+                <div class="form-group">
+                  <label>AGM Resolution Date (B.S.)</label>
+                  <input type="text" id="ac-resolutionDate" placeholder="e.g. 2082/06/04" />
+                </div>
+                <div class="form-group">
+                  <label>Effective Date (B.S.)</label>
+                  <input type="text" id="ac-effectiveDate" placeholder="e.g. 2082/06/04" />
+                </div>
+              </div>
+              <button class="btn btn-gold" style="width:100%; justify-content:center;" onclick="regdComingSoon('Auditor Change')">⚙️ Generate</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin-top:8px;">Automation logic coming soon.</p>
+            </div>
+            <div style="background:#ece8df; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🧑‍💼</div>
+                <p>Auditor Change preview &amp; document generation will appear here once this automation is built.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: PIN RESET ── -->
+        <div id="regd-pinReset-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="card-title" style="border:none; padding:0; margin-bottom:16px;">🔑 PIN Reset</div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="pr-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>PAN Number</label>
+                <input type="text" id="pr-pan" placeholder="e.g. 610304639" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Registered Email / Mobile</label>
+                <input type="text" id="pr-contact" placeholder="e.g. client@email.com" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Reason for Reset</label>
+                <input type="text" id="pr-reason" placeholder="e.g. Forgot PIN / Locked account" />
+              </div>
+              <div class="form-group" style="margin-bottom:18px;">
+                <label>Requested By</label>
+                <input type="text" id="pr-requestedBy" placeholder="e.g. Client / Authorized Rep." />
+              </div>
+              <button class="btn btn-gold" style="width:100%; justify-content:center;" onclick="regdComingSoon('PIN Reset')">⚙️ Generate</button>
+              <p style="font-size:11px; color:var(--muted); text-align:center; margin-top:8px;">Automation logic coming soon.</p>
+            </div>
+            <div style="background:#ece8df; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🔑</div>
+                <p>PIN Reset preview &amp; document generation will appear here once this automation is built.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -915,7 +1173,7 @@ function showAuthError(msg) {
 //  TAB SWITCHING
 // ════════════════════════════════════════════
 function switchTab(tab) {
-  const tabs = ['send','report','clients','logs'];
+  const tabs = ['send','report','regd','clients','logs'];
   const panelIdFor = (t) => t === 'send' ? 'tab-send' : t === 'report' ? 'tab-report-panel' : 'tab-' + t + '-panel';
   tabs.forEach(t => {
     document.getElementById(panelIdFor(t)).classList.toggle('active', t === tab);
@@ -923,6 +1181,21 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((btn, i) => {
     btn.classList.toggle('active', tabs[i] === tab);
   });
+}
+
+// ════════════════════════════════════════════
+//  COMPANY REGISTRAR — SUB-TAB SWITCHING (UI shell only, logic TBD)
+// ════════════════════════════════════════════
+function switchRegdSub(sub) {
+  const subs = ['shareTransfer','increaseCapital','companyRegistration','auditorChange','pinReset'];
+  subs.forEach(s => {
+    document.getElementById('regd-' + s + '-panel').classList.toggle('active', s === sub);
+    document.getElementById('subtab-' + s).classList.toggle('active', s === sub);
+  });
+}
+
+function regdComingSoon(label) {
+  alert('🚧 ' + label + ' automation is coming soon — the interface is ready, and the logic will be wired up next.');
 }
 
 // ════════════════════════════════════════════
@@ -1912,7 +2185,8 @@ const REP_ENTITY_PROFILES = {
   proprietorship:  { label:"Proprietorship", salutationTo:"the Proprietor of the", governingBodyShort:"proprietor", entityNoun:"firm", entityNounCap:"Firm", act:"Private Firm Registration Act, 2034", statusLine:"is a Proprietorship Firm in Nepal" },
   partnership:     { label:"Partnership Firm", salutationTo:"the Partners of the", governingBodyShort:"partner", entityNoun:"firm", entityNounCap:"Firm", act:"Partnership Act, 2020", statusLine:"is a Partnership Firm in Nepal" },
   ngo:             { label:"NGO", salutationTo:"the Board of Members of", governingBodyShort:"board of member", entityNoun:"organization", entityNounCap:"Organization", act:"Association Registration Act, 2034", statusLine:"is a Non-Governmental Organization registered in Nepal" },
-  npo:             { label:"NPO / Association", salutationTo:"the Board of Members of", governingBodyShort:"board of member", entityNoun:"organization", entityNounCap:"Organization", act:"Association Registration Act, 2034", statusLine:"is a Non-Profit Organization registered in Nepal" }
+  npo:             { label:"NPO / Association", salutationTo:"the Board of Members of", governingBodyShort:"board of member", entityNoun:"organization", entityNounCap:"Organization", act:"Association Registration Act, 2034", statusLine:"is a Non-Profit Organization registered in Nepal" },
+  cooperative:     { label:"Cooperative", salutationTo:"the Members of the", governingBodyShort:"board of directors", entityNoun:"cooperative", entityNounCap:"Cooperative", act:"Cooperatives Act, 2074", statusLine:"is a Cooperative registered in Nepal" }
 };
 
 const REP_NAS_LABEL = {
@@ -1950,15 +2224,26 @@ function handleRepClientSearch(val){
 }
 
 // Best-effort mapping from the free-text Entity Type used in the Client Directory
-// to the report generator's entity profile keys. Left unmapped types (e.g. "Cooperatives",
-// "Other", or an ambiguous "Firms") don't overwrite whatever is already selected.
+// to the report generator's entity profile keys. "Other" has no safe equivalent, so it's
+// deliberately left unmapped rather than guessing wrong on a legal document.
 const CLIENT_ENTITY_TO_REP_PROFILE = {
   'pvt. ltd. company': 'private_company',
   'private limited company': 'private_company',
+  'private company': 'private_company',
   'public ltd. company': 'public_company',
   'public limited company': 'public_company',
+  'public company': 'public_company',
   'npos': 'npo',
+  'npo': 'npo',
+  'ngo': 'ngo',
   'individuals': 'proprietorship',
+  'individual': 'proprietorship',
+  'proprietorship': 'proprietorship',
+  'firms': 'proprietorship',   // most single "Firm" registrations are sole proprietorships — verify if it's actually a partnership
+  'firm': 'proprietorship',
+  'partnership': 'partnership',
+  'cooperatives': 'cooperative',
+  'cooperative': 'cooperative',
 };
 
 function selectRepClient(id){
