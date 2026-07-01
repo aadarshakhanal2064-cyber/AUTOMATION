@@ -418,9 +418,10 @@
               <input type="text" id="rep-entityAddress" placeholder="e.g. Ratnanagar-10, Chitwan, Nepal" />
             </div>
 
-            <div class="form-group" style="margin-bottom:14px;">
+            <div class="form-group" style="margin-bottom:14px; position:relative;">
               <label>PAN</label>
-              <input type="text" id="rep-entityPan" placeholder="e.g. 610304639" />
+              <input type="text" id="rep-entityPan" placeholder="e.g. 610304639" autocomplete="off" oninput="handleRepPanSearch(this.value)" />
+              <div class="autocomplete-list" id="rep-pan-autocomplete-list" style="display:none;"></div>
             </div>
 
             <div class="form-group" style="margin-bottom:14px;">
@@ -1930,9 +1931,11 @@ function handleRepClientSearch(val){
   const list = $rep('rep-autocomplete-list');
   if (!val || val.length < 1 || !Array.isArray(clientsList)) { list.style.display = 'none'; return; }
 
+  const v = val.toLowerCase();
   const matches = clientsList.filter(c =>
-    (c.name || '').toLowerCase().includes(val.toLowerCase()) ||
-    (c.email || '').toLowerCase().includes(val.toLowerCase())
+    (c.name || '').toLowerCase().includes(v) ||
+    (c.email || '').toLowerCase().includes(v) ||
+    (c.pan || '').toLowerCase().includes(v)
   ).slice(0, 8);
 
   if (matches.length === 0) { list.style.display = 'none'; return; }
@@ -1940,11 +1943,23 @@ function handleRepClientSearch(val){
   list.innerHTML = matches.map(c => `
     <div class="autocomplete-item" onclick="selectRepClient('${c.id}')">
       <div class="ac-name">${escHtml(c.name)}</div>
-      <div class="ac-email">${escHtml(c.email || 'No email on file')}</div>
+      <div class="ac-email">${escHtml(c.pan ? 'PAN: ' + c.pan : (c.email || 'No details on file'))}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
     </div>
   `).join('');
   list.style.display = 'block';
 }
+
+// Best-effort mapping from the free-text Entity Type used in the Client Directory
+// to the report generator's entity profile keys. Left unmapped types (e.g. "Cooperatives",
+// "Other", or an ambiguous "Firms") don't overwrite whatever is already selected.
+const CLIENT_ENTITY_TO_REP_PROFILE = {
+  'pvt. ltd. company': 'private_company',
+  'private limited company': 'private_company',
+  'public ltd. company': 'public_company',
+  'public limited company': 'public_company',
+  'npos': 'npo',
+  'individuals': 'proprietorship',
+};
 
 function selectRepClient(id){
   const c = clientsList.find(x => String(x.id) === String(id));
@@ -1952,9 +1967,40 @@ function selectRepClient(id){
   $rep('rep-entityName').value = c.name || '';
   $rep('rep-entityAddress').value = c.address || '';
   $rep('rep-entityPan').value = c.pan || '';
+  if (c.business_nature) $rep('rep-entityBusiness').value = c.business_nature;
+
+  const mapped = CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
+  if (mapped) $rep('rep-entityType').value = mapped;
+
   $rep('rep-autocomplete-list').style.display = 'none';
+  $rep('rep-pan-autocomplete-list').style.display = 'none';
   renderRepAll();
 }
+
+function handleRepPanSearch(val){
+  const list = $rep('rep-pan-autocomplete-list');
+  if (!val || val.length < 2 || !Array.isArray(clientsList)) { list.style.display = 'none'; return; }
+
+  const v = val.toLowerCase();
+  const matches = clientsList.filter(c => (c.pan || '').toLowerCase().includes(v)).slice(0, 8);
+
+  if (matches.length === 0) { list.style.display = 'none'; return; }
+
+  list.innerHTML = matches.map(c => `
+    <div class="autocomplete-item" onclick="selectRepClient('${c.id}')">
+      <div class="ac-name">${escHtml(c.pan)}</div>
+      <div class="ac-email">${escHtml(c.name)}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+    </div>
+  `).join('');
+  list.style.display = 'block';
+}
+
+document.addEventListener('click', function(e){
+  const panList = $rep('rep-pan-autocomplete-list');
+  if (panList && !e.target.closest('#rep-entityPan') && e.target.id !== 'rep-entityPan'){
+    panList.style.display = 'none';
+  }
+});
 
 document.addEventListener('click', function(e){
   const list = $rep('rep-autocomplete-list');
