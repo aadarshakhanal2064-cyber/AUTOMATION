@@ -152,6 +152,7 @@ function filterClientTable(val) {
     c.name.toLowerCase().includes(v) ||
     (c.email || '').toLowerCase().includes(v) ||
     (c.pan || '').toLowerCase().includes(v) ||
+    (c.registration_number || '').toLowerCase().includes(v) ||
     (c.entity_type || '').toLowerCase().includes(v)
   );
   renderClientsTable(filtered);
@@ -176,7 +177,7 @@ function cancelAddClient() {
 }
 
 function clearClientForm() {
-  ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-address'].forEach(id => document.getElementById(id).value = '');
+  ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-registration-number','ac-chairman-name','ac-shareholder-name','ac-authorized-capital','ac-issued-capital','ac-paidup-capital','ac-address'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('client-form-status').innerHTML = '';
 }
 
@@ -196,6 +197,12 @@ async function saveClient() {
     phone:         document.getElementById('ac-phone').value.trim() || null,
     entity_type:   document.getElementById('ac-entity-type').value.trim() || null,
     business_nature: document.getElementById('ac-business').value.trim() || null,
+    registration_number: document.getElementById('ac-registration-number').value.trim() || null,
+    chairman_name:       document.getElementById('ac-chairman-name').value.trim() || null,
+    shareholder_name:    document.getElementById('ac-shareholder-name').value.trim() || null,
+    authorized_capital:  document.getElementById('ac-authorized-capital').value.trim() || null,
+    issued_capital:      document.getElementById('ac-issued-capital').value.trim() || null,
+    paid_up_capital:     document.getElementById('ac-paidup-capital').value.trim() || null,
     address:       document.getElementById('ac-address').value.trim() || null,
   };
 
@@ -226,6 +233,12 @@ function editClient(id) {
   document.getElementById('ac-phone').value       = c.phone || '';
   document.getElementById('ac-entity-type').value = c.entity_type || '';
   document.getElementById('ac-business').value    = c.business_nature || '';
+  document.getElementById('ac-registration-number').value = c.registration_number || '';
+  document.getElementById('ac-chairman-name').value       = c.chairman_name || '';
+  document.getElementById('ac-shareholder-name').value    = c.shareholder_name || '';
+  document.getElementById('ac-authorized-capital').value  = c.authorized_capital || '';
+  document.getElementById('ac-issued-capital').value      = c.issued_capital || '';
+  document.getElementById('ac-paidup-capital').value      = c.paid_up_capital || '';
   document.getElementById('ac-address').value     = c.address || '';
   document.getElementById('add-client-title').textContent = 'Edit Client';
   document.getElementById('add-client-form').classList.add('open');
@@ -425,6 +438,12 @@ async function confirmImport() {
       phone:           r.phone || null,
       entity_type:     r.entity_type || null,
       business_nature: r.business_nature || null,
+      registration_number: r.registration_number || null,
+      chairman_name:       r.chairman_name || null,
+      shareholder_name:    r.shareholder_name || null,
+      authorized_capital:  r.authorized_capital || null,
+      issued_capital:      r.issued_capital || null,
+      paid_up_capital:     r.paid_up_capital || null,
       address:         r.address || null,
     }));
 
