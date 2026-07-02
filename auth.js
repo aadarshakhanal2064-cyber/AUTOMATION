@@ -5,36 +5,28 @@ window.addEventListener('load', () => {
   const tryAutoSignIn = () => {
     if (!window.CLIENT_ID) {
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('auth-section').style.display = 'block';
+      document.getElementById('auth-section-wrap').style.display = 'flex';
       return;
     }
 
-    // Only attempt silent sign-in if user previously ticked "Remember me"
-    const rememberMe = localStorage.getItem('rememberMe') === 'true';
-    if (!rememberMe) {
+    // Check for cached token from "Remember Me"
+    const cachedToken = localStorage.getItem('accessToken');
+    const tokenExpiry = localStorage.getItem('tokenExpiry');
+
+    if (cachedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry, 10)) {
+      // Token is still valid! Skip Google API and go straight to app
+      window.accessToken = cachedToken;
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('auth-section').style.display = 'block';
+      afterGoogleSignIn();
       return;
     }
 
-    // Silent token request — uses existing Google browser session, no popup
-    const silentClient = google.accounts.oauth2.initTokenClient({
-      client_id: window.CLIENT_ID,
-      scope: SCOPES,
-      prompt: '',
-      callback: async (resp) => {
-        if (resp.error || !resp.access_token) {
-          // Session expired or cookies cleared — fall back to sign-in screen
-          document.getElementById('loading-screen').style.display = 'none';
-          document.getElementById('auth-section').style.display = 'block';
-          return;
-        }
-        window.accessToken = resp.access_token;
-        document.getElementById('loading-screen').style.display = 'none';
-        await afterGoogleSignIn();
-      },
-    });
-    silentClient.requestAccessToken({ prompt: '' });
+    // If we reach here, token is missing or expired
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('tokenExpiry');
+    
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('auth-section-wrap').style.display = 'flex';
   };
 
   // GIS loads async — poll until ready
@@ -50,7 +42,7 @@ window.addEventListener('load', () => {
     clearInterval(interval);
     if (document.getElementById('loading-screen').style.display !== 'none') {
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('auth-section').style.display = 'block';
+      document.getElementById('auth-section-wrap').style.display = 'flex';
     }
   }, 5000);
 });
@@ -87,9 +79,11 @@ function signIn() {
         return;
       }
       window.accessToken = resp.access_token;
-      // Save "remember me" flag so next page load attempts silent sign-in
+      // Save token if "remember me" flag is ticked (expires in 1 hour)
       if (document.getElementById('rememberMeCheck')?.checked) {
-        localStorage.setItem('rememberMe', 'true');
+        localStorage.setItem('accessToken', resp.access_token);
+        // Set expiry to 55 minutes from now to be safe (Google tokens are 60m)
+        localStorage.setItem('tokenExpiry', Date.now() + (55 * 60 * 1000));
       }
       await afterGoogleSignIn();
     },
@@ -102,17 +96,18 @@ function signOut() {
   window.currentUser = null;
   window.clientsList = [];
   window.allLogs     = [];
-  // Clear remember-me so next visit shows sign-in screen
-  localStorage.removeItem('rememberMe');
+  
+  // Clear remember-me cached token
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('tokenExpiry');
 
   if (window.tokenClient) google.accounts.oauth2.revoke(window.accessToken, () => {});
 
-  document.getElementById('user-pill').style.display    = 'none';
-  document.getElementById('signout-btn').style.display  = 'none';
-  document.getElementById('header-tag').style.display   = 'inline';
+  document.getElementById('topbar').style.display       = 'none';
+  document.getElementById('sidebar').style.display      = 'none';
   document.getElementById('app-section').style.display  = 'none';
-  document.getElementById('access-denied').style.display= 'none';
-  document.getElementById('auth-section').style.display = 'block';
+  document.getElementById('access-denied-wrap').style.display = 'none';
+  document.getElementById('auth-section-wrap').style.display  = 'flex';
 }
 
 async function afterGoogleSignIn() {
@@ -132,23 +127,28 @@ async function afterGoogleSignIn() {
 
   if (error || !data) {
     // Not in app_users — show access denied
-    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('auth-section-wrap').style.display = 'none';
     document.getElementById('access-denied-msg').textContent =
       `"${email}" is not registered as an authorised user. Ask your admin to add you in Supabase → app_users.`;
-    document.getElementById('access-denied').style.display = 'block';
+    document.getElementById('access-denied-wrap').style.display = 'flex';
     return;
   }
 
   // 3. Authorised — store user
   window.currentUser = { email: data.email, role: data.role };
 
-  // Update header UI
-  document.getElementById('user-avatar').textContent = (info.name || email)[0].toUpperCase();
+  // Update sidebar UI
+  const initial = (info.name || email)[0].toUpperCase();
+  document.getElementById('user-avatar').textContent = initial;
   document.getElementById('user-name').textContent   = email;
   document.getElementById('role-badge').textContent  = data.role;
-  document.getElementById('user-pill').style.display = 'flex';
-  document.getElementById('signout-btn').style.display = 'inline-block';
-  document.getElementById('header-tag').style.display  = 'none';
+  document.getElementById('sidebar').style.display   = 'flex';
+
+  // Update topbar UI
+  document.getElementById('tb-user-avatar').textContent = initial;
+  document.getElementById('tb-user-email').textContent  = email;
+  document.getElementById('tb-role-badge').textContent  = data.role;
+  document.getElementById('topbar').style.display       = 'flex';
 
   // Show/hide admin-only UI
   if (window.currentUser.role === 'admin') {
@@ -158,7 +158,7 @@ async function afterGoogleSignIn() {
   }
 
   // Show app
-  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('auth-section-wrap').style.display = 'none';
   document.getElementById('app-section').style.display  = 'block';
 
   // Load data - assuming loadClients and loadLogs are defined in other scripts
@@ -167,6 +167,6 @@ async function afterGoogleSignIn() {
 }
 
 function showAuthError(msg) {
-  document.getElementById('auth-section').style.display = 'block';
+  document.getElementById('auth-section-wrap').style.display = 'flex';
   alert('❌ ' + msg);
 }
