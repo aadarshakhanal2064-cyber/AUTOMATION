@@ -105,3 +105,4 @@ window.CLIENT_ENTITY_TO_REP_PROFILE = {
 };
 
 window.repSelectedIdx = -1;
+window.bmSelectedIdx = -1;
