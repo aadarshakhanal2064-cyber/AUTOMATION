@@ -1,4 +1,4 @@
-// ════════════════════════════════════════════
+/ ════════════════════════════════════════════
 //  CLIENT AUTOCOMPLETE
 // ════════════════════════════════════════════
 function handleClientSearch(val) {
@@ -75,6 +75,26 @@ async function loadClients() {
 
   window.clientsList = data || [];
   renderClientsTable(window.clientsList);
+  renderClientStats(window.clientsList);
+}
+
+function renderClientStats(list) {
+  const total       = list.length;
+  const withEmail   = list.filter(c => c.email).length;
+  const missingEmail= total - withEmail;
+  const entityTypes = new Set(list.filter(c => c.entity_type).map(c => c.entity_type.trim().toLowerCase())).size;
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('stat-total-clients', total);
+  set('stat-with-email', withEmail);
+  set('stat-missing-email', missingEmail);
+  set('stat-entity-types', entityTypes);
+}
+
+function clientInitials(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
 }
 
 function renderClientsTable(list) {
@@ -89,18 +109,23 @@ function renderClientsTable(list) {
     <table class="client-table">
       <thead>
         <tr>
-          <th>Name</th>
+          <th>Client Name</th>
           <th>Entity Type</th>
           <th>Email</th>
           <th>PAN</th>
           <th>Phone</th>
-          ${isAdmin ? '<th></th>' : ''}
+          ${isAdmin ? '<th>Actions</th>' : ''}
         </tr>
       </thead>
       <tbody>
         ${list.map(c => `
           <tr>
-            <td class="client-name-cell">${escHtml(c.name)}</td>
+            <td>
+              <div class="client-name-row">
+                <div class="client-avatar">${escHtml(clientInitials(c.name))}</div>
+                <div class="client-name-cell">${escHtml(c.name)}</div>
+              </div>
+            </td>
             <td>${c.entity_type ? `<span class="entity-badge">${escHtml(c.entity_type)}</span>` : '—'}</td>
             <td>${escHtml(c.email || '—')}</td>
             <td>${escHtml(c.pan || '—')}</td>
