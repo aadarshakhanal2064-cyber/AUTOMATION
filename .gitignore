@@ -1,0 +1,6 @@
+# Claude Code local session state — machine/session-specific, not shared
+.claude/settings.local.json
+
+# OS junk
+.DS_Store
+Thumbs.db

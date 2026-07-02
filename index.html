@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Shailesh &amp; Associates - Audit Doc Sender</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <img src="logo.png" alt="Shailesh & Associates" onerror="this.style.display='none';">
+  <div class="spinner spinner-navy" style="width:28px; height:28px;"></div>
+  <p id="loading-msg">Authenticating session…</p>
+</div>
+
+<!-- TOP BAR -->
+<header id="topbar" style="display:none;">
+  <div class="topbar-left">
+    <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')" aria-label="Toggle menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </button>
+    <div class="topbar-logo">
+      <img src="logo.png" alt="Shailesh & Associates" onerror="this.style.display='none';">
+      <div>
+        <div class="tb-name">Shailesh &amp; Associates</div>
+        <div class="tb-sub">Chartered Accountants</div>
+      </div>
+    </div>
+    <div class="app-tag">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+      Audit Doc Sender
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="tb-bell" title="Notifications">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+      <span class="dot" id="tb-notif-count">3</span>
+    </div>
+    <div class="tb-user">
+      <div class="avatar" id="tb-user-avatar" style="width:32px;height:32px;font-size:12.5px;">?</div>
+      <span class="tb-email" id="tb-user-email">Loading...</span>
+      <span class="tb-role-pill" id="tb-role-badge">User</span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </div>
+  </div>
+</header>
+
+<!-- SIDEBAR -->
+<aside id="sidebar" style="display:none;">
+  <nav class="nav-menu">
+    <div class="nav-section-label">Core modules</div>
+    <button class="nav-item active" onclick="switchTab('send')" id="nav-send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      Send Document
+    </button>
+    <button class="nav-item" onclick="switchTab('report')" id="nav-report">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+      Generate Report
+    </button>
+    <button class="nav-item" onclick="switchTab('regd')" id="nav-regd">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="21" x2="21" y2="21"></line><line x1="5" y1="21" x2="5" y2="10"></line><line x1="19" y1="21" x2="19" y2="10"></line><polygon points="12 2 21 8 3 8"></polygon><line x1="9" y1="21" x2="9" y2="14"></line><line x1="15" y1="21" x2="15" y2="14"></line></svg>
+      Company Registrar
+    </button>
+    <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      Clients
+    </button>
+    <button class="nav-item" onclick="switchTab('logs')" id="nav-logs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      Send Logs
+    </button>
+  </nav>
+
+  <div class="plan-usage-box">
+    <div class="pu-plan">Plan usage</div>
+    <div class="pu-tier">Professional Plan</div>
+    <div class="pu-bar-track"><div class="pu-bar-fill" style="width:85%;"></div></div>
+    <div class="pu-pct">85% of monthly limit used</div>
+    <button class="btn btn-primary btn-sm">Upgrade Plan</button>
+  </div>
+
+  <div class="user-profile">
+    <div class="avatar" id="user-avatar">?</div>
+    <div class="user-info">
+      <div class="name" id="user-name">Loading...</div>
+      <div class="role" id="role-badge">User</div>
+    </div>
+    <button id="signout-btn" onclick="signOut()" title="Sign Out">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+    </button>
+  </div>
+</aside>
+
+<main>
+  <!-- AUTH SECTION -->
+  <div id="auth-section-wrap" style="display:none;">
+    <div id="auth-section" class="card" style="padding:48px 40px;">
+      <div class="brand">
+        <img src="logo.png" alt="Shailesh &amp; Associates Logo" onerror="this.outerHTML='<h2 style=&#39;color:var(--brand-navy); font-size:32px; font-weight:700; margin-bottom:12px;&#39;>SA</h2>'">
+      </div>
+      <h2>Welcome back</h2>
+      <p>Sign in with your authorized Google workspace account to access the firm's tools.</p>
+      <button class="btn btn-google" onclick="signIn()">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.8 0 6.9 5.4 3 13.3l7.8 6C12.7 13.1 17.9 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.8 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7L2.5 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.7l8.3-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.1 0-11.3-3.6-13.2-9.2l-7.8 6C6.9 42.6 14.8 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+        Sign in with Google
+      </button>
+
+      <label class="checkbox-label" style="justify-content:center; width:100%; margin-top:22px;">
+        <input type="checkbox" id="rememberMeCheck" checked />
+        Remember me (Keep me signed in for 1 hour)
+      </label>
+
+      <p style="margin-top:24px; font-size:12.5px; border-top:1px solid var(--border); padding-top:22px;">
+        <a href="#" onclick="showSetup()" style="color:var(--text-muted); text-decoration:underline;">Developer Setup</a>
+      </p>
+    </div>
+    <div class="auth-footer-trust">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      Secure. Compliant. Confidential.
+    </div>
+  </div>
+
+  <!-- ACCESS DENIED -->
+  <div id="access-denied-wrap" style="display:none;">
+    <div id="access-denied" class="card" style="text-align:center; padding:48px 32px; max-width:480px; margin:0 auto;">
+      <div style="width:64px;height:64px;border-radius:50%;background:var(--red-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--red);">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+      </div>
+      <h2 style="color:var(--red); font-size:22px; margin-bottom:12px; font-weight:700;">Access Denied</h2>
+      <p id="access-denied-msg" style="color:var(--text-muted); margin-bottom:24px; line-height:1.6; font-size:14px;">Your Google account is not registered as an authorised user.</p>
+      <button class="btn btn-outline" onclick="signOut()">Sign out and try a different account</button>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app-section" style="display:none;">
+
+    <!-- ── TAB: SEND ── -->
+    <div id="tab-send" class="tab-panel active">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Send Document</span></div>
+          <h2 class="page-title">Send Document to Client</h2>
+          <p class="page-subtitle">Search Google Drive and email attachments directly to clients.</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="form-grid">
+          <div class="form-group" id="clientName-group">
+            <label>Client Name</label>
+            <input type="text" id="clientName" placeholder="Start typing to search clients…" autocomplete="off" oninput="handleClientSearch(this.value)" onkeydown="handleClientKey(event)" />
+            <div class="autocomplete-list" id="autocomplete-list" style="display:none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Document Type</label>
+            <select id="docType">
+              <option value="">Select document...</option>
+              <option value="Tax Clearance">Tax Clearance</option>
+              <option value="Audit Report">Audit Report</option>
+              <option value="Financial Statements">Financial Statements</option>
+              <option value="VAT Returns">VAT Returns</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fiscal Year</label>
+            <input type="text" id="fiscalYear" placeholder="e.g. 2081-82" />
+          </div>
+          <div class="form-group">
+            <label>Client Email</label>
+            <input type="email" id="clientEmail" placeholder="auto-filled when you pick a client" />
+          </div>
+          <div class="form-group full">
+            <label>Email Message (optional)</label>
+            <textarea id="emailMessage" placeholder="Leave blank to use the default professional message..."></textarea>
+          </div>
+        </div>
+
+        <div id="file-preview">
+          <div class="file-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--brand-navy);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>
+          <div class="file-info">
+            <div class="file-name" id="preview-name">—</div>
+            <div class="file-meta" id="preview-meta">—</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="clearFile()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            Wrong file
+          </button>
+        </div>
+
+        <div class="action-row">
+          <button class="btn btn-primary" id="searchBtn" onclick="findDocument()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            Find Document in Drive
+          </button>
+          <button class="btn btn-primary" id="sendBtn" onclick="sendFoundDocument()" style="display:none; background:#10b981; border-color:#10b981;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            Send to Client
+          </button>
+          <button class="btn btn-outline" onclick="clearForm()">Clear Form</button>
+        </div>
+        <div id="status-area"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: GENERATE REPORT ── -->
+    <div id="tab-report-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Generate Report</span><span>›</span><span class="current">Audit Report Builder</span></div>
+          <h2 class="page-title">Audit Report Builder</h2>
+          <p class="page-subtitle">Configure your audit report details and generate professional reports.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="printAuditReport()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print / Save as PDF
+          </button>
+        </div>
+      </div>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="display:grid; grid-template-columns: 380px 1fr; min-height:600px;">
+          <!-- Report form -->
+          <div style="padding:32px; border-right:1px solid var(--border);">
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Auditing Firm</label>
+              <select id="rep-firm">
+                <option value="shailesh">Shailesh &amp; Associates</option>
+                <option value="dallakoti">Dallakoti &amp; Company</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:16px; position:relative;">
+              <label>Client Name</label>
+              <input type="text" id="rep-entityName" placeholder="Start typing to search clients…" autocomplete="off" oninput="handleRepClientSearch(this.value)" />
+              <div class="autocomplete-list" id="rep-autocomplete-list" style="display:none;"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Entity Type</label>
+              <select id="rep-entityType">
+                <option value="private_company">Private Company</option>
+                <option value="public_company">Public Company</option>
+                <option value="proprietorship">Proprietorship</option>
+                <option value="partnership">Partnership Firm</option>
+                <option value="ngo">NGO</option>
+                <option value="npo">NPO / Association</option>
+                <option value="cooperative">Cooperative</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Address</label>
+              <input type="text" id="rep-entityAddress" placeholder="e.g. Ratnanagar-10, Chitwan, Nepal" />
+            </div>
+            <div class="form-group" style="margin-bottom:16px; position:relative;">
+              <label>PAN</label>
+              <input type="text" id="rep-entityPan" placeholder="e.g. 610304639" autocomplete="off" oninput="handleRepPanSearch(this.value)" />
+              <div class="autocomplete-list" id="rep-pan-autocomplete-list" style="display:none;"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Nature of Business</label>
+              <input type="text" id="rep-entityBusiness" placeholder="e.g. Trading of Marvel Item" />
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Accounting Standard</label>
+              <select id="rep-nasType">
+                <option value="mes">NAS for Micro Entities (NAS for MEs)</option>
+                <option value="sme">NAS for Small &amp; Medium Entities (NAS for SMEs)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Fiscal Year (B.S.)</label>
+              <select id="rep-fy">
+                <option value="2078-79">2078/79</option>
+                <option value="2079-80">2079/80</option>
+                <option value="2080-81">2080/81</option>
+                <option value="2081-82" selected>2081/82</option>
+                <option value="2082-83">2082/83</option>
+              </select>
+              <div id="rep-fyDateDisplay" style="margin-top:8px; font-size:12px; background:var(--green-bg); border:1px solid var(--green-border); color:#047857; padding:10px 12px; border-radius:var(--radius);"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="rep-toggleEOM" /> Include "Emphasis of Matter"
+              </label>
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="rep-toggleKAM" /> Include "Key Audit Matters"
+              </label>
+            </div>
+            <div class="form-grid" style="margin-bottom:16px; gap:12px;">
+              <div class="form-group">
+                <label>Date (B.S.)</label>
+                <input type="text" id="rep-reportDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <div class="form-group">
+                <label>Place</label>
+                <input type="text" id="rep-reportPlace" value="Chitwan" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:24px;">
+              <label>UDIN</label>
+              <input type="text" id="rep-udin" placeholder="Optional" />
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="printAuditReport()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+              Print / Save as PDF
+            </button>
+          </div>
+          <!-- Report preview -->
+          <div style="background:#e2e8f0; padding:32px; overflow-y:auto; max-height:900px;">
+            <div id="rep-previewRoot"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: COMPANY REGISTRAR ── -->
+    <div id="tab-regd-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Company Registrar</span></div>
+          <h2 class="page-title">Company Registrar Automations</h2>
+          <p class="page-subtitle">Auto-generate statutory documents and filings.</p>
+        </div>
+      </div>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <!-- Sub-tab bar -->
+        <div class="subtabs" style="padding:16px 24px 0 24px; border-bottom:1px solid var(--border);">
+          <button class="subtab-btn active" onclick="switchRegdSub('shareTransfer')" id="subtab-shareTransfer">🔄 Share Transfer</button>
+          <button class="subtab-btn" onclick="switchRegdSub('increaseCapital')" id="subtab-increaseCapital">📈 Increase Capital</button>
+          <button class="subtab-btn" onclick="switchRegdSub('companyRegistration')" id="subtab-companyRegistration">🏢 Company Registration</button>
+          <button class="subtab-btn" onclick="switchRegdSub('auditorChange')" id="subtab-auditorChange">🧑‍💼 Auditor Change</button>
+          <button class="subtab-btn" onclick="switchRegdSub('pinReset')" id="subtab-pinReset">🔑 PIN Reset</button>
+        </div>
+
+        <!-- ── SUB: SHARE TRANSFER ── -->
+        <div id="regd-shareTransfer-panel" class="regd-sub-panel active">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="st-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Transferor Name (Selling)</label>
+                <input type="text" id="st-transferorName" placeholder="e.g. Ram Bahadur Thapa" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Transferee Name (Buying)</label>
+                <input type="text" id="st-transfereeName" placeholder="e.g. Sita Kumari Rai" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>No. of Shares</label>
+                  <input type="text" id="st-numShares" placeholder="e.g. 100" />
+                </div>
+                <div class="form-group">
+                  <label>Face Value</label>
+                  <input type="text" id="st-faceValue" placeholder="e.g. 100" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Transfer Date (B.S.)</label>
+                <input type="text" id="st-transferDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <div class="form-group" style="margin-bottom:24px;">
+                <label>Remarks</label>
+                <textarea id="st-remarks" placeholder="Optional notes…"></textarea>
+              </div>
+              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Share Transfer')">⚙️ Generate Documents</button>
+            </div>
+            <div style="background:#f8fafc; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🔄</div>
+                <p>Share Transfer document preview will appear here.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: INCREASE CAPITAL ── -->
+        <div id="regd-increaseCapital-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="ic-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>Current Auth. Cap.</label>
+                  <input type="text" id="ic-curAuthCapital" placeholder="e.g. 10,00,000" />
+                </div>
+                <div class="form-group">
+                  <label>New Auth. Cap.</label>
+                  <input type="text" id="ic-newAuthCapital" placeholder="e.g. 25,00,000" />
+                </div>
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>Current Paid Cap.</label>
+                  <input type="text" id="ic-curPaidCapital" placeholder="e.g. 10,00,000" />
+                </div>
+                <div class="form-group">
+                  <label>New Paid Cap.</label>
+                  <input type="text" id="ic-newPaidCapital" placeholder="e.g. 25,00,000" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Approval Date (B.S.)</label>
+                <input type="text" id="ic-approvalDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <div class="form-group" style="margin-bottom:24px;">
+                <label>Remarks</label>
+                <textarea id="ic-remarks" placeholder="Optional notes…"></textarea>
+              </div>
+              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Increase Capital')">⚙️ Generate Documents</button>
+            </div>
+            <div style="background:#f8fafc; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">📈</div>
+                <p>Increase Capital document preview will appear here.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: COMPANY REGISTRATION ── -->
+        <div id="regd-companyRegistration-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Proposed Company Name</label>
+                <input type="text" id="cr-companyName" placeholder="e.g. Chitwan Trade Concern Pvt. Ltd." />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Type</label>
+                <select id="cr-companyType">
+                  <option value="private_company">Private Company</option>
+                  <option value="public_company">Public Company</option>
+                  <option value="proprietorship">Proprietorship</option>
+                  <option value="partnership">Partnership Firm</option>
+                  <option value="ngo">NGO</option>
+                  <option value="cooperative">Cooperative</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Registered Address</label>
+                <input type="text" id="cr-address" placeholder="e.g. Bharatpur-10, Chitwan, Nepal" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Promoter(s) Name</label>
+                <input type="text" id="cr-promoters" placeholder="e.g. Ram Bahadur Thapa" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Nature of Business</label>
+                <input type="text" id="cr-business" placeholder="e.g. General Trading" />
+              </div>
+              <div class="form-group" style="margin-bottom:24px;">
+                <label>Registration Date (B.S.)</label>
+                <input type="text" id="cr-regDate" placeholder="e.g. 2082/06/04" />
+              </div>
+              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Company Registration')">⚙️ Generate Documents</button>
+            </div>
+            <div style="background:#f8fafc; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🏢</div>
+                <p>Company Registration document preview will appear here.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: AUDITOR CHANGE ── -->
+        <div id="regd-auditorChange-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="ac-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Previous Auditor</label>
+                <input type="text" id="ac-prevAuditor" placeholder="e.g. Shailesh &amp; Associates" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>New Auditor</label>
+                <input type="text" id="ac-newAuditor" placeholder="e.g. Dallakoti &amp; Company" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Reason for Change</label>
+                <input type="text" id="ac-reason" placeholder="e.g. Rotation as per statute" />
+              </div>
+              <div class="form-grid" style="margin-bottom:24px; gap:12px;">
+                <div class="form-group">
+                  <label>AGM Date (B.S.)</label>
+                  <input type="text" id="ac-resolutionDate" placeholder="e.g. 2082/06/04" />
+                </div>
+                <div class="form-group">
+                  <label>Effective Date (B.S.)</label>
+                  <input type="text" id="ac-effectiveDate" placeholder="e.g. 2082/06/04" />
+                </div>
+              </div>
+              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Auditor Change')">⚙️ Generate Documents</button>
+            </div>
+            <div style="background:#f8fafc; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🧑‍💼</div>
+                <p>Auditor Change document preview will appear here.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: PIN RESET ── -->
+        <div id="regd-pinReset-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border);">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="pr-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>PAN Number</label>
+                <input type="text" id="pr-pan" placeholder="e.g. 610304639" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Registered Contact</label>
+                <input type="text" id="pr-contact" placeholder="e.g. client@email.com" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Reason for Reset</label>
+                <input type="text" id="pr-reason" placeholder="e.g. Forgot PIN / Locked account" />
+              </div>
+              <div class="form-group" style="margin-bottom:24px;">
+                <label>Requested By</label>
+                <input type="text" id="pr-requestedBy" placeholder="e.g. Client / Authorized Rep." />
+              </div>
+              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('PIN Reset')">⚙️ Generate Documents</button>
+            </div>
+            <div style="background:#f8fafc; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">🔑</div>
+                <p>PIN Reset document preview will appear here.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: CLIENTS ── -->
+    <div id="tab-clients-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Clients</span></div>
+          <h2 class="page-title">Clients</h2>
+          <p class="page-subtitle">Manage your client directory. Add, edit, and organize client information.</p>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="client-stat-grid">
+        <div class="stat-card">
+          <div class="stat-icon blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          </div>
+          <div class="stat-num" id="stat-total-clients">0</div>
+          <div class="stat-label">Total Clients</div>
+          <div class="stat-sub">All registered clients</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+          </div>
+          <div class="stat-num" id="stat-with-email">0</div>
+          <div class="stat-label">With Email on File</div>
+          <div class="stat-sub">Ready for document sending</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon amber">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          </div>
+          <div class="stat-num" id="stat-missing-email">0</div>
+          <div class="stat-label">Missing Email</div>
+          <div class="stat-sub">Not active currently</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </div>
+          <div class="stat-num" id="stat-entity-types">0</div>
+          <div class="stat-label">Entity Types</div>
+          <div class="stat-sub">Distinct categories on file</div>
+        </div>
+      </div>
+
+      <div class="add-client-form" id="add-client-form">
+        <h4 id="add-client-title">Add New Client</h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Client Name *</label>
+            <input type="text" id="ac-name" placeholder="e.g. Shikhar Traders" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="ac-email" placeholder="client@example.com" />
+          </div>
+          <div class="form-group">
+            <label>PAN Number</label>
+            <input type="text" id="ac-pan" placeholder="Optional" />
+          </div>
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="text" id="ac-phone" placeholder="Optional" />
+          </div>
+          <div class="form-group">
+            <label>Entity Type</label>
+            <select id="ac-entity-type">
+              <option value="">— Select —</option>
+              <option>Pvt. Ltd. Company</option>
+              <option>Public Ltd. Company</option>
+              <option>Firms</option>
+              <option>NPOs</option>
+              <option>Cooperatives</option>
+              <option>Individuals</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Nature of Business</label>
+            <input type="text" id="ac-business" placeholder="Optional" />
+          </div>
+          <div class="form-group full">
+            <label>Address</label>
+            <input type="text" id="ac-address" placeholder="Optional" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" onclick="saveClient()">Save Client</button>
+          <button class="btn btn-outline" onclick="cancelAddClient()">Cancel</button>
+        </div>
+        <div id="client-form-status"></div>
+      </div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:16px; flex-wrap:wrap;">
+          <div class="search-bar-wrap" style="flex:1; min-width:260px; max-width:420px;">
+            <span class="sb-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input type="text" class="search-bar" id="client-search-bar" placeholder="Search clients by name, email, PAN or entity type…" oninput="filterClientTable(this.value)" />
+          </div>
+          <div style="display:flex; gap:12px;">
+            <button class="btn btn-outline" id="import-client-btn" onclick="openImportModal()" style="display:none;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Import from Excel
+            </button>
+            <button class="btn btn-primary" id="add-client-btn" onclick="toggleAddClient()" style="display:none;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Add Client
+            </button>
+          </div>
+        </div>
+        <div id="clients-table-wrap">
+          <div class="log-empty">Loading clients…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: LOGS ── -->
+    <div id="tab-logs-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Send Logs</span></div>
+          <h2 class="page-title">Send Logs</h2>
+          <p class="page-subtitle">Track documents emailed to clients.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="loadLogs()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div class="log-filters">
+          <input type="text" id="log-filter-client" placeholder="Filter by client name…" oninput="applyLogFilters()" style="flex:2;" />
+          <select id="log-filter-status" onchange="applyLogFilters()">
+            <option value="">All statuses</option>
+            <option value="sent">Sent only</option>
+            <option value="error">Errors only</option>
+          </select>
+          <select id="log-filter-sender" onchange="applyLogFilters()" style="display:none;">
+            <option value="">All staff</option>
+          </select>
+        </div>
+
+        <div id="logs-list" style="border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
+          <div class="log-empty">Loading logs…</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /app-section -->
+</main>
+
+<!-- SETUP MODAL -->
+<div class="modal-overlay" id="setup-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>First-Time Google Cloud Setup</h3>
+      <button class="modal-close" onclick="closeSetup()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Go to Google Cloud Console</h4>
+          <p>Open <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> and sign in with your company Google account.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Create a New Project</h4>
+          <p>Click the project dropdown → <strong>New Project</strong> → Name it <code>Audit Doc Sender</code> → Click <strong>Create</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Enable APIs</h4>
+          <p>Go to <strong>APIs &amp; Services → Library</strong>. Enable both <strong>Google Drive API</strong> and <strong>Gmail API</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-content">
+          <h4>Paste Your Client ID</h4>
+          <p>Copy the <strong>Client ID</strong> and paste below:</p>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <input type="text" id="clientIdInput" placeholder="Paste your Client ID here…" style="flex:1;" />
+            <button class="btn btn-primary" onclick="saveClientId()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal" style="max-width:800px;">
+    <div class="modal-header">
+      <h3>Import Clients from Excel</h3>
+      <button class="modal-close" onclick="closeImportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <!-- STEP 1: FILE PICK -->
+      <div class="import-step active" id="import-step-1">
+        <div class="dropzone" id="import-dropzone" onclick="document.getElementById('import-file-input').click()" style="border:2px dashed var(--border); padding:40px; text-align:center; border-radius:12px; cursor:pointer; background:#f8fafc;">
+          <div style="font-size:40px; margin-bottom:12px;">📊</div>
+          <div style="font-weight:600; color:var(--text-main); margin-bottom:4px;">Click to choose an Excel or CSV file</div>
+          <div style="font-size:13px; color:var(--text-muted);">.xlsx, .xls or .csv — first row should be headers</div>
+        </div>
+        <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleImportFile(this.files[0])" />
+        <div id="import-file-status" style="margin-top:14px;"></div>
+      </div>
+
+      <!-- STEP 2: MAP COLUMNS -->
+      <div class="import-step" id="import-step-2">
+        <p style="font-size:14px; color:var(--text-muted); margin-bottom:16px;">Map your spreadsheet columns to client fields.</p>
+        <div id="import-map-rows"></div>
+        <div class="action-row">
+          <button class="btn btn-primary" onclick="buildImportPreview()">Next: Preview →</button>
+          <button class="btn btn-outline" onclick="closeImportModal()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: PREVIEW & CONFIRM -->
+      <div class="import-step" id="import-step-3">
+        <div class="import-stats" id="import-stats" style="display:flex; gap:12px; margin-bottom:16px;"></div>
+        <div id="import-warning"></div>
+        <div class="table-wrap" style="max-height:340px; overflow:auto; margin-top:12px;">
+          <table class="client-table">
+            <thead id="import-preview-head"></thead>
+            <tbody id="import-preview-body"></tbody>
+          </table>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">Import Clients</button>
+          <button class="btn btn-outline" onclick="showImportStep(2)">← Back</button>
+          <button class="btn btn-outline" onclick="closeImportModal()">Cancel</button>
+        </div>
+        <div id="import-result-status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="tabs.js"></script>
+<script src="registrar.js"></script>
+<script src="clients.js"></script>
+<script src="logs.js"></script>
+<script src="sendDocument.js"></script>
+<script src="report.js"></script>
+<script src="auth.js"></script>
+
+<!-- Script to handle Sidebar active state and initial render -->
+<script>
+  const originalSwitchTab = window.switchTab;
+  window.switchTab = function(tab) {
+    if (originalSwitchTab) originalSwitchTab(tab);
+    document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById('nav-' + tab);
+    if (activeBtn) activeBtn.classList.add('active');
+  };
+</script>
+
+</body>
+</html>
