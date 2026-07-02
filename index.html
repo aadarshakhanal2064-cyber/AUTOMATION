@@ -332,6 +332,7 @@
           <button class="subtab-btn" onclick="switchRegdSub('companyRegistration')" id="subtab-companyRegistration">🏢 Company Registration</button>
           <button class="subtab-btn" onclick="switchRegdSub('auditorChange')" id="subtab-auditorChange">🧑‍💼 Auditor Change</button>
           <button class="subtab-btn" onclick="switchRegdSub('pinReset')" id="subtab-pinReset">🔑 PIN Reset</button>
+          <button class="subtab-btn" onclick="switchRegdSub('bmAgmMinutes')" id="subtab-bmAgmMinutes">📝 BM/AGM Minutes</button>
         </div>
 
         <!-- ── SUB: SHARE TRANSFER ── -->
@@ -543,6 +544,87 @@
               <div class="regd-preview-placeholder">
                 <div class="icon">🔑</div>
                 <p>PIN Reset document preview will appear here.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SUB: BM/AGM MINUTES ── -->
+        <div id="regd-bmAgmMinutes-panel" class="regd-sub-panel">
+          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
+            <div style="padding:24px; border-right:1px solid var(--border); overflow-y:auto;">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Registration Number</label>
+                <input type="text" id="bm-regNo" placeholder="Start typing to search clients…" autocomplete="off" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Company Name</label>
+                <input type="text" id="bm-companyName" placeholder="Auto-filled when you select a company…" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>PAN</label>
+                <input type="text" id="bm-pan" placeholder="Auto-filled when you select a company…" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Address</label>
+                <input type="text" id="bm-address" placeholder="Auto-filled when you select a company…" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Chairman Name</label>
+                <input type="text" id="bm-chairmanName" placeholder="Auto-filled when you select a company…" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Shareholder Name</label>
+                <input type="text" id="bm-shareholderName" placeholder="Auto-filled when you select a company…" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>Authorized Share Capital</label>
+                  <input type="text" id="bm-authCapital" placeholder="e.g. 25,00,000" />
+                </div>
+                <div class="form-group">
+                  <label>Issued Capital</label>
+                  <input type="text" id="bm-issuedCapital" placeholder="e.g. 25,00,000" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Paid-up Capital</label>
+                <input type="text" id="bm-paidUpCapital" placeholder="e.g. 25,00,000" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>Date of Board Meeting</label>
+                  <input type="date" id="bm-bmDate" />
+                </div>
+                <div class="form-group">
+                  <label>Date of AGM</label>
+                  <input type="date" id="bm-agmDate" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Nepal Fiscal Year</label>
+                <select id="bm-fiscalYear">
+                  <option value="2078-79">2078/79</option>
+                  <option value="2079-80">2079/80</option>
+                  <option value="2080-81">2080/81</option>
+                  <option value="2081-82" selected>2081/82</option>
+                  <option value="2082-83">2082/83</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Upcoming Auditor Name</label>
+                <input type="text" id="bm-newAuditorName" placeholder="e.g. Dallakoti &amp; Company" />
+              </div>
+              <div class="form-group" style="margin-bottom:24px;">
+                <label>Audit Fee</label>
+                <input type="text" id="bm-auditFee" placeholder="e.g. 50,000" />
+              </div>
+              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('BM/AGM Minutes')">⚙️ Generate Documents</button>
+            </div>
+            <div style="background:#f8fafc; padding:24px;">
+              <div class="regd-preview-placeholder">
+                <div class="icon">📝</div>
+                <p>BM/AGM Minutes document preview will appear here.</p>
               </div>
             </div>
           </div>
