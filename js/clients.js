@@ -353,8 +353,9 @@ function buildImportPreview() {
     return;
   }
 
-  const existingNames = new Set(window.clientsList.map(c => (c.name || '').trim().toLowerCase()));
+  const existingByName = new Map(window.clientsList.map(c => [(c.name || '').trim().toLowerCase(), c]));
   const seenInFile = new Set();
+  const BACKFILLABLE_FIELDS = window.IMPORT_FIELDS.map(f => f.key).filter(k => k !== 'name');
 
   window.importPreviewRows = [];
   let currentMainRow = null; // reference to the most recent valid/dupe row, for attaching extra shareholders
@@ -377,16 +378,26 @@ function buildImportPreview() {
     }
 
     let status = 'valid';
+    let existingClient = null;
+    let fieldsToBackfill = {};
     if (!rec.name) {
       status = 'bad';
     } else {
       const key = rec.name.toLowerCase();
-      if (existingNames.has(key) || seenInFile.has(key)) {
+      existingClient = existingByName.get(key) || null;
+      if (existingClient || seenInFile.has(key)) {
         status = 'dupe';
+        // Only a true existing-database match can be backfilled — a same-file
+        // repeat with no DB record has nothing to update.
+        if (existingClient) {
+          BACKFILLABLE_FIELDS.forEach(k => {
+            if (!existingClient[k] && rec[k]) fieldsToBackfill[k] = rec[k];
+          });
+        }
       }
       seenInFile.add(key);
     }
-    const fullRec = { ...rec, status, extraShareholders: [] };
+    const fullRec = { ...rec, status, extraShareholders: [], existingClientId: existingClient ? existingClient.id : null, fieldsToBackfill };
     window.importPreviewRows.push(fullRec);
     currentMainRow = (status === 'valid' || status === 'dupe') ? fullRec : null;
   });
@@ -402,11 +413,12 @@ function renderImportPreview() {
   const bad   = mainRows.filter(r => r.status === 'bad').length;
   const noEmail = mainRows.filter(r => r.status === 'valid' && !r.email).length;
   const extraShareholderCount = window.importPreviewRows.filter(r => r.status === 'extra-shareholder').length;
+  const backfillRows = mainRows.filter(r => r.status === 'dupe' && Object.keys(r.fieldsToBackfill || {}).length > 0);
 
   document.getElementById('import-stats').innerHTML = `
     <div class="import-stat"><div class="num">${mainRows.length}</div><div class="lbl">Companies in File</div></div>
     <div class="import-stat"><div class="num">${valid}</div><div class="lbl">Will Import</div></div>
-    <div class="import-stat warn"><div class="num">${dupes}</div><div class="lbl">Duplicates Skipped</div></div>
+    <div class="import-stat warn"><div class="num">${dupes}</div><div class="lbl">Duplicates Found</div></div>
     <div class="import-stat bad"><div class="num">${bad}</div><div class="lbl">Missing Name</div></div>
   `;
 
@@ -416,7 +428,10 @@ function renderImportPreview() {
   const extraMsg = extraShareholderCount
     ? `ℹ️ Found ${extraShareholderCount} additional shareholder name${extraShareholderCount === 1 ? '' : 's'} in the file (rows with no company name, listed under the company above them) — these will be attached to their company, not imported as separate clients. Check the "Shareholders" column below.`
     : '';
-  document.getElementById('import-warning').innerHTML = [noEmailMsg, extraMsg]
+  const backfillMsg = backfillRows.length
+    ? `ℹ️ ${backfillRows.length} existing client${backfillRows.length === 1 ? '' : 's'} ${backfillRows.length === 1 ? 'is' : 'are'} already in your directory but ${backfillRows.length === 1 ? 'is' : 'are'} missing some fields this file has — those blank fields will be filled in. Nothing already on file will be overwritten.`
+    : '';
+  document.getElementById('import-warning').innerHTML = [noEmailMsg, extraMsg, backfillMsg]
     .filter(Boolean).map(m => `<div class="status-box status-info">${m}</div>`).join('');
 
   document.getElementById('import-preview-head').innerHTML = `
@@ -427,8 +442,11 @@ function renderImportPreview() {
   const rowsToShow = mainRows.slice(0, MAX_SHOW);
   document.getElementById('import-preview-body').innerHTML = rowsToShow.map(r => {
     const cls = r.status === 'dupe' ? 'row-dupe' : (r.status === 'bad' ? 'row-bad' : '');
+    const backfillCount = Object.keys(r.fieldsToBackfill || {}).length;
     const tag = r.status === 'dupe'
-      ? '<span class="import-row-tag" style="background:#fde89a;color:#8a6200;">DUPLICATE</span>'
+      ? (backfillCount
+          ? `<span class="import-row-tag" style="background:#cfe8fb;color:#1a5f8a;">WILL BACKFILL ${backfillCount}</span>`
+          : '<span class="import-row-tag" style="background:#fde89a;color:#8a6200;">DUPLICATE</span>')
       : r.status === 'bad'
         ? '<span class="import-row-tag" style="background:#f5b7b1;color:var(--red);">NO NAME</span>'
         : '<span class="import-row-tag" style="background:#b7dfc9;color:var(--green);">NEW</span>';
@@ -446,10 +464,12 @@ function renderImportPreview() {
     ? `<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:10px;">…and ${mainRows.length - MAX_SHOW} more rows not shown (all will still be processed)</td></tr>`
     : '');
 
-  document.getElementById('import-confirm-btn').disabled = valid === 0;
+  document.getElementById('import-confirm-btn').disabled = valid === 0 && backfillRows.length === 0;
   document.getElementById('import-confirm-btn').textContent = valid
     ? `Import ${valid} Client${valid === 1 ? '' : 's'}`
-    : 'Nothing to Import';
+    : backfillRows.length
+      ? `Update ${backfillRows.length} Existing Client${backfillRows.length === 1 ? '' : 's'}`
+      : 'Nothing to Import';
 }
 
 async function confirmImport() {
@@ -476,7 +496,13 @@ async function confirmImport() {
       },
     }));
 
-  if (!rowsToInsert.length) return;
+  // Duplicates whose existing record is missing fields this file has — filled
+  // in, never overwriting anything already on file.
+  const rowsToBackfill = window.importPreviewRows.filter(
+    r => r.status === 'dupe' && r.existingClientId && Object.keys(r.fieldsToBackfill || {}).length > 0
+  );
+
+  if (!rowsToInsert.length && !rowsToBackfill.length) return;
 
   const btn = document.getElementById('import-confirm-btn');
   btn.disabled = true;
@@ -499,9 +525,9 @@ async function confirmImport() {
 
     // Postgres/PostgREST returns inserted rows in the same order they were sent.
     const shareholderRows = [];
-    (data || []).forEach((inserted, idx) => {
+    (data || []).forEach((row, idx) => {
       (chunk[idx].sourceRow.extraShareholders || []).forEach((name, sIdx) => {
-        shareholderRows.push({ client_id: inserted.id, name, sort_order: sIdx });
+        shareholderRows.push({ client_id: row.id, name, sort_order: sIdx });
       });
     });
     if (shareholderRows.length) {
@@ -510,9 +536,30 @@ async function confirmImport() {
     }
   }
 
-  statusEl.innerHTML = `<div class="status-box status-success">✅ Imported ${inserted} client${inserted === 1 ? '' : 's'}` +
-    (shareholdersLinked ? ` and linked ${shareholdersLinked} additional shareholder${shareholdersLinked === 1 ? '' : 's'}` : '') +
-    ` successfully.</div>`;
+  let backfilled = 0;
+  for (const row of rowsToBackfill) {
+    statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Updating existing clients ${backfilled}/${rowsToBackfill.length}…</div>`;
+    const { error } = await window.sb.from('clients').update(row.fieldsToBackfill).eq('id', row.existingClientId);
+    if (!error) {
+      backfilled++;
+      if (row.extraShareholders && row.extraShareholders.length) {
+        // Only add if this client has no shareholders on file yet, so re-running
+        // the same import doesn't create duplicate entries.
+        const { data: existing } = await window.sb.from('client_shareholders').select('id').eq('client_id', row.existingClientId).limit(1);
+        if (!existing || !existing.length) {
+          const shareholderRows = row.extraShareholders.map((name, sIdx) => ({ client_id: row.existingClientId, name, sort_order: sIdx }));
+          const { error: shErr } = await window.sb.from('client_shareholders').insert(shareholderRows);
+          if (!shErr) shareholdersLinked += shareholderRows.length;
+        }
+      }
+    }
+  }
+
+  const parts = [];
+  if (inserted) parts.push(`imported ${inserted} client${inserted === 1 ? '' : 's'}`);
+  if (backfilled) parts.push(`updated ${backfilled} existing client${backfilled === 1 ? '' : 's'}`);
+  if (shareholdersLinked) parts.push(`linked ${shareholdersLinked} additional shareholder${shareholdersLinked === 1 ? '' : 's'}`);
+  statusEl.innerHTML = `<div class="status-box status-success">✅ ${parts.join(', ')}.</div>`;
   await loadClients();
   setTimeout(closeImportModal, 1200);
 }
