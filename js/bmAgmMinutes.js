@@ -503,7 +503,10 @@ function bmBuildPrintableDoc() {
   const styleEl = document.getElementById('bm-preview-style');
   if (!root || !root.innerHTML.trim()) return null;
 
-  const docxCss = styleEl ? styleEl.innerHTML : '';
+  // textContent, not innerHTML — docx-preview injects its CSS as a real
+  // nested <style> element, and innerHTML would serialize that tag literally,
+  // closing our own wrapping <style> block early.
+  const docxCss = styleEl ? styleEl.textContent : '';
   const appCss = Array.from(document.styleSheets).map(sheet => {
     try { return Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); }
     catch (e) { return ''; }
