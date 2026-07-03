@@ -73,21 +73,23 @@ async function vatGetImagePlacement(page) {
     a[2]*b[0] + a[3]*b[2],        a[2]*b[1] + a[3]*b[3],
     a[4]*b[0] + a[5]*b[2] + b[4],  a[4]*b[1] + a[5]*b[3] + b[5],
   ];
-  let found = null;
+  let found = null, imageCount = 0;
   for (let i = 0; i < opList.fnArray.length; i++) {
     const fn = opList.fnArray[i], args = opList.argsArray[i];
     if (fn === OPS.save) stack.push(stack[stack.length - 1].slice());
     else if (fn === OPS.restore) stack.pop();
     else if (fn === OPS.transform) stack[stack.length - 1] = mul(args, stack[stack.length - 1]);
-    else if (fn === OPS.paintImageXObject) found = stack[stack.length - 1].slice();
+    else if (fn === OPS.paintImageXObject) { found = stack[stack.length - 1].slice(); imageCount++; }
   }
-  if (!found) return { topFraction: 0, leftFraction: 0, heightFraction: 1, widthFraction: 1 };
+  if (!found) return { topFraction: 0, leftFraction: 0, heightFraction: 1, widthFraction: 1, imageCount, ctm: null };
   const [a, , , d, , f] = found;
   return {
     topFraction: (VAT_PDF_PAGE_H - (f + d)) / VAT_PDF_PAGE_H,
     heightFraction: d / VAT_PDF_PAGE_H,
     leftFraction: 0,
     widthFraction: a / VAT_PDF_PAGE_W,
+    imageCount,
+    ctm: found,
   };
 }
 
@@ -100,6 +102,99 @@ async function vatRenderPageCanvas(pdf, pageNum, scale) {
   canvas.height = viewport.height;
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   return { canvas, placement };
+}
+
+// ── Structural validation (runs before any OCR) ──
+// This PDF family has no embedded text, AcroForm, XFA, or metadata of any
+// kind (confirmed by direct inspection of the raw PDF bytes) — OCR is the
+// only extraction path available, which makes it essential to confirm the
+// page actually looks like the expected अनुसुची-१० form *before* trusting
+// anything OCR reports from it. Page size and image-structure checks are
+// exact. The two dark-pixel-density "anchors" (title block, table header
+// row, a table column divider) are calibrated against measurements taken
+// from 3 real pages of a real filing — a blank page measures 0 in every
+// anchor, a fully-dark/photographic page measures ~1 in every anchor, and
+// the real form pages measured 0.035–0.039 / 0.090–0.119 / 0.073–0.100
+// respectively across pages with materially different table data. The
+// bounds below keep generous margin around those measured values.
+const VAT_PAGE_SIZE_TOLERANCE_PT = 5;
+const VAT_STRUCTURAL_ANCHORS = {
+  titleBlock:          { left: 0.15, top: 0.02,  width: 0.70, height: 0.18, min: 0.015, max: 0.10 },
+  tableHeaderRow:       { left: 0.05, top: 0.395, width: 0.90, height: 0.03, min: 0.05,  max: 0.25 },
+  tableBorderVertical:  { left: 0.313, top: 0.40, width: 0.006, height: 0.30, min: 0.03,  max: 0.25 },
+};
+
+function vatDarkDensity(imageData, w, h, region) {
+  const x0 = Math.max(0, Math.round(region.left * w)), y0 = Math.max(0, Math.round(region.top * h));
+  const x1 = Math.min(w, Math.round((region.left + region.width) * w)), y1 = Math.min(h, Math.round((region.top + region.height) * h));
+  const data = imageData.data;
+  let dark = 0, total = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const idx = (y * w + x) * 4;
+      const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      if (lum < 150) dark++;
+      total++;
+    }
+  }
+  return total ? dark / total : 0;
+}
+
+// Checks one already-rendered page against the structural anchors. Requires
+// at least 2 of the 3 anchors to fall in range — matches the empirical
+// finding that an unrelated document can coincidentally satisfy one narrow
+// anchor, but not multiple independent ones simultaneously.
+function vatCheckPageAnchors(canvas) {
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let passed = 0;
+  const results = {};
+  for (const [name, region] of Object.entries(VAT_STRUCTURAL_ANCHORS)) {
+    const density = vatDarkDensity(imageData, canvas.width, canvas.height, region);
+    const ok = density >= region.min && density <= region.max;
+    if (ok) passed++;
+    results[name] = { density, ok };
+  }
+  return { passed, total: Object.keys(VAT_STRUCTURAL_ANCHORS).length, results };
+}
+
+// Runs every structural check before any OCR happens. Returns { valid,
+// errors } — extraction must not proceed if valid is false.
+async function vatValidatePdf(pdf) {
+  const errors = [];
+
+  if (pdf.numPages < 1 || pdf.numPages > 12) {
+    errors.push(`PDF has ${pdf.numPages} page(s) — a VAT Return filing has at most 12 (one per month). This doesn't look like a VAT Return PDF.`);
+    return { valid: false, errors };
+  }
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const view = page.view; // [x0, y0, x1, y1] in points
+    const pw = view[2] - view[0], ph = view[3] - view[1];
+    if (Math.abs(pw - VAT_PDF_PAGE_W) > VAT_PAGE_SIZE_TOLERANCE_PT || Math.abs(ph - VAT_PDF_PAGE_H) > VAT_PAGE_SIZE_TOLERANCE_PT) {
+      errors.push(`Page ${p} is ${Math.round(pw)}×${Math.round(ph)}pt — expected ~${VAT_PDF_PAGE_W}×${VAT_PDF_PAGE_H}pt (A4). This may not be a standard IRD VAT Return export.`);
+      continue;
+    }
+
+    const placement = await vatGetImagePlacement(page);
+    if (placement.imageCount !== 1) {
+      errors.push(`Page ${p} has ${placement.imageCount} embedded image(s) — expected exactly 1 scanned form page.`);
+      continue;
+    }
+    if (!placement.ctm || Math.abs(placement.ctm[0] - VAT_PDF_PAGE_W) > VAT_PAGE_SIZE_TOLERANCE_PT || Math.abs(placement.ctm[4]) > VAT_PAGE_SIZE_TOLERANCE_PT) {
+      errors.push(`Page ${p}'s scanned content isn't placed full-width as expected.`);
+      continue;
+    }
+
+    const { canvas } = await vatRenderPageCanvas(pdf, p, 2);
+    const anchorCheck = vatCheckPageAnchors(canvas);
+    if (anchorCheck.passed < 2) {
+      errors.push(`Page ${p} doesn't match the expected VAT Return form layout (title/table position not found — checked ${anchorCheck.passed}/${anchorCheck.total} anchors). This may not be an अनुसुची-१० VAT Return page.`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 function vatCropField(canvas, placement, box) {
@@ -157,6 +252,14 @@ async function vatExtractPdf() {
     vatStatus('<span class="spinner spinner-navy"></span> PDF पढ्दै (loading PDF)…', 'searching');
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+
+    vatStatus('<span class="spinner spinner-navy"></span> कागजात जाँच्दै (checking document format)…', 'searching');
+    const validation = await vatValidatePdf(pdf);
+    if (!validation.valid) {
+      const list = validation.errors.slice(0, 5).map(e => `<li>${escHtml(e)}</li>`).join('');
+      vatStatus(`❌ यो अनुसुची-१० VAT Return PDF जस्तो देखिँदैन (this doesn't look like an अनुसुची-१० VAT Return PDF) — extraction was not attempted:<ul style="margin:8px 0 0 18px;">${list}</ul>`, 'error');
+      return;
+    }
 
     const pages = [];
     let lastGoodMonthIdx = null; // period OCR is the least reliable field — fall back to
