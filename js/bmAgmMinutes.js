@@ -179,11 +179,11 @@ function bmDownloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Chairman is always attendee #1; every shareholder (the fixed field plus any
-// added rows) is numbered #2 onward, in Devanagari, for the template's
-// {{#shareholders}} loop.
+// Chairman is listed unnumbered; shareholders (the fixed field plus any added
+// rows) get their own independent numbering starting at 1, in Devanagari, for
+// the template's {{#shareholders}} loop.
 function bmBuildShareholderList() {
-  return bmGetAllShareholderNames().map((name, i) => ({ num: bmToDevanagari(String(i + 2)), name }));
+  return bmGetAllShareholderNames().map((name, i) => ({ num: bmToDevanagari(String(i + 1)), name }));
 }
 
 function bmBuildData() {
