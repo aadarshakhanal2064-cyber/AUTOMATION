@@ -129,6 +129,14 @@ document.addEventListener('click', function (e) {
 const BM_TEMPLATE_URL = 'assets/templates/bm-agm-minutes.docx';
 const BM_NEPALI_MONTHS = ['बैशाख','जेठ','असार','साउन','भदौ','असोज','कार्तिक','मंसिर','पौष','माघ','फागुन','चैत'];
 
+// Pre-configured audit firms - selecting one in the dropdown fills in the
+// firm name, auditor's full name, and the correct professional title (CA
+// vs RA use different Nepali phrasing throughout the letters).
+const BM_AUDIT_FIRMS = [
+  { firmName: 'शैलेश एण्ड एसोसिएट्स', auditorName: 'शैलेश डल्लाकोटी', title: 'सीए' },
+  { firmName: 'डल्लाकोटी एण्ड कम्पनी', auditorName: 'देवी प्रसाद डल्लाकोटी', title: 'आर.ए.' },
+];
+
 function bmToDevanagari(s) {
   return String(s).replace(/[0-9]/g, d => '०१२३४५६७८९'[d]);
 }
@@ -191,12 +199,16 @@ function bmBuildData() {
   const bm = bmParseBsDate($('bm-bmDate'));
   const agm = bmParseBsDate($('bm-agmDate'));
   const fy = bmFiscalParts(document.getElementById('bm-fiscalYear').value);
+  const firmIdx = document.getElementById('bm-auditorFirm').value;
+  const firm = firmIdx !== '' ? BM_AUDIT_FIRMS[firmIdx] : null;
   return { bm, agm, data: {
     companyName:        $('bm-companyName'),
     registrationNumber: $('bm-regNo'),
     chairmanName:       $('bm-chairmanName'),
     shareholders:       bmBuildShareholderList(),
-    auditorName:        $('bm-newAuditorName'),
+    auditFirmName:      firm ? firm.firmName : '',
+    auditorName:        firm ? firm.auditorName : '',
+    auditorTitle:       firm ? firm.title : '',
     auditFee:           bmFormatAmount($('bm-auditFee')),
     authorizedCapital:  bmFormatAmount($('bm-authCapital')),
     issuedCapital:      bmFormatAmount($('bm-issuedCapital')),
