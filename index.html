@@ -605,11 +605,13 @@
                 <div class="form-grid" style="margin-bottom:14px; gap:12px;">
                   <div class="form-group">
                     <label>Date of Board Meeting (B.S.)</label>
-                    <input type="text" id="bm-bmDate" placeholder="e.g. 2079/09/01" autocomplete="off" />
+                    <input type="text" id="bm-bmDate" placeholder="e.g. 2079/09/01" autocomplete="off" onblur="bmValidateDateField('bm-bmDate')" />
+                    <div class="field-error-msg" id="bm-bmDate-error"></div>
                   </div>
                   <div class="form-group">
                     <label>Date of AGM (B.S.)</label>
-                    <input type="text" id="bm-agmDate" placeholder="e.g. 2079/09/15" autocomplete="off" />
+                    <input type="text" id="bm-agmDate" placeholder="e.g. 2079/09/15" autocomplete="off" onblur="bmValidateDateField('bm-agmDate')" />
+                    <div class="field-error-msg" id="bm-agmDate-error"></div>
                   </div>
                 </div>
                 <div class="form-grid" style="gap:12px;">
@@ -674,6 +676,11 @@
             <div class="bm-editor-right">
               <div class="bm-preview-toolbar">
                 <span class="bm-preview-label">Live Preview</span>
+                <div class="bm-zoom-controls">
+                  <button type="button" class="btn btn-outline btn-sm" onclick="bmZoomOut()">−</button>
+                  <span id="bm-zoom-level">100%</span>
+                  <button type="button" class="btn btn-outline btn-sm" onclick="bmZoomIn()">+</button>
+                </div>
               </div>
               <div class="bm-preview-scroll">
                 <div class="regd-preview-placeholder" id="bm-preview-placeholder">

@@ -82,7 +82,7 @@ async function selectBmClient(id) {
   if (!error && data) data.forEach(row => bmAddShareholderRow(row.name));
 
   bmRenderCompanySummary(c);
-  bmSchedulePreviewRefresh();
+  bmOnFormChanged();
 }
 
 // ── Compact company summary card ──
@@ -135,11 +135,11 @@ function bmAddShareholderRow(name) {
   row.style.cssText = 'display:flex; gap:8px; margin-top:8px;';
   row.innerHTML = `
     <input type="text" class="bm-extra-shareholder-input" placeholder="Additional shareholder name" style="flex:1;" />
-    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove(); bmSchedulePreviewRefresh();">Remove</button>
+    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove(); bmOnFormChanged();">Remove</button>
   `;
   wrap.appendChild(row);
   if (name) row.querySelector('input').value = name;
-  bmSchedulePreviewRefresh();
+  bmOnFormChanged();
 }
 
 function bmClearExtraShareholders() {
@@ -304,6 +304,7 @@ async function generateBmAgmMinutes() {
     const fname = ('BM-AGM ' + data.companyName + ' ' + document.getElementById('bm-fiscalYear').value + '.docx').replace(/[\\/:*?"<>|]/g, '_');
     bmDownloadBlob(blob, fname);
     bmStatus('✅ कागजात तयार भयो — डाउनलोड भयो (generated & downloaded).', 'success');
+    bmClearDraft();
   } catch (err) {
     bmStatus('❌ ' + (err.message || 'Generation failed'), 'error');
   }
@@ -466,7 +467,7 @@ function bmActivateTokenEdit(span, target) {
     const input = target.field ? document.getElementById(target.field) : target.el;
     if (input && newValue) {
       input.value = newValue;
-      bmSchedulePreviewRefresh();
+      bmOnFormChanged();
     }
   };
   span.addEventListener('blur', commit, { once: true });
@@ -476,8 +477,10 @@ function bmActivateTokenEdit(span, target) {
 document.addEventListener('DOMContentLoaded', function () {
   const panel = document.getElementById('regd-bmAgmMinutes-panel');
   if (!panel) return;
-  panel.addEventListener('input', e => { if (e.target.matches('input, select, textarea')) bmSchedulePreviewRefresh(); });
-  panel.addEventListener('change', e => { if (e.target.matches('input, select, textarea')) bmSchedulePreviewRefresh(); });
+  panel.addEventListener('input', e => { if (e.target.matches('input, select, textarea')) bmOnFormChanged(); });
+  panel.addEventListener('change', e => { if (e.target.matches('input, select, textarea')) bmOnFormChanged(); });
+  bmLoadDraft();
+  bmUpdateCompletionIndicator();
 });
 
 // ════════════════════════════════════════════
@@ -554,4 +557,97 @@ function bmResetForm() {
 
   document.getElementById('bm-status').innerHTML = '';
   bmShowPreviewPlaceholder();
+  bmClearDraft();
+  bmUpdateCompletionIndicator();
+}
+
+// ════════════════════════════════════════════
+//  BM/AGM MINUTES — polish: zoom, inline date validation, autosave,
+//  completion indicator
+// ════════════════════════════════════════════
+
+// Single entry point for "something in the form changed" — keeps the three
+// independent side effects (preview, draft, completion status) from being
+// wired up separately at every call site.
+function bmOnFormChanged() {
+  bmSchedulePreviewRefresh();
+  bmScheduleAutosave();
+  bmUpdateCompletionIndicator();
+}
+
+// ── Zoom ──
+let bmZoomLevel = 100;
+function bmSetZoom(level) {
+  bmZoomLevel = Math.max(50, Math.min(150, level));
+  const root = document.getElementById('bm-preview-root');
+  if (root) root.style.transform = 'scale(' + (bmZoomLevel / 100) + ')';
+  const label = document.getElementById('bm-zoom-level');
+  if (label) label.textContent = bmZoomLevel + '%';
+}
+function bmZoomIn() { bmSetZoom(bmZoomLevel + 10); }
+function bmZoomOut() { bmSetZoom(bmZoomLevel - 10); }
+
+// ── Inline date validation ──
+function bmValidateDateField(fieldId) {
+  const input = document.getElementById(fieldId);
+  const errorEl = document.getElementById(fieldId + '-error');
+  if (!input || !errorEl) return;
+  const val = input.value.trim();
+  if (!val || bmParseBsDate(val)) {
+    errorEl.classList.remove('show');
+    input.style.borderColor = '';
+  } else {
+    errorEl.textContent = 'ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस् (invalid format, use YYYY/MM/DD)';
+    errorEl.classList.add('show');
+    input.style.borderColor = 'var(--red)';
+  }
+}
+
+// ── Autosave (session-local draft, never sent to Supabase) ──
+const BM_DRAFT_KEY = 'bmAgmDraft';
+let bmAutosaveTimer = null;
+
+function bmScheduleAutosave() {
+  clearTimeout(bmAutosaveTimer);
+  bmAutosaveTimer = setTimeout(bmSaveDraft, 600);
+}
+
+function bmSaveDraft() {
+  const panel = document.getElementById('regd-bmAgmMinutes-panel');
+  if (!panel) return;
+  const values = {};
+  panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => { values[el.id] = el.value; });
+  const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
+  try {
+    localStorage.setItem(BM_DRAFT_KEY, JSON.stringify({ values, extraShareholders }));
+  } catch (e) { /* best-effort only — a full/unavailable localStorage shouldn't break the form */ }
+}
+
+function bmClearDraft() {
+  try { localStorage.removeItem(BM_DRAFT_KEY); } catch (e) { /* ignore */ }
+}
+
+function bmLoadDraft() {
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(BM_DRAFT_KEY) || 'null'); } catch (e) { return; }
+  if (!draft || !draft.values || !Object.values(draft.values).some(v => v)) return;
+
+  Object.entries(draft.values).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+  (draft.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
+  bmSchedulePreviewRefresh();
+  bmStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
+}
+
+// ── Completion indicator ──
+function bmUpdateCompletionIndicator() {
+  const el = document.getElementById('bm-completion-indicator');
+  if (!el) return;
+  const required = ['bm-companyName', 'bm-bmDate', 'bm-agmDate'];
+  const done = required.filter(id => document.getElementById(id).value.trim()).length;
+  el.textContent = done === required.length
+    ? '✅ Ready to generate'
+    : done + ' of ' + required.length + ' required fields set';
 }
