@@ -68,3 +68,110 @@ document.addEventListener('click', function (e) {
     list.style.display = 'none';
   }
 });
+
+// ════════════════════════════════════════════
+//  BM/AGM MINUTES — document generation
+//  Fills the Unicode/Mangal .docx template (assets/templates) with form
+//  values via docxtemplater. Client data is already Unicode Nepali; only
+//  numbers and B.S. dates need conversion to Devanagari here.
+// ════════════════════════════════════════════
+const BM_TEMPLATE_URL = 'assets/templates/bm-agm-minutes.docx';
+const BM_NEPALI_MONTHS = ['बैशाख','जेठ','असार','साउन','भदौ','असोज','कार्तिक','मंसिर','पौष','माघ','फागुन','चैत'];
+
+function bmToDevanagari(s) {
+  return String(s).replace(/[0-9]/g, d => '०१२३४५६७८९'[d]);
+}
+
+// "30,000,000.00" -> "३,००,००,०००" (Nepali lakh/crore grouping, Devanagari, no decimals)
+function bmFormatAmount(raw) {
+  let s = String(raw || '').split('.')[0].replace(/[^0-9]/g, '').replace(/^0+/, '');
+  if (!s) return '';
+  let last3 = s.slice(-3), rest = s.slice(0, -3), grouped = last3;
+  while (rest.length) { grouped = rest.slice(-2) + ',' + grouped; rest = rest.slice(0, -2); }
+  return bmToDevanagari(grouped);
+}
+
+// "2079/09/15" -> { year:२०७९, monthName:पौष, day:१५, full:२०७९/०९/१५ }
+function bmParseBsDate(str) {
+  const parts = String(str || '').trim().split(/[\/\-.]/).map(x => x.trim()).filter(Boolean);
+  if (parts.length < 3) return null;
+  const [y, m, d] = parts;
+  const mNum = parseInt(m, 10);
+  if (!(mNum >= 1 && mNum <= 12)) return null;
+  return {
+    year: bmToDevanagari(y),
+    monthName: BM_NEPALI_MONTHS[mNum - 1],
+    day: bmToDevanagari(String(parseInt(d, 10))),
+    full: bmToDevanagari(y + '/' + String(m).padStart(2, '0') + '/' + String(d).padStart(2, '0')),
+  };
+}
+
+// "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
+function bmFiscalParts(fyValue) {
+  const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
+  if (!m) return { fy: '', next: '' };
+  const y1 = parseInt(m[1], 10);
+  const fmt = a => String(a).slice(1) + '/' + String(a + 1).slice(-2);
+  return { fy: bmToDevanagari(fmt(y1)), next: bmToDevanagari(fmt(y1 + 1)) };
+}
+
+function bmStatus(html, type) {
+  const el = document.getElementById('bm-status');
+  if (el) el.innerHTML = `<div class="status-box status-${type}">${html}</div>`;
+}
+
+function bmDownloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function bmBuildData() {
+  const $ = id => document.getElementById(id).value.trim();
+  const bm = bmParseBsDate($('bm-bmDate'));
+  const agm = bmParseBsDate($('bm-agmDate'));
+  const fy = bmFiscalParts(document.getElementById('bm-fiscalYear').value);
+  return { bm, agm, data: {
+    companyName:        $('bm-companyName'),
+    registrationNumber: $('bm-regNo'),
+    chairmanName:       $('bm-chairmanName'),
+    shareholderName:    $('bm-shareholderName'),
+    auditorName:        $('bm-newAuditorName'),
+    auditFee:           bmFormatAmount($('bm-auditFee')),
+    authorizedCapital:  bmFormatAmount($('bm-authCapital')),
+    issuedCapital:      bmFormatAmount($('bm-issuedCapital')),
+    paidUpCapital:      bmFormatAmount($('bm-paidUpCapital')),
+    fiscalYear:         fy.fy,
+    nextFiscalYear:     fy.next,
+    bmYear:   bm ? bm.year : '', bmMonthName: bm ? bm.monthName : '', bmDay: bm ? bm.day : '',
+    agmDateFull: agm ? agm.full : '', agmMonthName: agm ? agm.monthName : '', agmDay: agm ? agm.day : '',
+    agmTime:  bmToDevanagari($('bm-agmTime') || '11:00'),
+    letterDate: agm ? agm.full : '',
+  }};
+}
+
+async function generateBmAgmMinutes() {
+  const val = id => document.getElementById(id).value.trim();
+  if (!val('bm-companyName')) { bmStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return; }
+  if (!val('bm-bmDate') || !val('bm-agmDate')) { bmStatus('बैठक र सभाको मिति भर्नुहोस् (enter the B.S. meeting dates).', 'info'); return; }
+
+  const { bm, agm, data } = bmBuildData();
+  if (!bm || !agm) { bmStatus('मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
+
+  try {
+    bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
+    const resp = await fetch(BM_TEMPLATE_URL);
+    if (!resp.ok) throw new Error('Template file not found at ' + BM_TEMPLATE_URL);
+    const zip = new PizZip(await resp.arrayBuffer());
+    const doc = new window.docxtemplater(zip, { delimiters: { start: '{{', end: '}}' }, paragraphLoop: true, linebreaks: true });
+    doc.render(data);
+    const blob = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const fname = ('BM-AGM ' + data.companyName + ' ' + document.getElementById('bm-fiscalYear').value + '.docx').replace(/[\\/:*?"<>|]/g, '_');
+    bmDownloadBlob(blob, fname);
+    bmStatus('✅ कागजात तयार भयो — डाउनलोड भयो (generated & downloaded).', 'success');
+  } catch (err) {
+    bmStatus('❌ ' + (err.message || 'Generation failed'), 'error');
+  }
+}

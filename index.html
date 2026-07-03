@@ -624,7 +624,8 @@
                 <label>Audit Fee</label>
                 <input type="text" id="bm-auditFee" placeholder="e.g. 50,000" />
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('BM/AGM Minutes')">⚙️ Generate Documents</button>
+              <button class="btn btn-primary" style="width:100%;" onclick="generateBmAgmMinutes()">⚙️ Generate &amp; Download</button>
+              <div id="bm-status"></div>
             </div>
             <div style="background:#f8fafc; padding:24px;">
               <div class="regd-preview-placeholder">
@@ -915,6 +916,8 @@
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js"></script>
 
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>
