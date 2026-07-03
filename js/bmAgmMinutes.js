@@ -46,7 +46,7 @@ function handleBmRegNoKey(e) {
   items.forEach((el, i) => el.classList.toggle('selected', i === window.bmSelectedIdx));
 }
 
-function selectBmClient(id) {
+async function selectBmClient(id) {
   const c = window.clientsList.find(x => String(x.id) === String(id));
   if (!c) return;
   document.getElementById('bm-regNo').value           = c.registration_number || '';
@@ -59,6 +59,44 @@ function selectBmClient(id) {
   document.getElementById('bm-issuedCapital').value    = c.issued_capital || '';
   document.getElementById('bm-paidUpCapital').value    = c.paid_up_capital || '';
   document.getElementById('bm-regNo-autocomplete-list').style.display = 'none';
+
+  bmClearExtraShareholders();
+  const { data, error } = await window.sb
+    .from('client_shareholders')
+    .select('name')
+    .eq('client_id', c.id)
+    .order('sort_order');
+  if (!error && data) data.forEach(row => bmAddShareholderRow(row.name));
+}
+
+// ── Dynamic "additional shareholder" rows ──
+// bm-shareholderName (fixed field) is always shareholder #2 in the attendee
+// list (chairman is #1); every row added here is #3 onward, in order.
+function bmAddShareholderRow(name) {
+  const wrap = document.getElementById('bm-extra-shareholders');
+  const row = document.createElement('div');
+  row.className = 'bm-shareholder-row';
+  row.style.cssText = 'display:flex; gap:8px; margin-top:8px;';
+  row.innerHTML = `
+    <input type="text" class="bm-extra-shareholder-input" placeholder="Additional shareholder name" style="flex:1;" />
+    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">Remove</button>
+  `;
+  wrap.appendChild(row);
+  if (name) row.querySelector('input').value = name;
+}
+
+function bmClearExtraShareholders() {
+  document.getElementById('bm-extra-shareholders').innerHTML = '';
+}
+
+// Full attendee list in order: chairman, then every shareholder name (fixed
+// field + any additional rows), skipping blanks.
+function bmGetAllShareholderNames() {
+  const names = [document.getElementById('bm-shareholderName').value.trim()];
+  document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input').forEach(inp => {
+    names.push(inp.value.trim());
+  });
+  return names.filter(Boolean);
 }
 
 // Close autocomplete on outside click — mirrors report.js's PAN-search listener
