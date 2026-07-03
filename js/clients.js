@@ -356,12 +356,25 @@ function buildImportPreview() {
   const existingNames = new Set(window.clientsList.map(c => (c.name || '').trim().toLowerCase()));
   const seenInFile = new Set();
 
-  window.importPreviewRows = window.importDataRows.map(row => {
+  window.importPreviewRows = [];
+  let currentMainRow = null; // reference to the most recent valid/dupe row, for attaching extra shareholders
+
+  window.importDataRows.forEach(row => {
     const rec = {};
     window.IMPORT_FIELDS.forEach(f => {
       const idx = window.importFieldMap[f.key];
       rec[f.key] = (idx !== undefined && idx !== -1) ? String(row[idx] || '').trim() : '';
     });
+
+    // A nameless row that follows a company row and carries a shareholder-column
+    // value is treated as an additional shareholder for that company, not a
+    // separate (broken) client record — this is the actual shape of company
+    // spreadsheets that list every shareholder, one per row, under one company.
+    if (!rec.name && currentMainRow && rec.shareholder_name) {
+      currentMainRow.extraShareholders.push(rec.shareholder_name);
+      window.importPreviewRows.push({ ...rec, status: 'extra-shareholder' });
+      return;
+    }
 
     let status = 'valid';
     if (!rec.name) {
@@ -373,7 +386,9 @@ function buildImportPreview() {
       }
       seenInFile.add(key);
     }
-    return { ...rec, status };
+    const fullRec = { ...rec, status, extraShareholders: [] };
+    window.importPreviewRows.push(fullRec);
+    currentMainRow = (status === 'valid' || status === 'dupe') ? fullRec : null;
   });
 
   renderImportPreview();
@@ -381,28 +396,35 @@ function buildImportPreview() {
 }
 
 function renderImportPreview() {
-  const valid = window.importPreviewRows.filter(r => r.status === 'valid').length;
-  const dupes = window.importPreviewRows.filter(r => r.status === 'dupe').length;
-  const bad   = window.importPreviewRows.filter(r => r.status === 'bad').length;
-  const noEmail = window.importPreviewRows.filter(r => r.status === 'valid' && !r.email).length;
+  const mainRows = window.importPreviewRows.filter(r => r.status !== 'extra-shareholder');
+  const valid = mainRows.filter(r => r.status === 'valid').length;
+  const dupes = mainRows.filter(r => r.status === 'dupe').length;
+  const bad   = mainRows.filter(r => r.status === 'bad').length;
+  const noEmail = mainRows.filter(r => r.status === 'valid' && !r.email).length;
+  const extraShareholderCount = window.importPreviewRows.filter(r => r.status === 'extra-shareholder').length;
 
   document.getElementById('import-stats').innerHTML = `
-    <div class="import-stat"><div class="num">${window.importPreviewRows.length}</div><div class="lbl">Rows in File</div></div>
+    <div class="import-stat"><div class="num">${mainRows.length}</div><div class="lbl">Companies in File</div></div>
     <div class="import-stat"><div class="num">${valid}</div><div class="lbl">Will Import</div></div>
     <div class="import-stat warn"><div class="num">${dupes}</div><div class="lbl">Duplicates Skipped</div></div>
     <div class="import-stat bad"><div class="num">${bad}</div><div class="lbl">Missing Name</div></div>
   `;
 
-  document.getElementById('import-warning').innerHTML = noEmail
-    ? `<div class="status-box status-info">⚠️ ${noEmail} of the clients being imported have no email address. You can add emails later from the Client Directory — the "Send Document" feature needs an email before it can be used for that client.</div>`
+  const noEmailMsg = noEmail
+    ? `⚠️ ${noEmail} of the clients being imported have no email address. You can add emails later from the Client Directory — the "Send Document" feature needs an email before it can be used for that client.`
     : '';
+  const extraMsg = extraShareholderCount
+    ? `ℹ️ Found ${extraShareholderCount} additional shareholder name${extraShareholderCount === 1 ? '' : 's'} in the file (rows with no company name, listed under the company above them) — these will be attached to their company, not imported as separate clients. Check the "Shareholders" column below.`
+    : '';
+  document.getElementById('import-warning').innerHTML = [noEmailMsg, extraMsg]
+    .filter(Boolean).map(m => `<div class="status-box status-info">${m}</div>`).join('');
 
   document.getElementById('import-preview-head').innerHTML = `
-    <tr><th></th><th>Name</th><th>Entity Type</th><th>Email</th><th>PAN</th><th>Phone</th></tr>
+    <tr><th></th><th>Name</th><th>Entity Type</th><th>Email</th><th>PAN</th><th>Phone</th><th>Shareholders</th></tr>
   `;
 
   const MAX_SHOW = 60;
-  const rowsToShow = window.importPreviewRows.slice(0, MAX_SHOW);
+  const rowsToShow = mainRows.slice(0, MAX_SHOW);
   document.getElementById('import-preview-body').innerHTML = rowsToShow.map(r => {
     const cls = r.status === 'dupe' ? 'row-dupe' : (r.status === 'bad' ? 'row-bad' : '');
     const tag = r.status === 'dupe'
@@ -410,6 +432,7 @@ function renderImportPreview() {
       : r.status === 'bad'
         ? '<span class="import-row-tag" style="background:#f5b7b1;color:var(--red);">NO NAME</span>'
         : '<span class="import-row-tag" style="background:#b7dfc9;color:var(--green);">NEW</span>';
+    const shareholders = [r.shareholder_name, ...(r.extraShareholders || [])].filter(Boolean);
     return `<tr class="${cls}">
       <td>${tag}</td>
       <td>${escHtml(r.name || '—')}</td>
@@ -417,9 +440,10 @@ function renderImportPreview() {
       <td>${escHtml(r.email || '—')}</td>
       <td>${escHtml(r.pan || '—')}</td>
       <td>${escHtml(r.phone || '—')}</td>
+      <td>${shareholders.length ? escHtml(shareholders.join(', ')) : '—'}</td>
     </tr>`;
-  }).join('') + (window.importPreviewRows.length > MAX_SHOW
-    ? `<tr><td colspan="6" style="text-align:center; color:var(--muted); padding:10px;">…and ${window.importPreviewRows.length - MAX_SHOW} more rows not shown (all will still be processed)</td></tr>`
+  }).join('') + (mainRows.length > MAX_SHOW
+    ? `<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:10px;">…and ${mainRows.length - MAX_SHOW} more rows not shown (all will still be processed)</td></tr>`
     : '');
 
   document.getElementById('import-confirm-btn').disabled = valid === 0;
@@ -429,22 +453,27 @@ function renderImportPreview() {
 }
 
 async function confirmImport() {
+  // Keep the original preview row alongside its payload so extraShareholders
+  // can be linked to the client id Supabase generates on insert.
   const rowsToInsert = window.importPreviewRows
     .filter(r => r.status === 'valid')
     .map(r => ({
-      name:            r.name,
-      email:           r.email || null,
-      pan:             r.pan || null,
-      phone:           r.phone || null,
-      entity_type:     r.entity_type || null,
-      business_nature: r.business_nature || null,
-      registration_number: r.registration_number || null,
-      chairman_name:       r.chairman_name || null,
-      shareholder_name:    r.shareholder_name || null,
-      authorized_capital:  r.authorized_capital || null,
-      issued_capital:      r.issued_capital || null,
-      paid_up_capital:     r.paid_up_capital || null,
-      address:         r.address || null,
+      sourceRow: r,
+      payload: {
+        name:            r.name,
+        email:           r.email || null,
+        pan:             r.pan || null,
+        phone:           r.phone || null,
+        entity_type:     r.entity_type || null,
+        business_nature: r.business_nature || null,
+        registration_number: r.registration_number || null,
+        chairman_name:       r.chairman_name || null,
+        shareholder_name:    r.shareholder_name || null,
+        authorized_capital:  r.authorized_capital || null,
+        issued_capital:      r.issued_capital || null,
+        paid_up_capital:     r.paid_up_capital || null,
+        address:         r.address || null,
+      },
     }));
 
   if (!rowsToInsert.length) return;
@@ -455,10 +484,11 @@ async function confirmImport() {
 
   const CHUNK = 100;
   let inserted = 0;
+  let shareholdersLinked = 0;
   for (let i = 0; i < rowsToInsert.length; i += CHUNK) {
     const chunk = rowsToInsert.slice(i, i + CHUNK);
     statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Importing ${inserted}/${rowsToInsert.length}…</div>`;
-    const { error } = await window.sb.from('clients').insert(chunk);
+    const { data, error } = await window.sb.from('clients').insert(chunk.map(c => c.payload)).select('id');
     if (error) {
       statusEl.innerHTML = `<div class="status-box status-error">❌ Stopped after ${inserted} rows: ${escHtml(error.message)}</div>`;
       btn.disabled = false;
@@ -466,9 +496,23 @@ async function confirmImport() {
       return;
     }
     inserted += chunk.length;
+
+    // Postgres/PostgREST returns inserted rows in the same order they were sent.
+    const shareholderRows = [];
+    (data || []).forEach((inserted, idx) => {
+      (chunk[idx].sourceRow.extraShareholders || []).forEach((name, sIdx) => {
+        shareholderRows.push({ client_id: inserted.id, name, sort_order: sIdx });
+      });
+    });
+    if (shareholderRows.length) {
+      const { error: shErr } = await window.sb.from('client_shareholders').insert(shareholderRows);
+      if (!shErr) shareholdersLinked += shareholderRows.length;
+    }
   }
 
-  statusEl.innerHTML = `<div class="status-box status-success">✅ Imported ${inserted} client${inserted === 1 ? '' : 's'} successfully.</div>`;
+  statusEl.innerHTML = `<div class="status-box status-success">✅ Imported ${inserted} client${inserted === 1 ? '' : 's'}` +
+    (shareholdersLinked ? ` and linked ${shareholdersLinked} additional shareholder${shareholdersLinked === 1 ? '' : 's'}` : '') +
+    ` successfully.</div>`;
   await loadClients();
   setTimeout(closeImportModal, 1200);
 }
