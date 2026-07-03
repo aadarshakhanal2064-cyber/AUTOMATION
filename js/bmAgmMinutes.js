@@ -6,20 +6,33 @@
 //  combined with clients.js's keyboard navigation, since report.js's
 //  own PAN search doesn't have keyboard nav to copy directly.
 // ════════════════════════════════════════════
+// Client data stores registration numbers (and sometimes PAN) in Devanagari
+// numerals, but people naturally type English digits on a keyboard. Normalize
+// both the typed value and the stored value to plain English digits before
+// comparing, so either digit system matches regardless of which was used to
+// store or search.
+const BM_DEVANAGARI_DIGITS = '०१२३४५६७८९';
+function bmToEnglishDigits(s) {
+  return String(s || '').replace(/[०-९]/g, d => String(BM_DEVANAGARI_DIGITS.indexOf(d)));
+}
+
 function handleBmRegNoSearch(val) {
   window.bmSelectedIdx = -1;
   const list = document.getElementById('bm-regNo-autocomplete-list');
   if (!val || val.length < 2 || !Array.isArray(window.clientsList)) { list.style.display = 'none'; return; }
 
-  const v = val.toLowerCase();
-  const matches = window.clientsList.filter(c => (c.registration_number || '').toLowerCase().includes(v)).slice(0, 8);
+  const v = bmToEnglishDigits(val).toLowerCase();
+  const matches = window.clientsList.filter(c =>
+    bmToEnglishDigits(c.registration_number).toLowerCase().includes(v) ||
+    bmToEnglishDigits(c.pan).toLowerCase().includes(v)
+  ).slice(0, 8);
 
   if (matches.length === 0) { list.style.display = 'none'; return; }
 
   list.innerHTML = matches.map((c, i) => `
     <div class="autocomplete-item" data-idx="${i}" onmousedown="selectBmClient('${c.id}')">
-      <div class="ac-name">${escHtml(c.registration_number)}</div>
-      <div class="ac-email">${escHtml(c.name)}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+      <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
+      <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
     </div>
   `).join('');
   list.style.display = 'block';
