@@ -333,6 +333,7 @@
           <button class="subtab-btn" onclick="switchRegdSub('auditorChange')" id="subtab-auditorChange">🧑‍💼 Auditor Change</button>
           <button class="subtab-btn" onclick="switchRegdSub('pinReset')" id="subtab-pinReset">🔑 PIN Reset</button>
           <button class="subtab-btn" onclick="switchRegdSub('bmAgmMinutes')" id="subtab-bmAgmMinutes">📝 BM/AGM Minutes</button>
+          <button class="subtab-btn" onclick="switchRegdSub('vatReturn')" id="subtab-vatReturn">🧾 VAT Return</button>
         </div>
 
         <!-- ── SUB: SHARE TRANSFER ── -->
@@ -704,6 +705,73 @@
             </div>
           </div>
         </div>
+
+        <!-- ── SUB: VAT RETURN ── -->
+        <div id="regd-vatReturn-panel" class="regd-sub-panel">
+          <div style="padding:24px;">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title" style="font-size:14px;">Company &amp; opening balance</div>
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>Company Name</label>
+                  <input type="text" id="vat-companyName" placeholder="e.g. Parewashwori Oil Stores Pvt.Ltd" />
+                </div>
+                <div class="form-group">
+                  <label>Address</label>
+                  <input type="text" id="vat-companyAddress" placeholder="e.g. Rapti-02, Gadauli, Chitwan" />
+                </div>
+              </div>
+              <div class="form-grid" style="gap:12px;">
+                <div class="form-group">
+                  <label>Opening Balance (last year's closing Total)</label>
+                  <input type="text" id="vat-openingBalance" placeholder="e.g. -986681 (leave blank if none)" />
+                </div>
+                <div class="form-group">
+                  <label>Fiscal Year</label>
+                  <input type="text" id="vat-fiscalYear" placeholder="Auto-filled from PDF after extraction — confirm it" />
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title" style="font-size:14px;">Upload VAT Return PDF</div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <input type="file" id="vat-pdfFile" accept="application/pdf" />
+              </div>
+              <button class="btn btn-primary" onclick="vatExtractPdf()">🔎 Extract from PDF</button>
+              <div id="vat-status"></div>
+            </div>
+
+            <div class="card" id="vat-review-card" style="display:none;">
+              <div class="card-header">
+                <div class="card-title" style="font-size:14px;">Review extracted data</div>
+                <div class="card-desc">Values with a low confidence or a failed checksum are highlighted — correct them before generating.</div>
+              </div>
+              <div class="table-wrap" style="overflow-x:auto;">
+                <table class="client-table" id="vat-review-table" style="min-width:1400px;">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Taxable Sales</th><th>VAT</th><th>Tax Free Sales</th>
+                      <th>Taxable Purchase</th><th>VAT</th><th>Tax Free Purchase</th>
+                      <th>Taxable Import</th><th>VAT</th><th>Tax Free Import</th>
+                      <th>Adj. Sales</th><th>Adj. Purchase</th>
+                      <th>Checksum</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vat-review-tbody"></tbody>
+                </table>
+              </div>
+              <div class="action-row">
+                <button class="btn btn-primary" onclick="vatGenerateExcel()">⚙️ Generate &amp; Download Excel</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -989,6 +1057,9 @@
 <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>
@@ -996,6 +1067,7 @@
 <script src="js/registrar.js"></script>
 <script src="js/clients.js"></script>
 <script src="js/logs.js"></script>
+<script src="js/vatReturn.js"></script>
 <script src="js/sendDocument.js"></script>
 <script src="js/report.js"></script>
 <script src="js/bmAgmMinutes.js"></script>

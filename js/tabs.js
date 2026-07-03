@@ -16,7 +16,7 @@ function switchTab(tab) {
 //  COMPANY REGISTRAR — SUB-TAB SWITCHING (UI shell only, logic TBD)
 // ════════════════════════════════════════════
 function switchRegdSub(sub) {
-  const subs = ['shareTransfer','increaseCapital','companyRegistration','auditorChange','pinReset','bmAgmMinutes'];
+  const subs = ['shareTransfer','increaseCapital','companyRegistration','auditorChange','pinReset','bmAgmMinutes','vatReturn'];
   subs.forEach(s => {
     document.getElementById('regd-' + s + '-panel').classList.toggle('active', s === sub);
     document.getElementById('subtab-' + s).classList.toggle('active', s === sub);
