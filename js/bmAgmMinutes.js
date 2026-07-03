@@ -222,6 +222,30 @@ function bmBuildData() {
   }};
 }
 
+// Template bytes never change at runtime — fetch once, reuse the ArrayBuffer
+// for every render (preview re-renders happen far more often than downloads).
+let bmTemplateBufferPromise = null;
+function bmGetTemplateBuffer() {
+  if (!bmTemplateBufferPromise) {
+    bmTemplateBufferPromise = fetch(BM_TEMPLATE_URL).then(resp => {
+      if (!resp.ok) throw new Error('Template file not found at ' + BM_TEMPLATE_URL);
+      return resp.arrayBuffer();
+    }).catch(err => { bmTemplateBufferPromise = null; throw err; });
+  }
+  return bmTemplateBufferPromise;
+}
+
+// Fills the template with `data` (the shape produced by bmBuildData().data) and
+// returns the resulting .docx as a Blob. Shared by the Word download and the
+// live preview so there is exactly one place that drives document generation.
+async function bmRenderDocx(data) {
+  const buffer = await bmGetTemplateBuffer();
+  const zip = new PizZip(buffer.slice(0));
+  const doc = new window.docxtemplater(zip, { delimiters: { start: '{{', end: '}}' }, paragraphLoop: true, linebreaks: true });
+  doc.render(data);
+  return doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
 async function generateBmAgmMinutes() {
   const val = id => document.getElementById(id).value.trim();
   if (!val('bm-companyName')) { bmStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return; }
@@ -232,12 +256,7 @@ async function generateBmAgmMinutes() {
 
   try {
     bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
-    const resp = await fetch(BM_TEMPLATE_URL);
-    if (!resp.ok) throw new Error('Template file not found at ' + BM_TEMPLATE_URL);
-    const zip = new PizZip(await resp.arrayBuffer());
-    const doc = new window.docxtemplater(zip, { delimiters: { start: '{{', end: '}}' }, paragraphLoop: true, linebreaks: true });
-    doc.render(data);
-    const blob = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const blob = await bmRenderDocx(data);
     const fname = ('BM-AGM ' + data.companyName + ' ' + document.getElementById('bm-fiscalYear').value + '.docx').replace(/[\\/:*?"<>|]/g, '_');
     bmDownloadBlob(blob, fname);
     bmStatus('✅ कागजात तयार भयो — डाउनलोड भयो (generated & downloaded).', 'success');
