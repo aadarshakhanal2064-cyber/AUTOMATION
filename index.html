@@ -551,97 +551,149 @@
 
         <!-- ── SUB: BM/AGM MINUTES ── -->
         <div id="regd-bmAgmMinutes-panel" class="regd-sub-panel">
-          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
-            <div style="padding:24px; border-right:1px solid var(--border); overflow-y:auto;">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Registration Number</label>
+          <div class="bm-editor-shell">
+            <div class="bm-editor-left">
+              <div class="form-group" style="margin-bottom:18px;">
+                <label>Search Company</label>
                 <input type="text" id="bm-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" oninput="handleBmRegNoSearch(this.value)" onkeydown="handleBmRegNoKey(event)" />
                 <div class="autocomplete-list" id="bm-regNo-autocomplete-list" style="display:none;"></div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Name</label>
-                <input type="text" id="bm-companyName" placeholder="Auto-filled when you select a company…" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>PAN</label>
-                <input type="text" id="bm-pan" placeholder="Auto-filled when you select a company…" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Address</label>
-                <input type="text" id="bm-address" placeholder="Auto-filled when you select a company…" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Chairman Name</label>
-                <input type="text" id="bm-chairmanName" placeholder="Auto-filled when you select a company…" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Shareholder Name</label>
-                <input type="text" id="bm-shareholderName" placeholder="Auto-filled when you select a company…" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <div id="bm-extra-shareholders"></div>
-                <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="bmAddShareholderRow()">+ Add Shareholder</button>
-              </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>Authorized Share Capital</label>
-                  <input type="text" id="bm-authCapital" placeholder="e.g. 25,00,000" />
+
+              <div class="card bm-summary-card" id="bm-company-summary" style="display:none;">
+                <div class="bm-summary-header">
+                  <div class="bm-summary-title">Company</div>
+                  <button type="button" class="btn btn-outline btn-sm" id="bm-edit-toggle-btn" onclick="bmToggleCompanyEdit()">Edit Company Details</button>
                 </div>
-                <div class="form-group">
-                  <label>Issued Capital</label>
-                  <input type="text" id="bm-issuedCapital" placeholder="e.g. 25,00,000" />
-                </div>
+                <div class="bm-summary-grid" id="bm-summary-grid"></div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Paid-up Capital</label>
-                <input type="text" id="bm-paidUpCapital" placeholder="e.g. 25,00,000" />
-              </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>Date of Board Meeting (B.S.)</label>
-                  <input type="text" id="bm-bmDate" placeholder="e.g. 2079/09/01" autocomplete="off" />
+
+              <div class="card" id="bm-company-edit-fields">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Company Details</div>
                 </div>
-                <div class="form-group">
-                  <label>Date of AGM (B.S.)</label>
-                  <input type="text" id="bm-agmDate" placeholder="e.g. 2079/09/15" autocomplete="off" />
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Company Name</label>
+                  <input type="text" id="bm-companyName" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>PAN</label>
+                  <input type="text" id="bm-pan" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Address</label>
+                  <input type="text" id="bm-address" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Chairman Name</label>
+                  <input type="text" id="bm-chairmanName" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Shareholder Name</label>
+                  <input type="text" id="bm-shareholderName" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Additional Shareholders</label>
+                  <div id="bm-extra-shareholders"></div>
+                  <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="bmAddShareholderRow()">+ Add Shareholder</button>
                 </div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Time of AGM</label>
-                <input type="text" id="bm-agmTime" placeholder="e.g. 11:00" value="11:00" autocomplete="off" />
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Meeting Information</div>
+                </div>
+                <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                  <div class="form-group">
+                    <label>Date of Board Meeting (B.S.)</label>
+                    <input type="text" id="bm-bmDate" placeholder="e.g. 2079/09/01" autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label>Date of AGM (B.S.)</label>
+                    <input type="text" id="bm-agmDate" placeholder="e.g. 2079/09/15" autocomplete="off" />
+                  </div>
+                </div>
+                <div class="form-grid" style="gap:12px;">
+                  <div class="form-group">
+                    <label>Time of AGM</label>
+                    <input type="text" id="bm-agmTime" placeholder="e.g. 11:00" value="11:00" autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label>Nepal Fiscal Year</label>
+                    <select id="bm-fiscalYear">
+                      <option value="2078-79">2078/79</option>
+                      <option value="2079-80">2079/80</option>
+                      <option value="2080-81">2080/81</option>
+                      <option value="2081-82" selected>2081/82</option>
+                      <option value="2082-83">2082/83</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Nepal Fiscal Year</label>
-                <select id="bm-fiscalYear">
-                  <option value="2078-79">2078/79</option>
-                  <option value="2079-80">2079/80</option>
-                  <option value="2080-81">2080/81</option>
-                  <option value="2081-82" selected>2081/82</option>
-                  <option value="2082-83">2082/83</option>
-                </select>
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Auditor Information</div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Upcoming Auditor</label>
+                  <select id="bm-auditorFirm">
+                    <option value="">— Select Auditor —</option>
+                    <option value="0">शैलेश एण्ड एसोसिएट्स — CA शैलेश डल्लाकोटी</option>
+                    <option value="1">डल्लाकोटी एण्ड कम्पनी — RA देवी प्रसाद डल्लाकोटी</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Upcoming Auditor</label>
-                <select id="bm-auditorFirm">
-                  <option value="">— Select Auditor —</option>
-                  <option value="0">शैलेश एण्ड एसोसिएट्स — CA शैलेश डल्लाकोटी</option>
-                  <option value="1">डल्लाकोटी एण्ड कम्पनी — RA देवी प्रसाद डल्लाकोटी</option>
-                </select>
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Financial Information</div>
+                </div>
+                <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                  <div class="form-group">
+                    <label>Authorized Share Capital</label>
+                    <input type="text" id="bm-authCapital" placeholder="e.g. 25,00,000" />
+                  </div>
+                  <div class="form-group">
+                    <label>Issued Capital</label>
+                    <input type="text" id="bm-issuedCapital" placeholder="e.g. 25,00,000" />
+                  </div>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Paid-up Capital</label>
+                  <input type="text" id="bm-paidUpCapital" placeholder="e.g. 25,00,000" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Audit Fee</label>
+                  <input type="text" id="bm-auditFee" placeholder="e.g. 50,000" />
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom:24px;">
-                <label>Audit Fee</label>
-                <input type="text" id="bm-auditFee" placeholder="e.g. 50,000" />
-              </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="generateBmAgmMinutes()">⚙️ Generate &amp; Download</button>
+
               <div id="bm-status"></div>
             </div>
-            <div style="background:#f8fafc; padding:24px; overflow-y:auto;">
-              <div class="regd-preview-placeholder" id="bm-preview-placeholder">
-                <div class="icon">📝</div>
-                <p>BM/AGM Minutes document preview will appear here.</p>
+
+            <div class="bm-editor-right">
+              <div class="bm-preview-toolbar">
+                <span class="bm-preview-label">Live Preview</span>
               </div>
-              <div id="bm-preview-style"></div>
-              <div id="bm-preview-root" class="bm-preview-root" style="display:none;"></div>
+              <div class="bm-preview-scroll">
+                <div class="regd-preview-placeholder" id="bm-preview-placeholder">
+                  <div class="icon">📝</div>
+                  <p>Select a company and enter the meeting dates to see a live preview.</p>
+                </div>
+                <div id="bm-preview-style"></div>
+                <div id="bm-preview-root" class="bm-preview-root" style="display:none;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bm-action-bar">
+            <div class="bm-completion-indicator" id="bm-completion-indicator"></div>
+            <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="bmScrollToPreview()">👁️ Preview</button>
+              <button type="button" class="btn btn-outline" onclick="generateBmAgmMinutes()">⬇️ Download Word</button>
+              <button type="button" class="btn btn-outline" onclick="bmDownloadPdf()">⬇️ Download PDF</button>
+              <button type="button" class="btn btn-outline" onclick="bmPrintDocument()">🖨️ Print</button>
+              <button type="button" class="btn btn-danger" onclick="bmResetForm()">Reset</button>
             </div>
           </div>
         </div>

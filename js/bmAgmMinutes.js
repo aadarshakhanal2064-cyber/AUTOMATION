@@ -81,7 +81,48 @@ async function selectBmClient(id) {
     .order('sort_order');
   if (!error && data) data.forEach(row => bmAddShareholderRow(row.name));
 
+  bmRenderCompanySummary(c);
   bmSchedulePreviewRefresh();
+}
+
+// ── Compact company summary card ──
+// Once a company is selected, its rarely-re-edited fields (name, PAN,
+// address, etc.) collapse into this summary instead of permanently
+// occupying form space — "Edit Company Details" re-reveals the raw inputs.
+function bmRenderCompanySummary(c) {
+  const wrap = document.getElementById('bm-company-summary');
+  const grid = document.getElementById('bm-summary-grid');
+  const editFields = document.getElementById('bm-company-edit-fields');
+  const toggleBtn = document.getElementById('bm-edit-toggle-btn');
+  if (!wrap || !grid || !editFields) return;
+
+  const rows = [
+    ['Company', c.name],
+    ['Registration', c.registration_number],
+    ['Chairman', c.chairman_name],
+    ['Shareholders', String(bmGetAllShareholderNames().length)],
+    ['PAN', c.pan],
+    ['Address', c.address],
+  ];
+  grid.innerHTML = rows.map(([label, value]) => `
+    <div class="bm-summary-row">
+      <div class="bm-summary-label">${escHtml(label)}</div>
+      <div class="bm-summary-value">${escHtml(value || '—')}</div>
+    </div>
+  `).join('');
+
+  wrap.style.display = 'block';
+  editFields.style.display = 'none';
+  if (toggleBtn) toggleBtn.textContent = 'Edit Company Details';
+}
+
+function bmToggleCompanyEdit() {
+  const editFields = document.getElementById('bm-company-edit-fields');
+  const toggleBtn = document.getElementById('bm-edit-toggle-btn');
+  if (!editFields) return;
+  const willOpen = editFields.style.display === 'none';
+  editFields.style.display = willOpen ? 'block' : 'none';
+  if (toggleBtn) toggleBtn.textContent = willOpen ? 'Hide Company Details' : 'Edit Company Details';
 }
 
 // ── Dynamic "additional shareholder" rows ──
@@ -338,3 +379,38 @@ document.addEventListener('DOMContentLoaded', function () {
   panel.addEventListener('input', e => { if (e.target.matches('input, select, textarea')) bmSchedulePreviewRefresh(); });
   panel.addEventListener('change', e => { if (e.target.matches('input, select, textarea')) bmSchedulePreviewRefresh(); });
 });
+
+// ════════════════════════════════════════════
+//  BM/AGM MINUTES — sticky action bar
+// ════════════════════════════════════════════
+function bmScrollToPreview() {
+  const right = document.querySelector('.bm-editor-right');
+  if (right) right.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Print/PDF export land in a follow-up change; the buttons are wired now so
+// the action bar is complete, with a friendly placeholder until then.
+function bmPrintDocument() {
+  bmStatus('🖨️ Print support is coming in the next update.', 'info');
+}
+function bmDownloadPdf() {
+  bmStatus('📄 PDF export is coming in the next update.', 'info');
+}
+
+function bmResetForm() {
+  const panel = document.getElementById('regd-bmAgmMinutes-panel');
+  if (!panel) return;
+  panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
+  document.getElementById('bm-agmTime').value = '11:00';
+  document.getElementById('bm-fiscalYear').value = '2081-82';
+  document.getElementById('bm-auditorFirm').value = '';
+  bmClearExtraShareholders();
+
+  document.getElementById('bm-company-summary').style.display = 'none';
+  document.getElementById('bm-company-edit-fields').style.display = 'block';
+  const toggleBtn = document.getElementById('bm-edit-toggle-btn');
+  if (toggleBtn) toggleBtn.textContent = 'Edit Company Details';
+
+  document.getElementById('bm-status').innerHTML = '';
+  bmShowPreviewPlaceholder();
+}

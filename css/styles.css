@@ -485,6 +485,59 @@ textarea { resize: vertical; min-height: 100px; }
 .regd-preview-placeholder .icon { font-size:34px; opacity:0.5; }
 .regd-preview-placeholder p { font-size: 13.5px; max-width:220px; }
 
+/* ── BM/AGM MINUTES — document-editor layout ── */
+/* min-width:0 on the grid/flex items below overrides the default min-width:auto
+   that grid/flex children get — without it, docx-preview's fixed-width rendered
+   page (~900px) forces its ancestors to blow out past the viewport on narrow
+   screens instead of scrolling internally. */
+.bm-editor-shell { display: grid; grid-template-columns: 420px 1fr; min-width: 0; }
+.bm-editor-left {
+  padding: 20px; border-right: 1px solid var(--border); overflow-y: auto; min-width: 0;
+  max-height: calc(100vh - var(--topbar-h) - 260px); min-height: 420px;
+}
+.bm-editor-left .card { padding: 18px; margin-bottom: 16px; }
+.bm-editor-left .card-header { margin-bottom: 14px; padding-bottom: 12px; }
+.bm-editor-right {
+  background: #f8fafc; display: flex; flex-direction: column; min-width: 0;
+  max-height: calc(100vh - var(--topbar-h) - 260px); min-height: 420px;
+}
+.bm-preview-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--white); flex-shrink: 0;
+}
+.bm-preview-label { font-size: 12.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.bm-zoom-controls { display: flex; align-items: center; gap: 8px; }
+.bm-zoom-controls span { font-size: 12.5px; font-weight: 600; color: var(--text-muted); min-width: 38px; text-align: center; }
+.bm-preview-scroll { flex: 1; overflow: auto; padding: 24px; min-width: 0; }
+.bm-preview-root { transform-origin: top center; transition: transform 0.15s; }
+
+.bm-summary-card { padding: 18px; }
+.bm-summary-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.bm-summary-title { font-size: 14px; font-weight: 700; color: var(--brand-navy); }
+.bm-summary-grid { display: flex; flex-direction: column; gap: 10px; }
+.bm-summary-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding-bottom: 10px; border-bottom: 1px solid var(--border-soft); }
+.bm-summary-row:last-child { border-bottom: none; padding-bottom: 0; }
+.bm-summary-label { color: var(--text-muted); font-weight: 500; flex-shrink: 0; }
+.bm-summary-value { color: var(--text-main); font-weight: 600; text-align: right; }
+
+.bm-action-bar {
+  position: sticky; bottom: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 14px 20px; background: var(--white); border-top: 1px solid var(--border); box-shadow: var(--shadow-md);
+}
+.bm-action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.bm-completion-indicator { font-size: 12.5px; color: var(--text-muted); font-weight: 500; }
+.field-error-msg { font-size: 12px; color: var(--red-dk); margin-top: 4px; display: none; }
+.field-error-msg.show { display: block; }
+
+@media (max-width: 1000px) {
+  .bm-editor-shell { grid-template-columns: 1fr; }
+  .bm-editor-left, .bm-editor-right { max-height: none; overflow-y: visible; }
+  .bm-editor-left { border-right: none; border-bottom: 1px solid var(--border); }
+  .bm-action-bar { flex-direction: column; align-items: stretch; }
+  .bm-action-buttons { justify-content: center; }
+}
+
 /* ── MISC / SPECIFICS ── */
 .action-row { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
 .entity-badge { background: #eef1fa; color: #334155; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
