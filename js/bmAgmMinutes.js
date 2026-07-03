@@ -166,6 +166,13 @@ function bmDownloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Chairman is always attendee #1; every shareholder (the fixed field plus any
+// added rows) is numbered #2 onward, in Devanagari, for the template's
+// {{#shareholders}} loop.
+function bmBuildShareholderList() {
+  return bmGetAllShareholderNames().map((name, i) => ({ num: bmToDevanagari(String(i + 2)), name }));
+}
+
 function bmBuildData() {
   const $ = id => document.getElementById(id).value.trim();
   const bm = bmParseBsDate($('bm-bmDate'));
@@ -175,7 +182,7 @@ function bmBuildData() {
     companyName:        $('bm-companyName'),
     registrationNumber: $('bm-regNo'),
     chairmanName:       $('bm-chairmanName'),
-    shareholderName:    $('bm-shareholderName'),
+    shareholders:       bmBuildShareholderList(),
     auditorName:        $('bm-newAuditorName'),
     auditFee:           bmFormatAmount($('bm-auditFee')),
     authorizedCapital:  bmFormatAmount($('bm-authCapital')),
