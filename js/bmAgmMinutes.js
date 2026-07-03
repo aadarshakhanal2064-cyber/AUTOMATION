@@ -368,9 +368,109 @@ async function bmRefreshPreview() {
 
     placeholder.style.display = 'none';
     root.style.display = 'block';
+    bmWireEditableTokens(data);
   } catch (err) {
     console.error('BM/AGM preview render failed:', err);
   }
+}
+
+// ════════════════════════════════════════════
+//  BM/AGM MINUTES — inline click-to-edit in the preview
+//  Only wraps values that flow into the template completely unchanged
+//  (company name, chairman name, shareholder names, registration number).
+//  Capital figures, the audit fee, and dates are converted (Devanagari
+//  digits, comma grouping, B.S. date parsing) before they reach the
+//  template, so their rendered text can't be written straight back to the
+//  raw form value without reversing that conversion — those stay
+//  read-only in the preview and are edited via the form instead.
+// ════════════════════════════════════════════
+function bmEditableTokenTargets(data) {
+  const targets = [
+    { field: 'bm-companyName', value: data.companyName },
+    { field: 'bm-regNo', value: data.registrationNumber },
+    { field: 'bm-chairmanName', value: data.chairmanName },
+  ];
+  const extraInputs = document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input');
+  (data.shareholders || []).forEach((sh, i) => {
+    if (i === 0) targets.push({ field: 'bm-shareholderName', value: sh.name });
+    else if (extraInputs[i - 1]) targets.push({ el: extraInputs[i - 1], value: sh.name });
+  });
+  return targets.filter(t => t.value);
+}
+
+// Walks the rendered preview's text nodes in document order and wraps the
+// first occurrence of each target value in a clickable span. This only
+// touches the preview's own DOM after rendering — it can never affect the
+// actual generated document, since that always comes from bmBuildData().
+function bmWireEditableTokens(data) {
+  const root = document.getElementById('bm-preview-root');
+  if (!root) return;
+
+  const remaining = bmEditableTokenTargets(data);
+  if (!remaining.length) return;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+
+  for (const node of nodes) {
+    if (!remaining.length) break;
+    const text = node.nodeValue;
+    for (let i = 0; i < remaining.length; i++) {
+      const idx = text.indexOf(remaining[i].value);
+      if (idx === -1) continue;
+      bmWrapTextRange(node, idx, remaining[i].value.length, remaining[i]);
+      remaining.splice(i, 1);
+      break;
+    }
+  }
+}
+
+function bmWrapTextRange(node, start, len, target) {
+  const parent = node.parentNode;
+  if (!parent) return;
+  const after = node.splitText(start);
+  after.splitText(len);
+  const span = document.createElement('span');
+  span.className = 'bm-token-editable';
+  span.title = 'Click to edit';
+  span.textContent = after.nodeValue;
+  parent.replaceChild(span, after);
+  span.addEventListener('click', () => bmActivateTokenEdit(span, target));
+}
+
+function bmActivateTokenEdit(span, target) {
+  if (span.classList.contains('editing')) return;
+  span.classList.add('editing');
+  span.contentEditable = 'true';
+  span.focus();
+  document.getSelection().selectAllChildren(span);
+
+  // If this value lives inside the collapsed company-edit section, open it
+  // so the underlying field is visible while the user edits.
+  const editFields = document.getElementById('bm-company-edit-fields');
+  const companyFields = ['bm-companyName', 'bm-pan', 'bm-address', 'bm-chairmanName', 'bm-shareholderName'];
+  if (editFields && (companyFields.includes(target.field) || target.el) && editFields.style.display === 'none') {
+    bmToggleCompanyEdit();
+  }
+
+  const onKeydown = e => {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); span.blur(); }
+  };
+  const commit = () => {
+    span.classList.remove('editing');
+    span.contentEditable = 'false';
+    span.removeEventListener('keydown', onKeydown);
+    const newValue = span.textContent.trim();
+    const input = target.field ? document.getElementById(target.field) : target.el;
+    if (input && newValue) {
+      input.value = newValue;
+      bmSchedulePreviewRefresh();
+    }
+  };
+  span.addEventListener('blur', commit, { once: true });
+  span.addEventListener('keydown', onKeydown);
 }
 
 document.addEventListener('DOMContentLoaded', function () {

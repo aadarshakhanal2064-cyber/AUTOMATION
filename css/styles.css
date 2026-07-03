@@ -510,6 +510,9 @@ textarea { resize: vertical; min-height: 100px; }
 .bm-zoom-controls span { font-size: 12.5px; font-weight: 600; color: var(--text-muted); min-width: 38px; text-align: center; }
 .bm-preview-scroll { flex: 1; overflow: auto; padding: 24px; min-width: 0; }
 .bm-preview-root { transform-origin: top center; transition: transform 0.15s; }
+.bm-token-editable { cursor: text; border-radius: 3px; padding: 0 1px; transition: background 0.15s; }
+.bm-token-editable:hover { background: var(--blue-bg); }
+.bm-token-editable.editing { background: var(--yellow-bg); outline: 1px dashed var(--yellow-dk); outline-offset: 1px; }
 
 .bm-summary-card { padding: 18px; }
 .bm-summary-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
