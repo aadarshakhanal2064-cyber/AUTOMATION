@@ -488,13 +488,54 @@ function bmScrollToPreview() {
   if (right) right.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Print/PDF export land in a follow-up change; the buttons are wired now so
-// the action bar is complete, with a friendly placeholder until then.
-function bmPrintDocument() {
-  bmStatus('🖨️ Print support is coming in the next update.', 'info');
+// Mirrors report.js's buildRepPrintableDoc()/printAuditReport() pattern:
+// open the rendered preview in its own tab and let the browser handle
+// print/PDF. "Download PDF" reuses the exact same window — the user picks
+// "Save as PDF" as the print destination — so print and PDF are always
+// byte-for-byte the same rendering as the preview, with no separate
+// PDF-generation dependency whose Devanagari/Mangal font support would need
+// its own validation.
+function bmBuildPrintableDoc() {
+  const root = document.getElementById('bm-preview-root');
+  const styleEl = document.getElementById('bm-preview-style');
+  if (!root || !root.innerHTML.trim()) return null;
+
+  const docxCss = styleEl ? styleEl.innerHTML : '';
+  const appCss = Array.from(document.styleSheets).map(sheet => {
+    try { return Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); }
+    catch (e) { return ''; }
+  }).join('\n');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BM/AGM Minutes</title><style>
+    body { margin:0; background:#fff; padding:24px; }
+    ${appCss}
+    ${docxCss}
+    @media print {
+      body { padding:0; background:#fff; }
+      .bm-docx-wrapper { background:#fff !important; padding:0 !important; }
+      .bm-docx-wrapper > section.bm-docx { box-shadow:none !important; }
+    }
+  </style></head><body>${root.innerHTML}
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
+  </body></html>`;
 }
+
+function bmOpenPrintWindow(successMessage) {
+  const html = bmBuildPrintableDoc();
+  if (!html) { bmStatus('कृपया पहिले कम्पनी र मितिहरू भर्नुहोस् (fill in the company and dates to build a preview first).', 'info'); return; }
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) { bmStatus('❌ पप-अप रोकियो — कृपया पप-अपलाई अनुमति दिनुहोस् (pop-up blocked — please allow pop-ups for this site, then try again).', 'error'); return; }
+  if (successMessage) bmStatus(successMessage, 'success');
+}
+
+function bmPrintDocument() {
+  bmOpenPrintWindow();
+}
+
 function bmDownloadPdf() {
-  bmStatus('📄 PDF export is coming in the next update.', 'info');
+  bmOpenPrintWindow('📄 प्रिन्ट विन्डो खुल्यो — गन्तव्यको रूपमा "Save as PDF" रोज्नुहोस् (a print window opened — choose "Save as PDF" as the destination).');
 }
 
 function bmResetForm() {
