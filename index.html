@@ -635,11 +635,13 @@
               <button class="btn btn-primary" style="width:100%;" onclick="generateBmAgmMinutes()">⚙️ Generate &amp; Download</button>
               <div id="bm-status"></div>
             </div>
-            <div style="background:#f8fafc; padding:24px;">
-              <div class="regd-preview-placeholder">
+            <div style="background:#f8fafc; padding:24px; overflow-y:auto;">
+              <div class="regd-preview-placeholder" id="bm-preview-placeholder">
                 <div class="icon">📝</div>
                 <p>BM/AGM Minutes document preview will appear here.</p>
               </div>
+              <div id="bm-preview-style"></div>
+              <div id="bm-preview-root" class="bm-preview-root" style="display:none;"></div>
             </div>
           </div>
         </div>
@@ -926,6 +928,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
 
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>

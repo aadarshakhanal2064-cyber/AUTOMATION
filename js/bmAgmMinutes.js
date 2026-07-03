@@ -80,6 +80,8 @@ async function selectBmClient(id) {
     .eq('client_id', c.id)
     .order('sort_order');
   if (!error && data) data.forEach(row => bmAddShareholderRow(row.name));
+
+  bmSchedulePreviewRefresh();
 }
 
 // ── Dynamic "additional shareholder" rows ──
@@ -92,10 +94,11 @@ function bmAddShareholderRow(name) {
   row.style.cssText = 'display:flex; gap:8px; margin-top:8px;';
   row.innerHTML = `
     <input type="text" class="bm-extra-shareholder-input" placeholder="Additional shareholder name" style="flex:1;" />
-    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">Remove</button>
+    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove(); bmSchedulePreviewRefresh();">Remove</button>
   `;
   wrap.appendChild(row);
   if (name) row.querySelector('input').value = name;
+  bmSchedulePreviewRefresh();
 }
 
 function bmClearExtraShareholders() {
@@ -264,3 +267,74 @@ async function generateBmAgmMinutes() {
     bmStatus('❌ ' + (err.message || 'Generation failed'), 'error');
   }
 }
+
+// ════════════════════════════════════════════
+//  BM/AGM MINUTES — live preview
+//  Renders the SAME .docx produced by bmRenderDocx() into the preview pane
+//  via docx-preview, so the preview is never a second, independently-
+//  maintained representation of the document that could drift from the real
+//  Word file — it IS the Word file, just displayed as HTML.
+// ════════════════════════════════════════════
+let bmPreviewDebounceTimer = null;
+let bmPreviewRenderToken = 0;
+
+function bmSchedulePreviewRefresh() {
+  clearTimeout(bmPreviewDebounceTimer);
+  bmPreviewDebounceTimer = setTimeout(bmRefreshPreview, 500);
+}
+
+function bmPreviewReady() {
+  const val = id => document.getElementById(id).value.trim();
+  return !!(val('bm-companyName') && val('bm-bmDate') && val('bm-agmDate'));
+}
+
+function bmShowPreviewPlaceholder() {
+  const placeholder = document.getElementById('bm-preview-placeholder');
+  const root = document.getElementById('bm-preview-root');
+  if (placeholder) placeholder.style.display = 'flex';
+  if (root) root.style.display = 'none';
+}
+
+// A monotonically increasing token guards against an older, slower render
+// (e.g. the template's first-ever fetch) overwriting a newer one that
+// started after further typing — the last input always wins.
+async function bmRefreshPreview() {
+  const placeholder = document.getElementById('bm-preview-placeholder');
+  const root = document.getElementById('bm-preview-root');
+  if (!placeholder || !root || !window.docx) return;
+
+  if (!bmPreviewReady()) { bmShowPreviewPlaceholder(); return; }
+
+  const { bm, agm, data } = bmBuildData();
+  if (!bm || !agm) { bmShowPreviewPlaceholder(); return; }
+
+  const myToken = ++bmPreviewRenderToken;
+  try {
+    const blob = await bmRenderDocx(data);
+    if (myToken !== bmPreviewRenderToken) return;
+    const buffer = await blob.arrayBuffer();
+    if (myToken !== bmPreviewRenderToken) return;
+
+    root.innerHTML = '';
+    await window.docx.renderAsync(buffer, root, document.getElementById('bm-preview-style'), {
+      className: 'bm-docx',
+      inWrapper: true,
+      breakPages: true,
+      ignoreLastRenderedPageBreak: true,
+      experimental: true,
+    });
+    if (myToken !== bmPreviewRenderToken) return;
+
+    placeholder.style.display = 'none';
+    root.style.display = 'block';
+  } catch (err) {
+    console.error('BM/AGM preview render failed:', err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  const panel = document.getElementById('regd-bmAgmMinutes-panel');
+  if (!panel) return;
+  panel.addEventListener('input', e => { if (e.target.matches('input, select, textarea')) bmSchedulePreviewRefresh(); });
+  panel.addEventListener('change', e => { if (e.target.matches('input, select, textarea')) bmSchedulePreviewRefresh(); });
+});
