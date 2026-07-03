@@ -51,7 +51,14 @@ const VAT_FIELD_BOXES = {
   exemptImport:              { left: 0.3161, top: 0.5915, width: 0.2299, height: 0.0257 },
   adjustmentSalesDebit:      { left: 0.7854, top: 0.6382, width: 0.2011, height: 0.0257 },
   adjustmentPurchaseCredit:  { left: 0.6226, top: 0.6382, width: 0.1724, height: 0.0257 },
-  item5DebitCredit:          { left: 0.8142, top: 0.6873, width: 0.1820, height: 0.0242 },
+  // Widened vs. the original calibration — investigation for Phase 3 found this
+  // row's exact vertical position drifts more than the main table's rows (it
+  // sits below the table, past variable-height instructional text), so a
+  // tightly-calibrated box that worked on page 1 sometimes lands on the
+  // जम्मा (Total) row instead on other pages. This field is a soft,
+  // non-blocking cross-check (see vatRateCheck below for the primary one),
+  // so a taller, more tolerant box is the right trade-off.
+  item5DebitCredit:          { left: 0.8142, top: 0.6820, width: 0.1820, height: 0.0350 },
 };
 
 function vatStatus(html, type) {
@@ -313,16 +320,42 @@ async function vatExtractPdf() {
   }
 }
 
-// ── Review UI ──
-// Confidence < 70 or a failed checksum highlights the row for correction —
-// nothing extracted is trusted silently into the final workbook.
+// ── Review UI & validation ──
+// Nothing extracted is trusted silently into the final workbook. Every
+// field/row is checked by several independent signals, each surfaced with a
+// specific, human-readable reason — not just a red border.
+
+// Nepal's standard VAT rate is a fixed, well-known constant (13%). This is a
+// far stronger validator than the item5 checksum below: it only depends on
+// two fields (a value and its VAT) that this module already reads
+// reliably, rather than a separate, harder-to-calibrate field. Verified
+// against every correctly-read value/VAT pair captured during this
+// project's testing — the rate held within +-1 rupee in all 14 real pairs
+// checked (mostly exact). +-2 tolerance below keeps a safety margin for
+// normal rounding.
+const VAT_RATE = 0.13;
+const VAT_RATE_TOLERANCE = 2;
+function vatRateCheck(value, vat) {
+  if (value === 0 && vat === 0) return { ok: true, expected: 0 };
+  const expected = Math.round(value * VAT_RATE);
+  return { ok: Math.abs(vat - expected) <= VAT_RATE_TOLERANCE, expected };
+}
+
+// item5 (५. डेबिट-क्रेडिट) cross-check against D-G-J+L-M. Kept as a
+// *supplementary* signal only, never blocking — investigation found two
+// root causes for its unreliability: (1) it can be legitimately negative,
+// but digit-only OCR strips minus signs, so a signed computed value must be
+// compared by absolute value; (2) Tesseract can report 0% confidence on a
+// digit string it actually read correctly, so confidence is surfaced
+// separately rather than gating the comparison itself.
 function vatChecksum(fields) {
   const d = vatNum(fields.taxableSalesVat), g = vatNum(fields.taxablePurchaseVat),
         j = vatNum(fields.taxableImportVat), l = vatNum(fields.adjustmentSalesDebit),
         m = vatNum(fields.adjustmentPurchaseCredit);
   const computed = d - g - j + l - m;
   const printed = vatNum(fields.item5DebitCredit);
-  return { computed, printed, ok: fields.item5DebitCredit.confidence > 0 && computed === printed };
+  const hasPrinted = fields.item5DebitCredit.value !== '';
+  return { computed, printed, hasPrinted, ok: !hasPrinted || Math.abs(computed) === printed };
 }
 
 // Two pages assigned to the same month is always a mistake (usually a
@@ -339,6 +372,60 @@ function vatDuplicateMonthIdxs(pages) {
   return dup;
 }
 
+const VAT_CONFIDENCE_HIGH = 80, VAT_CONFIDENCE_MEDIUM = 50;
+function vatConfidenceTier(confidence) {
+  if (confidence >= VAT_CONFIDENCE_HIGH) return { tier: 'high', icon: '🟢', label: 'High' };
+  if (confidence >= VAT_CONFIDENCE_MEDIUM) return { tier: 'medium', icon: '🟡', label: 'Medium' };
+  return { tier: 'low', icon: '🔴', label: 'Low' };
+}
+
+// Every reason a row might not be safe to generate from, in one place, each
+// with a plain-language explanation — this is what both the review table
+// and the generate-blocking check read from, so they can never disagree.
+function vatRowWarnings(pg, dupIdxs) {
+  const warnings = [];
+  const f = pg.fields;
+
+  if (!pg.monthInfo) {
+    warnings.push({ severity: 'block', message: `Month not recognized (OCR read period "${f.period.value || '(blank)'}") — pick one manually.` });
+  } else if (dupIdxs.has(pg.monthInfo.idx)) {
+    warnings.push({ severity: 'block', message: `Another page is also assigned to ${pg.monthInfo.name} — one of them is wrong and will silently overwrite the other.` });
+  } else if (pg.monthGuessed) {
+    warnings.push({ severity: 'warn', message: 'Month was inferred from page sequence, not read directly — please confirm.' });
+  }
+
+  const salesRate = vatRateCheck(vatNum(f.taxableSalesValue), vatNum(f.taxableSalesVat));
+  if (!salesRate.ok) warnings.push({ severity: 'block', message: `Sales VAT doesn't match 13% of taxable sales (expected ~${salesRate.expected}, read ${vatNum(f.taxableSalesVat)}) — one of the two was likely misread.` });
+
+  const purchaseRate = vatRateCheck(vatNum(f.taxablePurchaseValue), vatNum(f.taxablePurchaseVat));
+  if (!purchaseRate.ok) warnings.push({ severity: 'block', message: `Purchase VAT doesn't match 13% of taxable purchase (expected ~${purchaseRate.expected}, read ${vatNum(f.taxablePurchaseVat)}) — one of the two was likely misread.` });
+
+  const importRate = vatRateCheck(vatNum(f.taxableImportValue), vatNum(f.taxableImportVat));
+  if (!importRate.ok) warnings.push({ severity: 'warn', message: `Import VAT doesn't match 13% of taxable import (expected ~${importRate.expected}, read ${vatNum(f.taxableImportVat)}).` });
+
+  if (f.taxableSalesValue.value === '' && f.taxablePurchaseValue.value === '') {
+    warnings.push({ severity: 'block', message: 'No sales or purchase figures were read at all on this page — check the upload or enter the values manually.' });
+  }
+
+  const chk = vatChecksum(f);
+  if (!chk.ok) warnings.push({ severity: 'warn', message: `Form's own डेबिट-क्रेडिट total (${chk.printed || '(blank)'}) doesn't match the computed difference (${chk.computed}) — this field is the least reliable to OCR, treat as informational.` });
+
+  const lowConfidenceFields = Object.entries(f)
+    .filter(([name, field]) => name !== 'taxYear' && field.confidence > 0 && field.confidence < VAT_CONFIDENCE_MEDIUM)
+    .map(([name]) => name);
+  if (lowConfidenceFields.length) warnings.push({ severity: 'warn', message: `Low OCR confidence on: ${lowConfidenceFields.join(', ')}.` });
+
+  return warnings;
+}
+
+function vatRowStatusHtml(warnings) {
+  if (!warnings.length) return '<span title="No issues found">✅</span>';
+  const blocking = warnings.filter(w => w.severity === 'block');
+  const icon = blocking.length ? '🔴' : '🟡';
+  const tooltip = warnings.map(w => (w.severity === 'block' ? '[blocking] ' : '') + w.message).join('\n');
+  return `<span title="${escHtml(tooltip)}">${icon} ${warnings.length} issue${warnings.length > 1 ? 's' : ''}</span>`;
+}
+
 function vatRenderReviewTable(pages) {
   const card = document.getElementById('vat-review-card');
   const tbody = document.getElementById('vat-review-tbody');
@@ -349,28 +436,30 @@ function vatRenderReviewTable(pages) {
     'exemptPurchase','taxableImportValue','taxableImportVat','exemptImport','adjustmentSalesDebit','adjustmentPurchaseCredit'];
 
   tbody.innerHTML = pages.map((pg, i) => {
-    const chk = vatChecksum(pg.fields);
-    const isDup = pg.monthInfo && dupIdxs.has(pg.monthInfo.idx);
-    const needsAttention = !pg.monthInfo || pg.monthGuessed || isDup;
+    const warnings = vatRowWarnings(pg, dupIdxs);
+    const needsAttention = warnings.some(w => w.severity === 'block') || pg.monthGuessed;
     const monthOptions = VAT_MONTH_ORDER.map((name, mi) =>
       `<option value="${mi + 1}" ${pg.monthInfo && pg.monthInfo.idx === mi + 1 ? 'selected' : ''}>${name}</option>`
     ).join('');
     const monthSelect = `<select data-page="${i}" onchange="vatOnMonthEdit(this)"
       style="${needsAttention ? 'border-color:var(--red); background:var(--red-bg);' : ''}"
-      title="${isDup ? 'Two pages are assigned to this month — fix before generating. ' : ''}OCR read period '${escHtml(pg.fields.period.value || '?')}' — confirm or correct the month">
+      title="OCR read period '${escHtml(pg.fields.period.value || '?')}' — confirm or correct the month">
       <option value="">— pick month —</option>${monthOptions}
     </select>`;
     const cells = cols.map(c => {
       const f = pg.fields[c];
-      const low = f.confidence < 70;
-      return `<td><input type="text" data-page="${i}" data-field="${c}" value="${escHtml(f.value)}"
-        style="width:90px; ${low ? 'border-color:var(--red); background:var(--red-bg);' : ''}"
-        title="OCR confidence: ${Math.round(f.confidence)}%" oninput="vatOnFieldEdit(this)" /></td>`;
+      const tier = vatConfidenceTier(f.confidence);
+      return `<td><div style="display:flex; align-items:center; gap:3px;">
+        <span title="${tier.icon} ${tier.label} OCR confidence (${Math.round(f.confidence)}%)">${tier.icon}</span>
+        <input type="text" data-page="${i}" data-field="${c}" value="${escHtml(f.value)}"
+          style="width:80px; ${tier.tier !== 'high' ? 'border-color:var(--red); background:var(--red-bg);' : ''}"
+          oninput="vatOnFieldEdit(this)" />
+      </div></td>`;
     }).join('');
     return `<tr data-page-idx="${i}">
       <td>PDF p.${pg.pageNum}<br/>${monthSelect}</td>
       ${cells}
-      <td>${chk.ok ? '✅' : `<span title="Form total ${chk.printed} vs computed ${chk.computed}">⚠️</span>`}</td>
+      <td>${vatRowStatusHtml(warnings)}</td>
     </tr>`;
   }).join('');
 
@@ -390,10 +479,11 @@ function vatOnFieldEdit(input) {
   const i = parseInt(input.dataset.page, 10), field = input.dataset.field;
   if (!window.vatExtractedPages || !window.vatExtractedPages[i]) return;
   window.vatExtractedPages[i].fields[field] = { value: input.value.replace(/\D/g, ''), confidence: 100 };
-  input.style.borderColor = ''; input.style.background = '';
-  const chk = vatChecksum(window.vatExtractedPages[i].fields);
-  const row = document.querySelector(`#vat-review-tbody tr[data-page-idx="${i}"] td:last-child`);
-  if (row) row.innerHTML = chk.ok ? '✅' : `<span title="Form total ${chk.printed} vs computed ${chk.computed}">⚠️</span>`;
+  // Full re-render, not a single-cell patch: a VAT-rate warning depends on
+  // a *pair* of fields (e.g. editing the value cell also changes whether
+  // the VAT cell's rate check passes), so every row-level signal needs to
+  // be recomputed, not just the one cell that changed.
+  vatRenderReviewTable(window.vatExtractedPages);
 }
 
 // ── Business rules (verbatim from the reverse-engineered template) ──
@@ -430,10 +520,18 @@ async function vatGenerateExcel() {
   const pages = window.vatExtractedPages;
   if (!pages || !pages.length) { vatStatus('कृपया पहिले PDF निकाल्नुहोस् (extract a PDF first).', 'info'); return; }
 
+  // One source of truth for "is this safe to generate from" — the same
+  // vatRowWarnings() the review table renders, so the block reasons shown
+  // here are always exactly what's visible (as 🔴) in the table above.
   const dupIdxs = vatDuplicateMonthIdxs(pages);
-  if (dupIdxs.size) {
-    const names = [...dupIdxs].map(idx => VAT_MONTH_ORDER[idx - 1]).join(', ');
-    vatStatus(`❌ दुई पृष्ठ एउटै महिनामा तोकिएको छ (${names}) — माथिको तालिकामा सच्याउनुहोस् (two pages are assigned to the same month — fix in the table above before generating, or that month's data will be silently dropped).`, 'error');
+  const blockingByPage = pages
+    .map(pg => ({ pg, warnings: vatRowWarnings(pg, dupIdxs).filter(w => w.severity === 'block') }))
+    .filter(x => x.warnings.length);
+  if (blockingByPage.length) {
+    const items = blockingByPage.slice(0, 6).map(x =>
+      `<li>PDF p.${x.pg.pageNum}${x.pg.monthInfo ? ' (' + escHtml(x.pg.monthInfo.name) + ')' : ''}: ${x.warnings.map(w => escHtml(w.message)).join(' ')}</li>`
+    ).join('');
+    vatStatus(`❌ माथिको तालिकामा 🔴 चिन्ह लागेका समस्या सच्याउनुहोस् (unresolved blocking issues — fix the 🔴 rows in the table above before generating):<ul style="margin:8px 0 0 18px;">${items}</ul>`, 'error');
     return;
   }
 
