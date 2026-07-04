@@ -217,33 +217,22 @@ function vatCropField(canvas, placement, box) {
   return crop;
 }
 
-// `worker` is a Tesseract.js worker created once per vatExtractPdf() run and
-// reused for every field on every page (~140 recognitions for a 10-page
-// filing) — Tesseract.recognize() previously spun up and tore down a full
-// WASM engine instance on every single call, which was the dominant cost
-// (see Phase 2 benchmark in the commit message).
-async function vatOcrDigits(worker, canvas) {
-  try {
-    const { data } = await worker.recognize(canvas);
-    const text = data.text.replace(/\D/g, '');
-    return { value: text, confidence: data.confidence || 0 };
-  } catch (err) {
-    return { value: '', confidence: 0 };
-  }
-}
-
-async function vatExtractField(worker, canvas, placement, boxName) {
+// `session` is an OcrEngine digit-recognition session created once per
+// vatExtractPdf() run and reused for every field on every page (~140
+// recognitions for a 10-page filing) — see js/core/ocrEngine.js for why
+// this is session-based rather than a one-shot call.
+async function vatExtractField(session, canvas, placement, boxName) {
   const crop = vatCropField(canvas, placement, VAT_FIELD_BOXES[boxName]);
-  return vatOcrDigits(worker, crop);
+  return session.recognizeDigits(crop);
 }
 
 // ── One page's full extraction ──
-async function vatExtractPage(worker, pdf, pageNum) {
+async function vatExtractPage(session, pdf, pageNum) {
   const { canvas, placement } = await vatRenderPageCanvas(pdf, pageNum, 3);
   const fields = {};
   const boxNames = Object.keys(VAT_FIELD_BOXES);
   for (let i = 0; i < boxNames.length; i++) {
-    fields[boxNames[i]] = await vatExtractField(worker, canvas, placement, boxNames[i]);
+    fields[boxNames[i]] = await vatExtractField(session, canvas, placement, boxNames[i]);
   }
   return fields;
 }
@@ -276,15 +265,14 @@ async function vatExtractPdf() {
     let lastGoodMonthIdx = null; // period OCR is the least reliable field — fall back to
                                   // "previous page's month + 1" (PDF pages are sequential
                                   // monthly filings) whenever the digit isn't recognized.
-    let worker = null;
+    let session = null;
     try {
       vatStatus('<span class="spinner spinner-navy"></span> OCR इन्जिन तयार गर्दै (starting OCR engine)…', 'searching');
-      worker = await Tesseract.createWorker('eng');
-      await worker.setParameters({ tessedit_char_whitelist: '0123456789' });
+      session = await OcrEngine.createDigitSession();
 
       for (let p = 1; p <= pdf.numPages; p++) {
         vatStatus(`<span class="spinner spinner-navy"></span> पृष्ठ ${p}/${pdf.numPages} पढ्दै (reading page ${p} of ${pdf.numPages})…`, 'searching');
-        const fields = await vatExtractPage(worker, pdf, p);
+        const fields = await vatExtractPage(session, pdf, p);
         const period = vatNum(fields.period);
         let monthInfo = VAT_PERIOD_TO_MONTH[period];
         let monthGuessed = false;
@@ -297,7 +285,7 @@ async function vatExtractPdf() {
         pages.push({ pageNum: p, period, fields, monthInfo, monthGuessed });
       }
     } finally {
-      if (worker) await worker.terminate(); // always release the WASM worker, even if extraction threw
+      if (session) await session.terminate(); // always release the WASM worker, even if extraction threw
     }
 
     window.vatExtractedPages = pages;
