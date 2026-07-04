@@ -281,7 +281,13 @@ async function vatExtractItemsStrip(session, canvas, placement) {
   // misread trailing digit); fields stay empty only when no attempt could
   // read 3 lines at all, and downstream checks surface any inconsistency.
   const pick = off => (best && best.lines[best.win + off]) ? { value: best.lines[best.win + off].value, confidence: best.lines[best.win + off].confidence } : empty;
-  return { item5DebitCredit: pick(0), item6PrevCredit: pick(1), item7TotalPayable: pick(2) };
+  return {
+    fields: { item5DebitCredit: pick(0), item6PrevCredit: pick(1), item7TotalPayable: pick(2) },
+    // An exact identity means these three fields verifiably agree with the
+    // form's own arithmetic — trustworthy enough to overrule the main
+    // table when the two disagree (see the checksum rule).
+    identityExact: !!(best && best.gap === 0),
+  };
 }
 
 // ── One page's full extraction ──
@@ -292,8 +298,9 @@ async function vatExtractPage(session, pdf, pageNum) {
   for (let i = 0; i < boxNames.length; i++) {
     fields[boxNames[i]] = await vatExtractField(session, canvas, placement, boxNames[i]);
   }
-  Object.assign(fields, await vatExtractItemsStrip(session, canvas, placement));
-  return fields;
+  const strip = await vatExtractItemsStrip(session, canvas, placement);
+  Object.assign(fields, strip.fields);
+  return { fields, itemsIdentityExact: strip.identityExact };
 }
 
 function vatNum(field) {
@@ -332,7 +339,7 @@ async function vatExtractPdf() {
 
       for (let p = 1; p <= pdf.numPages; p++) {
         vatStatus(`<span class="spinner spinner-navy"></span> पृष्ठ ${p}/${pdf.numPages} पढ्दै (reading page ${p} of ${pdf.numPages})…`, 'searching');
-        const fields = await vatExtractPage(session, pdf, p);
+        const { fields, itemsIdentityExact } = await vatExtractPage(session, pdf, p);
         const period = vatNum(fields.period);
         let monthInfo = VAT_PERIOD_TO_MONTH[period];
         let monthGuessed = false;
@@ -342,7 +349,7 @@ async function vatExtractPdf() {
           monthGuessed = true;
         }
         if (monthInfo) lastGoodMonthIdx = monthInfo.idx;
-        pages.push({ pageNum: p, period, fields, monthInfo, monthGuessed });
+        pages.push({ pageNum: p, period, fields, monthInfo, monthGuessed, itemsIdentityExact });
       }
     } finally {
       if (session) await session.terminate(); // always release the WASM worker, even if extraction threw
@@ -501,8 +508,48 @@ function vatRowWarnings(pg, dupIdxs) {
         : null;
     },
     (pg) => {
+      // A page can also fail by reading "empty-ish" rather than empty —
+      // observed on a real document from a different scanner profile,
+      // where a page read zeros in the main table (passing the emptiness
+      // and 13% checks) and would have silently written a zero month into
+      // the workbook. If neither the main table nor the items strip
+      // produced any nonzero figure, nothing meaningful was read.
+      const f = pg.fields;
+      // "< 10 in total" rather than exactly zero: a stray mark can read as
+      // a single digit (observed: sales VAT "1" on an all-blank page), and
+      // no genuine month has all four figures in single digits.
+      const tableDead = ['taxableSalesValue','taxableSalesVat','taxablePurchaseValue','taxablePurchaseVat'].reduce((s, k) => s + vatNum(f[k]), 0) < 10;
+      const stripDead = f.item5DebitCredit.value === '';
+      return (tableDead && stripDead)
+        ? { severity: 'block', message: 'This page read as all-zero and its डेबिट-क्रेडिट section was unreadable — the layout probably doesn\'t match the calibrated form. Enter the values manually.' }
+        : null;
+    },
+    (pg) => {
+      // Real figures in the wrong columns: observed on a foreign-profile
+      // scan where the sales/purchase VALUE boxes read blank while other
+      // boxes caught real numbers from an offset table — the totals can
+      // even stay arithmetically consistent, so this shape needs its own
+      // signal. No legitimate month has VAT/adjustment figures without any
+      // sales or purchase value.
+      const f = pg.fields;
+      const noValues = vatNum(f.taxableSalesValue) === 0 && vatNum(f.taxablePurchaseValue) === 0;
+      const otherFigures = ['taxableSalesVat','taxablePurchaseVat','taxableImportVat','adjustmentSalesDebit','adjustmentPurchaseCredit'].some(k => vatNum(f[k]) > 10);
+      return (noValues && otherFigures)
+        ? { severity: 'warn', message: 'Sales and purchase values read as blank while VAT/adjustment figures exist — check the figures landed in the right columns (the form layout may not match the calibration).' }
+        : null;
+    },
+    (pg) => {
       const chk = vatChecksum(pg.fields);
-      return chk.ok ? null : { severity: 'warn', message: `Form's own डेबिट-क्रेडिट total (${chk.printed || '(blank)'}) doesn't match the computed difference (${chk.computed}) — this field is the least reliable to OCR, treat as informational.` };
+      if (chk.ok) return null;
+      // When items ५/६/७ verifiably agree with the form's own arithmetic
+      // (exact identity), a nonzero item ५ that contradicts the computed
+      // difference means the MAIN TABLE was misread — that must block, not
+      // just warn (also observed on the foreign-profile document, where
+      // the table read blanks but the strip read real figures).
+      if (pg.itemsIdentityExact && chk.printed > 0) {
+        return { severity: 'block', message: `The form's own डेबिट-क्रेडिट total (${chk.printed}, verified against items ६/७) doesn't match the difference computed from the table (${chk.computed}) — the table figures were probably misread. Correct them before generating.` };
+      }
+      return { severity: 'warn', message: `Form's own डेबिट-क्रेडिट total (${chk.printed || '(blank)'}) doesn't match the computed difference (${chk.computed}) — this field is the least reliable to OCR, treat as informational.` };
     },
     (pg) => {
       // Meta/supplementary fields excluded: taxYear and pan only inform
