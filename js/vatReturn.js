@@ -320,58 +320,62 @@ function vatDuplicateMonthIdxs(pages) {
   return dup;
 }
 
-const VAT_CONFIDENCE_HIGH = 80, VAT_CONFIDENCE_MEDIUM = 50;
+const VAT_CONFIDENCE_MEDIUM = 50;
 function vatConfidenceTier(confidence) {
-  if (confidence >= VAT_CONFIDENCE_HIGH) return { tier: 'high', icon: '🟢', label: 'High' };
-  if (confidence >= VAT_CONFIDENCE_MEDIUM) return { tier: 'medium', icon: '🟡', label: 'Medium' };
-  return { tier: 'low', icon: '🔴', label: 'Low' };
+  return ValidationEngine.confidenceTier(confidence);
 }
 
 // Every reason a row might not be safe to generate from, in one place, each
 // with a plain-language explanation — this is what both the review table
 // and the generate-blocking check read from, so they can never disagree.
+// Expressed as independent rules run through ValidationEngine so the
+// "collect every triggered warning" plumbing isn't hand-rolled here.
 function vatRowWarnings(pg, dupIdxs) {
-  const warnings = [];
-  const f = pg.fields;
-
-  if (!pg.monthInfo) {
-    warnings.push({ severity: 'block', message: `Month not recognized (OCR read period "${f.period.value || '(blank)'}") — pick one manually.` });
-  } else if (dupIdxs.has(pg.monthInfo.idx)) {
-    warnings.push({ severity: 'block', message: `Another page is also assigned to ${pg.monthInfo.name} — one of them is wrong and will silently overwrite the other.` });
-  } else if (pg.monthGuessed) {
-    warnings.push({ severity: 'warn', message: 'Month was inferred from page sequence, not read directly — please confirm.' });
-  }
-
-  const salesRate = vatRateCheck(vatNum(f.taxableSalesValue), vatNum(f.taxableSalesVat));
-  if (!salesRate.ok) warnings.push({ severity: 'block', message: `Sales VAT doesn't match 13% of taxable sales (expected ~${salesRate.expected}, read ${vatNum(f.taxableSalesVat)}) — one of the two was likely misread.` });
-
-  const purchaseRate = vatRateCheck(vatNum(f.taxablePurchaseValue), vatNum(f.taxablePurchaseVat));
-  if (!purchaseRate.ok) warnings.push({ severity: 'block', message: `Purchase VAT doesn't match 13% of taxable purchase (expected ~${purchaseRate.expected}, read ${vatNum(f.taxablePurchaseVat)}) — one of the two was likely misread.` });
-
-  const importRate = vatRateCheck(vatNum(f.taxableImportValue), vatNum(f.taxableImportVat));
-  if (!importRate.ok) warnings.push({ severity: 'warn', message: `Import VAT doesn't match 13% of taxable import (expected ~${importRate.expected}, read ${vatNum(f.taxableImportVat)}).` });
-
-  if (f.taxableSalesValue.value === '' && f.taxablePurchaseValue.value === '') {
-    warnings.push({ severity: 'block', message: 'No sales or purchase figures were read at all on this page — check the upload or enter the values manually.' });
-  }
-
-  const chk = vatChecksum(f);
-  if (!chk.ok) warnings.push({ severity: 'warn', message: `Form's own डेबिट-क्रेडिट total (${chk.printed || '(blank)'}) doesn't match the computed difference (${chk.computed}) — this field is the least reliable to OCR, treat as informational.` });
-
-  const lowConfidenceFields = Object.entries(f)
-    .filter(([name, field]) => name !== 'taxYear' && field.confidence > 0 && field.confidence < VAT_CONFIDENCE_MEDIUM)
-    .map(([name]) => name);
-  if (lowConfidenceFields.length) warnings.push({ severity: 'warn', message: `Low OCR confidence on: ${lowConfidenceFields.join(', ')}.` });
-
-  return warnings;
+  const rules = [
+    (pg) => {
+      const f = pg.fields;
+      if (!pg.monthInfo) return { severity: 'block', message: `Month not recognized (OCR read period "${f.period.value || '(blank)'}") — pick one manually.` };
+      if (dupIdxs.has(pg.monthInfo.idx)) return { severity: 'block', message: `Another page is also assigned to ${pg.monthInfo.name} — one of them is wrong and will silently overwrite the other.` };
+      if (pg.monthGuessed) return { severity: 'warn', message: 'Month was inferred from page sequence, not read directly — please confirm.' };
+      return null;
+    },
+    (pg) => {
+      const f = pg.fields;
+      const r = vatRateCheck(vatNum(f.taxableSalesValue), vatNum(f.taxableSalesVat));
+      return r.ok ? null : { severity: 'block', message: `Sales VAT doesn't match 13% of taxable sales (expected ~${r.expected}, read ${vatNum(f.taxableSalesVat)}) — one of the two was likely misread.` };
+    },
+    (pg) => {
+      const f = pg.fields;
+      const r = vatRateCheck(vatNum(f.taxablePurchaseValue), vatNum(f.taxablePurchaseVat));
+      return r.ok ? null : { severity: 'block', message: `Purchase VAT doesn't match 13% of taxable purchase (expected ~${r.expected}, read ${vatNum(f.taxablePurchaseVat)}) — one of the two was likely misread.` };
+    },
+    (pg) => {
+      const f = pg.fields;
+      const r = vatRateCheck(vatNum(f.taxableImportValue), vatNum(f.taxableImportVat));
+      return r.ok ? null : { severity: 'warn', message: `Import VAT doesn't match 13% of taxable import (expected ~${r.expected}, read ${vatNum(f.taxableImportVat)}).` };
+    },
+    (pg) => {
+      const f = pg.fields;
+      return (f.taxableSalesValue.value === '' && f.taxablePurchaseValue.value === '')
+        ? { severity: 'block', message: 'No sales or purchase figures were read at all on this page — check the upload or enter the values manually.' }
+        : null;
+    },
+    (pg) => {
+      const chk = vatChecksum(pg.fields);
+      return chk.ok ? null : { severity: 'warn', message: `Form's own डेबिट-क्रेडिट total (${chk.printed || '(blank)'}) doesn't match the computed difference (${chk.computed}) — this field is the least reliable to OCR, treat as informational.` };
+    },
+    (pg) => {
+      const lowConfidenceFields = Object.entries(pg.fields)
+        .filter(([name, field]) => name !== 'taxYear' && field.confidence > 0 && field.confidence < VAT_CONFIDENCE_MEDIUM)
+        .map(([name]) => name);
+      return lowConfidenceFields.length ? { severity: 'warn', message: `Low OCR confidence on: ${lowConfidenceFields.join(', ')}.` } : null;
+    },
+  ];
+  return ValidationEngine.run(rules, pg);
 }
 
 function vatRowStatusHtml(warnings) {
-  if (!warnings.length) return '<span title="No issues found">✅</span>';
-  const blocking = warnings.filter(w => w.severity === 'block');
-  const icon = blocking.length ? '🔴' : '🟡';
-  const tooltip = warnings.map(w => (w.severity === 'block' ? '[blocking] ' : '') + w.message).join('\n');
-  return `<span title="${escHtml(tooltip)}">${icon} ${warnings.length} issue${warnings.length > 1 ? 's' : ''}</span>`;
+  return ValidationEngine.statusHtml(warnings);
 }
 
 function vatRenderReviewTable(pages) {
