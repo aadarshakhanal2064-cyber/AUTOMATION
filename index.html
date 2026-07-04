@@ -1063,6 +1063,7 @@
 
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/core/moduleRegistry.js"></script>
 <script src="js/tabs.js"></script>
 <script src="js/registrar.js"></script>
 <script src="js/clients.js"></script>
@@ -1072,17 +1073,6 @@
 <script src="js/report.js"></script>
 <script src="js/bmAgmMinutes.js"></script>
 <script src="js/auth.js"></script>
-
-<!-- Script to handle Sidebar active state and initial render -->
-<script>
-  const originalSwitchTab = window.switchTab;
-  window.switchTab = function(tab) {
-    if (originalSwitchTab) originalSwitchTab(tab);
-    document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
-    const activeBtn = document.getElementById('nav-' + tab);
-    if (activeBtn) activeBtn.classList.add('active');
-  };
-</script>
 
 </body>
 </html>

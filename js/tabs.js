@@ -1,24 +1,23 @@
 // ════════════════════════════════════════════
 //  TAB SWITCHING
+//  Reads module/panel/button ids from ModuleRegistry (js/core/moduleRegistry.js)
+//  instead of a hardcoded list — adding a new tab or sub-tab means registering
+//  it there, not editing this file.
 // ════════════════════════════════════════════
+function switchModuleGroup(group, activeId) {
+  ModuleRegistry.getGroup(group).forEach(m => {
+    document.getElementById(m.panelId).classList.toggle('active', m.id === activeId);
+    document.getElementById(m.buttonId).classList.toggle('active', m.id === activeId);
+  });
+}
+
 function switchTab(tab) {
-  const tabs = ['send','report','regd','clients','logs'];
-  const panelIdFor = (t) => t === 'send' ? 'tab-send' : t === 'report' ? 'tab-report-panel' : 'tab-' + t + '-panel';
-  tabs.forEach(t => {
-    document.getElementById(panelIdFor(t)).classList.toggle('active', t === tab);
-  });
-  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-    btn.classList.toggle('active', tabs[i] === tab);
-  });
+  switchModuleGroup('main', tab);
 }
 
 // ════════════════════════════════════════════
 //  COMPANY REGISTRAR — SUB-TAB SWITCHING (UI shell only, logic TBD)
 // ════════════════════════════════════════════
 function switchRegdSub(sub) {
-  const subs = ['shareTransfer','increaseCapital','companyRegistration','auditorChange','pinReset','bmAgmMinutes','vatReturn'];
-  subs.forEach(s => {
-    document.getElementById('regd-' + s + '-panel').classList.toggle('active', s === sub);
-    document.getElementById('subtab-' + s).classList.toggle('active', s === sub);
-  });
+  switchModuleGroup('regd', sub);
 }
