@@ -36,6 +36,10 @@ const VAT_MONTH_ORDER = ['Shrawan','Bhadra','Ashwin','Kartik','Mangshir','Poush'
 // generator fills this rather than rebuilding the sheet from scratch.
 const VAT_EXCEL_TEMPLATE_URL = 'assets/templates/vat-detail.xlsx';
 
+// Per-month "what was actually paid" overrides of the Vat Paid rule
+// ({ monthIdx: number }) — reset on every fresh extraction.
+window.vatPaidOverrides = {};
+
 // PDF page = 595 x 842 pt (A4) for this document family.
 const VAT_PDF_PAGE_W = 595, VAT_PDF_PAGE_H = 842;
 
@@ -256,6 +260,7 @@ async function vatExtractPdf() {
     }
 
     window.vatExtractedPages = pages;
+    window.vatPaidOverrides = {}; // fresh extraction, no stale per-month payment overrides
     vatRenderReviewTable(pages);
 
     const fyField = document.getElementById('vat-fiscalYear');
@@ -424,6 +429,9 @@ function vatRenderReviewTable(pages) {
   }).join('');
 
   card.style.display = 'block';
+  // Every data change that re-renders the review table also changes the
+  // computed workbook — keep the preview grid in lockstep.
+  vatRenderWorkbookPreview();
 }
 
 function vatOnMonthEdit(select) {
@@ -446,10 +454,114 @@ function vatOnFieldEdit(input) {
   vatRenderReviewTable(window.vatExtractedPages);
 }
 
+// ── Workbook preview grid ──
+// Mirrors the Excel's formula chain (Opening row, 12 fiscal months, Total
+// row) so what will actually be generated is visible and correctable before
+// download. Vat Paid is the one editable column: its rule-derived value is
+// only a default (see vatBuildMonthRows).
+function vatFmt(n) {
+  return typeof n === 'number' ? n.toLocaleString('en-US') : '';
+}
+
+function vatReadOpeningBalance() {
+  return parseInt(document.getElementById('vat-openingBalance').value.replace(/[^\-0-9]/g, ''), 10) || 0;
+}
+
+function vatRenderWorkbookPreview() {
+  const card = document.getElementById('vat-workbook-card');
+  const tbody = document.getElementById('vat-workbook-tbody');
+  if (!card || !tbody) return;
+  const pages = window.vatExtractedPages;
+  if (!pages || !pages.length) { card.style.display = 'none'; return; }
+
+  const opening = vatReadOpeningBalance();
+  const rows = vatBuildMonthRows(pages, opening, window.vatPaidOverrides);
+
+  const openingRow = `<tr>
+    <td style="font-weight:600;">Opening</td>
+    <td colspan="9" style="color:var(--text-faint);">last year's closing Total</td>
+    <td style="text-align:right;"><span data-wb="total-0">${vatFmt(opening)}</span></td>
+  </tr>`;
+
+  const monthRows = rows.map(row => {
+    if (row.missing) {
+      return `<tr data-midx="${row.idx}">
+        <td style="font-weight:600;">${escHtml(row.name)}</td>
+        <td colspan="9" style="color:var(--text-faint);">— not in the uploaded PDF; left blank, Total carries forward —</td>
+        <td style="text-align:right;"><span data-wb="total-${row.idx}"></span></td>
+      </tr>`;
+    }
+    const num = v => `<td style="text-align:right;">${vatFmt(v)}</td>`;
+    return `<tr data-midx="${row.idx}">
+      <td style="font-weight:600;">${escHtml(row.name)}</td>
+      ${num(row.c)}${num(row.d)}${num(row.f)}${num(row.g)}${num(row.j)}${num(row.l)}${num(row.m)}
+      <td><input type="text" data-midx="${row.idx}" value="${row.vatPaid}"
+        style="width:100px; text-align:right; ${row.vatPaidOverridden ? 'border-color:var(--accent-blue); font-weight:600;' : ''}"
+        title="Rule default: ${vatFmt(row.vatPaidDefault)}${row.vatPaidOverridden ? ' (overridden — clear the field to restore)' : ''}"
+        oninput="vatOnVatPaidEdit(this)" onchange="vatRenderWorkbookPreview()" /></td>
+      <td style="text-align:right;"><span data-wb="diff-${row.idx}">${vatFmt(row.difference)}</span></td>
+      <td style="text-align:right; font-weight:600;"><span data-wb="total-${row.idx}">${vatFmt(row.total)}</span></td>
+    </tr>`;
+  }).join('');
+
+  const present = rows.filter(r => !r.missing);
+  const sum = key => present.reduce((a, r) => a + r[key], 0);
+  const totalRow = `<tr style="background:#f8fafc;">
+    <td style="font-weight:700;">Total</td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-c">${vatFmt(sum('c'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-d">${vatFmt(sum('d'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-f">${vatFmt(sum('f'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-g">${vatFmt(sum('g'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-j">${vatFmt(sum('j'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-l">${vatFmt(sum('l'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-m">${vatFmt(sum('m'))}</span></td>
+    <td style="text-align:right; font-weight:600;"><span data-wb="sum-vatPaid">${vatFmt(sum('vatPaid'))}</span></td>
+    <td></td><td></td>
+  </tr>`;
+
+  tbody.innerHTML = openingRow + monthRows + totalRow;
+  card.style.display = 'block';
+}
+
+// Recomputes the chain and patches only the computed cells (and other rows'
+// non-focused Vat Paid inputs, whose rule default shifts when an earlier
+// month's Total changes) — never the input being typed in, so focus and
+// cursor position survive every keystroke.
+function vatRefreshComputedCells() {
+  const opening = vatReadOpeningBalance();
+  const rows = vatBuildMonthRows(window.vatExtractedPages, opening, window.vatPaidOverrides);
+  const setWb = (key, val) => {
+    const el = document.querySelector(`#vat-workbook-tbody [data-wb="${key}"]`);
+    if (el) el.textContent = vatFmt(val);
+  };
+  setWb('total-0', opening);
+  rows.forEach(row => {
+    if (row.missing) return;
+    setWb(`diff-${row.idx}`, row.difference);
+    setWb(`total-${row.idx}`, row.total);
+    const input = document.querySelector(`#vat-workbook-tbody input[data-midx="${row.idx}"]`);
+    if (input && input !== document.activeElement) input.value = row.vatPaid;
+  });
+  const present = rows.filter(r => !r.missing);
+  ['c','d','f','g','j','l','m','vatPaid'].forEach(key => setWb(`sum-${key}`, present.reduce((a, r) => a + r[key], 0)));
+}
+
+function vatOnVatPaidEdit(input) {
+  const idx = parseInt(input.dataset.midx, 10);
+  const raw = input.value.replace(/[^\-0-9]/g, '');
+  if (raw === '' || raw === '-') delete window.vatPaidOverrides[idx];
+  else window.vatPaidOverrides[idx] = parseInt(raw, 10);
+  vatRefreshComputedCells();
+}
+
 // ── Business rules (verbatim from the reverse-engineered template) ──
 // Difference = D-G-J+L-M ; Total = prevTotal + Difference - VatPaid ;
-// VatPaid[this month] = prevTotal if prevTotal > 0 else 0.
-function vatBuildMonthRows(pages, openingBalance) {
+// VatPaid[this month] defaults to prevTotal if positive, else 0 — but the
+// firm's real workbooks deviate from that rule when actual payments
+// differed (verified against the reference workbook: 3 of 12 months there
+// don't follow it), so `vatPaidOverrides` ({ monthIdx: number }) lets the
+// review UI record what was really paid; the rule is only the default.
+function vatBuildMonthRows(pages, openingBalance, vatPaidOverrides) {
   const byMonthIdx = {};
   pages.forEach(pg => { if (pg.monthInfo) byMonthIdx[pg.monthInfo.idx] = pg; });
 
@@ -457,7 +569,7 @@ function vatBuildMonthRows(pages, openingBalance) {
   return VAT_MONTH_ORDER.map((name, i) => {
     const idx = i + 1;
     const pg = byMonthIdx[idx];
-    if (!pg) return { name, missing: true };
+    if (!pg) return { name, idx, missing: true };
 
     const f = pg.fields;
     const c = vatNum(f.taxableSalesValue), d = vatNum(f.taxableSalesVat), e = vatNum(f.taxFreeSales);
@@ -465,12 +577,14 @@ function vatBuildMonthRows(pages, openingBalance) {
     const iVal = vatNum(f.taxableImportValue), j = vatNum(f.taxableImportVat), k = vatNum(f.exemptImport);
     const l = vatNum(f.adjustmentSalesDebit), m = vatNum(f.adjustmentPurchaseCredit);
 
-    const vatPaid = prevTotal > 0 ? prevTotal : 0;
+    const vatPaidDefault = prevTotal > 0 ? prevTotal : 0;
+    const hasOverride = vatPaidOverrides && vatPaidOverrides[idx] !== undefined;
+    const vatPaid = hasOverride ? vatPaidOverrides[idx] : vatPaidDefault;
     const difference = d - g - j + l - m;
     const total = prevTotal + difference - vatPaid;
     prevTotal = total;
 
-    return { name, missing: false, c, d, e, f: fF, g, h, i: iVal, j, k, l, m, vatPaid, difference, total };
+    return { name, idx, missing: false, c, d, e, f: fF, g, h, i: iVal, j, k, l, m, vatPaid, vatPaidDefault, vatPaidOverridden: hasOverride, difference, total };
   });
 }
 
@@ -497,12 +611,12 @@ async function vatGenerateExcel() {
 
   const companyName = document.getElementById('vat-companyName').value.trim() || 'Company Name';
   const companyAddress = document.getElementById('vat-companyAddress').value.trim();
-  const openingBalance = parseInt(document.getElementById('vat-openingBalance').value.replace(/[^\-0-9]/g, ''), 10) || 0;
+  const openingBalance = vatReadOpeningBalance();
 
   const fyLabel = document.getElementById('vat-fiscalYear').value.trim();
   if (!fyLabel) { vatStatus('कृपया Fiscal Year भर्नुहोस् (fill in the Fiscal Year field before generating).', 'info'); return; }
 
-  const rows = vatBuildMonthRows(pages, openingBalance);
+  const rows = vatBuildMonthRows(pages, openingBalance, window.vatPaidOverrides);
 
   // The workbook is the firm's real template (sanitized copy committed as an
   // asset — see assets/templates/vat-detail.xlsx), loaded and filled rather
