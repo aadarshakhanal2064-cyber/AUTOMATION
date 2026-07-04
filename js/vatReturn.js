@@ -609,8 +609,7 @@ async function vatGenerateExcel() {
     cell.numFmt = numFmt; cell.font = dataFont;
   });
 
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const blob = await DocumentEngine.workbookToBlob(wb);
   const fname = `VAT Return ${companyName} ${fyLabel}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
   DocumentEngine.downloadBlob(blob, fname);
   vatStatus('✅ Excel तयार भयो — डाउनलोड भयो (workbook generated & downloaded).', 'success');

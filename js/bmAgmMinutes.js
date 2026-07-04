@@ -237,28 +237,12 @@ function bmBuildData() {
   }};
 }
 
-// Template bytes never change at runtime — fetch once, reuse the ArrayBuffer
-// for every render (preview re-renders happen far more often than downloads).
-let bmTemplateBufferPromise = null;
-function bmGetTemplateBuffer() {
-  if (!bmTemplateBufferPromise) {
-    bmTemplateBufferPromise = fetch(BM_TEMPLATE_URL).then(resp => {
-      if (!resp.ok) throw new Error('Template file not found at ' + BM_TEMPLATE_URL);
-      return resp.arrayBuffer();
-    }).catch(err => { bmTemplateBufferPromise = null; throw err; });
-  }
-  return bmTemplateBufferPromise;
-}
-
 // Fills the template with `data` (the shape produced by bmBuildData().data) and
 // returns the resulting .docx as a Blob. Shared by the Word download and the
 // live preview so there is exactly one place that drives document generation.
 async function bmRenderDocx(data) {
-  const buffer = await bmGetTemplateBuffer();
-  const zip = new PizZip(buffer.slice(0));
-  const doc = new window.docxtemplater(zip, { delimiters: { start: '{{', end: '}}' }, paragraphLoop: true, linebreaks: true });
-  doc.render(data);
-  return doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const buffer = await DocumentEngine.getWordTemplate(BM_TEMPLATE_URL);
+  return DocumentEngine.renderWord(buffer, data);
 }
 
 async function generateBmAgmMinutes() {
@@ -325,11 +309,8 @@ async function bmRefreshPreview() {
   try {
     const blob = await bmRenderDocx(data);
     if (myToken !== bmPreviewRenderToken) return;
-    const buffer = await blob.arrayBuffer();
-    if (myToken !== bmPreviewRenderToken) return;
 
-    root.innerHTML = '';
-    await window.docx.renderAsync(buffer, root, document.getElementById('bm-preview-style'), {
+    await DocumentEngine.previewWordAsHtml(blob, root, document.getElementById('bm-preview-style'), {
       className: 'bm-docx',
       inWrapper: true,
       breakPages: true,
