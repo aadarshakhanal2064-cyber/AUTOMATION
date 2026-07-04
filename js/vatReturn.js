@@ -60,15 +60,20 @@ const VAT_FIELD_BOXES = {
   exemptImport:              { left: 0.3161, top: 0.5915, width: 0.2299, height: 0.0257 },
   adjustmentSalesDebit:      { left: 0.7854, top: 0.6382, width: 0.2011, height: 0.0257 },
   adjustmentPurchaseCredit:  { left: 0.6226, top: 0.6382, width: 0.1724, height: 0.0257 },
-  // Widened vs. the original calibration — investigation for Phase 3 found this
-  // row's exact vertical position drifts more than the main table's rows (it
-  // sits below the table, past variable-height instructional text), so a
-  // tightly-calibrated box that worked on page 1 sometimes lands on the
-  // जम्मा (Total) row instead on other pages. This field is a soft,
-  // non-blocking cross-check (see vatRateCheck below for the primary one),
-  // so a taller, more tolerant box is the right trade-off.
-  item5DebitCredit:          { left: 0.8142, top: 0.6820, width: 0.1820, height: 0.0350 },
+  // प्यान नं. — same digits on every page of a legitimate filing; used to
+  // auto-fill company name/address from the client directory (English names
+  // can't come from the Nepali scan, but the PAN can). Calibrated on pages
+  // 1/5/10, verified 92-96% confidence on all three.
+  pan:                       { left: 0.1250, top: 0.2130, width: 0.1300, height: 0.0260 },
 };
+// items ५/६/७ (डेबिट-क्रेडिट / previous-month credit / कुल तिर्नु पर्ने कर)
+// deliberately have NO fixed boxes: their rows sit below the table past
+// variable print drift (measured ~0.025 of page height between pages of the
+// same document — a page-1-calibrated box lands on the wrong row by page 5),
+// so they're extracted by vatExtractItemsStrip() instead: find the table's
+// bottom border per page, OCR the whole strip below it line-by-line, and
+// pick the 3 consecutive lines satisfying IRD's own identity
+// item7 = item5 - item6 (or 0 when the month closes in credit).
 
 function vatStatus(html, type) {
   showStatus(html, type, 'vat-status');
@@ -196,6 +201,89 @@ async function vatExtractField(session, canvas, placement, boxName) {
   return session.recognizeDigits(crop);
 }
 
+// ── Items strip (५/६/७) extraction ──
+// Finds the main table's bottom border on this page: the last long
+// horizontal line in the y-band where every measured page's table ends
+// (0.688-0.701 across the reference document; the next section's box top
+// is never before 0.76, so the band is unambiguous). Falls back to the
+// measured median when no line is detected (extremely poor scans).
+function vatFindTableBottom(canvas, placement) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const x0 = Math.round((placement.leftFraction + 0.15 * placement.widthFraction) * w);
+  const x1 = Math.round((placement.leftFraction + 0.95 * placement.widthFraction) * w);
+  const img = ctx.getImageData(x0, 0, x1 - x0, h);
+  const rowDark = y => {
+    let dark = 0; const base = y * (x1 - x0) * 4;
+    for (let x = 0; x < x1 - x0; x++) {
+      const i = base + x * 4;
+      if (0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2] < 150) dark++;
+    }
+    return dark / (x1 - x0);
+  };
+  const yStart = Math.round((placement.topFraction + 0.60 * placement.heightFraction) * h);
+  const yEnd = Math.round((placement.topFraction + 0.72 * placement.heightFraction) * h);
+  let lastLine = null, inLine = false;
+  for (let y = yStart; y <= yEnd; y++) {
+    const isLine = rowDark(y) > 0.5;
+    if (isLine && !inLine) { inLine = true; lastLine = y; }
+    else if (!isLine) inLine = false;
+  }
+  if (lastLine === null) return 0.695;
+  return (lastLine / h - placement.topFraction) / placement.heightFraction;
+}
+
+// OCRs the strip below the table line-by-line and picks the 3 consecutive
+// lines matching IRD's own identity, item7 = item5 - item6 — item7 is
+// printed SIGNED on the form ("कुल तिर्नु पर्ने कर रू.(५.६)(+ बा -)",
+// verified on a real credit month showing "-51369") and digit-only OCR
+// strips the sign, so the check compares absolute values. An exact match
+// is preferred, then a ±10 near-match (tolerates a misread trailing
+// digit), then the first line (which IS item5 by construction, since the
+// strip starts at the table's bottom border). The strip starts exactly at
+// the border with no pad — the border line contains no digits, and on
+// some pages item5 is printed nearly touching it (a +0.004 pad cut
+// item5's line off entirely on one real page).
+async function vatExtractItemsStrip(session, canvas, placement) {
+  const tableBottom = vatFindTableBottom(canvas, placement);
+
+  const bestWindow = lines => {
+    const gapAt = i => {
+      const a = parseInt(lines[i].value, 10), b = parseInt(lines[i + 1].value, 10), c = parseInt(lines[i + 2].value, 10);
+      return Math.abs(Math.abs(a - b) - c);
+    };
+    let win = null, gap = Infinity;
+    for (let i = 0; i + 2 < lines.length; i++) {
+      const g = gapAt(i);
+      if (g < gap) { gap = g; win = i; }
+    }
+    return { win, gap };
+  };
+
+  // The item5-to-border gap varies per page by more than any single crop
+  // offset can absorb (one real page prints item5 nearly touching the
+  // border; others leave ~0.01 clearance, and a wrong offset clips digit
+  // tops). So: try the offset that works for most pages first, and retry
+  // at alternates only while the identity doesn't check out exactly — the
+  // identity itself judges which offset read the page correctly.
+  let best = null;
+  for (const offset of [0.004, -0.002, 0.010]) {
+    const strip = vatCropField(canvas, placement, { left: 0.78, top: tableBottom + offset, width: 0.22, height: 0.105 });
+    const lines = await session.recognizeDigitLines(strip);
+    const { win, gap } = bestWindow(lines);
+    if (win !== null && (best === null || gap < best.gap)) best = { lines, win, gap };
+    if (best && best.gap === 0) break;
+  }
+
+  const empty = { value: '', confidence: 0 };
+  // Even when no attempt checks out exactly, the minimum-gap window is the
+  // most self-consistent read available (a near-miss usually means one
+  // misread trailing digit); fields stay empty only when no attempt could
+  // read 3 lines at all, and downstream checks surface any inconsistency.
+  const pick = off => (best && best.lines[best.win + off]) ? { value: best.lines[best.win + off].value, confidence: best.lines[best.win + off].confidence } : empty;
+  return { item5DebitCredit: pick(0), item6PrevCredit: pick(1), item7TotalPayable: pick(2) };
+}
+
 // ── One page's full extraction ──
 async function vatExtractPage(session, pdf, pageNum) {
   const { canvas, placement } = await vatRenderPageCanvas(pdf, pageNum, 3);
@@ -204,6 +292,7 @@ async function vatExtractPage(session, pdf, pageNum) {
   for (let i = 0; i < boxNames.length; i++) {
     fields[boxNames[i]] = await vatExtractField(session, canvas, placement, boxNames[i]);
   }
+  Object.assign(fields, await vatExtractItemsStrip(session, canvas, placement));
   return fields;
 }
 
@@ -261,19 +350,57 @@ async function vatExtractPdf() {
 
     window.vatExtractedPages = pages;
     window.vatPaidOverrides = {}; // fresh extraction, no stale per-month payment overrides
-    vatRenderReviewTable(pages);
 
     const fyField = document.getElementById('vat-fiscalYear');
+    const firstMonthPage = pages.filter(pg => pg.monthInfo).sort((a, b) => a.monthInfo.idx - b.monthInfo.idx)[0];
     if (fyField && !fyField.value.trim()) {
-      const firstYearPage = pages.filter(pg => pg.monthInfo).sort((a, b) => a.monthInfo.idx - b.monthInfo.idx)[0];
-      const taxYear = firstYearPage ? vatNum(firstYearPage.fields.taxYear) : 0;
+      const taxYear = firstMonthPage ? vatNum(firstMonthPage.fields.taxYear) : 0;
       if (taxYear) fyField.value = `${taxYear}.0${(taxYear + 1) % 100}`;
     }
+
+    // Opening balance rule (from the firm's manual workflow): the first
+    // filed month's item ६ is the credit carried in from last year, entered
+    // NEGATIVE in the workbook (credit); no credit -> opening 0. Only a
+    // default: never overwrites something already typed in.
+    const openingField = document.getElementById('vat-openingBalance');
+    if (openingField && !openingField.value.trim() && firstMonthPage && firstMonthPage.fields.item6PrevCredit.value !== '') {
+      const item6 = vatNum(firstMonthPage.fields.item6PrevCredit);
+      openingField.value = String(item6 > 0 ? -item6 : 0);
+    }
+
+    // PAN -> client directory lookup: fills the English company name and
+    // address the Excel needs (they can't be OCR'd from the Nepali scan).
+    // Only confident reads participate — a garbage-quality page can return
+    // a wrong PAN at 0% confidence (observed on the reference document),
+    // and that noise must not abort the lookup or fake a "mixed filings"
+    // alarm. Trusted only when every confident read agrees.
+    const pans = [...new Set(pages
+      .filter(pg => pg.fields.pan.confidence >= VAT_CONFIDENCE_MEDIUM)
+      .map(pg => pg.fields.pan.value).filter(Boolean))];
+    let panNote = '';
+    if (pans.length === 1) {
+      const client = (window.clientsList || []).find(c => NepaliLocale.toEnglishDigits(c.pan) === pans[0]);
+      const nameField = document.getElementById('vat-companyName');
+      const addrField = document.getElementById('vat-companyAddress');
+      if (client) {
+        if (nameField && !nameField.value.trim()) nameField.value = client.name || '';
+        if (addrField && !addrField.value.trim()) addrField.value = client.address || '';
+        panNote = ` PAN ${pans[0]} → ${escHtml(client.name)}.`;
+      } else {
+        panNote = ` PAN ${pans[0]} — no matching client in the directory, fill the company details manually.`;
+      }
+    } else if (pans.length > 1) {
+      panNote = ` ⚠️ Pages disagree on the PAN (${pans.map(escHtml).join(', ')}) — this PDF may mix filings from different companies. Check before generating.`;
+    }
+
+    vatRenderReviewTable(pages);
+
+
 
     const unresolved = pages.filter(pg => !pg.monthInfo).length;
     const guessed = pages.filter(pg => pg.monthGuessed).length;
     const note = unresolved > 0 ? `${unresolved} page(s) need a month picked manually` : guessed > 0 ? `${guessed} page(s)' month was inferred from sequence — please confirm` : 'all months read correctly';
-    vatStatus(`✅ ${pdf.numPages} पृष्ठ पढियो — ${note} (extracted ${pdf.numPages} pages — review below before generating).`, unresolved > 0 ? 'error' : 'success');
+    vatStatus(`✅ ${pdf.numPages} पृष्ठ पढियो — ${note} (extracted ${pdf.numPages} pages — review below before generating).${panNote}`, unresolved > 0 || pans.length > 1 ? 'error' : 'success');
     if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'success', stage: 'extraction', pageCount: pdf.numPages, unresolvedMonths: unresolved, guessedMonths: guessed });
   } catch (err) {
     vatStatus('❌ ' + (err.message || 'Extraction failed'), 'error');
@@ -378,8 +505,12 @@ function vatRowWarnings(pg, dupIdxs) {
       return chk.ok ? null : { severity: 'warn', message: `Form's own डेबिट-क्रेडिट total (${chk.printed || '(blank)'}) doesn't match the computed difference (${chk.computed}) — this field is the least reliable to OCR, treat as informational.` };
     },
     (pg) => {
+      // Meta/supplementary fields excluded: taxYear and pan only inform
+      // auto-fill, and items ६/७ only power cross-checks — their read
+      // failures disable those aids rather than making a row unsafe.
+      const metaFields = ['taxYear', 'pan', 'item6PrevCredit', 'item7TotalPayable'];
       const lowConfidenceFields = Object.entries(pg.fields)
-        .filter(([name, field]) => name !== 'taxYear' && field.confidence > 0 && field.confidence < VAT_CONFIDENCE_MEDIUM)
+        .filter(([name, field]) => !metaFields.includes(name) && field.confidence > 0 && field.confidence < VAT_CONFIDENCE_MEDIUM)
         .map(([name]) => name);
       return lowConfidenceFields.length ? { severity: 'warn', message: `Low OCR confidence on: ${lowConfidenceFields.join(', ')}.` } : null;
     },
@@ -463,6 +594,14 @@ function vatFmt(n) {
   return typeof n === 'number' ? n.toLocaleString('en-US') : '';
 }
 
+// Small per-month indicator comparing the computed Total against IRD's own
+// item ७ read from that month's page (blank when item ७ wasn't read).
+function vatIrdBadge(row) {
+  if (row.missing || row.item7 === null) return '';
+  if (!row.irdMismatch) return ` <span title="Matches IRD's own कुल तिर्नु पर्ने कर (item ७ = ${vatFmt(row.item7)}, sign not visible to OCR)">✓</span>`;
+  return ` <span title="IRD's own कुल तिर्नु पर्ने कर reads ${vatFmt(row.item7)} (sign not visible to OCR), but the computed Total says ${vatFmt(row.total)} — the Vat Paid default may not reflect what was actually paid, or a field above was misread. Check and edit if needed.">⚠️</span>`;
+}
+
 function vatReadOpeningBalance() {
   return parseInt(document.getElementById('vat-openingBalance').value.replace(/[^\-0-9]/g, ''), 10) || 0;
 }
@@ -500,7 +639,7 @@ function vatRenderWorkbookPreview() {
         title="Rule default: ${vatFmt(row.vatPaidDefault)}${row.vatPaidOverridden ? ' (overridden — clear the field to restore)' : ''}"
         oninput="vatOnVatPaidEdit(this)" onchange="vatRenderWorkbookPreview()" /></td>
       <td style="text-align:right;"><span data-wb="diff-${row.idx}">${vatFmt(row.difference)}</span></td>
-      <td style="text-align:right; font-weight:600;"><span data-wb="total-${row.idx}">${vatFmt(row.total)}</span></td>
+      <td style="text-align:right; font-weight:600;"><span data-wb="total-${row.idx}">${vatFmt(row.total)}</span><span data-wb="ird-${row.idx}">${vatIrdBadge(row)}</span></td>
     </tr>`;
   }).join('');
 
@@ -539,6 +678,8 @@ function vatRefreshComputedCells() {
     if (row.missing) return;
     setWb(`diff-${row.idx}`, row.difference);
     setWb(`total-${row.idx}`, row.total);
+    const badge = document.querySelector(`#vat-workbook-tbody [data-wb="ird-${row.idx}"]`);
+    if (badge) badge.innerHTML = vatIrdBadge(row);
     const input = document.querySelector(`#vat-workbook-tbody input[data-midx="${row.idx}"]`);
     if (input && input !== document.activeElement) input.value = row.vatPaid;
   });
@@ -584,7 +725,16 @@ function vatBuildMonthRows(pages, openingBalance, vatPaidOverrides) {
     const total = prevTotal + difference - vatPaid;
     prevTotal = total;
 
-    return { name, idx, missing: false, c, d, e, f: fF, g, h, i: iVal, j, k, l, m, vatPaid, vatPaidDefault, vatPaidOverridden: hasOverride, difference, total };
+    // IRD's own कुल तिर्नु पर्ने कर (item ७) is item5 - item6 printed
+    // SIGNED — mathematically the same as this row's Total whenever Vat
+    // Paid reflects the real payments. OCR strips the sign, so compare
+    // absolute values. A mismatch usually means the Vat Paid default
+    // doesn't match what was actually paid that month.
+    const item7Read = f.item7TotalPayable && f.item7TotalPayable.value !== '';
+    const item7 = item7Read ? vatNum(f.item7TotalPayable) : null;
+    const irdMismatch = item7Read && Math.abs(total) !== item7;
+
+    return { name, idx, missing: false, c, d, e, f: fF, g, h, i: iVal, j, k, l, m, vatPaid, vatPaidDefault, vatPaidOverridden: hasOverride, difference, total, item7, irdMismatch };
   });
 }
 

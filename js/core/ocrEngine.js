@@ -27,11 +27,30 @@ window.OcrEngine = (function () {
         }
       }
 
+      // Recognizes a multi-line crop and returns one {value, confidence}
+      // per text line, in top-to-bottom order (empty/non-digit lines
+      // dropped) — for regions where the caller knows the *sequence* of
+      // values but not their exact per-line positions.
+      async function recognizeDigitLines(canvas) {
+        try {
+          const { data } = await worker.recognize(canvas, {}, { blocks: true, text: true });
+          const lines = [];
+          (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => {
+            const digits = l.text.replace(/\D/g, '');
+            if (digits) lines.push({ value: digits, confidence: l.confidence || 0, y: (l.bbox.y0 + l.bbox.y1) / 2 });
+          })));
+          lines.sort((a, b) => a.y - b.y);
+          return lines;
+        } catch (err) {
+          return [];
+        }
+      }
+
       async function terminate() {
         await worker.terminate();
       }
 
-      return { recognizeDigits, terminate };
+      return { recognizeDigits, recognizeDigitLines, terminate };
     },
   };
 
