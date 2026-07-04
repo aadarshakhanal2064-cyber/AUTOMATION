@@ -71,42 +71,13 @@ function vatStatus(html, type) {
 // pages of the same document), read from the operator list active at the
 // image-paint call.
 async function vatGetImagePlacement(page) {
-  const opList = await page.getOperatorList();
-  const OPS = pdfjsLib.OPS;
-  let stack = [[1, 0, 0, 1, 0, 0]];
-  const mul = (a, b) => [
-    a[0]*b[0] + a[1]*b[2],        a[0]*b[1] + a[1]*b[3],
-    a[2]*b[0] + a[3]*b[2],        a[2]*b[1] + a[3]*b[3],
-    a[4]*b[0] + a[5]*b[2] + b[4],  a[4]*b[1] + a[5]*b[3] + b[5],
-  ];
-  let found = null, imageCount = 0;
-  for (let i = 0; i < opList.fnArray.length; i++) {
-    const fn = opList.fnArray[i], args = opList.argsArray[i];
-    if (fn === OPS.save) stack.push(stack[stack.length - 1].slice());
-    else if (fn === OPS.restore) stack.pop();
-    else if (fn === OPS.transform) stack[stack.length - 1] = mul(args, stack[stack.length - 1]);
-    else if (fn === OPS.paintImageXObject) { found = stack[stack.length - 1].slice(); imageCount++; }
-  }
-  if (!found) return { topFraction: 0, leftFraction: 0, heightFraction: 1, widthFraction: 1, imageCount, ctm: null };
-  const [a, , , d, , f] = found;
-  return {
-    topFraction: (VAT_PDF_PAGE_H - (f + d)) / VAT_PDF_PAGE_H,
-    heightFraction: d / VAT_PDF_PAGE_H,
-    leftFraction: 0,
-    widthFraction: a / VAT_PDF_PAGE_W,
-    imageCount,
-    ctm: found,
-  };
+  return PdfEngine.getImagePlacement(page, VAT_PDF_PAGE_W, VAT_PDF_PAGE_H);
 }
 
 async function vatRenderPageCanvas(pdf, pageNum, scale) {
   const page = await pdf.getPage(pageNum);
   const placement = await vatGetImagePlacement(page);
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  const canvas = await PdfEngine.renderPageToCanvas(page, scale);
   return { canvas, placement };
 }
 
@@ -204,17 +175,7 @@ async function vatValidatePdf(pdf) {
 }
 
 function vatCropField(canvas, placement, box) {
-  const w = canvas.width, h = canvas.height;
-  const yFrac = placement.topFraction + box.top * placement.heightFraction;
-  const hFrac = box.height * placement.heightFraction;
-  const xFrac = placement.leftFraction + box.left * placement.widthFraction;
-  const wFrac = box.width * placement.widthFraction;
-  const sx = Math.max(0, Math.round(xFrac * w)), sy = Math.max(0, Math.round(yFrac * h));
-  const sw = Math.max(1, Math.round(wFrac * w)), sh = Math.max(1, Math.round(hFrac * h));
-  const crop = document.createElement('canvas');
-  crop.width = sw; crop.height = sh;
-  crop.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-  return crop;
+  return PdfEngine.cropCanvas(canvas, placement, box);
 }
 
 // `session` is an OcrEngine digit-recognition session created once per
