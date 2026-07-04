@@ -56,51 +56,49 @@ function clientInitials(name) {
   return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
 }
 
+// Tabulator instance for the clients directory — rebuilt from scratch on
+// every render (matching the previous wipe-and-rebuild-innerHTML behavior),
+// so the client list is never in an ambiguous partially-updated state
+// (e.g. after a role change affects whether the Actions column shows).
+let clientsTable = null;
+
 function renderClientsTable(list) {
   const wrap = document.getElementById('clients-table-wrap');
+  if (clientsTable) { clientsTable.destroy(); clientsTable = null; }
+
   if (!list.length) {
     wrap.innerHTML = '<div class="log-empty">No clients yet. Add your first client above.</div>';
     return;
   }
 
   const isAdmin = window.currentUser?.role === 'admin';
-  wrap.innerHTML = `
-    <table class="client-table">
-      <thead>
-        <tr>
-          <th>Client Name</th>
-          <th>Entity Type</th>
-          <th>Email</th>
-          <th>PAN</th>
-          <th>Phone</th>
-          ${isAdmin ? '<th>Actions</th>' : ''}
-        </tr>
-      </thead>
-      <tbody>
-        ${list.map(c => `
-          <tr>
-            <td>
-              <div class="client-name-row">
-                <div class="client-avatar">${escHtml(clientInitials(c.name))}</div>
-                <div class="client-name-cell">${escHtml(c.name)}</div>
-              </div>
-            </td>
-            <td>${c.entity_type ? `<span class="entity-badge">${escHtml(c.entity_type)}</span>` : '—'}</td>
-            <td>${escHtml(c.email || '—')}</td>
-            <td>${escHtml(c.pan || '—')}</td>
-            <td>${escHtml(c.phone || '—')}</td>
-            ${isAdmin ? `
-            <td>
-              <div class="client-actions">
-                <button class="btn btn-outline btn-sm" onclick="editClient('${c.id}')">Edit</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteClient('${c.id}')">Delete</button>
-              </div>
-            </td>` : ''}
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
+  wrap.innerHTML = '';
+  clientsTable = TableEngine.createTable(wrap, {
+    data: list,
+    columns: [
+      { title: 'Client Name', field: 'name', minWidth: 200, formatter: cell => {
+          const c = cell.getRow().getData();
+          return `<div class="client-name-row"><div class="client-avatar">${escHtml(clientInitials(c.name))}</div><div class="client-name-cell">${escHtml(c.name)}</div></div>`;
+        } },
+      { title: 'Entity Type', field: 'entity_type', minWidth: 140, formatter: cell => {
+          const v = cell.getValue();
+          return v ? `<span class="entity-badge">${escHtml(v)}</span>` : '—';
+        } },
+      { title: 'Email', field: 'email', minWidth: 180, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'PAN', field: 'pan', minWidth: 120, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'Phone', field: 'phone', minWidth: 130, formatter: cell => escHtml(cell.getValue() || '—') },
+      ...(isAdmin ? [{
+        title: 'Actions', field: 'id', headerSort: false, minWidth: 150,
+        formatter: () => `<div class="client-actions"><button class="btn btn-outline btn-sm" data-action="edit">Edit</button><button class="btn btn-danger btn-sm" data-action="delete">Delete</button></div>`,
+        cellClick: (e, cell) => {
+          const action = e.target.closest('[data-action]') && e.target.closest('[data-action]').dataset.action;
+          const c = cell.getRow().getData();
+          if (action === 'edit') editClient(c.id);
+          else if (action === 'delete') deleteClient(c.id);
+        },
+      }] : []),
+    ],
+  });
 }
 
 function filterClientTable(val) {

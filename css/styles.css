@@ -422,6 +422,18 @@ textarea { resize: vertical; min-height: 100px; }
 .search-bar { width: 100%; padding: 11px 16px 11px 40px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; }
 .client-actions { display:flex; gap:8px; }
 
+/* ── TableEngine (Tabulator) — maps Tabulator's own classes onto the same
+   look client-table used, so a Tabulator-backed list doesn't read as a
+   foreign widget dropped into the app. ── */
+.app-table.tabulator { border: none; background: transparent; font-family: inherit; font-size: 13px; }
+.app-table .tabulator-header { background: #f8fafc; border-bottom: 1px solid var(--border); }
+.app-table .tabulator-col { background: transparent; border-right: none; }
+.app-table .tabulator-col-title { font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
+.app-table .tabulator-row { background: var(--white); border-bottom: 1px solid var(--border-soft); }
+.app-table .tabulator-row:hover { background: #fafbfe; }
+.app-table .tabulator-row .tabulator-cell { padding: 13px 16px; border-right: none; }
+.app-table .tabulator-footer { background: var(--white); border-top: 1px solid var(--border); color: var(--text-muted); }
+
 .status-pill { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; padding:4px 10px 4px 8px; border-radius:20px; }
 .status-pill.active { background: var(--green-bg); color: var(--green-dk); }
 .status-pill.inactive { background: #f1f5f9; color: var(--text-muted); }
