@@ -15,7 +15,6 @@ window.currentUser      = null;   // { email, role }
 window.clientsList      = [];     // loaded from Supabase
 window.allLogs          = [];     // loaded from Supabase
 window.editingClientId  = null;
-window.acSelectedIdx    = -1;
 
 // ── Supabase client ──
 const { createClient } = supabase;
@@ -103,6 +102,3 @@ window.CLIENT_ENTITY_TO_REP_PROFILE = {
   'cooperatives': 'cooperative',
   'cooperative': 'cooperative',
 };
-
-window.repSelectedIdx = -1;
-window.bmSelectedIdx = -1;

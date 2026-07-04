@@ -15,52 +15,20 @@ function bmToEnglishDigits(s) {
   return NepaliLocale.toEnglishDigits(s);
 }
 
-function handleBmRegNoSearch(val) {
-  window.bmSelectedIdx = -1;
-  const list = document.getElementById('bm-regNo-autocomplete-list');
-  if (!val || val.length < 2 || !Array.isArray(window.clientsList)) { list.style.display = 'none'; return; }
+SearchEngine.attachAutocomplete(document.getElementById('bm-regNo'), document.getElementById('bm-regNo-autocomplete-list'), {
+  getList: () => window.clientsList,
+  keys: ['registration_number', 'pan'],
+  minChars: 2,
+  normalizeQuery: v => bmToEnglishDigits(v),
+  normalizeItem: c => ({ registration_number: bmToEnglishDigits(c.registration_number), pan: bmToEnglishDigits(c.pan) }),
+  renderItem: c => `
+    <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
+    <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+  `,
+  onSelect: selectBmClient,
+});
 
-  const v = bmToEnglishDigits(val).toLowerCase();
-  const matches = window.clientsList.filter(c =>
-    bmToEnglishDigits(c.registration_number).toLowerCase().includes(v) ||
-    bmToEnglishDigits(c.pan).toLowerCase().includes(v)
-  ).slice(0, 8);
-
-  if (matches.length === 0) { list.style.display = 'none'; return; }
-
-  list.innerHTML = matches.map((c, i) => `
-    <div class="autocomplete-item" data-idx="${i}" onmousedown="selectBmClient('${c.id}')">
-      <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
-      <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
-    </div>
-  `).join('');
-  list.style.display = 'block';
-}
-
-function handleBmRegNoKey(e) {
-  const list = document.getElementById('bm-regNo-autocomplete-list');
-  const items = list.querySelectorAll('.autocomplete-item');
-  if (!items.length || list.style.display === 'none') return;
-
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    window.bmSelectedIdx = Math.min(window.bmSelectedIdx + 1, items.length - 1);
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    window.bmSelectedIdx = Math.max(window.bmSelectedIdx - 1, 0);
-  } else if (e.key === 'Enter' && window.bmSelectedIdx >= 0) {
-    e.preventDefault();
-    items[window.bmSelectedIdx].dispatchEvent(new Event('mousedown'));
-    return;
-  } else if (e.key === 'Escape') {
-    list.style.display = 'none'; return;
-  }
-  items.forEach((el, i) => el.classList.toggle('selected', i === window.bmSelectedIdx));
-}
-
-async function selectBmClient(id) {
-  const c = window.clientsList.find(x => String(x.id) === String(id));
-  if (!c) return;
+async function selectBmClient(c) {
   document.getElementById('bm-regNo').value           = c.registration_number || '';
   document.getElementById('bm-companyName').value     = c.name || '';
   document.getElementById('bm-pan').value              = c.pan || '';
@@ -70,7 +38,6 @@ async function selectBmClient(id) {
   document.getElementById('bm-authCapital').value      = c.authorized_capital || '';
   document.getElementById('bm-issuedCapital').value    = c.issued_capital || '';
   document.getElementById('bm-paidUpCapital').value    = c.paid_up_capital || '';
-  document.getElementById('bm-regNo-autocomplete-list').style.display = 'none';
 
   bmClearExtraShareholders();
   const { data, error } = await window.sb
@@ -154,14 +121,6 @@ function bmGetAllShareholderNames() {
   });
   return names.filter(Boolean);
 }
-
-// Close autocomplete on outside click — mirrors report.js's PAN-search listener
-document.addEventListener('click', function (e) {
-  const list = document.getElementById('bm-regNo-autocomplete-list');
-  if (list && !e.target.closest('#bm-regNo') && e.target.id !== 'bm-regNo') {
-    list.style.display = 'none';
-  }
-});
 
 // ════════════════════════════════════════════
 //  BM/AGM MINUTES — document generation

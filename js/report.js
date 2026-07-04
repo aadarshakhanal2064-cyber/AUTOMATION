@@ -8,32 +8,7 @@ function $rep(id){ return document.getElementById(id); }
 
 // Reuses the SAME clientsList already loaded from Supabase by the existing app
 // (populated in loadClients()), so client search here matches the Clients tab exactly.
-function handleRepClientSearch(val){
-  window.repSelectedIdx = -1;
-  const list = $rep('rep-autocomplete-list');
-  if (!val || val.length < 1 || !Array.isArray(window.clientsList)) { list.style.display = 'none'; return; }
-
-  const v = val.toLowerCase();
-  const matches = window.clientsList.filter(c =>
-    (c.name || '').toLowerCase().includes(v) ||
-    (c.email || '').toLowerCase().includes(v) ||
-    (c.pan || '').toLowerCase().includes(v)
-  ).slice(0, 8);
-
-  if (matches.length === 0) { list.style.display = 'none'; return; }
-
-  list.innerHTML = matches.map(c => `
-    <div class="autocomplete-item" onclick="selectRepClient('${c.id}')">
-      <div class="ac-name">${escHtml(c.name)}</div>
-      <div class="ac-email">${escHtml(c.pan ? 'PAN: ' + c.pan : (c.email || 'No details on file'))}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
-    </div>
-  `).join('');
-  list.style.display = 'block';
-}
-
-function selectRepClient(id){
-  const c = window.clientsList.find(x => String(x.id) === String(id));
-  if (!c) return;
+function selectRepClient(c){
   $rep('rep-entityName').value = c.name || '';
   $rep('rep-entityAddress').value = c.address || '';
   $rep('rep-entityPan').value = c.pan || '';
@@ -42,41 +17,28 @@ function selectRepClient(id){
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
   if (mapped) $rep('rep-entityType').value = mapped;
 
-  $rep('rep-autocomplete-list').style.display = 'none';
-  $rep('rep-pan-autocomplete-list').style.display = 'none';
   renderRepAll();
 }
 
-function handleRepPanSearch(val){
-  const list = $rep('rep-pan-autocomplete-list');
-  if (!val || val.length < 2 || !Array.isArray(window.clientsList)) { list.style.display = 'none'; return; }
-
-  const v = val.toLowerCase();
-  const matches = window.clientsList.filter(c => (c.pan || '').toLowerCase().includes(v)).slice(0, 8);
-
-  if (matches.length === 0) { list.style.display = 'none'; return; }
-
-  list.innerHTML = matches.map(c => `
-    <div class="autocomplete-item" onclick="selectRepClient('${c.id}')">
-      <div class="ac-name">${escHtml(c.pan)}</div>
-      <div class="ac-email">${escHtml(c.name)}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
-    </div>
-  `).join('');
-  list.style.display = 'block';
-}
-
-document.addEventListener('click', function(e){
-  const panList = $rep('rep-pan-autocomplete-list');
-  if (panList && !e.target.closest('#rep-entityPan') && e.target.id !== 'rep-entityPan'){
-    panList.style.display = 'none';
-  }
+SearchEngine.attachAutocomplete($rep('rep-entityName'), $rep('rep-autocomplete-list'), {
+  getList: () => window.clientsList,
+  keys: ['name', 'email', 'pan'],
+  renderItem: c => `
+    <div class="ac-name">${escHtml(c.name)}</div>
+    <div class="ac-email">${escHtml(c.pan ? 'PAN: ' + c.pan : (c.email || 'No details on file'))}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+  `,
+  onSelect: selectRepClient,
 });
 
-document.addEventListener('click', function(e){
-  const list = $rep('rep-autocomplete-list');
-  if (list && !e.target.closest('#rep-entityName-group') && e.target.id !== 'rep-entityName'){
-    list.style.display = 'none';
-  }
+SearchEngine.attachAutocomplete($rep('rep-entityPan'), $rep('rep-pan-autocomplete-list'), {
+  getList: () => window.clientsList,
+  keys: ['pan'],
+  minChars: 2,
+  renderItem: c => `
+    <div class="ac-name">${escHtml(c.pan)}</div>
+    <div class="ac-email">${escHtml(c.name)}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+  `,
+  onSelect: selectRepClient,
 });
 
 function getRepState(){

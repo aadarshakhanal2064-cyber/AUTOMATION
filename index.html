@@ -150,7 +150,7 @@
         <div class="form-grid">
           <div class="form-group" id="clientName-group">
             <label>Client Name</label>
-            <input type="text" id="clientName" placeholder="Start typing to search clients…" autocomplete="off" oninput="handleClientSearch(this.value)" onkeydown="handleClientKey(event)" />
+            <input type="text" id="clientName" placeholder="Start typing to search clients…" autocomplete="off" />
             <div class="autocomplete-list" id="autocomplete-list" style="display:none;"></div>
           </div>
           <div class="form-group">
@@ -232,7 +232,7 @@
             </div>
             <div class="form-group" style="margin-bottom:16px; position:relative;">
               <label>Client Name</label>
-              <input type="text" id="rep-entityName" placeholder="Start typing to search clients…" autocomplete="off" oninput="handleRepClientSearch(this.value)" />
+              <input type="text" id="rep-entityName" placeholder="Start typing to search clients…" autocomplete="off" />
               <div class="autocomplete-list" id="rep-autocomplete-list" style="display:none;"></div>
             </div>
             <div class="form-group" style="margin-bottom:16px;">
@@ -253,7 +253,7 @@
             </div>
             <div class="form-group" style="margin-bottom:16px; position:relative;">
               <label>PAN</label>
-              <input type="text" id="rep-entityPan" placeholder="e.g. 610304639" autocomplete="off" oninput="handleRepPanSearch(this.value)" />
+              <input type="text" id="rep-entityPan" placeholder="e.g. 610304639" autocomplete="off" />
               <div class="autocomplete-list" id="rep-pan-autocomplete-list" style="display:none;"></div>
             </div>
             <div class="form-group" style="margin-bottom:16px;">
@@ -556,7 +556,7 @@
             <div class="bm-editor-left">
               <div class="form-group" style="margin-bottom:18px;">
                 <label>Search Company</label>
-                <input type="text" id="bm-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" oninput="handleBmRegNoSearch(this.value)" onkeydown="handleBmRegNoKey(event)" />
+                <input type="text" id="bm-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" />
                 <div class="autocomplete-list" id="bm-regNo-autocomplete-list" style="display:none;"></div>
               </div>
 
@@ -1060,6 +1060,7 @@
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
 
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>
@@ -1068,6 +1069,7 @@
 <script src="js/core/nepaliLocale.js"></script>
 <script src="js/core/documentEngine.js"></script>
 <script src="js/core/ocrEngine.js"></script>
+<script src="js/core/searchEngine.js"></script>
 <script src="js/tabs.js"></script>
 <script src="js/registrar.js"></script>
 <script src="js/clients.js"></script>

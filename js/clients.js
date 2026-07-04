@@ -1,62 +1,19 @@
 // ════════════════════════════════════════════
 //  CLIENT AUTOCOMPLETE
 // ════════════════════════════════════════════
-function handleClientSearch(val) {
-  window.acSelectedIdx = -1;
-  const list = document.getElementById('autocomplete-list');
-  if (!val || val.length < 1) { list.style.display = 'none'; return; }
-
-  const matches = window.clientsList.filter(c =>
-    c.name.toLowerCase().includes(val.toLowerCase()) ||
-    (c.email || '').toLowerCase().includes(val.toLowerCase())
-  ).slice(0, 8);
-
-  if (matches.length === 0) { list.style.display = 'none'; return; }
-
-  list.innerHTML = matches.map((c, i) => `
-    <div class="autocomplete-item" data-idx="${i}" onmousedown="selectClient('${c.id}')">
-      <div class="ac-name">${escHtml(c.name)}</div>
-      <div class="ac-email">${escHtml(c.email || 'No email on file')}</div>
-    </div>
-  `).join('');
-  list.style.display = 'block';
-}
-
-function handleClientKey(e) {
-  const list = document.getElementById('autocomplete-list');
-  const items = list.querySelectorAll('.autocomplete-item');
-  if (!items.length || list.style.display === 'none') return;
-
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    window.acSelectedIdx = Math.min(window.acSelectedIdx + 1, items.length - 1);
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    window.acSelectedIdx = Math.max(window.acSelectedIdx - 1, 0);
-  } else if (e.key === 'Enter' && window.acSelectedIdx >= 0) {
-    e.preventDefault();
-    items[window.acSelectedIdx].dispatchEvent(new Event('mousedown'));
-    return;
-  } else if (e.key === 'Escape') {
-    list.style.display = 'none'; return;
-  }
-  items.forEach((el, i) => el.classList.toggle('selected', i === window.acSelectedIdx));
-}
-
-function selectClient(id) {
-  const c = window.clientsList.find(x => String(x.id) === String(id));
-  if (!c) return;
+function selectClient(c) {
   document.getElementById('clientName').value  = c.name;
   document.getElementById('clientEmail').value = c.email || '';
-  document.getElementById('autocomplete-list').style.display = 'none';
 }
 
-// Close autocomplete on outside click
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('#clientName-group')) {
-    const list = document.getElementById('autocomplete-list');
-    if (list) list.style.display = 'none';
-  }
+SearchEngine.attachAutocomplete(document.getElementById('clientName'), document.getElementById('autocomplete-list'), {
+  getList: () => window.clientsList,
+  keys: ['name', 'email'],
+  renderItem: c => `
+    <div class="ac-name">${escHtml(c.name)}</div>
+    <div class="ac-email">${escHtml(c.email || 'No email on file')}</div>
+  `,
+  onSelect: selectClient,
 });
 
 // ════════════════════════════════════════════
