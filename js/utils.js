@@ -15,10 +15,6 @@ function blobToBase64(blob) {
   });
 }
 
-function showStatus(msg, type) {
-  document.getElementById('status-area').innerHTML = `<div class="status-box status-${type}">${msg}</div>`;
-}
-
 // ════════════════════════════════════════════
 //  FUZZY STRING SIMILARITY
 //  Returns 0.0 (completely different) to 1.0 (identical)

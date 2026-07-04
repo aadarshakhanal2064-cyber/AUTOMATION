@@ -11,9 +11,8 @@
 // both the typed value and the stored value to plain English digits before
 // comparing, so either digit system matches regardless of which was used to
 // store or search.
-const BM_DEVANAGARI_DIGITS = '०१२३४५६७८९';
 function bmToEnglishDigits(s) {
-  return String(s || '').replace(/[०-९]/g, d => String(BM_DEVANAGARI_DIGITS.indexOf(d)));
+  return NepaliLocale.toEnglishDigits(s);
 }
 
 function handleBmRegNoSearch(val) {
@@ -171,7 +170,6 @@ document.addEventListener('click', function (e) {
 //  numbers and B.S. dates need conversion to Devanagari here.
 // ════════════════════════════════════════════
 const BM_TEMPLATE_URL = 'assets/templates/bm-agm-minutes.docx';
-const BM_NEPALI_MONTHS = ['बैशाख','जेठ','असार','साउन','भदौ','असोज','कार्तिक','मंसिर','पौष','माघ','फागुन','चैत'];
 
 // Pre-configured audit firms - selecting one in the dropdown fills in the
 // firm name, auditor's full name, and the correct professional title (CA
@@ -182,53 +180,26 @@ const BM_AUDIT_FIRMS = [
 ];
 
 function bmToDevanagari(s) {
-  return String(s).replace(/[0-9]/g, d => '०१२३४५६७८९'[d]);
+  return NepaliLocale.toDevanagari(s);
 }
 
 // "30,000,000.00" -> "३,००,००,०००" (Nepali lakh/crore grouping, Devanagari, no decimals)
 function bmFormatAmount(raw) {
-  let s = String(raw || '').split('.')[0].replace(/[^0-9]/g, '').replace(/^0+/, '');
-  if (!s) return '';
-  let last3 = s.slice(-3), rest = s.slice(0, -3), grouped = last3;
-  while (rest.length) { grouped = rest.slice(-2) + ',' + grouped; rest = rest.slice(0, -2); }
-  return bmToDevanagari(grouped);
+  return NepaliLocale.formatAmount(raw);
 }
 
 // "2079/09/15" -> { year:२०७९, monthName:पौष, day:१५, full:२०७९/०९/१५ }
 function bmParseBsDate(str) {
-  const parts = String(str || '').trim().split(/[\/\-.]/).map(x => x.trim()).filter(Boolean);
-  if (parts.length < 3) return null;
-  const [y, m, d] = parts;
-  const mNum = parseInt(m, 10);
-  if (!(mNum >= 1 && mNum <= 12)) return null;
-  return {
-    year: bmToDevanagari(y),
-    monthName: BM_NEPALI_MONTHS[mNum - 1],
-    day: bmToDevanagari(String(parseInt(d, 10))),
-    full: bmToDevanagari(y + '/' + String(m).padStart(2, '0') + '/' + String(d).padStart(2, '0')),
-  };
+  return NepaliLocale.parseBsDate(str);
 }
 
 // "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
 function bmFiscalParts(fyValue) {
-  const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
-  if (!m) return { fy: '', next: '' };
-  const y1 = parseInt(m[1], 10);
-  const fmt = a => String(a).slice(1) + '/' + String(a + 1).slice(-2);
-  return { fy: bmToDevanagari(fmt(y1)), next: bmToDevanagari(fmt(y1 + 1)) };
+  return NepaliLocale.fiscalParts(fyValue);
 }
 
 function bmStatus(html, type) {
-  const el = document.getElementById('bm-status');
-  if (el) el.innerHTML = `<div class="status-box status-${type}">${html}</div>`;
-}
-
-function bmDownloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showStatus(html, type, 'bm-status');
 }
 
 // Chairman is listed unnumbered; shareholders (the fixed field plus any added
@@ -302,7 +273,7 @@ async function generateBmAgmMinutes() {
     bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
     const blob = await bmRenderDocx(data);
     const fname = ('BM-AGM ' + data.companyName + ' ' + document.getElementById('bm-fiscalYear').value + '.docx').replace(/[\\/:*?"<>|]/g, '_');
-    bmDownloadBlob(blob, fname);
+    DocumentEngine.downloadBlob(blob, fname);
     bmStatus('✅ कागजात तयार भयो — डाउनलोड भयो (generated & downloaded).', 'success');
     bmClearDraft();
   } catch (err) {
