@@ -231,14 +231,6 @@ async function generateBmAgmMinutes() {
 //  maintained representation of the document that could drift from the real
 //  Word file — it IS the Word file, just displayed as HTML.
 // ════════════════════════════════════════════
-let bmPreviewDebounceTimer = null;
-let bmPreviewRenderToken = 0;
-
-function bmSchedulePreviewRefresh() {
-  clearTimeout(bmPreviewDebounceTimer);
-  bmPreviewDebounceTimer = setTimeout(bmRefreshPreview, 500);
-}
-
 function bmPreviewReady() {
   const val = id => document.getElementById(id).value.trim();
   return !!(val('bm-companyName') && val('bm-bmDate') && val('bm-agmDate'));
@@ -251,10 +243,10 @@ function bmShowPreviewPlaceholder() {
   if (root) root.style.display = 'none';
 }
 
-// A monotonically increasing token guards against an older, slower render
-// (e.g. the template's first-ever fetch) overwriting a newer one that
-// started after further typing — the last input always wins.
-async function bmRefreshPreview() {
+// `isCurrent()` guards against an older, slower render (e.g. the template's
+// first-ever fetch) overwriting a newer one that started after further
+// typing — the last input always wins. See WorkflowEngine.createDebouncedRefresh.
+async function bmRefreshPreview(isCurrent) {
   const placeholder = document.getElementById('bm-preview-placeholder');
   const root = document.getElementById('bm-preview-root');
   if (!placeholder || !root || !window.docx) return;
@@ -264,10 +256,9 @@ async function bmRefreshPreview() {
   const { bm, agm, data } = bmBuildData();
   if (!bm || !agm) { bmShowPreviewPlaceholder(); return; }
 
-  const myToken = ++bmPreviewRenderToken;
   try {
     const blob = await bmRenderDocx(data);
-    if (myToken !== bmPreviewRenderToken) return;
+    if (!isCurrent()) return;
 
     await DocumentEngine.previewWordAsHtml(blob, root, document.getElementById('bm-preview-style'), {
       className: 'bm-docx',
@@ -276,7 +267,7 @@ async function bmRefreshPreview() {
       ignoreLastRenderedPageBreak: true,
       experimental: true,
     });
-    if (myToken !== bmPreviewRenderToken) return;
+    if (!isCurrent()) return;
 
     placeholder.style.display = 'none';
     root.style.display = 'block';
@@ -284,6 +275,11 @@ async function bmRefreshPreview() {
   } catch (err) {
     console.error('BM/AGM preview render failed:', err);
   }
+}
+
+const bmPreviewRefreshCtl = WorkflowEngine.createDebouncedRefresh(bmRefreshPreview, 500);
+function bmSchedulePreviewRefresh() {
+  bmPreviewRefreshCtl.schedule();
 }
 
 // ════════════════════════════════════════════
@@ -386,10 +382,7 @@ function bmActivateTokenEdit(span, target) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  const panel = document.getElementById('regd-bmAgmMinutes-panel');
-  if (!panel) return;
-  panel.addEventListener('input', e => { if (e.target.matches('input, select, textarea')) bmOnFormChanged(); });
-  panel.addEventListener('change', e => { if (e.target.matches('input, select, textarea')) bmOnFormChanged(); });
+  WorkflowEngine.attachFormWatcher(document.getElementById('regd-bmAgmMinutes-panel'), bmOnFormChanged);
   bmLoadDraft();
   bmUpdateCompletionIndicator();
 });
@@ -490,16 +483,10 @@ function bmOnFormChanged() {
 }
 
 // ── Zoom ──
-let bmZoomLevel = 100;
-function bmSetZoom(level) {
-  bmZoomLevel = Math.max(50, Math.min(150, level));
-  const root = document.getElementById('bm-preview-root');
-  if (root) root.style.transform = 'scale(' + (bmZoomLevel / 100) + ')';
-  const label = document.getElementById('bm-zoom-level');
-  if (label) label.textContent = bmZoomLevel + '%';
-}
-function bmZoomIn() { bmSetZoom(bmZoomLevel + 10); }
-function bmZoomOut() { bmSetZoom(bmZoomLevel - 10); }
+const bmZoom = WorkflowEngine.createZoomControl(document.getElementById('bm-preview-root'), document.getElementById('bm-zoom-level'));
+function bmSetZoom(level) { bmZoom.set(level); }
+function bmZoomIn() { bmZoom.zoomIn(); }
+function bmZoomOut() { bmZoom.zoomOut(); }
 
 // ── Inline date validation ──
 function bmValidateDateField(fieldId) {
@@ -518,50 +505,31 @@ function bmValidateDateField(fieldId) {
 }
 
 // ── Autosave (session-local draft, never sent to Supabase) ──
-const BM_DRAFT_KEY = 'bmAgmDraft';
-let bmAutosaveTimer = null;
-
-function bmScheduleAutosave() {
-  clearTimeout(bmAutosaveTimer);
-  bmAutosaveTimer = setTimeout(bmSaveDraft, 600);
-}
-
-function bmSaveDraft() {
-  const panel = document.getElementById('regd-bmAgmMinutes-panel');
-  if (!panel) return;
-  const values = {};
-  panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => { values[el.id] = el.value; });
-  const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
-  try {
-    localStorage.setItem(BM_DRAFT_KEY, JSON.stringify({ values, extraShareholders }));
-  } catch (e) { /* best-effort only — a full/unavailable localStorage shouldn't break the form */ }
-}
-
-function bmClearDraft() {
-  try { localStorage.removeItem(BM_DRAFT_KEY); } catch (e) { /* ignore */ }
-}
-
-function bmLoadDraft() {
-  let draft;
-  try { draft = JSON.parse(localStorage.getItem(BM_DRAFT_KEY) || 'null'); } catch (e) { return; }
-  if (!draft || !draft.values || !Object.values(draft.values).some(v => v)) return;
-
-  Object.entries(draft.values).forEach(([id, val]) => {
-    const el = document.getElementById(id);
-    if (el) el.value = val;
-  });
-  (draft.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
-  bmSchedulePreviewRefresh();
-  bmStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
-}
+const bmAutosave = WorkflowEngine.createAutosave('bmAgmDraft', {
+  collect: () => {
+    const panel = document.getElementById('regd-bmAgmMinutes-panel');
+    const values = {};
+    panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => { values[el.id] = el.value; });
+    const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
+    return { values, extraShareholders };
+  },
+  restore: (draft) => {
+    if (!draft.values || !Object.values(draft.values).some(v => v)) return;
+    Object.entries(draft.values).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val;
+    });
+    (draft.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
+    bmSchedulePreviewRefresh();
+    bmStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
+  },
+  debounceMs: 600,
+});
+function bmScheduleAutosave() { bmAutosave.scheduleSave(); }
+function bmClearDraft() { bmAutosave.clear(); }
+function bmLoadDraft() { bmAutosave.load(); }
 
 // ── Completion indicator ──
 function bmUpdateCompletionIndicator() {
-  const el = document.getElementById('bm-completion-indicator');
-  if (!el) return;
-  const required = ['bm-companyName', 'bm-bmDate', 'bm-agmDate'];
-  const done = required.filter(id => document.getElementById(id).value.trim()).length;
-  el.textContent = done === required.length
-    ? '✅ Ready to generate'
-    : done + ' of ' + required.length + ' required fields set';
+  WorkflowEngine.updateCompletionIndicator('bm-completion-indicator', ['bm-companyName', 'bm-bmDate', 'bm-agmDate'], '✅ Ready to generate');
 }
