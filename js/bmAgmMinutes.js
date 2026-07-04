@@ -216,7 +216,7 @@ async function generateBmAgmMinutes() {
     bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
     const blob = await bmRenderDocx(data);
     const fname = ('BM-AGM ' + data.companyName + ' ' + document.getElementById('bm-fiscalYear').value + '.docx').replace(/[\\/:*?"<>|]/g, '_');
-    DocumentEngine.downloadBlob(blob, fname);
+    DocumentEngine.downloadBlob(blob, fname, { module: 'bmAgmMinutes', clientName: data.companyName });
     bmStatus('✅ कागजात तयार भयो — डाउनलोड भयो (generated & downloaded).', 'success');
     bmClearDraft();
   } catch (err) {

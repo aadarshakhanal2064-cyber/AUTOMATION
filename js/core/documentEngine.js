@@ -8,12 +8,19 @@
 //  Audit Working Papers, ...) calls this instead of repeating it.
 // ════════════════════════════════════════════
 window.DocumentEngine = (function () {
-  function downloadBlob(blob, filename) {
+  // `meta` ({ module, clientName }) is optional and purely for audit
+  // logging — omit it and this behaves exactly as before. Not awaited: the
+  // actual download must never wait on a network round-trip to Supabase,
+  // and AuditLog.record() is itself already best-effort/non-throwing.
+  function downloadBlob(blob, filename, meta) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (window.AuditLog && meta) {
+      AuditLog.record('document_generated', Object.assign({ filename }, meta));
+    }
   }
 
   // ── Word (PizZip + docxtemplater) ──

@@ -219,6 +219,7 @@ async function vatExtractPdf() {
     if (!validation.valid) {
       const list = validation.errors.slice(0, 5).map(e => `<li>${escHtml(e)}</li>`).join('');
       vatStatus(`❌ यो अनुसुची-१० VAT Return PDF जस्तो देखिँदैन (this doesn't look like an अनुसुची-१० VAT Return PDF) — extraction was not attempted:<ul style="margin:8px 0 0 18px;">${list}</ul>`, 'error');
+      if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'error', stage: 'validation', errors: validation.errors, pageCount: pdf.numPages });
       return;
     }
 
@@ -263,8 +264,10 @@ async function vatExtractPdf() {
     const guessed = pages.filter(pg => pg.monthGuessed).length;
     const note = unresolved > 0 ? `${unresolved} page(s) need a month picked manually` : guessed > 0 ? `${guessed} page(s)' month was inferred from sequence — please confirm` : 'all months read correctly';
     vatStatus(`✅ ${pdf.numPages} पृष्ठ पढियो — ${note} (extracted ${pdf.numPages} pages — review below before generating).`, unresolved > 0 ? 'error' : 'success');
+    if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'success', stage: 'extraction', pageCount: pdf.numPages, unresolvedMonths: unresolved, guessedMonths: guessed });
   } catch (err) {
     vatStatus('❌ ' + (err.message || 'Extraction failed'), 'error');
+    if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'error', stage: 'extraction', error: err.message });
   }
 }
 
@@ -564,6 +567,6 @@ async function vatGenerateExcel() {
 
   const blob = await DocumentEngine.workbookToBlob(wb);
   const fname = `VAT Return ${companyName} ${fyLabel}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
-  DocumentEngine.downloadBlob(blob, fname);
+  DocumentEngine.downloadBlob(blob, fname, { module: 'vatReturn', clientName: companyName });
   vatStatus('✅ Excel तयार भयो — डाउनलोड भयो (workbook generated & downloaded).', 'success');
 }
