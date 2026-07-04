@@ -23,21 +23,21 @@ window.DocumentEngine = (function () {
     }
   }
 
-  // ── Word (PizZip + docxtemplater) ──
+  // ── Template fetching (any format — .docx, .xlsx, ...) ──
   // Template bytes never change at runtime — fetch once per URL, reuse the
   // ArrayBuffer for every render (a live preview re-renders far more often
   // than a document is actually downloaded).
-  const wordTemplateCache = new Map(); // url -> Promise<ArrayBuffer>
+  const templateCache = new Map(); // url -> Promise<ArrayBuffer>
 
-  function getWordTemplate(url) {
-    if (!wordTemplateCache.has(url)) {
+  function getTemplate(url) {
+    if (!templateCache.has(url)) {
       const promise = fetch(url).then(resp => {
         if (!resp.ok) throw new Error('Template file not found at ' + url);
         return resp.arrayBuffer();
-      }).catch(err => { wordTemplateCache.delete(url); throw err; });
-      wordTemplateCache.set(url, promise);
+      }).catch(err => { templateCache.delete(url); throw err; });
+      templateCache.set(url, promise);
     }
-    return wordTemplateCache.get(url);
+    return templateCache.get(url);
   }
 
   // Fills `templateBuffer` with `data` and returns the resulting .docx as a
@@ -73,5 +73,5 @@ window.DocumentEngine = (function () {
     return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
 
-  return { downloadBlob, getWordTemplate, renderWord, previewWordAsHtml, workbookToBlob };
+  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml, workbookToBlob };
 })();

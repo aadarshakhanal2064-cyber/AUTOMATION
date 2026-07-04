@@ -200,7 +200,7 @@ function bmBuildData() {
 // returns the resulting .docx as a Blob. Shared by the Word download and the
 // live preview so there is exactly one place that drives document generation.
 async function bmRenderDocx(data) {
-  const buffer = await DocumentEngine.getWordTemplate(BM_TEMPLATE_URL);
+  const buffer = await DocumentEngine.getTemplate(BM_TEMPLATE_URL);
   return DocumentEngine.renderWord(buffer, data);
 }
 

@@ -31,6 +31,11 @@ const VAT_PERIOD_TO_MONTH = {
 };
 const VAT_MONTH_ORDER = ['Shrawan','Bhadra','Ashwin','Kartik','Mangshir','Poush','Magh','Falgun','Chaitra','Baishak','Jestha','Ashadh'];
 
+// Sanitized copy of the firm's real "Detail of Sale & Purchase" workbook
+// (structure/styles/formulas verbatim, all client data blanked) — the
+// generator fills this rather than rebuilding the sheet from scratch.
+const VAT_EXCEL_TEMPLATE_URL = 'assets/templates/vat-detail.xlsx';
+
 // PDF page = 595 x 842 pt (A4) for this document family.
 const VAT_PDF_PAGE_W = 595, VAT_PDF_PAGE_H = 842;
 
@@ -499,74 +504,47 @@ async function vatGenerateExcel() {
 
   const rows = vatBuildMonthRows(pages, openingBalance);
 
+  // The workbook is the firm's real template (sanitized copy committed as an
+  // asset — see assets/templates/vat-detail.xlsx), loaded and filled rather
+  // than rebuilt from scratch: every font/border/width/row-height/formula/
+  // header quirk (including intentional ones like the missing K19 SUM) comes
+  // from the real file, so fidelity is structural, not approximated.
+  const buffer = await DocumentEngine.getTemplate(VAT_EXCEL_TEMPLATE_URL);
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Sheet1');
-  ws.columns = [5.33,11.1,19.1,17.9,17.9,20.9,17.9,21.4,28.6,17.9,29,20,24.9,16.4,17.6,17.6,12.3].map(w => ({ width: w }));
+  await wb.xlsx.load(buffer.slice(0));
+  const ws = wb.worksheets[0];
 
-  const numFmt = '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)';
-  ws.mergeCells('A1:P1'); ws.getCell('A1').value = companyName;
-  ws.getCell('A1').font = { bold: true, size: 19, name: 'Arial' };
-  ws.mergeCells('A2:P2'); ws.getCell('A2').value = companyAddress;
-  ws.getCell('A2').font = { bold: true, size: 11, name: 'Arial' };
-  ws.mergeCells('A3:P3'); ws.getCell('A3').value = `                  Detail of Sale & Purchase as per VAT Return for F.Y ${fyLabel}`;
-  ws.getCell('A3').font = { size: 14, name: 'Arial' };
-
-  const headers = ['S.no','Month','Taxable Sales','VAT','Tax Free Sales','Taxable Purchase','VAT','Tax Free Purchase',
-    'Taxable Import Purchase','Vat','Tax Free Import Purchase','Adjustment Sales','Adjustment purchase','Vat Paid','Difference','Total'];
-  headers.forEach((h, i) => {
-    const cell = ws.getCell(5, i + 1);
-    cell.value = h;
-    cell.font = { size: 11, name: 'Century Gothic' };
-    if (i >= 2) cell.numFmt = numFmt;
-  });
-
-  ws.getCell('A6').value = 1;
-  ws.getCell('A6').font = { size: 12, name: 'Century Gothic' };
-  ws.getCell('B6').value = 'Opening';
-  ws.getCell('B6').font = { size: 12, name: 'Century Gothic' };
+  ws.getCell('A1').value = companyName;
+  ws.getCell('A2').value = companyAddress;
+  ws.getCell('A3').value = `                  Detail of Sale & Purchase as per VAT Return for F.Y ${fyLabel}`;
   ws.getCell('P6').value = openingBalance;
-  ws.getCell('P6').numFmt = numFmt;
-  ws.getCell('P6').font = { size: 12, name: 'Century Gothic' };
 
-  const dataFont = { size: 12, name: 'Century Gothic' };
   rows.forEach((row, i) => {
     const r = 7 + i;
-    ws.getCell(r, 1).value = i + 2;
-    ws.getCell(r, 1).font = dataFont;
-    ws.getCell(r, 2).value = row.name;
-    ws.getCell(r, 2).font = { size: 11, name: 'Century Gothic' };
-
     if (row.missing) {
+      // Data cells are already blank in the template; blank C-N stays blank,
+      // and Excel's arithmetic treats blanks as 0 so the O/P chain carries
+      // the running Total forward unchanged across the gap.
       ws.getCell(r, 2).note = 'Month not found in the uploaded PDF — left blank so the Total formula chain treats it as zero.';
-    } else {
-      const vals = [row.c, row.d, row.e, row.f, row.g, row.h, row.i, row.j, row.k, row.l, row.m, row.vatPaid];
-      vals.forEach((v, ci) => {
-        const cell = ws.getCell(r, 3 + ci);
-        cell.value = v;
-        cell.numFmt = numFmt;
-        cell.font = dataFont;
-      });
+      return;
     }
-    const oCell = ws.getCell(r, 15);
-    oCell.value = { formula: `D${r}-G${r}-J${r}+L${r}-M${r}` };
-    oCell.numFmt = numFmt; oCell.font = dataFont;
-    const pCell = ws.getCell(r, 16);
-    pCell.value = { formula: `P${r - 1}+O${r}-N${r}` };
-    pCell.numFmt = numFmt; pCell.font = dataFont;
+    const vals = [row.c, row.d, row.e, row.f, row.g, row.h, row.i, row.j, row.k, row.l, row.m, row.vatPaid];
+    vals.forEach((v, ci) => { ws.getCell(r, 3 + ci).value = v; });
   });
 
-  const totalRow = 7 + rows.length;
-  ws.getCell(totalRow, 2).value = 'Total';
-  ws.getCell(totalRow, 2).font = { size: 11, name: 'Century Gothic' };
-  [3,4,5,6,7,8,9,10,11,12,13,14].forEach(col => {
-    const colLetter = ws.getColumn(col).letter;
-    const cell = ws.getCell(totalRow, col);
-    cell.value = { formula: `SUM(${colLetter}7:${colLetter}${totalRow - 1})` };
-    cell.numFmt = numFmt; cell.font = dataFont;
-  });
+  // C21/C22 tie-out (reverse-engineered from the real workbook): C21 is a
+  // static copy of the taxable-sales total and C22's "+C21-C19" formula
+  // (already in the template) surfaces any later hand-edit as a non-zero
+  // difference.
+  ws.getCell('C21').value = rows.reduce((sum, row) => sum + (row.missing ? 0 : row.c), 0);
+
+  // The template ships with formula results stripped — make Excel compute
+  // them on first open instead of showing blank formula cells.
+  wb.calcProperties = wb.calcProperties || {};
+  wb.calcProperties.fullCalcOnLoad = true;
 
   const blob = await DocumentEngine.workbookToBlob(wb);
-  const fname = `VAT Return ${companyName} ${fyLabel}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+  const fname = `${companyName} ${fyLabel}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
   DocumentEngine.downloadBlob(blob, fname, { module: 'vatReturn', clientName: companyName });
   vatStatus('✅ Excel तयार भयो — डाउनलोड भयो (workbook generated & downloaded).', 'success');
 }
