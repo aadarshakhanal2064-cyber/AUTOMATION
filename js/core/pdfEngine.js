@@ -74,6 +74,49 @@ window.PdfEngine = (function () {
     return crop;
   }
 
+  // ── PDF.js: text-layer geometry ──
+  // Whether a page has any real extractable text at all — the cheapest,
+  // most reliable way to tell a digital-text PDF apart from a scanned/
+  // image-only one (confirmed by direct inspection across real IRD VAT
+  // PDFs: this document family carries no AcroForm/XFA/metadata either
+  // way, so text-content presence is the only structural signal available).
+  async function hasTextLayer(page) {
+    const tc = await page.getTextContent();
+    return tc.items.some(it => it.str && it.str.trim() !== '');
+  }
+
+  // Reconstructs a page's text into visual reading order: groups items into
+  // rows by y-proximity, then sorts each row left-to-right by x. PDF.js's
+  // own item order follows the content stream's *emission* order, which
+  // real-world PDF generators do not guarantee matches visual layout —
+  // confirmed directly on real IRD VAT PDFs, where a page's raw item list
+  // came back with table rows and even individual row/label pairs
+  // out of visual order. 8pt is the row-gap threshold: the smallest gap
+  // measured between two genuinely different visual lines across every
+  // real document checked, while items belonging to the same line (but
+  // emitted as separate content-stream runs, e.g. a label and its value)
+  // measured up to ~4pt of baseline drift from each other.
+  const TEXT_ROW_GAP_PT = 8;
+  async function getTextRows(page) {
+    const tc = await page.getTextContent();
+    const items = tc.items
+      .filter(it => it.str && it.str.trim() !== '')
+      .map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }))
+      .sort((a, b) => b.y - a.y);
+
+    const rows = [];
+    for (const item of items) {
+      const row = rows[rows.length - 1];
+      if (row && Math.abs(item.y - row.items[row.items.length - 1].y) <= TEXT_ROW_GAP_PT) {
+        row.items.push(item);
+      } else {
+        rows.push({ y: item.y, items: [item] });
+      }
+    }
+    rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
+    return rows;
+  }
+
   // ── PDF-Lib: construction ──
   async function mergePdfs(pdfByteArrays) {
     const merged = await PDFLib.PDFDocument.create();
@@ -85,5 +128,5 @@ window.PdfEngine = (function () {
     return merged.save(); // Uint8Array
   }
 
-  return { getImagePlacement, renderPageToCanvas, cropCanvas, mergePdfs };
+  return { getImagePlacement, renderPageToCanvas, cropCanvas, mergePdfs, hasTextLayer, getTextRows };
 })();

@@ -168,6 +168,24 @@ async function vatValidatePdf(pdf) {
       continue;
     }
 
+    // Family B (digital-text PDFs — see vatExtractPageFromText): checked
+    // structurally by its own row-anchor text, never by the image-based
+    // checks below, since these pages carry no embedded scan image at all.
+    // Every real Family B document checked (Sarso, Jay Nepal, Nawa Ashrya)
+    // has a trailing signature/declaration page with ZERO table content —
+    // a normal part of this document family, not a validation failure. A
+    // page with no recognized anchors at all is silently not a data page
+    // (skipped, not extracted); only a page with SOME anchors but not
+    // enough of them (a genuinely malformed/mismatched table) is an error.
+    if (await PdfEngine.hasTextLayer(page)) {
+      const rows = await PdfEngine.getTextRows(page);
+      const anchorCheck = await vatCheckTextLayerAnchors(rows);
+      if (anchorCheck.found.length > 0 && anchorCheck.passed < 3) {
+        errors.push(`Page ${p} doesn't match the expected VAT Return form layout (found ${anchorCheck.passed}/${anchorCheck.total} expected row markers in its text). This may not be an अनुसुची-१० VAT Return page.`);
+      }
+      continue;
+    }
+
     const placement = await vatGetImagePlacement(page);
     if (placement.imageCount !== 1) {
       errors.push(`Page ${p} has ${placement.imageCount} embedded image(s) — expected exactly 1 scanned form page.`);
@@ -186,6 +204,155 @@ async function vatValidatePdf(pdf) {
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+// ── Digital-text extraction (Family B) ──
+// Some real IRD VAT PDFs (confirmed: Sarso Traders, Jay Nepal Khadyana,
+// Nawa Ashrya — all three checked by direct font-dictionary inspection)
+// are not scans at all: they embed a real text layer via subsetted Mangal/
+// ArialUnicodeMS fonts. Every digit extracts perfectly; the Devanagari
+// *labels* come out as wrong-but-still-Devanagari characters, because the
+// font's ToUnicode CMap is broken specifically for complex-script glyph
+// reordering (which digits never need). So: never try to read the label
+// text. Instead, each table row's item-number prefix (e.g. "१.१.") is
+// itself made of Devanagari *numerals*, which decode correctly on every
+// sample checked — that's the anchor, exactly mirroring the scanned-image
+// path's "trust structure/position, not label content" principle, just
+// applied to reconstructed text rows instead of pixel boxes. No OCR runs
+// for this family at all.
+const VAT_DEVANAGARI_DIGITS = '०१२३४५६७८९';
+function vatDevToInt(s) {
+  if (!s) return null;
+  let out = '';
+  for (const ch of s) {
+    const idx = VAT_DEVANAGARI_DIGITS.indexOf(ch);
+    if (idx === -1) return null;
+    out += String(idx);
+  }
+  return out === '' ? null : parseInt(out, 10);
+}
+
+const VAT_TEXT_ROW_ANCHOR_RE = /^([०-९]+)\.([०-९]*)\.?/;
+function vatMatchRowAnchor(str) {
+  const m = str.match(VAT_TEXT_ROW_ANCHOR_RE);
+  if (!m) return null;
+  const major = vatDevToInt(m[1]);
+  if (major === null) return null;
+  const minor = m[2] ? vatDevToInt(m[2]) : null;
+  return minor !== null ? `${major}.${minor}` : `${major}`;
+}
+
+// Trailing Western-digit tokens across a row's items, in left-to-right
+// (column) order — this alone already excludes the row's own Devanagari
+// label/anchor text (it ends in Devanagari script, never a Western digit,
+// on every sample checked), so no special-casing of "which item is the
+// label" is needed. Dates (e.g. "2083.03.16") are excluded on purpose:
+// this form never prints a genuine table value with a decimal point.
+function vatRowNumericTokens(row) {
+  const out = [];
+  for (const item of row.items) {
+    const m = item.str.match(/-?\d+$/);
+    if (m) out.push(m[0]);
+  }
+  return out;
+}
+
+// anchor -> field name(s), in the same left-to-right column order the
+// table itself prints them — mirrors VAT_FIELD_BOXES's field list exactly,
+// just keyed by structural row-number instead of a pixel box, so every
+// downstream consumer (ValidationEngine, vatBuildMonthRows, Excel
+// generation) receives the identical {value, confidence} shape either way.
+const VAT_TEXT_ROW_FIELDS = {
+  '1.1': ['taxableSalesValue', 'taxableSalesVat'],
+  '1.3': ['taxFreeSales'],
+  '2.1': ['taxablePurchaseValue', 'taxablePurchaseVat'],
+  '2.2': ['taxableImportValue', 'taxableImportVat'],
+  '2.3': ['exemptPurchase'],
+  '2.4': ['exemptImport'],
+  '3.1': ['adjustmentPurchaseCredit', 'adjustmentSalesDebit'],
+  '5': ['item5DebitCredit'],
+  '6': ['item6PrevCredit'],
+  '7': ['item7TotalPayable'],
+};
+
+function vatTextField(value) {
+  return { value: value !== undefined && value !== null ? String(value) : '', confidence: 100, source: 'text' };
+}
+
+// PAN is always exactly 9 digits in Nepal — verified against every real
+// digital-text PDF on hand — which tells it apart from the सब्मिसन नं.
+// submission id (12 digits on every sample checked) and phone numbers (10
+// digits) purely by length, with no need to read the unreliable label next
+// to it. Tax year + period are printed on the same row, in that order, as
+// two short non-decimal numbers — also verified on every sample, regardless
+// of whether that row's label+value are one PDF text item or several.
+function vatExtractHeaderFromRows(rows) {
+  let pan = null, taxYear = null, period = null;
+  for (const row of rows) {
+    for (const item of row.items) {
+      const digitsOnly = item.str.replace(/[^\d]/g, '');
+      const trailing = (item.str.match(/(\d+)$/) || [])[1];
+      if (!pan && trailing && digitsOnly === trailing && /^\d{9}$/.test(digitsOnly)) pan = digitsOnly;
+    }
+    if (!taxYear) {
+      const tokens = vatRowNumericTokens(row);
+      const yearTok = tokens.find(t => /^20\d{2}$/.test(t));
+      if (yearTok) {
+        taxYear = yearTok;
+        const periodTok = tokens.slice(tokens.indexOf(yearTok) + 1).find(t => /^\d{1,2}$/.test(t) && +t >= 1 && +t <= 12);
+        if (periodTok) period = periodTok;
+      }
+    }
+  }
+  return { pan, taxYear, period };
+}
+
+// Cheap structural check for a text-layer page — mirrors the scanned-image
+// path's "at least 2 of 3 density anchors" gate, just counting recognized
+// row anchors instead of pixel density regions.
+const VAT_TEXT_REQUIRED_ANCHORS = ['1.1', '2.1', '5', '7'];
+async function vatCheckTextLayerAnchors(rows) {
+  const found = new Set();
+  for (const row of rows) {
+    if (!row.items.length) continue;
+    const anchor = vatMatchRowAnchor(row.items[0].str);
+    if (anchor && VAT_TEXT_ROW_FIELDS[anchor]) found.add(anchor);
+  }
+  const passed = VAT_TEXT_REQUIRED_ANCHORS.filter(a => found.has(a)).length;
+  return { passed, total: VAT_TEXT_REQUIRED_ANCHORS.length, found: [...found] };
+}
+
+// Reads one page's fields straight from its text layer — no crop
+// coordinates, no OCR. Confidence is always 100: these are the PDF's own
+// embedded digit glyphs, not a recognizer's guess.
+async function vatExtractPageFromText(pdf, pageNum) {
+  const page = await pdf.getPage(pageNum);
+  const rows = await PdfEngine.getTextRows(page);
+
+  const fields = {};
+  Object.keys(VAT_FIELD_BOXES).forEach(name => { fields[name] = vatTextField(''); });
+
+  for (const row of rows) {
+    if (!row.items.length) continue;
+    const anchor = vatMatchRowAnchor(row.items[0].str);
+    if (!anchor || !VAT_TEXT_ROW_FIELDS[anchor]) continue;
+    const tokens = vatRowNumericTokens(row);
+    VAT_TEXT_ROW_FIELDS[anchor].forEach((name, i) => { if (tokens[i] !== undefined) fields[name] = vatTextField(tokens[i]); });
+  }
+
+  const header = vatExtractHeaderFromRows(rows);
+  if (header.pan) fields.pan = vatTextField(header.pan);
+  if (header.taxYear) fields.taxYear = vatTextField(header.taxYear);
+  if (header.period) fields.period = vatTextField(header.period);
+
+  // item5/6/7 keep their real sign here (unlike the OCR path, which strips
+  // it) — the identity can be checked exactly rather than by absolute value.
+  const item5 = fields.item5DebitCredit.value !== '' ? parseInt(fields.item5DebitCredit.value, 10) : null;
+  const item6 = fields.item6PrevCredit.value !== '' ? parseInt(fields.item6PrevCredit.value, 10) : null;
+  const item7 = fields.item7TotalPayable.value !== '' ? parseInt(fields.item7TotalPayable.value, 10) : null;
+  const itemsIdentityExact = item5 !== null && item6 !== null && item7 !== null && (item5 - item6) === item7;
+
+  return { fields, itemsIdentityExact };
 }
 
 function vatCropField(canvas, placement, box) {
@@ -332,14 +499,41 @@ async function vatExtractPdf() {
     let lastGoodMonthIdx = null; // period OCR is the least reliable field — fall back to
                                   // "previous page's month + 1" (PDF pages are sequential
                                   // monthly filings) whenever the digit isn't recognized.
+
+    // Decide per page, up front, whether it's Family B data (digital text,
+    // no OCR needed), Family B non-data (a trailing signature/declaration
+    // page — every real Family B document checked has one; carries no VAT
+    // figures and must not be extracted as a blank/zero month), or Family A
+    // (scanned image — needs OCR). A document that's entirely Family B
+    // never needs a Tesseract worker started at all — a real, avoidable
+    // cost (its own WASM engine startup) for a page type that will never
+    // call it.
+    const pageKind = { __proto__: null }; // p -> 'text' | 'text-skip' | 'ocr'
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      if (await PdfEngine.hasTextLayer(page)) {
+        const rows = await PdfEngine.getTextRows(page);
+        const anchorCheck = await vatCheckTextLayerAnchors(rows);
+        pageKind[p] = anchorCheck.found.length > 0 ? 'text' : 'text-skip';
+      } else {
+        pageKind[p] = 'ocr';
+      }
+    }
+    const needsOcr = Object.values(pageKind).some(k => k === 'ocr');
+
     let session = null;
     try {
-      vatStatus('<span class="spinner spinner-navy"></span> OCR इन्जिन तयार गर्दै (starting OCR engine)…', 'searching');
-      session = await OcrEngine.createDigitSession();
+      if (needsOcr) {
+        vatStatus('<span class="spinner spinner-navy"></span> OCR इन्जिन तयार गर्दै (starting OCR engine)…', 'searching');
+        session = await OcrEngine.createDigitSession();
+      }
 
       for (let p = 1; p <= pdf.numPages; p++) {
+        if (pageKind[p] === 'text-skip') continue; // e.g. a trailing signature/declaration page
         vatStatus(`<span class="spinner spinner-navy"></span> पृष्ठ ${p}/${pdf.numPages} पढ्दै (reading page ${p} of ${pdf.numPages})…`, 'searching');
-        const { fields, itemsIdentityExact } = await vatExtractPage(session, pdf, p);
+        const { fields, itemsIdentityExact } = pageKind[p] === 'text'
+          ? await vatExtractPageFromText(pdf, p)
+          : await vatExtractPage(session, pdf, p);
         const period = vatNum(fields.period);
         let monthInfo = VAT_PERIOD_TO_MONTH[period];
         let monthGuessed = false;
