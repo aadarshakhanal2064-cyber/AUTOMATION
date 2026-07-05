@@ -355,17 +355,56 @@ async function vatExtractPageFromText(pdf, pageNum) {
   return { fields, itemsIdentityExact };
 }
 
-function vatCropField(canvas, placement, box) {
-  return PdfEngine.cropCanvas(canvas, placement, box);
+// ── Structural row alignment (fallback for scans the fixed boxes miss) ──
+// VAT_FIELD_BOXES's top/height fractions were calibrated once against a
+// clean, unrotated scan and don't survive a different scanner's rotation or
+// vertical drift (confirmed: a real second-company PDF with ~2-3° of scan
+// rotation mostly failed under fixed coordinates, while every value remained
+// perfectly legible to the eye and to a human transcriber). The fix keeps
+// those well-calibrated boxes and only re-registers them when they miss (see
+// vatExtractPage's two-pass logic): the page's own table rule lines are
+// detected and a single vertical offset+scale map is fit from the reference
+// document's rule lines onto this page's, then each table box is carried
+// through that map. The map is affine, so it preserves each field's
+// within-cell placement (cropping the raw detected cell instead would clip
+// digits that sit high or low in their cell), and it's fit robustly (RANSAC
+// over anchor pairs) so it survives pages where only some rule lines are
+// detected (real range seen: 7-17 lines on one document). This alignment is
+// deliberately NOT applied to pages the fixed boxes already read correctly —
+// there it can only pull a well-placed box off a digit (the rule lines drift
+// slightly page-to-page even on a clean scan, but the digits don't drift with
+// them), so those pages stay byte-identical to before.
+const VAT_ROW_GRID_REGION = { left: 0.03, right: 0.97, top: 0.28, bottom: 0.70, densityThreshold: 0.55 };
+
+// The reference document's detected rule lines, as fractions of the raw
+// scanned image (page 1 of the calibration filing — clean, unrotated, all
+// 17 lines detected). Same provenance and role as VAT_FIELD_BOXES: measured
+// once, in the browser, via the exact runtime pipeline.
+const VAT_REF_ROW_LINES = [
+  0.31535, 0.33567, 0.34716, 0.37057, 0.39398, 0.41607, 0.44081, 0.46599,
+  0.48984, 0.51369, 0.53843, 0.5645, 0.58923, 0.61309, 0.63871, 0.66256, 0.68818,
+];
+
+// Header fields sit above the table, so the table-line alignment doesn't
+// apply to them — they keep their fixed boxes (unchanged pre-existing
+// behavior). period only seeds month inference (which has a sequential
+// fallback), taxYear/pan only drive auto-fill, so a small header misplacement
+// degrades an aid, never a table value.
+const VAT_HEADER_FIELDS = new Set(['period', 'taxYear', 'pan']);
+const VAT_ROW_ALIGN_TOLERANCE = 0.01; // ~half the ~0.021 rule-line spacing
+
+// Carries a calibrated box through the page's row-alignment map (offset+
+// scale on top/height; left/width unchanged — horizontal placement is
+// flush-left by assumption, unchanged from before). Returns the box
+// untouched when there's no map (alignment failed) so the field falls back
+// to its fixed position rather than crashing or fabricating.
+function vatAlignBox(box, map) {
+  if (!map) return box;
+  return { top: map.a * box.top + map.b, height: map.a * box.height, left: box.left, width: box.width };
 }
 
-// `session` is an OcrEngine digit-recognition session created once per
-// vatExtractPdf() run and reused for every field on every page (~140
-// recognitions for a 10-page filing) — see js/core/ocrEngine.js for why
-// this is session-based rather than a one-shot call.
-async function vatExtractField(session, canvas, placement, boxName) {
-  const crop = vatCropField(canvas, placement, VAT_FIELD_BOXES[boxName]);
-  return session.recognizeDigits(crop);
+function vatCropField(canvas, placement, box) {
+  return PdfEngine.cropCanvas(canvas, placement, box);
 }
 
 // ── Items strip (५/६/७) extraction ──
@@ -458,14 +497,65 @@ async function vatExtractItemsStrip(session, canvas, placement) {
 }
 
 // ── One page's full extraction ──
-async function vatExtractPage(session, pdf, pageNum) {
-  const { canvas, placement } = await vatRenderPageCanvas(pdf, pageNum, 3);
+// Reads every field from one prepared canvas. `map` (or null) carries the
+// table fields onto the page's own detected rule lines; header fields always
+// use their fixed boxes (they sit above the table, outside the alignment).
+async function vatReadFields(session, canvas, placement, map) {
   const fields = {};
-  const boxNames = Object.keys(VAT_FIELD_BOXES);
-  for (let i = 0; i < boxNames.length; i++) {
-    fields[boxNames[i]] = await vatExtractField(session, canvas, placement, boxNames[i]);
+  for (const name of Object.keys(VAT_FIELD_BOXES)) {
+    const box = (map && !VAT_HEADER_FIELDS.has(name)) ? vatAlignBox(VAT_FIELD_BOXES[name], map) : VAT_FIELD_BOXES[name];
+    fields[name] = await session.recognizeDigits(vatCropField(canvas, placement, box));
   }
-  const strip = await vatExtractItemsStrip(session, canvas, placement);
+  return fields;
+}
+
+// A fixed-box read "looks right" when BOTH the sales and purchase value/VAT
+// pairs are present and satisfy the 13% relationship — the same independent
+// signal the review layer already trusts. When they don't, the fixed
+// coordinates probably missed the table (a differently-positioned or rotated
+// scan), so structural re-registration is worth attempting.
+function vatCoreOk(fields) {
+  const sv = vatNum(fields.taxableSalesValue), svat = vatNum(fields.taxableSalesVat);
+  const pv = vatNum(fields.taxablePurchaseValue), pvat = vatNum(fields.taxablePurchaseVat);
+  return sv > 1000 && vatRateCheck(sv, svat).ok && pv > 1000 && vatRateCheck(pv, pvat).ok;
+}
+function vatCoreFilled(fields) {
+  return ['taxableSalesValue', 'taxableSalesVat', 'taxablePurchaseValue', 'taxablePurchaseVat']
+    .filter(k => fields[k].value !== '').length;
+}
+
+async function vatExtractPage(session, pdf, pageNum) {
+  const { canvas: rawCanvas, placement } = await vatRenderPageCanvas(pdf, pageNum, 3);
+
+  // First pass: the original fixed-box calibration on the un-rotated canvas.
+  // Fast, and byte-identical to the pre-vision behaviour on every page it
+  // already handled — so a page that reads correctly here is never touched
+  // by the structural code below.
+  let fields = await vatReadFields(session, rawCanvas, placement, null);
+  let strip = await vatExtractItemsStrip(session, rawCanvas, placement);
+
+  // Second pass, only when the fixed read doesn't look like a valid VAT page:
+  // deskew (if rotated) and carry the boxes onto the table's own detected rule
+  // lines. Adopt that read only if it's actually better — verified-valid, or
+  // recovering more fields — so a differently-positioned scan is rescued
+  // without ever degrading a page the fixed boxes already read correctly (the
+  // reason for trying fixed first: line-fit re-registration can pull a
+  // well-placed box off a digit on a clean scan, observed directly).
+  if (!vatCoreOk(fields)) {
+    const angle = VisionEngine.detectSkewAngle(rawCanvas);
+    const canvas = Math.abs(angle) > 0.5 ? VisionEngine.rotateCanvas(rawCanvas, angle) : rawCanvas;
+    let lines = VisionEngine.repairLineGaps(VisionEngine.detectHorizontalLines(canvas, VAT_ROW_GRID_REGION));
+    const linesRaw = lines.map(l => (l - placement.topFraction) / placement.heightFraction);
+    const map = VisionEngine.alignLinear(VAT_REF_ROW_LINES, linesRaw, VAT_ROW_ALIGN_TOLERANCE);
+    if (map) {
+      const aligned = await vatReadFields(session, canvas, placement, map);
+      if (vatCoreOk(aligned) || vatCoreFilled(aligned) > vatCoreFilled(fields)) {
+        fields = aligned;
+        strip = await vatExtractItemsStrip(session, canvas, placement);
+      }
+    }
+  }
+
   Object.assign(fields, strip.fields);
   return { fields, itemsIdentityExact: strip.identityExact };
 }
