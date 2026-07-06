@@ -639,6 +639,34 @@ async function vatExtractPdf() {
       if (session) await session.terminate(); // always release the WASM worker, even if extraction threw
     }
 
+    // period's OCR confidence has been observed unreliable in both directions
+    // on real scans (0% on a correct read; no signal at all distinguishing a
+    // wrong-but-plausible misread, e.g. "5" read as "9" — both real Nepali
+    // calendar months, so VAT_PERIOD_TO_MONTH accepts either). Real filings
+    // are sequential monthly pages, so (pageNum - monthIdx) should be one
+    // constant offset across the whole document. Checking each page against
+    // its immediate predecessor was tried first and rejected: one early
+    // misread poisons the chain and drags every later page — including ones
+    // that read correctly — onto the wrong trajectory. Checking each direct
+    // (non-guessed, non-text) read against the DOCUMENT-WIDE consensus offset
+    // instead is robust to any single bad page, including the very first one
+    // (verified: catches a real page whose predecessor also failed, which
+    // the chain-based check missed entirely). Flags only — never overrides —
+    // so a genuine skipped-month document can't be silently mis-corrected.
+    const directReads = pages.filter(pg => pg.monthInfo && !pg.monthGuessed && pg.fields.period.source !== 'text');
+    if (directReads.length >= 2) {
+      const offsetCounts = {};
+      directReads.forEach(pg => {
+        const off = pg.pageNum - pg.monthInfo.idx;
+        offsetCounts[off] = (offsetCounts[off] || 0) + 1;
+      });
+      const consensusOffset = Object.keys(offsetCounts).reduce((best, off) =>
+        offsetCounts[off] > (offsetCounts[best] ?? -1) ? off : best, null);
+      directReads.forEach(pg => {
+        pg.monthSequenceMismatch = (pg.pageNum - pg.monthInfo.idx) !== Number(consensusOffset);
+      });
+    }
+
     window.vatExtractedPages = pages;
     window.vatPaidOverrides = {}; // fresh extraction, no stale per-month payment overrides
 
@@ -690,7 +718,11 @@ async function vatExtractPdf() {
 
     const unresolved = pages.filter(pg => !pg.monthInfo).length;
     const guessed = pages.filter(pg => pg.monthGuessed).length;
-    const note = unresolved > 0 ? `${unresolved} page(s) need a month picked manually` : guessed > 0 ? `${guessed} page(s)' month was inferred from sequence — please confirm` : 'all months read correctly';
+    const sequenceMismatch = pages.filter(pg => pg.monthSequenceMismatch).length;
+    const note = unresolved > 0 ? `${unresolved} page(s) need a month picked manually`
+      : guessed > 0 ? `${guessed} page(s)' month was inferred from sequence — please confirm`
+      : sequenceMismatch > 0 ? `${sequenceMismatch} page(s)' month breaks the expected sequence — please confirm`
+      : 'all months read correctly';
     vatStatus(`✅ ${pdf.numPages} पृष्ठ पढियो — ${note} (extracted ${pdf.numPages} pages — review below before generating).${panNote}`, unresolved > 0 || pans.length > 1 ? 'error' : 'success');
     if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'success', stage: 'extraction', pageCount: pdf.numPages, unresolvedMonths: unresolved, guessedMonths: guessed });
   } catch (err) {
@@ -768,6 +800,7 @@ function vatRowWarnings(pg, dupIdxs) {
       if (!pg.monthInfo) return { severity: 'block', message: `Month not recognized (OCR read period "${f.period.value || '(blank)'}") — pick one manually.` };
       if (dupIdxs.has(pg.monthInfo.idx)) return { severity: 'block', message: `Another page is also assigned to ${pg.monthInfo.name} — one of them is wrong and will silently overwrite the other.` };
       if (pg.monthGuessed) return { severity: 'warn', message: 'Month was inferred from page sequence, not read directly — please confirm.' };
+      if (pg.monthSequenceMismatch) return { severity: 'warn', message: `Month read as ${pg.monthInfo.name}, which breaks the sequential order most other pages in this filing agree on — likely a misread digit (period OCR is the least reliable field). Please confirm.` };
       return null;
     },
     (pg) => {
@@ -864,7 +897,7 @@ function vatRenderReviewTable(pages) {
 
   tbody.innerHTML = pages.map((pg, i) => {
     const warnings = vatRowWarnings(pg, dupIdxs);
-    const needsAttention = warnings.some(w => w.severity === 'block') || pg.monthGuessed;
+    const needsAttention = warnings.some(w => w.severity === 'block') || pg.monthGuessed || pg.monthSequenceMismatch;
     const monthOptions = VAT_MONTH_ORDER.map((name, mi) =>
       `<option value="${mi + 1}" ${pg.monthInfo && pg.monthInfo.idx === mi + 1 ? 'selected' : ''}>${name}</option>`
     ).join('');
