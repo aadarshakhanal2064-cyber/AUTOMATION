@@ -164,6 +164,20 @@ async function afterGoogleSignIn() {
   // Load data - assuming loadClients and loadLogs are defined in other scripts
   await loadClients();
   await loadLogs();
+  await loadSidebarStorageUsage();
+}
+
+// Free tier cap is hardcoded rather than queried — Supabase doesn't expose
+// plan tier via the client, and this is the number that actually matters
+// operationally (when to worry about hitting the ceiling).
+async function loadSidebarStorageUsage() {
+  const FREE_TIER_LIMIT_MB = 500;
+  const { data, error } = await window.sb.rpc('get_db_storage_usage');
+  if (error || !data || !data[0]) return;
+  const usedMb = data[0].bytes_used / (1024 * 1024);
+  const pct = Math.min(100, Math.round((usedMb / FREE_TIER_LIMIT_MB) * 100));
+  document.getElementById('pu-bar-fill').style.width = pct + '%';
+  document.getElementById('pu-storage-text').textContent = `${usedMb.toFixed(1)} MB of ${FREE_TIER_LIMIT_MB} MB used`;
 }
 
 function showAuthError(msg) {
