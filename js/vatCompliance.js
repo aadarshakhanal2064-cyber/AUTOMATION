@@ -1,0 +1,388 @@
+// ════════════════════════════════════════════
+//  VAT COMPLIANCE DASHBOARD
+//  Portfolio-wide tracker for monthly VAT Return filing status — which
+//  clients are filed / pending / overdue for any fiscal month. One row per
+//  client per month in Supabase (vat_filings), created lazily on the first
+//  real state change: a VAT-active client with no row simply displays as
+//  Not Started, so months never need to be pre-created and history is
+//  never overwritten (enforced by the table's unique constraint).
+//  Separate concern from vatReturn.js, which reads ONE client's PDF —
+//  this tracks the whole portfolio's filing state.
+// ════════════════════════════════════════════
+ModuleRegistry.register({ id: 'vatCompliance', group: 'main', buttonId: 'nav-vatCompliance', panelId: 'tab-vatCompliance-panel' });
+
+// IRD rule: a month's VAT return is due by the 25th of the FOLLOWING B.S. month.
+const VATC_DEADLINE_DAY = 25;
+const VATC_FILED_STATUSES = ['filed', 'filed_adjustments'];
+
+const VATC_STATUSES = {
+  not_started:       { label: 'Not Started',            icon: '⚪', badgeClass: 'badge-neutral' },
+  waiting_docs:      { label: 'Waiting for Documents',  icon: '📄', badgeClass: 'badge-amber' },
+  ocr_processing:    { label: 'OCR Processing',         icon: '⚙️', badgeClass: 'badge-blue' },
+  under_review:      { label: 'Under Review',           icon: '👀', badgeClass: 'badge-purple' },
+  ready_to_file:     { label: 'Ready to File',          icon: '📬', badgeClass: 'badge-blue' },
+  filed:             { label: 'Filed',                  icon: '✅', badgeClass: 'badge-sent' },
+  filed_adjustments: { label: 'Filed with Adjustments', icon: '✳️', badgeClass: 'badge-sent' },
+  on_hold:           { label: 'On Hold',                icon: '⏸️', badgeClass: 'badge-yellow' },
+  not_required:      { label: 'Not Required',           icon: '➖', badgeClass: 'badge-neutral' },
+};
+
+let vatcTable = null;
+let vatcRows = [];       // merged view (real + virtual rows) for the selected period
+let vatcStaff = null;    // app_users, loaded once per session
+let vatcInitDone = false;
+let vatcDrawerRow = null;
+
+function vatcStatusMsg(html, type) {
+  showStatus(html, type, 'vatc-status-area');
+}
+
+// Every status change — quick action, drawer save, later the automatic
+// vatReturn.js hooks — goes through this one flow, which persists the row
+// and writes the audit entry together.
+const vatcFlow = WorkflowEngine.createStatusFlow({
+  statuses: VATC_STATUSES,
+  onTransition: async (row, from, to, ctx) => {
+    const patch = Object.assign({ status: to, status_changed_at: new Date().toISOString() }, ctx.patch);
+    if (VATC_FILED_STATUSES.includes(to)) {
+      if (!patch.filed_at && !row.filed_at) patch.filed_at = new Date().toISOString();
+      if (!patch.filed_date_bs && !row.filed_date_bs) {
+        const bs = NepaliLocale.todayBs();
+        if (bs) patch.filed_date_bs = bs.year + '/' + String(bs.month).padStart(2, '0') + '/' + String(bs.day).padStart(2, '0');
+      }
+    }
+    await vatcSaveFiling(row, patch);
+    AuditLog.record('vat_status_change', {
+      module: 'vatCompliance', clientName: row.client_name, recordRef: row.id,
+      oldStatus: from, newStatus: to, notes: ctx.note || null,
+      fiscalYear: row.fiscal_year, month: row.month,
+    });
+    return row;
+  },
+});
+
+// Lazy-create-or-update in one code path: upsert on the (client, FY, month)
+// uniqueness the schema guarantees, so the first real change to a virtual
+// "Not Started" row creates it and every later change updates it.
+async function vatcSaveFiling(row, patch) {
+  const payload = Object.assign({
+    client_id: row.client_id,
+    fiscal_year: row.fiscal_year,
+    month: row.month,
+    updated_by: (window.currentUser && window.currentUser.email) || null,
+  }, patch);
+  const { data, error } = await window.sb.from('vat_filings')
+    .upsert(payload, { onConflict: 'client_id,fiscal_year,month' })
+    .select()
+    .single();
+  if (error) throw error;
+  Object.assign(row, data);
+  return row;
+}
+
+// ── Period helpers ──
+function vatcFyLabel(startYear) {
+  return startYear + '/' + String((startYear + 1) % 100).padStart(2, '0');
+}
+
+// Fiscal (FY, month idx) -> the B.S. calendar year/month it falls in,
+// e.g. FY 2083/84 month 1 (Shrawan) -> { calYear: 2083, calMonth: 4 }.
+function vatcPeriodCalendar(fy, monthIdx) {
+  const startYear = parseInt(fy.slice(0, 4), 10);
+  return {
+    calYear: monthIdx <= 9 ? startYear : startYear + 1,
+    calMonth: monthIdx <= 9 ? monthIdx + 3 : monthIdx - 9,
+  };
+}
+
+// Default view: the month currently being filed. Month M is due by the 25th
+// of month M+1, so during any month the firm is working on the previous one.
+function vatcCurrentDefaults() {
+  const bs = NepaliLocale.todayBs();
+  if (!bs) return { fy: '2082/83', monthIdx: 12 };
+  const fiscal = NepaliLocale.bsFiscal(bs);
+  if (fiscal.monthIdx > 1) return { fy: fiscal.fy, monthIdx: fiscal.monthIdx - 1 };
+  const prevStart = parseInt(fiscal.fy.slice(0, 4), 10) - 1;
+  return { fy: vatcFyLabel(prevStart), monthIdx: 12 };
+}
+
+function vatcIsOverdue(row) {
+  if (VATC_FILED_STATUSES.includes(row.status) || row.status === 'not_required') return false;
+  const today = NepaliLocale.todayBs();
+  if (!today) return false;
+  const cal = vatcPeriodCalendar(row.fiscal_year, row.month);
+  let dueYear = cal.calYear, dueMonth = cal.calMonth + 1;
+  if (dueMonth > 12) { dueMonth = 1; dueYear++; }
+  return (today.year * 10000 + today.month * 100 + today.day) > (dueYear * 10000 + dueMonth * 100 + VATC_DEADLINE_DAY);
+}
+
+// ── Loading & merging ──
+async function loadVatCompliance() {
+  if (!vatcInitDone) {
+    vatcInitControls();
+    vatcInitDone = true;
+  }
+  await vatcRefresh();
+}
+
+function vatcInitControls() {
+  const def = vatcCurrentDefaults();
+  const defStart = parseInt(def.fy.slice(0, 4), 10);
+  const fySel = document.getElementById('vatc-fy');
+  const opts = [];
+  for (let y = defStart + 1; y >= 2080; y--) opts.push(`<option value="${vatcFyLabel(y)}">${vatcFyLabel(y)}</option>`);
+  fySel.innerHTML = opts.join('');
+  fySel.value = def.fy;
+
+  const mSel = document.getElementById('vatc-month');
+  mSel.innerHTML = VAT_MONTH_ORDER.map((name, i) => `<option value="${i + 1}">${name}</option>`).join('');
+  mSel.value = String(def.monthIdx);
+}
+
+async function vatcRefresh() {
+  const fy = document.getElementById('vatc-fy').value;
+  const month = parseInt(document.getElementById('vatc-month').value, 10);
+  vatcStatusMsg('<span class="spinner spinner-navy"></span> Loading filings…', 'searching');
+
+  try {
+    if (!vatcStaff) {
+      const { data, error } = await window.sb.from('app_users').select('id, email').order('email');
+      if (error) throw error;
+      vatcStaff = data || [];
+    }
+    const filings = await sbFetchAll(() => window.sb.from('vat_filings')
+      .select('*, clients(name, pan, vat_status)')
+      .eq('fiscal_year', fy).eq('month', month).order('id'));
+
+    const staffById = new Map(vatcStaff.map(s => [s.id, s.email]));
+    const byClient = new Map(filings.map(f => [f.client_id, f]));
+    const rows = [];
+    (window.clientsList || []).forEach(c => {
+      const filing = byClient.get(c.id);
+      // Only VAT-active clients get a virtual Not Started row; a real filing
+      // row always shows regardless (history survives a client going inactive).
+      if (!filing && c.vat_status !== 'active') return;
+      byClient.delete(c.id);
+      rows.push(vatcMakeRow(c, filing, fy, month, staffById));
+    });
+    // Filings whose client wasn't in the loaded directory (defensive)
+    byClient.forEach(f => rows.push(vatcMakeRow({ id: f.client_id, name: f.clients && f.clients.name, pan: f.clients && f.clients.pan, vat_status: f.clients && f.clients.vat_status }, f, fy, month, staffById)));
+
+    vatcRows = rows;
+    const search = document.getElementById('vatc-search');
+    if (search) search.value = '';
+    if (vatcDrawerRow) vatcCloseDrawer(); // a period change makes the open drawer's row stale
+    vatcRenderTable(rows);
+    vatcRenderPeriodLabel(fy, month, rows);
+    document.getElementById('vatc-status-area').innerHTML = '';
+  } catch (e) {
+    vatcStatusMsg('❌ Failed to load filings: ' + escHtml(e.message || String(e)), 'error');
+  }
+}
+
+function vatcMakeRow(client, filing, fy, month, staffById) {
+  const row = {
+    id: filing ? filing.id : null,
+    client_id: client.id,
+    client_name: client.name || '—',
+    pan: client.pan || '',
+    client_vat_status: client.vat_status || 'active',
+    fiscal_year: fy,
+    month,
+    status: filing ? filing.status : 'not_started',
+    status_changed_at: filing ? filing.status_changed_at : null,
+    assigned_staff_id: filing ? filing.assigned_staff_id : null,
+    assigned_email: (filing && filing.assigned_staff_id && staffById.get(filing.assigned_staff_id)) || '',
+    notes: (filing && filing.notes) || '',
+    filed_date_bs: filing ? filing.filed_date_bs : null,
+    filed_at: filing ? filing.filed_at : null,
+    workbook_filename: filing ? filing.workbook_filename : null,
+    pdf_filename: filing ? filing.pdf_filename : null,
+    validation_summary: filing ? filing.validation_summary : null,
+    updated_at: filing ? filing.updated_at : null,
+    updated_by: filing ? filing.updated_by : null,
+  };
+  row.overdue = vatcIsOverdue(row);
+  return row;
+}
+
+function vatcRenderPeriodLabel(fy, month, rows) {
+  const el = document.getElementById('vatc-period-label');
+  if (!el) return;
+  const cal = vatcPeriodCalendar(fy, month);
+  let dueYear = cal.calYear, dueMonth = cal.calMonth + 1;
+  if (dueMonth > 12) { dueMonth = 1; dueYear++; }
+  const filed = rows.filter(r => VATC_FILED_STATUSES.includes(r.status)).length;
+  const overdue = rows.filter(r => r.overdue).length;
+  el.textContent = `${VAT_MONTH_ORDER[month - 1]} ${cal.calYear}/${String(cal.calMonth).padStart(2, '0')} · due ${dueYear}/${String(dueMonth).padStart(2, '0')}/${VATC_DEADLINE_DAY} — ${rows.length} clients, ${filed} filed, ${overdue} overdue`;
+}
+
+// ── Table ──
+function vatcRenderTable(rows) {
+  const wrap = document.getElementById('vatc-table-wrap');
+  if (vatcTable) { vatcTable.destroy(); vatcTable = null; }
+
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="log-empty">No VAT-active clients yet. Set a client\'s <strong>VAT Status</strong> to "VAT Active" in the Clients tab and they will appear here automatically every month.</div>';
+    return;
+  }
+
+  wrap.innerHTML = '';
+  vatcTable = TableEngine.createTable(wrap, {
+    data: rows,
+    index: 'client_id', // virtual rows have no id yet — client_id is unique within one period view
+    pagination: true,
+    paginationSize: 25,
+    paginationSizeSelector: [25, 50, 100],
+    initialSort: [{ column: 'client_name', dir: 'asc' }],
+    rowFormatter: row => row.getElement().classList.toggle('vatc-row-overdue', !!row.getData().overdue),
+    columns: [
+      { title: 'Client', field: 'client_name', minWidth: 200, formatter: cell => {
+          const d = cell.getRow().getData();
+          const inactiveTag = d.client_vat_status === 'inactive' ? ' <span class="entity-badge">VAT inactive</span>' : '';
+          return `<span style="font-weight:600;">${escHtml(d.client_name)}</span>${inactiveTag}`;
+        } },
+      { title: 'PAN', field: 'pan', width: 115, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'Status', field: 'status', minWidth: 200, formatter: cell => {
+          const d = cell.getRow().getData();
+          return vatcFlow.badgeHtml(d.status) + (d.overdue ? ' <span class="log-badge badge-error">⏰ Overdue</span>' : '');
+        } },
+      { title: 'Assigned To', field: 'assigned_email', minWidth: 140, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'Updated', field: 'updated_at', width: 145, formatter: cell => {
+          const d = cell.getRow().getData();
+          if (!d.updated_at) return '<span style="color:var(--text-faint);">—</span>';
+          const t = new Date(d.updated_at);
+          return `<div>${isNaN(t) ? '—' : t.toLocaleDateString()}</div><div style="font-size:11px; color:var(--text-faint);">${escHtml((d.updated_by || '').split('@')[0])}</div>`;
+        } },
+      { title: 'Notes', field: 'notes', minWidth: 140, formatter: cell => {
+          const v = cell.getValue() || '';
+          if (!v) return '—';
+          return `<span title="${escHtml(v)}">${escHtml(v.length > 40 ? v.slice(0, 40) + '…' : v)}</span>`;
+        } },
+      { title: 'Actions', field: 'client_id', headerSort: false, minWidth: 210, formatter: () => `
+          <div class="client-actions">
+            <button class="btn btn-outline btn-sm" data-action="open">Open</button>
+            <button class="btn btn-outline btn-sm" data-action="filed" title="Mark Filed">✓ Filed</button>
+            <button class="btn btn-outline btn-sm" data-action="waiting" title="Mark Waiting for Documents">⏳</button>
+          </div>`,
+        cellClick: (e, cell) => {
+          const btn = e.target.closest('[data-action]');
+          if (!btn) return;
+          const row = cell.getRow().getData();
+          if (btn.dataset.action === 'open') vatcOpenDrawer(row);
+          else if (btn.dataset.action === 'filed') vatcQuickStatus(row, 'filed');
+          else if (btn.dataset.action === 'waiting') vatcQuickStatus(row, 'waiting_docs');
+        } },
+    ],
+  });
+}
+
+function vatcFilterTable(query) {
+  if (!vatcTable) return;
+  const q = (query || '').trim();
+  if (!q) { vatcTable.replaceData(vatcRows); return; }
+  const fuse = SearchEngine.buildIndex(vatcRows, ['client_name', 'pan', 'assigned_email', 'notes']);
+  vatcTable.replaceData(fuse.search(q).map(r => r.item));
+}
+
+async function vatcQuickStatus(row, to) {
+  const fromLabel = vatcFlow.meta(row.status).label;
+  try {
+    await vatcFlow.transition(row, to);
+    row.overdue = vatcIsOverdue(row);
+    vatcTable.updateData([row]);
+    vatcRenderPeriodLabel(row.fiscal_year, row.month, vatcRows);
+    vatcStatusMsg(`✅ ${escHtml(row.client_name)}: ${escHtml(fromLabel)} → ${escHtml(vatcFlow.meta(to).label)}.`, 'success');
+  } catch (e) {
+    vatcStatusMsg('❌ Could not update status: ' + escHtml(e.message || String(e)), 'error');
+  }
+}
+
+// ── Side panel (drawer) ──
+function vatcOpenDrawer(row) {
+  vatcDrawerRow = row;
+  const cal = vatcPeriodCalendar(row.fiscal_year, row.month);
+  document.getElementById('vatc-drawer-title').textContent = row.client_name;
+  document.getElementById('vatc-drawer-sub').textContent =
+    `PAN ${row.pan || '—'} · ${VAT_MONTH_ORDER[row.month - 1]} · FY ${row.fiscal_year} (${cal.calYear}/${String(cal.calMonth).padStart(2, '0')})`;
+
+  document.getElementById('vatc-d-status').innerHTML = vatcFlow.statusKeys.map(k =>
+    `<option value="${k}" ${k === row.status ? 'selected' : ''}>${VATC_STATUSES[k].icon} ${VATC_STATUSES[k].label}</option>`).join('');
+  document.getElementById('vatc-d-staff').innerHTML = '<option value="">— Unassigned —</option>' +
+    (vatcStaff || []).map(s => `<option value="${s.id}" ${row.assigned_staff_id === s.id ? 'selected' : ''}>${escHtml(s.email)}</option>`).join('');
+  document.getElementById('vatc-d-filed').value = row.filed_date_bs || '';
+  document.getElementById('vatc-d-workbook').value = row.workbook_filename || '';
+  document.getElementById('vatc-d-notes').value = row.notes || '';
+  document.getElementById('vatc-drawer-status').innerHTML = '';
+
+  document.getElementById('vatc-drawer').classList.add('open');
+  vatcRenderHistory(row);
+}
+
+function vatcCloseDrawer() {
+  document.getElementById('vatc-drawer').classList.remove('open');
+  vatcDrawerRow = null;
+}
+
+async function vatcSaveDrawer() {
+  const row = vatcDrawerRow;
+  if (!row) return;
+
+  const newStatus = document.getElementById('vatc-d-status').value;
+  const staffVal = document.getElementById('vatc-d-staff').value;
+  const patch = {};
+  const staffId = staffVal ? parseInt(staffVal, 10) : null;
+  if (staffId !== (row.assigned_staff_id || null)) patch.assigned_staff_id = staffId;
+  const filedDate = document.getElementById('vatc-d-filed').value.trim() || null;
+  if (filedDate !== (row.filed_date_bs || null)) patch.filed_date_bs = filedDate;
+  const notes = document.getElementById('vatc-d-notes').value.trim() || null;
+  if (notes !== (row.notes || null)) patch.notes = notes;
+
+  const statusChanged = newStatus !== row.status;
+  if (!statusChanged && !Object.keys(patch).length) { vatcCloseDrawer(); return; }
+
+  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'vatc-drawer-status');
+  try {
+    if (statusChanged) {
+      await vatcFlow.transition(row, newStatus, { patch, note: notes });
+    } else {
+      await vatcSaveFiling(row, patch);
+      AuditLog.record('vat_filing_update', {
+        module: 'vatCompliance', clientName: row.client_name, recordRef: row.id,
+        changed: Object.keys(patch), fiscalYear: row.fiscal_year, month: row.month,
+      });
+    }
+    row.notes = row.notes || '';
+    row.assigned_email = (row.assigned_staff_id && vatcStaff && (vatcStaff.find(s => s.id === row.assigned_staff_id) || {}).email) || '';
+    row.overdue = vatcIsOverdue(row);
+    if (vatcTable) vatcTable.updateData([row]);
+    vatcRenderPeriodLabel(row.fiscal_year, row.month, vatcRows);
+    showStatus('✅ Saved.', 'success', 'vatc-drawer-status');
+    vatcRenderHistory(row);
+  } catch (e) {
+    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'vatc-drawer-status');
+  }
+}
+
+async function vatcRenderHistory(row) {
+  const el = document.getElementById('vatc-drawer-history');
+  if (!row.id) { el.innerHTML = '<div class="log-empty">No history yet — nothing has been recorded for this month.</div>'; return; }
+  el.innerHTML = '<div class="log-empty">Loading…</div>';
+  const { data, error } = await window.sb.from('audit_log').select('*')
+    .eq('record_ref', row.id).order('created_at', { ascending: false }).limit(25);
+  if (error || !data || !data.length) { el.innerHTML = '<div class="log-empty">No history yet.</div>'; return; }
+  el.innerHTML = data.map(e => {
+    const t = new Date(e.created_at);
+    const det = e.detail || {};
+    const what = e.event_type === 'vat_status_change'
+      ? `${vatcFlow.meta(det.oldStatus).label} → ${vatcFlow.meta(det.newStatus).label}`
+      : 'Details updated';
+    return `<div class="log-item">
+      <div class="log-details">
+        <div class="log-client">${escHtml(what)}</div>
+        <div class="log-sub">${escHtml(e.user_email || '—')}${det.notes ? ' — ' + escHtml(det.notes) : ''}</div>
+      </div>
+      <div class="log-time">${isNaN(t) ? '—' : t.toLocaleString()}</div>
+    </div>`;
+  }).join('');
+}

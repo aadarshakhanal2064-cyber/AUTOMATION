@@ -56,6 +56,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
       Dashboard
     </button>
+    <button class="nav-item" onclick="switchTab('vatCompliance'); loadVatCompliance();" id="nav-vatCompliance">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+      VAT Compliance
+    </button>
     <button class="nav-item active" onclick="switchTab('send')" id="nav-send">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
       Send Document
@@ -188,6 +192,41 @@
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Documents by Module</h3>
           <canvas id="dash-module-chart" height="220"></canvas>
         </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: VAT COMPLIANCE ── -->
+    <div id="tab-vatCompliance-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">VAT Compliance</span></div>
+          <h2 class="page-title">VAT Compliance</h2>
+          <p class="page-subtitle">Monthly VAT Return filing status across every VAT-registered client.</p>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; gap:16px; flex-wrap:wrap;">
+          <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin:0;">
+              <label>Fiscal Year</label>
+              <select id="vatc-fy" onchange="vatcRefresh()"></select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Month</label>
+              <select id="vatc-month" onchange="vatcRefresh()"></select>
+            </div>
+          </div>
+          <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+            <span class="sb-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input type="text" class="search-bar" id="vatc-search" placeholder="Search by client, PAN, staff or notes…" oninput="vatcFilterTable(this.value)" />
+          </div>
+        </div>
+        <div id="vatc-period-label" style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;"></div>
+        <div id="vatc-status-area"></div>
+        <div id="vatc-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>
     </div>
 
@@ -925,6 +964,14 @@
             </select>
           </div>
           <div class="form-group">
+            <label>VAT Status</label>
+            <select id="ac-vat-status">
+              <option value="not_registered">Not VAT Registered</option>
+              <option value="active">VAT Active (files monthly)</option>
+              <option value="inactive">VAT Inactive</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Nature of Business</label>
             <input type="text" id="ac-business" placeholder="Optional" />
           </div>
@@ -1071,6 +1118,50 @@
 </div>
 
 <!-- IMPORT MODAL -->
+<!-- VAT COMPLIANCE — CLIENT MONTH DRAWER -->
+<div class="modal-overlay drawer-right" id="vatc-drawer">
+  <div class="modal drawer-panel">
+    <div class="modal-header">
+      <div>
+        <h3 id="vatc-drawer-title">Client</h3>
+        <div id="vatc-drawer-sub" style="font-size:12.5px; color:var(--text-muted); margin-top:2px;"></div>
+      </div>
+      <button class="modal-close" onclick="vatcCloseDrawer()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group">
+          <label>Status</label>
+          <select id="vatc-d-status"></select>
+        </div>
+        <div class="form-group">
+          <label>Assigned Staff</label>
+          <select id="vatc-d-staff"></select>
+        </div>
+        <div class="form-group">
+          <label>Filed Date (B.S.)</label>
+          <input type="text" id="vatc-d-filed" placeholder="e.g. 2083/04/22" />
+        </div>
+        <div class="form-group">
+          <label>Generated Workbook</label>
+          <input type="text" id="vatc-d-workbook" placeholder="—" readonly />
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="vatc-d-notes" placeholder="Internal notes for this month…"></textarea>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-primary" onclick="vatcSaveDrawer()">Save Changes</button>
+        <button class="btn btn-outline" onclick="vatcCloseDrawer()">Close</button>
+      </div>
+      <div id="vatc-drawer-status"></div>
+      <h4 style="margin:22px 0 10px; font-size:13.5px; color:var(--brand-navy);">History</h4>
+      <div id="vatc-drawer-history"><div class="log-empty">No history yet.</div></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="import-modal">
   <div class="modal" style="max-width:800px;">
     <div class="modal-header">
@@ -1158,6 +1249,7 @@
 <script src="js/clients.js"></script>
 <script src="js/logs.js"></script>
 <script src="js/vatReturn.js"></script>
+<script src="js/vatCompliance.js"></script>
 <script src="js/sendDocument.js"></script>
 <script src="js/report.js"></script>
 <script src="js/bmAgmMinutes.js"></script>
