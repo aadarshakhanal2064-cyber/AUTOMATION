@@ -78,21 +78,18 @@ window.Integrations = (function () {
     return resp.blob();
   }
 
-  // Sends `file` (a Drive file descriptor: {id, name, mimeType}) as an email
-  // attachment. Subject/body are fully caller-supplied so this has no
-  // knowledge of any particular module's document types or wording.
-  async function sendEmailWithAttachment({ file, toEmail, subject, bodyText }) {
-    const blob = await downloadDriveFile(file.id);
+  // Builds the raw MIME message and sends it via Gmail — the one piece both
+  // attachment sources (a Drive file, or a Blob generated in-browser) share.
+  async function sendRawEmailWithBlob({ blob, filename, mimeType, toEmail, subject, bodyText }) {
     const base64File = await blobToBase64(blob);
-    const mimeType = file.mimeType || 'application/octet-stream';
     const boundary = 'Integrations_' + Date.now();
 
     const rawEmail = [
       `To: ${toEmail}`, `Subject: ${subject}`, `MIME-Version: 1.0`,
       `Content-Type: multipart/mixed; boundary="${boundary}"`, ``,
       `--${boundary}`, `Content-Type: text/plain; charset="UTF-8"`, ``, bodyText, ``,
-      `--${boundary}`, `Content-Type: ${mimeType}; name="${file.name}"`,
-      `Content-Disposition: attachment; filename="${file.name}"`,
+      `--${boundary}`, `Content-Type: ${mimeType}; name="${filename}"`,
+      `Content-Disposition: attachment; filename="${filename}"`,
       `Content-Transfer-Encoding: base64`, ``, base64File, `--${boundary}--`
     ].join('\r\n');
 
@@ -109,5 +106,19 @@ window.Integrations = (function () {
     }
   }
 
-  return { driveGet, findFolderByName, listAllFilesInFolder, downloadDriveFile, sendEmailWithAttachment };
+  // Sends `file` (a Drive file descriptor: {id, name, mimeType}) as an email
+  // attachment. Subject/body are fully caller-supplied so this has no
+  // knowledge of any particular module's document types or wording.
+  async function sendEmailWithAttachment({ file, toEmail, subject, bodyText }) {
+    const blob = await downloadDriveFile(file.id);
+    await sendRawEmailWithBlob({ blob, filename: file.name, mimeType: file.mimeType || 'application/octet-stream', toEmail, subject, bodyText });
+  }
+
+  // Sends a Blob generated in-browser (no Drive round-trip) — e.g. a Billing
+  // invoice PDF built with PDF-Lib.
+  async function sendEmailWithBlobAttachment({ blob, filename, mimeType, toEmail, subject, bodyText }) {
+    await sendRawEmailWithBlob({ blob, filename, mimeType: mimeType || 'application/octet-stream', toEmail, subject, bodyText });
+  }
+
+  return { driveGet, findFolderByName, listAllFilesInFolder, downloadDriveFile, sendEmailWithAttachment, sendEmailWithBlobAttachment };
 })();

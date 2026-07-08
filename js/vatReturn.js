@@ -778,7 +778,7 @@ async function vatExtractPdf() {
 // project's testing — the rate held within +-1 rupee in all 14 real pairs
 // checked (mostly exact). +-2 tolerance below keeps a safety margin for
 // normal rounding.
-const VAT_RATE = 0.13;
+const VAT_RATE = window.VAT_STANDARD_RATE;
 const VAT_RATE_TOLERANCE = 2;
 function vatRateCheck(value, vat) {
   if (value === 0 && vat === 0) return { ok: true, expected: 0 };

@@ -6,6 +6,10 @@ const SUPABASE_URL = 'https://rennqzmwyhkdsizvlqwd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send email profile';
 
+// Nepal's standard VAT rate — shared by vatReturn.js's OCR checksum and the
+// Billing module's invoice tax line, so the one figure can't drift between them.
+window.VAT_STANDARD_RATE = 0.13;
+
 // ── Mutable app state (window.* for global access) ──
 window.CLIENT_ID        = localStorage.getItem('gClientId') || '';
 window.tokenClient      = undefined;
