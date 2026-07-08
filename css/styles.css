@@ -81,7 +81,7 @@ body {
 }
 #topbar .hamburger:hover { background: var(--bg-app); color: var(--brand-navy); }
 #topbar .topbar-logo { display: flex; align-items: center; gap: 10px; }
-#topbar .topbar-logo img { height: 30px; width: auto; }
+#topbar .topbar-logo .tb-sa { font-weight: 800; color: var(--brand-navy); font-size: 19px; letter-spacing: -0.3px; }
 #topbar .topbar-logo .tb-name { font-weight: 700; color: var(--brand-navy); font-size: 15px; line-height:1.2; }
 #topbar .topbar-logo .tb-sub { font-size: 10.5px; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 600; }
 #topbar .app-tag {
