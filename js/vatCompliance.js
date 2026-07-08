@@ -27,11 +27,33 @@ const VATC_STATUSES = {
   not_required:      { label: 'Not Required',           icon: '➖', badgeClass: 'badge-neutral' },
 };
 
+// Flag "waiting for documents" rows once they've sat that long.
+const VATC_WAITING_ALERT_DAYS = 7;
+
+// The stat cards double as quick filters — one definition drives both the
+// card counts and the table filtering, so they can never disagree.
+const VATC_FILTERS = {
+  all:     { label: 'Total VAT Clients',     test: () => true },
+  filed:   { label: 'Filed This Month',      test: r => VATC_FILED_STATUSES.includes(r.status) },
+  pending: { label: 'Pending',               test: r => !VATC_FILED_STATUSES.includes(r.status) && r.status !== 'not_required' },
+  overdue: { label: 'Overdue',               test: r => r.overdue },
+  waiting: { label: 'Waiting for Documents', test: r => r.status === 'waiting_docs' },
+  ready:   { label: 'Ready to File',         test: r => r.status === 'ready_to_file' },
+  errors:  { label: 'Validation Errors',     test: r => vatcHasErrors(r) },
+};
+
+function vatcHasErrors(row) {
+  const v = row.validation_summary;
+  return !!(v && ((v.blocking || 0) > 0 || (v.warnings || 0) > 0));
+}
+
 let vatcTable = null;
 let vatcRows = [];       // merged view (real + virtual rows) for the selected period
 let vatcStaff = null;    // app_users, loaded once per session
 let vatcInitDone = false;
 let vatcDrawerRow = null;
+let vatcActiveFilter = 'all';
+let vatcCharts = { progress: null, completion: null, workload: null };
 
 function vatcStatusMsg(html, type) {
   showStatus(html, type, 'vatc-status-area');
@@ -173,8 +195,12 @@ async function vatcRefresh() {
     if (search) search.value = '';
     if (vatcDrawerRow) vatcCloseDrawer(); // a period change makes the open drawer's row stale
     vatcRenderTable(rows);
+    vatcApplyFilters();
+    vatcRenderStats(rows);
+    vatcRenderMonthCharts(rows);
     vatcRenderPeriodLabel(fy, month, rows);
     document.getElementById('vatc-status-area').innerHTML = '';
+    await vatcRenderFyChart(fy);
   } catch (e) {
     vatcStatusMsg('❌ Failed to load filings: ' + escHtml(e.message || String(e)), 'error');
   }
@@ -245,7 +271,14 @@ function vatcRenderTable(rows) {
       { title: 'PAN', field: 'pan', width: 115, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'Status', field: 'status', minWidth: 200, formatter: cell => {
           const d = cell.getRow().getData();
-          return vatcFlow.badgeHtml(d.status) + (d.overdue ? ' <span class="log-badge badge-error">⏰ Overdue</span>' : '');
+          let extra = '';
+          if (d.overdue) extra += ' <span class="log-badge badge-error">⏰ Overdue</span>';
+          if (d.status === 'waiting_docs' && d.status_changed_at) {
+            const days = Math.floor((Date.now() - new Date(d.status_changed_at).getTime()) / 86400000);
+            if (days >= VATC_WAITING_ALERT_DAYS) extra += ` <span class="log-badge badge-amber" title="Waiting for documents for ${days} days">⏳ ${days}d</span>`;
+          }
+          if (vatcHasErrors(d)) extra += ' <span class="log-badge badge-error" title="The last OCR extraction reported validation issues — open the VAT Return review screen">🔴 Errors</span>';
+          return vatcFlow.badgeHtml(d.status) + extra;
         } },
       { title: 'Assigned To', field: 'assigned_email', minWidth: 140, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'Updated', field: 'updated_at', width: 145, formatter: cell => {
@@ -277,21 +310,128 @@ function vatcRenderTable(rows) {
   });
 }
 
-function vatcFilterTable(query) {
+// Active stat-card filter + live search, applied together.
+function vatcApplyFilters() {
   if (!vatcTable) return;
-  const q = (query || '').trim();
-  if (!q) { vatcTable.replaceData(vatcRows); return; }
-  const fuse = SearchEngine.buildIndex(vatcRows, ['client_name', 'pan', 'assigned_email', 'notes']);
-  vatcTable.replaceData(fuse.search(q).map(r => r.item));
+  const test = (VATC_FILTERS[vatcActiveFilter] || VATC_FILTERS.all).test;
+  let rows = vatcRows.filter(test);
+  const q = (document.getElementById('vatc-search').value || '').trim();
+  if (q) {
+    const fuse = SearchEngine.buildIndex(rows, ['client_name', 'pan', 'assigned_email', 'notes']);
+    rows = fuse.search(q).map(r => r.item);
+  }
+  vatcTable.replaceData(rows);
+}
+
+function vatcFilterTable() {
+  vatcApplyFilters();
+}
+
+function vatcSetFilter(key) {
+  vatcActiveFilter = vatcActiveFilter === key ? 'all' : key; // click again to clear
+  vatcRenderStats(vatcRows);
+  vatcApplyFilters();
+}
+
+// ── Stat cards & charts ──
+function vatcRenderStats(rows) {
+  const grid = document.getElementById('vatc-stat-grid');
+  if (!grid) return;
+  grid.innerHTML = Object.entries(VATC_FILTERS).map(([key, f]) => `
+    <div class="stat-card clickable ${vatcActiveFilter === key ? 'active-filter' : ''}" onclick="vatcSetFilter('${key}')" title="Click to filter the table below">
+      <div class="stat-num">${rows.filter(f.test).length}</div>
+      <div class="stat-label">${f.label}</div>
+    </div>`).join('');
+}
+
+function vatcDestroyChart(key) {
+  if (vatcCharts[key]) { vatcCharts[key].destroy(); vatcCharts[key] = null; }
+}
+
+// Completion doughnut + pending-workload-by-staff, both derived from the
+// already-loaded month rows — same source as the cards, no extra queries.
+function vatcRenderMonthCharts(rows) {
+  if (!window.Chart) return;
+
+  const filed = rows.filter(VATC_FILTERS.filed.test).length;
+  const notRequired = rows.filter(r => r.status === 'not_required').length;
+  const open = rows.length - filed - notRequired;
+  vatcDestroyChart('completion');
+  const cEl = document.getElementById('vatc-chart-completion');
+  if (cEl) {
+    vatcCharts.completion = new Chart(cEl.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Filed', 'Open', 'Not Required'],
+        datasets: [{ data: [filed, open, notRequired], backgroundColor: ['#10b981', '#f59e0b', '#cbd5e1'] }],
+      },
+      options: { plugins: { legend: { position: 'bottom' } } },
+    });
+  }
+
+  const counts = {};
+  rows.filter(VATC_FILTERS.pending.test).forEach(r => {
+    const k = r.assigned_email ? r.assigned_email.split('@')[0] : 'Unassigned';
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  vatcDestroyChart('workload');
+  const wEl = document.getElementById('vatc-chart-workload');
+  if (wEl) {
+    const hasData = Object.keys(counts).length > 0;
+    vatcCharts.workload = new Chart(wEl.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: hasData ? Object.keys(counts) : ['No pending work'],
+        datasets: [{ label: 'Pending', data: hasData ? Object.values(counts) : [0], backgroundColor: '#205493' }],
+      },
+      options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { precision: 0 } } } },
+    });
+  }
+}
+
+// FY-wide stacked bar via the get_vat_fy_stats RPC — per-month counts in one
+// round trip instead of fetching every filing row of the year. Counts only
+// tracked filings (a month nobody has touched yet has no rows to count).
+async function vatcRenderFyChart(fy) {
+  const el = document.getElementById('vatc-chart-progress');
+  if (!el || !window.Chart) return;
+  const { data, error } = await window.sb.rpc('get_vat_fy_stats', { p_fiscal_year: fy });
+  vatcDestroyChart('progress');
+  const filedPerMonth = new Array(12).fill(0);
+  const openPerMonth = new Array(12).fill(0);
+  (error ? [] : (data || [])).forEach(s => {
+    if (VATC_FILED_STATUSES.includes(s.status)) filedPerMonth[s.month - 1] += Number(s.cnt);
+    else if (s.status !== 'not_required') openPerMonth[s.month - 1] += Number(s.cnt);
+  });
+  vatcCharts.progress = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: VAT_MONTH_ORDER,
+      datasets: [
+        { label: 'Filed', data: filedPerMonth, backgroundColor: '#10b981' },
+        { label: 'In progress', data: openPerMonth, backgroundColor: '#f59e0b' },
+      ],
+    },
+    options: { scales: { x: { stacked: true }, y: { stacked: true, ticks: { precision: 0 } } }, plugins: { legend: { position: 'bottom' } } },
+  });
+}
+
+// Everything that must stay in sync after one row changes (quick action or
+// drawer save): overdue flag, cards, charts, filtered table, summary line.
+function vatcAfterRowChange(row) {
+  row.overdue = vatcIsOverdue(row);
+  vatcRenderStats(vatcRows);
+  vatcRenderMonthCharts(vatcRows);
+  vatcApplyFilters();
+  vatcRenderPeriodLabel(row.fiscal_year, row.month, vatcRows);
+  vatcRenderFyChart(row.fiscal_year);
 }
 
 async function vatcQuickStatus(row, to) {
   const fromLabel = vatcFlow.meta(row.status).label;
   try {
     await vatcFlow.transition(row, to);
-    row.overdue = vatcIsOverdue(row);
-    vatcTable.updateData([row]);
-    vatcRenderPeriodLabel(row.fiscal_year, row.month, vatcRows);
+    vatcAfterRowChange(row);
     vatcStatusMsg(`✅ ${escHtml(row.client_name)}: ${escHtml(fromLabel)} → ${escHtml(vatcFlow.meta(to).label)}.`, 'success');
   } catch (e) {
     vatcStatusMsg('❌ Could not update status: ' + escHtml(e.message || String(e)), 'error');
@@ -354,9 +494,7 @@ async function vatcSaveDrawer() {
     }
     row.notes = row.notes || '';
     row.assigned_email = (row.assigned_staff_id && vatcStaff && (vatcStaff.find(s => s.id === row.assigned_staff_id) || {}).email) || '';
-    row.overdue = vatcIsOverdue(row);
-    if (vatcTable) vatcTable.updateData([row]);
-    vatcRenderPeriodLabel(row.fiscal_year, row.month, vatcRows);
+    vatcAfterRowChange(row);
     showStatus('✅ Saved.', 'success', 'vatc-drawer-status');
     vatcRenderHistory(row);
   } catch (e) {

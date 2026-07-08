@@ -491,6 +491,14 @@ textarea { resize: vertical; min-height: 100px; }
 /* Overdue filing rows get a red inset marker (VAT Compliance table) */
 .vatc-row-overdue .tabulator-cell:first-child { box-shadow: inset 3px 0 0 var(--red); }
 
+/* Compact stat cards double as quick filters (VAT Compliance) */
+.stat-grid.compact { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; }
+.stat-card.clickable { cursor: pointer; transition: box-shadow 0.15s; }
+.stat-card.clickable:hover { box-shadow: var(--shadow-md); }
+.stat-card.active-filter { outline: 2px solid var(--accent-blue); }
+.vatc-charts { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 18px; margin-bottom: 26px; align-items: start; }
+@media (max-width: 1100px) { .vatc-charts { grid-template-columns: 1fr; } }
+
 /* ── SPINNER ── */
 .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: currentColor; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 .spinner-navy { border-color: rgba(11,31,61,0.15); border-top-color: var(--brand-navy); }
