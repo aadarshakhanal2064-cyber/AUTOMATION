@@ -14,6 +14,20 @@
 function logoFallback(img, fontSize) {
   img.outerHTML = `<span style="font-weight:800; color:var(--brand-navy); font-size:${fontSize || 28}px; letter-spacing:-0.5px; font-family:'Inter',sans-serif;">SA</span>`;
 }
+
+// The source logo file is a full lockup (icon + firm-name wordmark). The
+// login screen only wants the "SA" icon mark, cropped out client-side since
+// there's no separate icon-only asset — same-origin canvas draw, no CORS taint.
+function cropLoginLogoIcon(img) {
+  img.onload = null; // clear first: setting img.src below re-fires 'load'
+  const sx = 140, sy = 250, sw = 410, sh = 280;
+  const scale = 2; // render 2x for crisp display on retina screens
+  const canvas = document.createElement('canvas');
+  canvas.width = sw * scale;
+  canvas.height = sh * scale;
+  canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  img.src = canvas.toDataURL('image/png');
+}
 </script>
 </head>
 <body>
@@ -119,7 +133,7 @@ function logoFallback(img, fontSize) {
   <div id="auth-section-wrap" style="display:none;">
     <div id="auth-section" class="card" style="padding:48px 40px;">
       <div class="brand">
-        <img src="assets/logo.jpeg" alt="Shailesh &amp; Associates Logo" onerror="logoFallback(this, 34)">
+        <img src="assets/logo.jpeg" alt="Shailesh &amp; Associates Logo" onerror="logoFallback(this, 34)" onload="cropLoginLogoIcon(this)">
       </div>
       <h2>Welcome back</h2>
       <p>Sign in with your authorized Google workspace account to access the firm's tools.</p>

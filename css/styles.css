@@ -296,7 +296,7 @@ html:has(#auth-section-wrap:not([style*="display: none"])) body { background: ra
   border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
 }
 #auth-section .brand { border:none; padding:0 0 22px 0; }
-#auth-section .brand img { max-height: 64px; }
+#auth-section .brand img { max-height: 96px; }
 #auth-section h2 { font-size: 26px; color: var(--brand-navy); margin-bottom: 8px; font-weight:700; letter-spacing:-0.3px; }
 #auth-section p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
 .auth-footer-trust {
