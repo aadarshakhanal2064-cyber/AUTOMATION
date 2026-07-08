@@ -84,12 +84,33 @@ body {
 #topbar .topbar-logo .tb-sa { font-weight: 800; color: var(--brand-navy); font-size: 19px; letter-spacing: -0.3px; }
 #topbar .topbar-logo .tb-name { font-weight: 700; color: var(--brand-navy); font-size: 15px; line-height:1.2; }
 #topbar .topbar-logo .tb-sub { font-size: 10.5px; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 600; }
+.app-tag-dropdown { position: relative; }
 #topbar .app-tag {
   display: flex; align-items: center; gap: 8px;
   font-weight: 600; font-size: 14px; color: var(--text-main);
-  padding-left: 14px; margin-left: 4px; border-left: 1px solid var(--border);
+  padding: 8px 10px 8px 14px; margin-left: 4px; border-left: 1px solid var(--border);
+  background: none; border-top: none; border-right: none; border-bottom: none;
+  font-family: 'Inter', sans-serif; cursor: pointer; border-radius: 0 var(--radius) var(--radius) 0;
+  transition: background 0.15s, color 0.15s;
 }
-#topbar .app-tag svg { color: var(--brand-navy); }
+#topbar .app-tag:hover { background: var(--bg-app); color: var(--brand-navy); }
+#topbar .app-tag svg { color: var(--brand-navy); flex-shrink: 0; }
+#topbar .app-tag .app-tag-chevron { color: var(--text-faint); margin-left: -2px; transition: transform 0.15s; }
+#topbar .app-tag.menu-open .app-tag-chevron { transform: rotate(180deg); }
+
+.topbar-dropdown-menu {
+  display: none;
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 70; min-width: 230px;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: 6px; flex-direction: column; gap: 2px;
+}
+.topbar-dropdown-menu.open { display: flex; }
+.topbar-dropdown-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius);
+  border: none; background: transparent; font-family: 'Inter', sans-serif; font-size: 13.5px;
+  font-weight: 500; color: var(--text-main); text-align: left; cursor: pointer; transition: background 0.15s;
+}
+.topbar-dropdown-item:hover { background: var(--bg-app); color: var(--brand-navy); }
 
 .topbar-right { display: flex; align-items: center; gap: 18px; }
 .tb-bell { position: relative; color: var(--text-muted); cursor: pointer; display:flex; }
@@ -530,11 +551,6 @@ textarea { resize: vertical; min-height: 100px; }
 #loading-screen img { max-width: 150px; }
 #loading-screen p { color: var(--text-muted); font-size: 14px; font-weight:500; }
 
-/* ── SUBTABS (Registrar) ── */
-.subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 0; overflow-x: auto; padding: 0 24px; }
-.subtab-btn { padding: 14px 14px; border: none; background: transparent; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; white-space:nowrap; transition: color 0.15s; }
-.subtab-btn:hover { color: var(--brand-navy); }
-.subtab-btn.active { color: var(--brand-navy); border-bottom-color: var(--brand-navy); }
 .regd-sub-panel { display: none; }
 .regd-sub-panel.active { display: block; animation: fadeIn 0.25s ease; }
 .regd-preview-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:400px; color:var(--text-faint); text-align:center; gap:10px; }

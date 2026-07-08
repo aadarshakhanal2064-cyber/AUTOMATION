@@ -24,7 +24,7 @@ window.ModuleRegistry = (function () {
 // file instead of adding to this list.
 ModuleRegistry.register({ id: 'send',    group: 'main', buttonId: 'nav-send',    panelId: 'tab-send' });
 ModuleRegistry.register({ id: 'report',  group: 'main', buttonId: 'nav-report',  panelId: 'tab-report-panel' });
-ModuleRegistry.register({ id: 'regd',    group: 'main', buttonId: 'nav-regd',    panelId: 'tab-regd-panel' });
+ModuleRegistry.register({ id: 'regd',    group: 'main', buttonId: 'topbar-regd-trigger', panelId: 'tab-regd-panel' });
 ModuleRegistry.register({ id: 'clients', group: 'main', buttonId: 'nav-clients', panelId: 'tab-clients-panel' });
 ModuleRegistry.register({ id: 'logs',    group: 'main', buttonId: 'nav-logs',    panelId: 'tab-logs-panel' });
 
