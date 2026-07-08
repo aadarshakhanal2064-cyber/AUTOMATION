@@ -95,5 +95,27 @@ window.WorkflowEngine = (function () {
     return { set, zoomIn: () => set(level + step), zoomOut: () => set(level - step), getLevel: () => level };
   }
 
-  return { attachFormWatcher, createDebouncedRefresh, createAutosave, updateCompletionIndicator, createZoomControl };
+  // Status lifecycle for record-tracking modules (VAT Compliance is the
+  // first consumer): one definition of statuses + display metadata, and one
+  // transition() choke point every status change goes through — so the badge
+  // a table shows, the update that's persisted, and the audit entry written
+  // can never disagree. `onTransition(record, from, to, ctx)` is
+  // caller-supplied and does the actual persistence + audit write.
+  function createStatusFlow({ statuses, onTransition }) {
+    function meta(key) {
+      return statuses[key] || { label: key || '—', icon: '❔', badgeClass: '' };
+    }
+    function badgeHtml(key) {
+      const m = meta(key);
+      return `<span class="log-badge ${m.badgeClass}">${m.icon} ${escHtml(m.label)}</span>`;
+    }
+    async function transition(record, toStatus, ctx) {
+      const from = record.status;
+      if (from === toStatus) return record;
+      return onTransition(record, from, toStatus, ctx || {});
+    }
+    return { meta, badgeHtml, transition, statusKeys: Object.keys(statuses) };
+  }
+
+  return { attachFormWatcher, createDebouncedRefresh, createAutosave, updateCompletionIndicator, createZoomControl, createStatusFlow };
 })();

@@ -16,6 +16,7 @@ window.AuditLog = (function () {
         status: (detail && detail.status) || 'success',
         user_email: (window.currentUser && window.currentUser.email) || null,
         client_name: (detail && detail.clientName) || null,
+        record_ref: (detail && detail.recordRef) || null,
         detail: detail || {},
       });
       if (error) console.error('AuditLog: failed to record event', eventType, error.message);

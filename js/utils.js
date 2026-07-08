@@ -6,6 +6,20 @@ function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Supabase/PostgREST caps a single select at 1000 rows — any query that can
+// grow past that must page through .range() windows or it silently truncates.
+// `buildQuery` is a factory (query builders are single-use), and the query it
+// returns must have a stable .order() for the windows to be consistent.
+async function sbFetchAll(buildQuery, pageSize = 1000) {
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) return all;
+  }
+}
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

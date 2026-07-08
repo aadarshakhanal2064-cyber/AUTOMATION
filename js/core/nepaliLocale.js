@@ -42,6 +42,52 @@ window.NepaliLocale = (function () {
     };
   }
 
+  // ── B.S. calendar (2080–2090) ──
+  // Month lengths per B.S. year, anchored at 1 Baishakh 2080 = 14 April 2023.
+  // Needed to know "today" in B.S. — the fiscal month the firm is currently
+  // working in and VAT filing deadlines are both B.S. concepts that can't be
+  // derived from the Gregorian Date object alone.
+  const BS_ANCHOR_AD_UTC = Date.UTC(2023, 3, 14); // 1 Baishakh 2080
+  const NEPAL_UTC_OFFSET_MS = 5.75 * 3600000;     // UTC+5:45 — day boundaries are Nepal-local
+  const BS_MONTH_LENGTHS = {
+    2080: [31,32,31,32,31,30,29,30,29,30,30,30],
+    2081: [31,31,32,32,31,30,30,30,29,30,30,30],
+    2082: [30,32,31,32,31,30,30,30,29,30,30,30],
+    2083: [31,31,32,31,31,30,30,30,29,30,30,30],
+    2084: [31,31,32,31,31,30,30,30,29,30,30,30],
+    2085: [31,32,31,32,30,31,30,30,29,30,30,30],
+    2086: [30,32,31,32,31,30,30,30,29,30,30,30],
+    2087: [31,31,32,31,31,31,30,30,29,30,30,30],
+    2088: [30,31,32,32,30,31,30,30,29,30,30,30],
+    2089: [30,32,31,32,31,30,30,30,29,30,30,30],
+    2090: [30,32,31,32,31,30,30,30,29,30,30,30],
+  };
+
+  // Today's date in B.S. — { year, month (1 = Baishakh), day } — or null once
+  // the calendar table above runs out; callers must degrade gracefully.
+  function todayBs(now) {
+    let remaining = Math.floor(((now ? now.getTime() : Date.now()) + NEPAL_UTC_OFFSET_MS - BS_ANCHOR_AD_UTC) / 86400000);
+    if (remaining < 0) return null;
+    for (let year = 2080; BS_MONTH_LENGTHS[year]; year++) {
+      for (let month = 1; month <= 12; month++) {
+        const len = BS_MONTH_LENGTHS[year][month - 1];
+        if (remaining < len) return { year, month, day: remaining + 1 };
+        remaining -= len;
+      }
+    }
+    return null;
+  }
+
+  // B.S. calendar date -> fiscal period. Fiscal years run Shrawan-Ashadh
+  // (calendar months 4-3), so e.g. 2083/03/24 is fiscal year 2082/83, month 12.
+  function bsFiscal(bs) {
+    const startYear = bs.month >= 4 ? bs.year : bs.year - 1;
+    return {
+      fy: startYear + '/' + String((startYear + 1) % 100).padStart(2, '0'),
+      monthIdx: bs.month >= 4 ? bs.month - 3 : bs.month + 9,
+    };
+  }
+
   // "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
   function fiscalParts(fyValue) {
     const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
@@ -51,5 +97,5 @@ window.NepaliLocale = (function () {
     return { fy: toDevanagari(fmt(y1)), next: toDevanagari(fmt(y1 + 1)) };
   }
 
-  return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, NEPALI_MONTHS };
+  return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS };
 })();
