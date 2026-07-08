@@ -60,6 +60,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
       VAT Compliance
     </button>
+    <button class="nav-item" onclick="switchTab('billing'); loadBilling();" id="nav-billing">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+      Billing
+    </button>
     <button class="nav-item active" onclick="switchTab('send')" id="nav-send">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
       Send Document
@@ -265,6 +269,53 @@
         </div>
         <div id="vatc-status-area"></div>
         <div id="vatc-table-wrap"><div class="log-empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: BILLING ── -->
+    <div id="tab-billing-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Billing</span></div>
+          <h2 class="page-title">Billing</h2>
+          <p class="page-subtitle">Track amounts due, record payments, and send invoices.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="billingOpenSettings()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Bank Details
+          </button>
+          <button class="btn btn-primary" onclick="billingOpenCreate()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            New Invoice
+          </button>
+        </div>
+      </div>
+
+      <div class="stat-grid compact" id="billing-stat-grid"></div>
+
+      <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:24px; margin-bottom:24px; align-items:start;">
+        <div class="table-wrap" style="padding:24px;">
+          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Amount Due by Client</h3>
+          <div id="billing-ar-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
+        <div class="table-wrap" style="padding:24px;">
+          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Monthly Income</h3>
+          <canvas id="billing-income-chart" height="220"></canvas>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:16px; flex-wrap:wrap;">
+          <div class="search-bar-wrap" style="flex:1; min-width:260px; max-width:420px;">
+            <span class="sb-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input type="text" class="search-bar" id="billing-search" placeholder="Search by client, invoice # or notes…" oninput="billingFilterTable(this.value)" />
+          </div>
+        </div>
+        <div id="billing-status-area"></div>
+        <div id="billing-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>
     </div>
 
@@ -1156,6 +1207,128 @@
 </div>
 
 <!-- IMPORT MODAL -->
+<!-- BILLING — CREATE / EDIT INVOICE DRAWER -->
+<div class="modal-overlay drawer-right" id="billing-invoice-drawer">
+  <div class="modal drawer-panel" style="width:640px;">
+    <div class="modal-header">
+      <h3 id="billing-drawer-title">New Invoice</h3>
+      <button class="modal-close" onclick="billingCloseCreate()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full" id="billing-client-group">
+          <label>Client</label>
+          <input type="text" id="billing-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="autocomplete-list" id="billing-client-autocomplete" style="display:none;"></div>
+          <div id="billing-client-selected" style="margin-top:6px; font-size:12.5px; color:var(--text-muted);"></div>
+        </div>
+        <div class="form-group">
+          <label>Firm Identity</label>
+          <select id="billing-firm-key">
+            <option value="shailesh">Shailesh & Associates</option>
+            <option value="dallakoti">Dallakoti & Company</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Fiscal Year</label>
+          <input type="text" id="billing-fiscal-year" placeholder="e.g. 2082-83" />
+        </div>
+        <div class="form-group">
+          <label>Issue Date</label>
+          <input type="date" id="billing-issue-date" />
+        </div>
+        <div class="form-group">
+          <label>Due Date</label>
+          <input type="date" id="billing-due-date" />
+        </div>
+      </div>
+
+      <h4 style="margin:18px 0 10px; font-size:13.5px; color:var(--brand-navy);">Line Items</h4>
+      <div id="billing-items-wrap"></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="billingAddItemRow()">+ Add Line Item</button>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+        <div style="min-width:260px;">
+          <label class="checkbox-label" style="margin-bottom:10px;">
+            <input type="checkbox" id="billing-apply-vat" checked onchange="billingRenderTotals()" />
+            Add VAT (13%)
+          </label>
+          <div style="display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:4px;"><span>Subtotal</span><span id="billing-total-subtotal">0.00</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:4px;"><span>VAT (13%)</span><span id="billing-total-tax">0.00</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:15px; font-weight:700; color:var(--brand-navy); border-top:1px solid var(--border); padding-top:6px;"><span>Total</span><span id="billing-total-amount">0.00</span></div>
+        </div>
+      </div>
+
+      <div class="form-group full" style="margin-top:14px;">
+        <label>Notes</label>
+        <textarea id="billing-notes" placeholder="Optional notes printed on the invoice…"></textarea>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-outline" onclick="billingSaveInvoice('draft')">Save Draft</button>
+        <button class="btn btn-primary" onclick="billingSaveInvoice('sent')">Save &amp; Send</button>
+        <button class="btn btn-outline" onclick="billingCloseCreate()">Cancel</button>
+      </div>
+      <div id="billing-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BILLING — RECORD PAYMENT MODAL -->
+<div class="modal-overlay" id="billing-payment-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Record Payment</h3>
+      <button class="modal-close" onclick="billingClosePayment()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="billing-payment-invoice-summary" style="margin-bottom:14px; font-size:13.5px; color:var(--text-muted);"></div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" id="billing-payment-amount" step="0.01" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="billing-payment-date" />
+        </div>
+        <div class="form-group">
+          <label>Method</label>
+          <select id="billing-payment-method">
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cash">Cash</option>
+            <option value="qr">QR Payment</option>
+            <option value="cheque">Cheque</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Note</label>
+          <input type="text" id="billing-payment-note" placeholder="Optional" />
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-primary" onclick="billingSavePayment()">Save Payment</button>
+        <button class="btn btn-outline" onclick="billingClosePayment()">Cancel</button>
+      </div>
+      <div id="billing-payment-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BILLING — BANK DETAILS / SETTINGS MODAL -->
+<div class="modal-overlay" id="billing-settings-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3>Bank Details for Invoices</h3>
+      <button class="modal-close" onclick="billingCloseSettings()">×</button>
+    </div>
+    <div class="modal-body" id="billing-settings-body">
+      <div class="log-empty">Loading…</div>
+    </div>
+  </div>
+</div>
+
 <!-- VAT COMPLIANCE — MANAGE VAT CLIENTS PICKER -->
 <div class="modal-overlay" id="vatc-picker">
   <div class="modal">
@@ -1314,6 +1487,7 @@
 <script src="js/logs.js"></script>
 <script src="js/vatReturn.js"></script>
 <script src="js/vatCompliance.js"></script>
+<script src="js/billing.js"></script>
 <script src="js/sendDocument.js"></script>
 <script src="js/report.js"></script>
 <script src="js/bmAgmMinutes.js"></script>

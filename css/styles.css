@@ -491,6 +491,15 @@ textarea { resize: vertical; min-height: 100px; }
 /* Overdue filing rows get a red inset marker (VAT Compliance table) */
 .vatc-row-overdue .tabulator-cell:first-child { box-shadow: inset 3px 0 0 var(--red); }
 
+/* ── BILLING ── */
+.billing-item-row { display:grid; grid-template-columns: 1fr 70px 100px 100px 32px; gap:8px; align-items:center; margin-bottom:8px; }
+.billing-item-row input { width:100%; }
+.billing-item-remove { background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:18px; line-height:1; padding:4px; }
+.billing-item-remove:hover { color:var(--red); }
+.billing-row-overdue .tabulator-cell:first-child { box-shadow: inset 3px 0 0 var(--red); }
+.billing-qr-preview { max-width:120px; max-height:120px; border:1px solid var(--border); border-radius:var(--radius); margin-top:8px; display:block; }
+.billing-qr-placeholder { width:120px; height:120px; border:2px dashed var(--border); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text-faint); text-align:center; margin-top:8px; }
+
 /* Compact stat cards double as quick filters (VAT Compliance) */
 .stat-grid.compact { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; }
 .stat-card.clickable { cursor: pointer; transition: box-shadow 0.15s; }
