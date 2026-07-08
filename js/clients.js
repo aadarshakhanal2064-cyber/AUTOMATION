@@ -86,6 +86,12 @@ function renderClientsTable(list) {
         } },
       { title: 'Email', field: 'email', minWidth: 180, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'PAN', field: 'pan', minWidth: 120, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'VAT', field: 'vat_status', minWidth: 110, formatter: cell => {
+          const v = cell.getValue();
+          return v === 'active' ? '<span class="log-badge badge-sent">Active</span>'
+            : v === 'inactive' ? '<span class="log-badge badge-yellow">Inactive</span>'
+            : '<span style="color:var(--text-faint);">—</span>';
+        } },
       { title: 'Phone', field: 'phone', minWidth: 130, formatter: cell => escHtml(cell.getValue() || '—') },
       ...(isAdmin ? [{
         title: 'Actions', field: 'id', headerSort: false, minWidth: 150,
@@ -133,6 +139,7 @@ function cancelAddClient() {
 
 function clearClientForm() {
   ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-registration-number','ac-chairman-name','ac-shareholder-name','ac-authorized-capital','ac-issued-capital','ac-paidup-capital','ac-address'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ac-vat-status').value = 'not_registered';
   document.getElementById('client-form-status').innerHTML = '';
 }
 
@@ -151,6 +158,7 @@ async function saveClient() {
     pan:           document.getElementById('ac-pan').value.trim() || null,
     phone:         document.getElementById('ac-phone').value.trim() || null,
     entity_type:   document.getElementById('ac-entity-type').value.trim() || null,
+    vat_status:    document.getElementById('ac-vat-status').value,
     business_nature: document.getElementById('ac-business').value.trim() || null,
     registration_number: document.getElementById('ac-registration-number').value.trim() || null,
     chairman_name:       document.getElementById('ac-chairman-name').value.trim() || null,
@@ -187,6 +195,7 @@ function editClient(id) {
   document.getElementById('ac-pan').value         = c.pan || '';
   document.getElementById('ac-phone').value       = c.phone || '';
   document.getElementById('ac-entity-type').value = c.entity_type || '';
+  document.getElementById('ac-vat-status').value  = c.vat_status || 'not_registered';
   document.getElementById('ac-business').value    = c.business_nature || '';
   document.getElementById('ac-registration-number').value = c.registration_number || '';
   document.getElementById('ac-chairman-name').value       = c.chairman_name || '';
