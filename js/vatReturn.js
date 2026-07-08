@@ -40,6 +40,10 @@ const VAT_EXCEL_TEMPLATE_URL = 'assets/templates/vat-detail.xlsx';
 // ({ monthIdx: number }) — reset on every fresh extraction.
 window.vatPaidOverrides = {};
 
+// Client matched by PAN during the last extraction (or null) — consumed by
+// the VAT Compliance tracker hooks here and in vatGenerateExcel.
+window.vatMatchedClient = null;
+
 // PDF page = 595 x 842 pt (A4) for this document family.
 const VAT_PDF_PAGE_W = 595, VAT_PDF_PAGE_H = 842;
 
@@ -697,8 +701,13 @@ async function vatExtractPdf() {
       .filter(pg => pg.fields.pan.confidence >= VAT_CONFIDENCE_MEDIUM)
       .map(pg => pg.fields.pan.value).filter(Boolean))];
     let panNote = '';
+    // The PAN-matched client is remembered for the whole extraction session:
+    // the VAT Compliance tracker hooks (below and in vatGenerateExcel) key
+    // off it, surviving manual edits to the company-name field.
+    window.vatMatchedClient = null;
     if (pans.length === 1) {
       const client = (window.clientsList || []).find(c => NepaliLocale.toEnglishDigits(c.pan) === pans[0]);
+      window.vatMatchedClient = client || null;
       const nameField = document.getElementById('vat-companyName');
       const addrField = document.getElementById('vat-companyAddress');
       if (client) {
@@ -725,6 +734,31 @@ async function vatExtractPdf() {
       : 'all months read correctly';
     vatStatus(`✅ ${pdf.numPages} पृष्ठ पढियो — ${note} (extracted ${pdf.numPages} pages — review below before generating).${panNote}`, unresolved > 0 || pans.length > 1 ? 'error' : 'success');
     if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'success', stage: 'extraction', pageCount: pdf.numPages, unresolvedMonths: unresolved, guessedMonths: guessed });
+
+    // VAT Compliance tracker hook: the matched client's extracted months move
+    // to Under Review, each carrying its validation summary. Fire-and-forget —
+    // tracker writes must never block or fail the extraction UI.
+    if (window.vatMatchedClient && typeof vatcAutoProgress === 'function') {
+      const dupIdxsForTracker = vatDuplicateMonthIdxs(pages);
+      const monthsList = [];
+      const patchByMonth = {};
+      pages.filter(pg => pg.monthInfo).forEach(pg => {
+        const w = vatRowWarnings(pg, dupIdxsForTracker);
+        monthsList.push(pg.monthInfo.idx);
+        patchByMonth[pg.monthInfo.idx] = { validation_summary: {
+          blocking: w.filter(x => x.severity === 'block').length,
+          warnings: w.filter(x => x.severity === 'warn').length,
+          checkedAt: new Date().toISOString(),
+        } };
+      });
+      const fyStart = firstMonthPage ? vatNum(firstMonthPage.fields.taxYear) : parseInt(fyField && fyField.value, 10);
+      if (monthsList.length && fyStart) {
+        vatcAutoProgress({
+          clientId: window.vatMatchedClient.id, clientName: window.vatMatchedClient.name,
+          fiscalYear: vatcFyLabel(fyStart), months: monthsList, toStatus: 'under_review', patchByMonth,
+        }).catch(e => console.error('vatCompliance auto-progress failed:', e));
+      }
+    }
   } catch (err) {
     vatStatus('❌ ' + (err.message || 'Extraction failed'), 'error');
     if (window.AuditLog) AuditLog.record('ocr_extraction', { module: 'vatReturn', status: 'error', stage: 'extraction', error: err.message });
@@ -1175,4 +1209,20 @@ async function vatGenerateExcel() {
   const fname = `${companyName} ${fyLabel}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
   DocumentEngine.downloadBlob(blob, fname, { module: 'vatReturn', clientName: companyName });
   vatStatus('✅ Excel तयार भयो — डाउनलोड भयो (workbook generated & downloaded).', 'success');
+
+  // VAT Compliance tracker hook: the generated months move to Ready to File
+  // with the workbook filename recorded. Fire-and-forget, like the
+  // extraction hook — Filed stays a deliberate human action.
+  if (window.vatMatchedClient && typeof vatcAutoProgress === 'function') {
+    const fyStart = parseInt(fyLabel, 10);
+    const monthsList = rows.filter(r => !r.missing).map(r => r.idx);
+    if (monthsList.length && fyStart) {
+      const patchByMonth = {};
+      monthsList.forEach(m => { patchByMonth[m] = { workbook_filename: fname }; });
+      vatcAutoProgress({
+        clientId: window.vatMatchedClient.id, clientName: window.vatMatchedClient.name,
+        fiscalYear: vatcFyLabel(fyStart), months: monthsList, toStatus: 'ready_to_file', patchByMonth,
+      }).catch(e => console.error('vatCompliance auto-progress failed:', e));
+    }
+  }
 }
