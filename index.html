@@ -242,6 +242,21 @@
           </div>
         </div>
         <div id="vatc-period-label" style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;"></div>
+        <div id="vatc-bulk-bar" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; background:var(--blue-bg); border:1px solid #c3d7f2; border-radius:var(--radius); padding:10px 14px; margin-bottom:16px;">
+          <strong id="vatc-bulk-count" style="font-size:13px; color:var(--blue-dk);">0 selected</strong>
+          <button class="btn btn-primary btn-sm" onclick="vatcBulkStatus('filed')">✓ Mark Filed</button>
+          <span style="display:inline-flex; gap:6px; align-items:center;">
+            <select id="vatc-bulk-status" style="max-width:200px;"></select>
+            <button class="btn btn-outline btn-sm" onclick="vatcBulkStatus(document.getElementById('vatc-bulk-status').value)">Set Status</button>
+          </span>
+          <span style="display:inline-flex; gap:6px; align-items:center;">
+            <select id="vatc-bulk-staff" style="max-width:200px;"></select>
+            <button class="btn btn-outline btn-sm" onclick="vatcBulkAssign()">Assign</button>
+          </span>
+          <button class="btn btn-outline btn-sm" onclick="vatcExportCsv()">⬇ Export CSV</button>
+          <button class="btn btn-outline btn-sm" onclick="vatcPrint()">🖨 Print</button>
+          <button class="btn btn-outline btn-sm" onclick="vatcTable && vatcTable.deselectRow()">Clear</button>
+        </div>
         <div id="vatc-status-area"></div>
         <div id="vatc-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>

@@ -260,9 +260,11 @@ function vatcRenderTable(rows) {
     pagination: true,
     paginationSize: 25,
     paginationSizeSelector: [25, 50, 100],
+    selectableRows: true,
     initialSort: [{ column: 'client_name', dir: 'asc' }],
     rowFormatter: row => row.getElement().classList.toggle('vatc-row-overdue', !!row.getData().overdue),
     columns: [
+      { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 44, download: false, print: false },
       { title: 'Client', field: 'client_name', minWidth: 200, formatter: cell => {
           const d = cell.getRow().getData();
           const inactiveTag = d.client_vat_status === 'inactive' ? ' <span class="entity-badge">VAT inactive</span>' : '';
@@ -279,7 +281,8 @@ function vatcRenderTable(rows) {
           }
           if (vatcHasErrors(d)) extra += ' <span class="log-badge badge-error" title="The last OCR extraction reported validation issues — open the VAT Return review screen">🔴 Errors</span>';
           return vatcFlow.badgeHtml(d.status) + extra;
-        } },
+        },
+        accessorDownload: value => vatcFlow.meta(value).label },
       { title: 'Assigned To', field: 'assigned_email', minWidth: 140, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'Updated', field: 'updated_at', width: 145, formatter: cell => {
           const d = cell.getRow().getData();
@@ -292,7 +295,7 @@ function vatcRenderTable(rows) {
           if (!v) return '—';
           return `<span title="${escHtml(v)}">${escHtml(v.length > 40 ? v.slice(0, 40) + '…' : v)}</span>`;
         } },
-      { title: 'Actions', field: 'client_id', headerSort: false, minWidth: 210, formatter: () => `
+      { title: 'Actions', field: 'client_id', headerSort: false, minWidth: 210, download: false, print: false, formatter: () => `
           <div class="client-actions">
             <button class="btn btn-outline btn-sm" data-action="open">Open</button>
             <button class="btn btn-outline btn-sm" data-action="filed" title="Mark Filed">✓ Filed</button>
@@ -308,6 +311,85 @@ function vatcRenderTable(rows) {
         } },
     ],
   });
+  vatcTable.on('rowSelectionChanged', vatcUpdateBulkBar);
+}
+
+// ── Bulk actions ──
+function vatcSelectedRows() {
+  return vatcTable ? vatcTable.getSelectedData() : [];
+}
+
+function vatcUpdateBulkBar() {
+  const bar = document.getElementById('vatc-bulk-bar');
+  if (!bar) return;
+  const n = vatcSelectedRows().length;
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('vatc-bulk-count').textContent = `${n} selected`;
+  if (n && !document.getElementById('vatc-bulk-status').options.length) {
+    document.getElementById('vatc-bulk-status').innerHTML = vatcFlow.statusKeys.map(k =>
+      `<option value="${k}">${VATC_STATUSES[k].icon} ${VATC_STATUSES[k].label}</option>`).join('');
+    document.getElementById('vatc-bulk-staff').innerHTML = '<option value="">— Unassigned —</option>' +
+      (vatcStaff || []).map(s => `<option value="${s.id}">${escHtml(s.email)}</option>`).join('');
+  }
+}
+
+// Runs one persistence call per selected row through the SAME single-row
+// path (status flow / save + audit), so bulk changes are audited identically
+// to individual ones — just sequenced with a progress message.
+async function vatcBulkRun(selected, label, fn) {
+  let done = 0, failed = 0;
+  for (const data of selected) {
+    const row = vatcRows.find(r => r.client_id === data.client_id);
+    if (!row) continue;
+    vatcStatusMsg(`<span class="spinner spinner-navy"></span> ${label} ${done + failed + 1}/${selected.length}…`, 'searching');
+    try { await fn(row); done++; }
+    catch (e) { failed++; console.error('vatCompliance bulk:', row.client_name, e); }
+  }
+  vatcRows.forEach(r => { r.overdue = vatcIsOverdue(r); });
+  vatcRenderStats(vatcRows);
+  vatcRenderMonthCharts(vatcRows);
+  vatcApplyFilters(); // replaceData also clears the selection
+  const fy = document.getElementById('vatc-fy').value;
+  vatcRenderPeriodLabel(fy, parseInt(document.getElementById('vatc-month').value, 10), vatcRows);
+  vatcRenderFyChart(fy);
+  vatcStatusMsg(failed ? `⚠️ ${label}: ${done} updated, ${failed} failed — see the browser console.`
+                       : `✅ ${label}: ${done} client${done === 1 ? '' : 's'} updated.`, failed ? 'error' : 'success');
+}
+
+async function vatcBulkStatus(to) {
+  const selected = vatcSelectedRows();
+  if (!selected.length || !VATC_STATUSES[to]) return;
+  await vatcBulkRun(selected, `Setting ${vatcFlow.meta(to).label}`, row => vatcFlow.transition(row, to));
+}
+
+async function vatcBulkAssign() {
+  const selected = vatcSelectedRows();
+  if (!selected.length) return;
+  const val = document.getElementById('vatc-bulk-staff').value;
+  const staffId = val ? parseInt(val, 10) : null;
+  const email = (staffId && vatcStaff && (vatcStaff.find(s => s.id === staffId) || {}).email) || '';
+  await vatcBulkRun(selected, email ? `Assigning to ${email}` : 'Unassigning', async row => {
+    await vatcSaveFiling(row, { assigned_staff_id: staffId });
+    row.assigned_email = email;
+    AuditLog.record('vat_filing_update', {
+      module: 'vatCompliance', clientName: row.client_name, recordRef: row.id,
+      changed: ['assigned_staff_id'], assignedTo: email || null,
+      fiscalYear: row.fiscal_year, month: row.month,
+    });
+  });
+}
+
+function vatcExportCsv() {
+  if (!vatcTable) return;
+  const range = vatcSelectedRows().length ? 'selected' : 'active';
+  const fy = document.getElementById('vatc-fy').value.replace('/', '-');
+  const month = VAT_MONTH_ORDER[parseInt(document.getElementById('vatc-month').value, 10) - 1];
+  vatcTable.download('csv', `vat-compliance-${fy}-${month}.csv`, {}, range);
+}
+
+function vatcPrint() {
+  if (!vatcTable) return;
+  vatcTable.print(vatcSelectedRows().length ? 'selected' : 'active', true);
 }
 
 // Active stat-card filter + live search, applied together.
