@@ -22,14 +22,12 @@ async function loadDashboard() {
   startOfMonth.setHours(0, 0, 0, 0);
   const sinceIso = startOfMonth.toISOString();
 
-  const [docsThisMonth, ocrThisMonth, recent] = await Promise.all([
+  const [docsThisMonth, recent] = await Promise.all([
     AuditLog.countSince('document_generated', sinceIso),
-    AuditLog.countSince('ocr_extraction', sinceIso),
     AuditLog.recent(10),
   ]);
 
   set('dash-stat-docs-month', docsThisMonth);
-  set('dash-stat-ocr-month', ocrThisMonth);
 
   renderDashActivity(recent);
   renderDashModuleChart(recent);

@@ -106,8 +106,8 @@ body {
 }
 .topbar-dropdown-menu.open { display: flex; }
 .topbar-dropdown-item {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius);
-  border: none; background: transparent; font-family: 'Inter', sans-serif; font-size: 13.5px;
+  display: block; width: 100%; padding: 11px 14px; border-radius: var(--radius);
+  border: none; background: transparent; font-family: 'Inter', sans-serif; font-size: 14px;
   font-weight: 500; color: var(--text-main); text-align: left; cursor: pointer; transition: background 0.15s;
 }
 .topbar-dropdown-item:hover { background: var(--bg-app); color: var(--brand-navy); }
