@@ -201,7 +201,13 @@
         <div class="ph-text">
           <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">VAT Compliance</span></div>
           <h2 class="page-title">VAT Compliance</h2>
-          <p class="page-subtitle">Monthly VAT Return filing status across every VAT-registered client.</p>
+          <p class="page-subtitle">Monthly VAT Return filing status for the clients whose VAT we handle.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-primary" onclick="vatcOpenPicker()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+            Manage VAT Clients
+          </button>
         </div>
       </div>
 
@@ -1150,6 +1156,32 @@
 </div>
 
 <!-- IMPORT MODAL -->
+<!-- VAT COMPLIANCE — MANAGE VAT CLIENTS PICKER -->
+<div class="modal-overlay" id="vatc-picker">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h3>Manage VAT Clients</h3>
+        <div id="vatc-picker-count" style="font-size:12.5px; color:var(--text-muted); margin-top:2px;"></div>
+      </div>
+      <button class="modal-close" onclick="vatcClosePicker()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="search-bar-wrap" style="margin-bottom:14px;">
+        <span class="sb-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </span>
+        <input type="text" class="search-bar" id="vatc-picker-search" placeholder="Search your client directory by name or PAN…" oninput="vatcPickerSearch(this.value)" />
+      </div>
+      <div id="vatc-picker-status"></div>
+      <div id="vatc-picker-list" style="max-height:420px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:var(--radius);"></div>
+      <div class="action-row">
+        <button class="btn btn-outline" onclick="vatcClosePicker()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- VAT COMPLIANCE — CLIENT MONTH DRAWER -->
 <div class="modal-overlay drawer-right" id="vatc-drawer">
   <div class="modal drawer-panel">

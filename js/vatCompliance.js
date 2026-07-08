@@ -249,7 +249,7 @@ function vatcRenderTable(rows) {
   if (vatcTable) { vatcTable.destroy(); vatcTable = null; }
 
   if (!rows.length) {
-    wrap.innerHTML = '<div class="log-empty">No VAT-active clients yet. Set a client\'s <strong>VAT Status</strong> to "VAT Active" in the Clients tab and they will appear here automatically every month.</div>';
+    wrap.innerHTML = '<div class="log-empty">No VAT clients yet. Click <strong>Manage VAT Clients</strong> (top right) to search your directory and add the clients whose VAT you handle — they will then appear here automatically every month.</div>';
     return;
   }
 
@@ -582,6 +582,93 @@ async function vatcSaveDrawer() {
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'vatc-drawer-status');
   }
+}
+
+// ── Manage VAT Clients picker ──
+// Only a subset of the client directory files VAT with the firm, so
+// membership is chosen by hand here: search the directory, Add / Remove.
+// With no search query the list shows the current VAT clients.
+let vatcPickerQuery = '';
+
+function vatcOpenPicker() {
+  vatcPickerQuery = '';
+  document.getElementById('vatc-picker-search').value = '';
+  document.getElementById('vatc-picker-status').innerHTML = '';
+  vatcRenderPickerList();
+  document.getElementById('vatc-picker').classList.add('open');
+  document.getElementById('vatc-picker-search').focus();
+}
+
+function vatcClosePicker() {
+  document.getElementById('vatc-picker').classList.remove('open');
+  vatcRefresh(); // reflect membership changes in the dashboard
+}
+
+function vatcPickerSearch(q) {
+  vatcPickerQuery = (q || '').trim();
+  vatcRenderPickerList();
+}
+
+function vatcRenderPickerList() {
+  const el = document.getElementById('vatc-picker-list');
+  const all = window.clientsList || [];
+  let list;
+  if (vatcPickerQuery) {
+    const fuse = SearchEngine.buildIndex(all, ['name', 'pan']);
+    list = fuse.search(vatcPickerQuery).map(r => r.item).slice(0, 30);
+  } else {
+    list = all.filter(c => c.vat_status === 'active');
+  }
+
+  const activeCount = all.filter(c => c.vat_status === 'active').length;
+  document.getElementById('vatc-picker-count').textContent =
+    `${activeCount} VAT client${activeCount === 1 ? '' : 's'} on the dashboard`;
+
+  if (!list.length) {
+    el.innerHTML = `<div class="log-empty">${vatcPickerQuery
+      ? 'No clients match your search.'
+      : 'No VAT clients yet — search your directory above and click Add.'}</div>`;
+    return;
+  }
+
+  el.innerHTML = list.map(c => {
+    const isActive = c.vat_status === 'active';
+    return `<div class="log-item">
+      <div class="log-details">
+        <div class="log-client">${escHtml(c.name)}</div>
+        <div class="log-sub">PAN ${escHtml(c.pan || '—')}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+      </div>
+      ${isActive ? '<span class="log-badge badge-sent">VAT Active</span>' : ''}
+      <button class="btn ${isActive ? 'btn-outline' : 'btn-primary'} btn-sm" onclick="vatcPickerToggle(${c.id}, ${!isActive})">${isActive ? 'Remove' : '+ Add'}</button>
+    </div>`;
+  }).join('');
+}
+
+async function vatcPickerToggle(clientId, makeActive) {
+  const client = (window.clientsList || []).find(c => c.id === clientId);
+  if (!client) return;
+
+  let newStatus = 'active';
+  if (!makeActive) {
+    // A client with filing history becomes Inactive (their history keeps
+    // showing on past months); one that never filed goes back to plain
+    // Not VAT Registered.
+    const { count } = await window.sb.from('vat_filings')
+      .select('id', { count: 'exact', head: true }).eq('client_id', clientId);
+    newStatus = (count || 0) > 0 ? 'inactive' : 'not_registered';
+  }
+
+  const { error } = await window.sb.from('clients').update({ vat_status: newStatus }).eq('id', clientId);
+  if (error) {
+    showStatus('❌ ' + escHtml(error.message), 'error', 'vatc-picker-status');
+    return;
+  }
+  client.vat_status = newStatus;
+  AuditLog.record('vat_client_change', {
+    module: 'vatCompliance', clientName: client.name, vatStatus: newStatus,
+  });
+  document.getElementById('vatc-picker-status').innerHTML = '';
+  vatcRenderPickerList();
 }
 
 // ── Integration API (called from vatReturn.js) ──
