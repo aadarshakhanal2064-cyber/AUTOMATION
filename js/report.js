@@ -41,14 +41,6 @@ SearchEngine.attachAutocomplete($rep('rep-entityPan'), $rep('rep-pan-autocomplet
   onSelect: selectRepClient,
 });
 
-// Nepali FY convention prints the second half as the last 3 digits of the
-// following BS year, e.g. select key "2081-82" -> "2081-082"
-function repFyLabel(fyKey){
-  const start = fyKey.split('-')[0];
-  const endShort = String(parseInt(start, 10) + 1).slice(-3);
-  return `${start}-${endShort}`;
-}
-
 function getRepState(){
   return {
     firm: window.REP_FIRMS[$rep('rep-firm').value],
@@ -59,7 +51,6 @@ function getRepState(){
     entityBusiness: $rep('rep-entityBusiness').value.trim() || "[NATURE OF BUSINESS]",
     nas: window.REP_NAS_LABEL[$rep('rep-nasType').value],
     fy: window.REP_FY_DATES[$rep('rep-fy').value],
-    fyLabel: repFyLabel($rep('rep-fy').value),
     reportDate: $rep('rep-reportDate').value.trim() || "[DATE]",
     reportPlace: $rep('rep-reportPlace').value.trim() || "[PLACE]",
     udin: $rep('rep-udin').value.trim(),
@@ -68,23 +59,30 @@ function getRepState(){
   };
 }
 
+// Matches the firm's own filed cover-page layout: bordered frame, title
+// block up top, a large blank gap with three decorative rules, then the
+// "Audited By" block — rather than the earlier certificate-stamp design.
 function renderRepCoverPage(s){
   const f = s.firm;
   return `
   <div class="rep-sheet rep-cover" contenteditable="true" spellcheck="false">
-    <div class="rep-cover-entity">${s.entityName}</div>
-    <div class="rep-cover-address">${s.entityAddress}</div>
+    <div class="rep-cover-frame">
+      <div class="rep-cover-title">Audit Report</div>
+      <div class="rep-cover-of">Of</div>
+      <div class="rep-cover-entity">${s.entityName}</div>
+      <div class="rep-cover-address">${s.entityAddress}</div>
+      <div class="rep-cover-fy">For the Year Ending ${s.fy.bs}</div>
 
-    <div class="rep-cover-fy">Financial Year ${s.fyLabel}</div>
+      <div class="rep-cover-lines" aria-hidden="true">
+        <span class="rep-cover-line rep-cover-line--sm"></span>
+        <span class="rep-cover-line rep-cover-line--lg"></span>
+        <span class="rep-cover-line rep-cover-line--md"></span>
+      </div>
 
-    <div class="rep-cover-title">Audit Report</div>
-
-    <div class="rep-blank-fill rep-cover-box" contenteditable="true" data-placeholder="Space reserved for firm seal / stamp"></div>
-
-    <div class="rep-cover-sig">${f.signatoryName}</div>
-    <div class="rep-cover-for">FOR</div>
-    <div class="rep-cover-firm">${f.name}</div>
-    <div class="rep-cover-regno">Firm Registration No. ${f.regNo}</div>
+      <div class="rep-cover-auditedby">Audited By:</div>
+      <div class="rep-cover-firm">${f.name}</div>
+      <div class="rep-cover-firmtitle">${f.title}</div>
+    </div>
   </div>`;
 }
 

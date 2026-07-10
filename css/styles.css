@@ -641,17 +641,27 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-sheet ul, .rep-sheet ol{ margin: 0 0 var(--rep-space-md); padding-left: 20px; }
 .rep-sheet li{ margin-bottom: var(--rep-space-sm); text-align: justify; }
 
-/* Cover page (first sheet of the generated report) */
-.rep-cover{ text-align:center; padding-top:64px; }
-.rep-cover-entity{ font-size:22px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); margin-bottom:var(--rep-space-sm); }
-.rep-cover-address{ font-size:14px; color:var(--rep-muted); margin-bottom:var(--rep-space-xl); }
-.rep-cover-fy{ font-size:15px; font-weight:600; margin-bottom:var(--rep-space-xl); }
-.rep-cover-title{ font-size:28px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--brand-navy); margin-bottom:var(--rep-space-xl); }
-.rep-cover-box{ min-height:160px; max-width:420px; margin:0 auto var(--rep-space-xl); display:flex; align-items:center; justify-content:center; text-align:center; }
-.rep-cover-sig{ font-size:15px; font-weight:700; margin-bottom:2px; }
-.rep-cover-for{ font-size:13px; letter-spacing:1px; margin-bottom:var(--rep-space-sm); }
-.rep-cover-firm{ font-size:16px; font-weight:700; margin-bottom:2px; }
-.rep-cover-regno{ font-size:13px; color:var(--rep-muted); }
+/* Cover page (first sheet of the generated report) — mirrors the firm's own
+   filed cover sheet: a bordered frame, title block, a large blank gap with
+   three decorative rules, then the "Audited By" block. */
+.rep-cover{ padding:0; }
+.rep-cover-frame{
+  text-align:center; border:1.5px solid #000; min-height:760px;
+  padding: var(--rep-space-xl) var(--rep-space-lg);
+}
+.rep-cover-title{ font-size:22px; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-bottom:var(--rep-space-md); }
+.rep-cover-of{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:var(--rep-space-lg); }
+.rep-cover-entity{ font-size:16px; font-weight:700; margin-bottom:var(--rep-space-sm); }
+.rep-cover-address{ font-size:14px; font-weight:700; margin-bottom:var(--rep-space-xl); }
+.rep-cover-fy{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+.rep-cover-lines{ display:flex; justify-content:center; align-items:flex-end; gap:32px; height:180px; margin: var(--rep-space-xl) 0; }
+.rep-cover-line{ width:0; border-left:1px solid #000; }
+.rep-cover-line--sm{ height:55%; }
+.rep-cover-line--md{ height:60%; }
+.rep-cover-line--lg{ height:100%; }
+.rep-cover-auditedby{ font-size:14px; text-decoration:underline; margin-bottom:var(--rep-space-lg); }
+.rep-cover-firm{ font-size:15px; font-weight:700; margin-bottom:2px; }
+.rep-cover-firmtitle{ font-size:15px; font-weight:700; }
 
 /* Firm letterhead + contact row (top of the Auditor's Report sheet) */
 .rep-firm-header{ text-align:center; margin-bottom:var(--rep-space-md); }
