@@ -637,9 +637,11 @@ textarea { resize: vertical; min-height: 100px; }
   padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 13px;
   line-height: var(--rep-line-height); border:1px solid var(--border);
 }
-.rep-sheet p{ margin: 0 0 var(--rep-space-md); text-align: justify; }
+/* orphans/widows stop a paragraph leaving just one stray line dangling at a
+   page break, so a page always ends on a clean, intentional-looking cut. */
+.rep-sheet p{ margin: 0 0 var(--rep-space-md); text-align: justify; orphans: 3; widows: 3; }
 .rep-sheet ul, .rep-sheet ol{ margin: 0 0 var(--rep-space-md); padding-left: 20px; }
-.rep-sheet li{ margin-bottom: var(--rep-space-sm); text-align: justify; }
+.rep-sheet li{ margin-bottom: var(--rep-space-sm); text-align: justify; orphans: 3; widows: 3; }
 
 /* Cover page (first sheet of the generated report) — mirrors the firm's own
    filed cover sheet: a bordered frame, title block, a large blank gap with
