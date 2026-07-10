@@ -631,7 +631,7 @@ textarea { resize: vertical; min-height: 100px; }
   --rep-space-md: 14px;
   --rep-space-lg: 22px;
   --rep-space-xl: 36px;
-  --rep-line-height: 1.9;
+  --rep-line-height: 1.8;
   --rep-muted: #333;
   background: #fff; width: 100%; max-width: 780px; margin: 0 auto 24px; box-shadow: var(--shadow-md);
   padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 13px;
@@ -686,7 +686,7 @@ textarea { resize: vertical; min-height: 100px; }
 /* Numbered section headings (h3.rep-sec) */
 .rep-sheet h3.rep-sec{
   font-size:13px; font-weight:700; text-align:left;
-  margin: var(--rep-space-lg) 0 var(--rep-space-sm);
+  margin: var(--rep-space-md) 0 var(--rep-space-sm);
   /* Never leave a heading stranded alone at the bottom of a printed page —
      push it (not just its text) onto the next page along with what follows. */
   break-after: avoid; page-break-after: avoid;
