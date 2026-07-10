@@ -631,16 +631,16 @@ textarea { resize: vertical; min-height: 100px; }
   --rep-space-md: 14px;
   --rep-space-lg: 22px;
   --rep-space-xl: 36px;
-  --rep-line-height: 1.4;
+  --rep-line-height: 1.28;
   --rep-muted: #333;
   background: #fff; width: 100%; max-width: 780px; margin: 0 auto 24px; box-shadow: var(--shadow-md);
-  padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 13px;
+  padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 12.5px;
   line-height: var(--rep-line-height); border:1px solid var(--border);
 }
 /* orphans/widows stop a paragraph leaving just one stray line dangling at a
    page break, so a page always ends on a clean, intentional-looking cut. */
-.rep-sheet p{ margin: 0 0 var(--rep-space-md); text-align: justify; orphans: 3; widows: 3; }
-.rep-sheet ul, .rep-sheet ol{ margin: 0 0 var(--rep-space-md); padding-left: 20px; }
+.rep-sheet p{ margin: 0 0 var(--rep-space-sm); text-align: justify; orphans: 3; widows: 3; }
+.rep-sheet ul, .rep-sheet ol{ margin: 0 0 var(--rep-space-sm); padding-left: 20px; }
 .rep-sheet li{ margin-bottom: var(--rep-space-sm); text-align: justify; orphans: 3; widows: 3; }
 
 /* Cover page (first sheet of the generated report) — mirrors the firm's own
@@ -688,7 +688,7 @@ textarea { resize: vertical; min-height: 100px; }
 /* Numbered section headings (h3.rep-sec) */
 .rep-sheet h3.rep-sec{
   font-size:13px; font-weight:700; text-align:left;
-  margin: var(--rep-space-md) 0 var(--rep-space-sm);
+  margin: var(--rep-space-sm) 0;
   /* Never leave a heading stranded alone at the bottom of a printed page —
      push it (not just its text) onto the next page along with what follows. */
   break-after: avoid; page-break-after: avoid;
