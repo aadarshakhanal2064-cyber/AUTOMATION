@@ -635,6 +635,10 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-cover-firm{ font-size:16px; font-weight:700; margin-bottom:2px; }
 .rep-cover-regno{ font-size:13px; color:#333; }
 
+.rep-sig-block{ display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-top:32px; }
+.rep-sig-left{ text-align:left; }
+.rep-sig-right{ text-align:right; }
+
 .rep-firm-header{ text-align:center; margin-bottom:20px; }
 .rep-firm-header .rfname{ font-size:18px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); }
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
