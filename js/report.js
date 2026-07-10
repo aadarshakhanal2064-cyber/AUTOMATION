@@ -86,11 +86,23 @@ function renderRepCoverPage(s){
   </div>`;
 }
 
+// Resolves an asset's own relative path to an absolute URL — needed because
+// printAuditReport() opens the report in a separate blob: document, where a
+// plain relative "assets/logo-lockup.png" src won't resolve against the app's origin.
+function repAssetUrl(path){
+  return new URL(path, document.baseURI).href;
+}
+
 function renderRepFirmHeader(f){
+  // Firms with a letterhead logo (a lockup of the firm name + title) show the
+  // image in place of those two text lines; firms without one keep plain text.
+  const identity = f.logo
+    ? `<img class="rep-header-logo" src="${repAssetUrl(f.logo)}" alt="${f.name} - ${f.title}" onerror="this.outerHTML='<div class=&quot;rfname&quot;>${f.name}</div><div class=&quot;rftitle&quot;>${f.title}</div>'">`
+    : `<div class="rfname">${f.name}</div><div class="rftitle">${f.title}</div>`;
+
   return `
     <div class="rep-firm-header">
-      <div class="rfname">${f.name}</div>
-      <div class="rftitle">${f.title}</div>
+      ${identity}
       <div class="rfaddr">${f.address}</div>
     </div>
     <div class="rep-contact-row">
