@@ -109,7 +109,22 @@ function renderRepFirmHeader(f){
     </div>`;
 }
 
+// Resolves an asset's own relative path to an absolute URL — needed because
+// printAuditReport() opens the report in a separate blob: document, where a
+// plain relative "assets/logo.jpeg" src won't resolve against the app's origin.
+function repAssetUrl(path){
+  return new URL(path, document.baseURI).href;
+}
+
 function renderRepSigBlock(s, f){
+  // Firms with a letterhead logo (a lockup of the firm name + title) show the
+  // image in place of the "name" line and drop the separate title line, since
+  // the logo already renders it; firms without one keep the original plain text.
+  const nameLine = f.logo
+    ? `<img class="rep-sig-logo" src="${repAssetUrl(f.logo)}" alt="${f.name} - ${f.title}" onerror="this.outerHTML='<p>${f.name}</p>'">`
+    : `<p>${f.name}</p>`;
+  const titleLine = f.logo ? `` : `<p>${f.title}</p>`;
+
   return `
     <div class="rep-sig-block">
       <div class="rep-sig-left">
@@ -118,9 +133,9 @@ function renderRepSigBlock(s, f){
         ${s.udin ? `<p class="rep-udin">UDIN: ${s.udin}</p>` : `<p class="rep-udin">UDIN:</p>`}
       </div>
       <div class="rep-sig-right">
-        <p>${f.name}</p>
+        ${nameLine}
         <p>Firm Registration No. ${f.regNo}</p>
-        <p>${f.title}</p>
+        ${titleLine}
         <p class="rname">${f.signatoryName}</p>
         <p>${f.signatoryTitle}</p>
         <p>M.No. ${f.mNo}</p>
