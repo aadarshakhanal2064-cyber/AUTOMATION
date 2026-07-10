@@ -53,8 +53,7 @@ window.REP_FIRMS = {
     address: "Khairahani-01, Chitwan", email: "shailesh.2214@gmail.com",
     phone: "9855062760, 056-562760", regNo: "619", mNo: "954",
     pan: "604101019", copNo: "714",
-    signatoryName: "Shailesh Dallakoti, CA", signatoryTitle: "Proprietor",
-    logo: "assets/logo.jpeg" // full lockup (icon + firm name + "Chartered Accountants") — no equivalent asset for other firms
+    signatoryName: "Shailesh Dallakoti, CA", signatoryTitle: "Proprietor"
   },
   dallakoti: {
     name: "Dallakoti & Company", title: "Registered Auditor",
