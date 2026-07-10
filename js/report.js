@@ -204,35 +204,6 @@ function renderRepReport(){
       </div>
     </div>
   </div>
-
-  <div class="rep-sheet" contenteditable="true" spellcheck="false">
-    <div class="rep-nt-header">
-      <div class="rcname">${s.entityName}</div>
-      <div>${s.entityAddress}</div>
-    </div>
-
-    <div class="rep-nt-title">Significant Accounting Policies and Notes to Accounts for the Year Ended ${s.fy.bs}:</div>
-
-    <p><span class="rep-note-num">1. General Information:</span></p>
-    <p>${s.entityName} (PAN.: ${s.entityPan}) ${e.statusLine}, principal place of business at ${s.entityAddress}. The ${e.entityNounCap} is engaged in business of ${s.entityBusiness}.</p>
-
-    <p><span class="rep-note-num">2. Significant Accounting Policies:</span></p>
-    <p><strong>2.1 Basis of Preparation:</strong></p>
-
-    <p><strong>2.1.1 Statement of Compliance</strong></p>
-    <p>The financial statements have been prepared in accordance with ${s.nas}.</p>
-
-    <p><strong>2.1.2 Basis of Measurement</strong></p>
-    <p>The financial statements have been prepared on the historical cost basis except Investments held-for-trade is measured at fair value.</p>
-
-    <p><strong>2.1.3 Critical Accounting Estimates</strong></p>
-    <p>The preparation of the financial statements in conformity with ${s.nas} requires the use of certain critical accounting estimates and judgements. The ${e.entityNoun} makes certain estimates and assumptions regarding the future events. In the future, actual results may differ from these estimates and assumptions. The estimates and assumptions that have a significant risk of causing a material adjustments to the carrying amounts of assets and liabilities within the next financial year are to be disclosed. However, during the reporting period the management of the ${e.entityNoun} does not have made any such type of critical accounting estimates which required to be disclosed.</p>
-
-    <p><strong>2.1.4 Functional and Presentation Currency</strong></p>
-    <p>The financial statements are prepared in Nepalese Rupees, which is the ${e.entityNoun}'s functional currency. All the financial information presented in Nepalese Rupee has been rounded to the nearest rupee, except otherwise indicated.</p>
-
-    <p style="text-align:center; font-style:italic; color:#666; margin-top:18px;">— remaining accounting policy notes (2.2.1 onward) continue unchanged from the firm's standard template —</p>
-  </div>
   `;
 
   $rep('rep-previewRoot').innerHTML = html;
