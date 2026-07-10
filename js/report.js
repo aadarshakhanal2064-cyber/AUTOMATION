@@ -88,6 +88,48 @@ function renderRepCoverPage(s){
   </div>`;
 }
 
+function renderRepFirmHeader(f){
+  return `
+    <div class="rep-firm-header">
+      <div class="rfname">${f.name}</div>
+      <div class="rftitle">${f.title}</div>
+      <div class="rfaddr">${f.address}</div>
+    </div>
+    <div class="rep-contact-row">
+      <div class="rep-contact-col">
+        <p>Email:- ${f.email}</p>
+        <p>Phone no:- ${f.phone}</p>
+        <p>Firm Registration No. ${f.regNo}</p>
+      </div>
+      <div class="rep-contact-col">
+        <p>M.No. ${f.mNo}</p>
+        <p>PAN:- ${f.pan}</p>
+        <p>COP No. ${f.copNo}</p>
+      </div>
+    </div>`;
+}
+
+function renderRepSigBlock(s, f){
+  return `
+    <div class="rep-sig-block">
+      <div class="rep-sig-left">
+        <p>Date: ${s.reportDate}</p>
+        <p>Place: ${s.reportPlace}</p>
+        ${s.udin ? `<p class="rep-udin">UDIN: ${s.udin}</p>` : `<p class="rep-udin">UDIN:</p>`}
+      </div>
+      <div class="rep-sig-right">
+        <p>${f.name}</p>
+        <p>Firm Registration No. ${f.regNo}</p>
+        <p>${f.title}</p>
+        <p class="rname">${f.signatoryName}</p>
+        <p>${f.signatoryTitle}</p>
+        <p>M.No. ${f.mNo}</p>
+        <p>PAN:- ${f.pan}</p>
+        <p>COP No. ${f.copNo}</p>
+      </div>
+    </div>`;
+}
+
 function renderRepFyDate(){
   const d = window.REP_FY_DATES[$rep('rep-fy').value];
   $rep('rep-fyDateDisplay').innerHTML = `Financial position as at <strong>${d.bs}</strong> (<strong>${d.ad}</strong>)`;
@@ -108,23 +150,7 @@ function renderRepReport(){
   ${renderRepCoverPage(s)}
 
   <div class="rep-sheet" contenteditable="true" spellcheck="false">
-    <div class="rep-firm-header">
-      <div class="rfname">${f.name}</div>
-      <div class="rftitle">${f.title}</div>
-      <div class="rfaddr">${f.address}</div>
-    </div>
-    <div class="rep-contact-row">
-      <div class="rep-contact-col">
-        <p>Email:- ${f.email}</p>
-        <p>Phone no:- ${f.phone}</p>
-        <p>Firm Registration No. ${f.regNo}</p>
-      </div>
-      <div class="rep-contact-col" style="text-align:right">
-        <p>M.No. ${f.mNo}</p>
-        <p>PAN:- ${f.pan}</p>
-        <p>COP No. ${f.copNo}</p>
-      </div>
-    </div>
+    ${renderRepFirmHeader(f)}
 
     <div class="rep-title">Independent Auditor's Report</div>
     <p class="rep-salutation">To ${e.salutationTo} <strong>${s.entityName}</strong></p>
@@ -186,23 +212,7 @@ function renderRepReport(){
     <p>In our opinion, so far as it appeared from our examination of the books, the ${e.entityNoun} has maintained adequate capital funds and adequate provisions for possible impairment of assets in accordance with the applicable laws.</p>
     <p>To the best of our information and according to explanation given to us and so far spread from our examination of the books of accounts of the ${e.entityNoun}, we have not come across cases where ${e.governingBodyShort} or any employee of the ${e.entityNoun} have acted contrary to the provisions of the laws relating to accounts, or committed any misappropriation or caused loss or damage to the ${e.entityNoun} and violated any directives issued by the regulatory authorities or acted in a manner to jeopardise the interest and security of the ${e.entityNoun}, its creditors and ${e.entityNoun === 'company' ? 'shareholders' : 'stakeholders'}.</p>
 
-    <div class="rep-sig-block">
-      <div class="rep-sig-left">
-        <p>Date: ${s.reportDate}</p>
-        <p>Place: ${s.reportPlace}</p>
-        ${s.udin ? `<p class="rep-udin">UDIN: ${s.udin}</p>` : `<p class="rep-udin">UDIN:</p>`}
-      </div>
-      <div class="rep-sig-right">
-        <p>${f.name}</p>
-        <p>Firm Registration No. ${f.regNo}</p>
-        <p>${f.title}</p>
-        <p class="rname">${f.signatoryName}</p>
-        <p>${f.signatoryTitle}</p>
-        <p>M.No. ${f.mNo}</p>
-        <p>PAN:- ${f.pan}</p>
-        <p>COP No. ${f.copNo}</p>
-      </div>
-    </div>
+    ${renderRepSigBlock(s, f)}
   </div>
   `;
 
@@ -238,7 +248,14 @@ function buildRepPrintableDoc(){
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Audit Report</title><style>
     body{ margin:0; background:#fff; font-family:Arial,sans-serif; padding:24px; }
     ${allCss}
-    @media print{ body{ padding:0; } .rep-sheet{ box-shadow:none; page-break-after:always; } .rep-sheet:last-child{ page-break-after:auto; } }
+    /* Single source of truth for the printed page's physical margins — the
+       .rep-sheet padding below is screen-only so the two never stack. */
+    @page{ size:A4; margin: 20mm 18mm; }
+    @media print{
+      body{ padding:0; }
+      .rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; page-break-after:always; }
+      .rep-sheet:last-child{ page-break-after:auto; }
+    }
   </style></head><body>${reportHTML}
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
   </body></html>`;

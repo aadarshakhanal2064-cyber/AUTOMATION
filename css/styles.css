@@ -620,27 +620,71 @@ textarea { resize: vertical; min-height: 100px; }
 .add-client-form.open { display: block; animation: fadeIn 0.2s ease; }
 .add-client-form h4 { font-size: 15px; font-weight: 700; color: var(--brand-navy); margin-bottom: 20px; }
 
-/* Report Preview area */
-.rep-sheet { background: #fff; width: 100%; max-width: 780px; margin: 0 auto 24px; box-shadow: var(--shadow-md); padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 13px; line-height: 1.6; border:1px solid var(--border); }
+/* ── Report Preview area ──
+   Shared spacing/typography constants for the whole audit-report renderer
+   (js/report.js). Every rep-* rule below draws from these instead of
+   scattering ad hoc magic numbers, so the printed sheets stay consistent
+   as more report types are added. */
+.rep-sheet {
+  --rep-space-xs: 4px;
+  --rep-space-sm: 8px;
+  --rep-space-md: 14px;
+  --rep-space-lg: 22px;
+  --rep-space-xl: 36px;
+  --rep-line-height: 1.9;
+  --rep-muted: #333;
+  background: #fff; width: 100%; max-width: 780px; margin: 0 auto 24px; box-shadow: var(--shadow-md);
+  padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 13px;
+  line-height: var(--rep-line-height); border:1px solid var(--border);
+}
+.rep-sheet p{ margin: 0 0 var(--rep-space-md); text-align: justify; }
+.rep-sheet ul, .rep-sheet ol{ margin: 0 0 var(--rep-space-md); padding-left: 20px; }
+.rep-sheet li{ margin-bottom: var(--rep-space-sm); text-align: justify; }
 
 /* Cover page (first sheet of the generated report) */
 .rep-cover{ text-align:center; padding-top:64px; }
-.rep-cover-entity{ font-size:22px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); margin-bottom:6px; }
-.rep-cover-address{ font-size:14px; color:#333; margin-bottom:36px; }
-.rep-cover-fy{ font-size:15px; font-weight:600; margin-bottom:44px; }
-.rep-cover-title{ font-size:28px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--brand-navy); margin-bottom:36px; }
-.rep-cover-box{ min-height:160px; max-width:420px; margin:0 auto 44px; display:flex; align-items:center; justify-content:center; text-align:center; }
+.rep-cover-entity{ font-size:22px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); margin-bottom:var(--rep-space-sm); }
+.rep-cover-address{ font-size:14px; color:var(--rep-muted); margin-bottom:var(--rep-space-xl); }
+.rep-cover-fy{ font-size:15px; font-weight:600; margin-bottom:var(--rep-space-xl); }
+.rep-cover-title{ font-size:28px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--brand-navy); margin-bottom:var(--rep-space-xl); }
+.rep-cover-box{ min-height:160px; max-width:420px; margin:0 auto var(--rep-space-xl); display:flex; align-items:center; justify-content:center; text-align:center; }
 .rep-cover-sig{ font-size:15px; font-weight:700; margin-bottom:2px; }
-.rep-cover-for{ font-size:13px; letter-spacing:1px; margin-bottom:6px; }
+.rep-cover-for{ font-size:13px; letter-spacing:1px; margin-bottom:var(--rep-space-sm); }
 .rep-cover-firm{ font-size:16px; font-weight:700; margin-bottom:2px; }
-.rep-cover-regno{ font-size:13px; color:#333; }
+.rep-cover-regno{ font-size:13px; color:var(--rep-muted); }
 
-.rep-sig-block{ display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-top:32px; }
-.rep-sig-left{ text-align:left; }
-.rep-sig-right{ text-align:right; }
-
-.rep-firm-header{ text-align:center; margin-bottom:20px; }
+/* Firm letterhead + contact row (top of the Auditor's Report sheet) */
+.rep-firm-header{ text-align:center; margin-bottom:var(--rep-space-md); }
 .rep-firm-header .rfname{ font-size:18px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); }
+.rep-firm-header .rftitle, .rep-firm-header .rfaddr{ font-style:italic; font-size:13px; color:var(--rep-muted); }
+.rep-contact-row{
+  display:flex; justify-content:space-between; align-items:flex-start; gap:var(--rep-space-lg);
+  border-bottom: 3px double #000; padding-bottom: var(--rep-space-sm); margin-bottom: var(--rep-space-lg);
+}
+.rep-contact-row p{ margin:0 0 2px; text-align:left; }
+.rep-contact-col:last-child{ text-align:right; }
+
+/* Report title + salutation */
+.rep-title{ text-align:center; font-size:16px; font-weight:700; text-decoration:underline; margin: 0 0 var(--rep-space-lg); }
+.rep-sheet .rep-salutation{ margin-bottom: var(--rep-space-lg); text-align:left; }
+.rep-salutation strong{ font-weight:400; }
+
+/* Numbered section headings (h3.rep-sec) */
+.rep-sheet h3.rep-sec{
+  font-size:13px; font-weight:700; text-align:left;
+  margin: var(--rep-space-lg) 0 var(--rep-space-sm);
+}
+.rep-section-num{ margin-right: var(--rep-space-sm); }
+.rep-optional-block{ margin-bottom: var(--rep-space-lg); }
+.rep-sn-col{ text-align:center; }
+
+/* Signature block (bottom of the Auditor's Report sheet) */
+.rep-sig-block{ display:flex; justify-content:space-between; align-items:flex-start; gap:var(--rep-space-lg); margin-top:var(--rep-space-xl); }
+.rep-sig-left, .rep-sig-right{ text-align:left; }
+.rep-sig-block p{ text-align:left; margin:0 0 2px; }
+.rep-udin{ margin-top: var(--rep-space-sm); }
+.rname{ font-weight:700; }
+
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
 .rep-blank-fill:focus{ outline:none; border-color:var(--brand-navy); color:#111; font-style:normal; background:#fff; }
 .rep-blank-fill:empty:before{ content: attr(data-placeholder); }
