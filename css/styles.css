@@ -622,6 +622,19 @@ textarea { resize: vertical; min-height: 100px; }
 
 /* Report Preview area */
 .rep-sheet { background: #fff; width: 100%; max-width: 780px; margin: 0 auto 24px; box-shadow: var(--shadow-md); padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 13px; line-height: 1.6; border:1px solid var(--border); }
+
+/* Cover page (first sheet of the generated report) */
+.rep-cover{ text-align:center; padding-top:64px; }
+.rep-cover-entity{ font-size:22px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); margin-bottom:6px; }
+.rep-cover-address{ font-size:14px; color:#333; margin-bottom:36px; }
+.rep-cover-fy{ font-size:15px; font-weight:600; margin-bottom:44px; }
+.rep-cover-title{ font-size:28px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--brand-navy); margin-bottom:36px; }
+.rep-cover-box{ min-height:160px; max-width:420px; margin:0 auto 44px; display:flex; align-items:center; justify-content:center; text-align:center; }
+.rep-cover-sig{ font-size:15px; font-weight:700; margin-bottom:2px; }
+.rep-cover-for{ font-size:13px; letter-spacing:1px; margin-bottom:6px; }
+.rep-cover-firm{ font-size:16px; font-weight:700; margin-bottom:2px; }
+.rep-cover-regno{ font-size:13px; color:#333; }
+
 .rep-firm-header{ text-align:center; margin-bottom:20px; }
 .rep-firm-header .rfname{ font-size:18px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); }
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
