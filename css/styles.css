@@ -657,6 +657,7 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-firm-header{ text-align:center; margin-bottom:var(--rep-space-md); }
 .rep-firm-header .rfname{ font-size:18px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); }
 .rep-firm-header .rftitle, .rep-firm-header .rfaddr{ font-style:italic; font-size:13px; color:var(--rep-muted); }
+.rep-header-logo{ display:block; margin:0 auto var(--rep-space-sm); max-width:280px; width:100%; height:auto; }
 .rep-contact-row{
   display:flex; justify-content:space-between; align-items:flex-start; gap:var(--rep-space-lg);
   border-bottom: 3px double #000; padding-bottom: var(--rep-space-sm); margin-bottom: var(--rep-space-lg);
@@ -684,7 +685,6 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-sig-block p{ text-align:left; margin:0 0 2px; }
 .rep-udin{ margin-top: var(--rep-space-sm); }
 .rname{ font-weight:700; }
-.rep-sig-logo{ display:block; width:100%; max-width:200px; height:auto; margin-bottom:var(--rep-space-sm); }
 
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
 .rep-blank-fill:focus{ outline:none; border-color:var(--brand-navy); color:#111; font-style:normal; background:#fff; }
