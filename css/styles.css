@@ -684,6 +684,7 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-sig-block p{ text-align:left; margin:0 0 2px; }
 .rep-udin{ margin-top: var(--rep-space-sm); }
 .rname{ font-weight:700; }
+.rep-sig-block .rname{ margin-top: 44px; } /* blank space for a wet signature above the signatory's name */
 
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
 .rep-blank-fill:focus{ outline:none; border-color:var(--brand-navy); color:#111; font-style:normal; background:#fff; }
