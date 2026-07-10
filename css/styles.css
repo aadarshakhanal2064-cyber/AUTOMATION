@@ -646,12 +646,12 @@ textarea { resize: vertical; min-height: 100px; }
 /* Cover page (first sheet of the generated report) — mirrors the firm's own
    filed cover sheet: a bordered frame, title block, a large blank gap with
    three decorative rules, then the "Audited By" block. Frame height is the
-   A4 content box (297mm page - the 20mm top/bottom @page margin set in
+   A4 content box (297mm page - the 12mm top/bottom @page margin set in
    buildRepPrintableDoc()) so the border spans the full printed page, not
    just the top portion of it. */
 .rep-cover{ padding:0; }
 .rep-cover-frame{
-  text-align:center; border:1.5px solid #000; height:257mm;
+  text-align:center; border:1.5px solid #000; height:273mm;
   padding: 56px var(--rep-space-lg);
 }
 .rep-cover-title{ font-size:30px; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-bottom:var(--rep-space-md); }

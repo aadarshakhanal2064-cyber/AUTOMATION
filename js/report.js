@@ -260,7 +260,7 @@ function buildRepPrintableDoc(){
     ${allCss}
     /* Single source of truth for the printed page's physical margins — the
        .rep-sheet padding below is screen-only so the two never stack. */
-    @page{ size:A4; margin: 20mm 18mm; }
+    @page{ size:A4; margin: 12mm 16mm; }
     @media print{
       body{ padding:0; }
       .rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; page-break-after:always; }
