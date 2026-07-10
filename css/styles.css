@@ -687,6 +687,10 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-sheet h3.rep-sec{
   font-size:13px; font-weight:700; text-align:left;
   margin: var(--rep-space-lg) 0 var(--rep-space-sm);
+  /* Never leave a heading stranded alone at the bottom of a printed page —
+     push it (not just its text) onto the next page along with what follows. */
+  break-after: avoid; page-break-after: avoid;
+  break-inside: avoid; page-break-inside: avoid;
 }
 .rep-section-num{ margin-right: var(--rep-space-sm); }
 .rep-optional-block{ margin-bottom: var(--rep-space-lg); }
