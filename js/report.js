@@ -12,7 +12,6 @@ function selectRepClient(c){
   $rep('rep-entityName').value = c.name || '';
   $rep('rep-entityAddress').value = c.address || '';
   $rep('rep-entityPan').value = c.pan || '';
-  if (c.business_nature) $rep('rep-entityBusiness').value = c.business_nature;
 
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
   if (mapped) $rep('rep-entityType').value = mapped;
@@ -52,8 +51,10 @@ function getRepState(){
     entityType: window.REP_ENTITY_PROFILES[$rep('rep-entityType').value],
     entityAddress: $rep('rep-entityAddress').value.trim() || "[ADDRESS]",
     entityPan: $rep('rep-entityPan').value.trim() || "[PAN]",
-    entityBusiness: $rep('rep-entityBusiness').value.trim() || "[NATURE OF BUSINESS]",
-    nas: window.REP_NAS_LABEL[$rep('rep-nasType').value],
+    // No form control for this anymore (removed to shorten the form) — 'mes'
+    // was already the default/only-ever-used option, so this preserves the
+    // exact report wording rather than changing behavior.
+    nas: window.REP_NAS_LABEL['mes'],
     fy: window.REP_FY_DATES[$rep('rep-fy').value],
     reportDate: $rep('rep-reportDate').value.trim() || "[DATE]",
     reportPlace: $rep('rep-reportPlace').value.trim() || "[PLACE]",
@@ -240,8 +241,8 @@ function renderRepAll(){
 
 // Need to run initialization logic on window load to ensure DOM is ready
 window.addEventListener('load', () => {
-  ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan','rep-entityBusiness',
-   'rep-nasType','rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM'].forEach(id=>{
+  ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan',
+   'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM'].forEach(id=>{
     const el = document.getElementById(id);
     if (el){
       el.addEventListener('input', renderRepAll);
