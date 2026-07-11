@@ -183,7 +183,7 @@ function renderRepReport(){
     ${s.includeKAM ? `
     <div class="rep-optional-block">
       <h3 class="rep-sec"><span class="rep-section-num">${nKAM}</span> Key Audit Matters:</h3>
-      <p class="rep-blank-fill" contenteditable="true" style="min-height:auto;" data-placeholder="Key audit matters are those matters that, in our professional judgment, were of most significance in our audit of the financial statements of the current period. Based on the circumstances and facts of the audit, we consider following as key audit matters:"></p>
+      <p class="rep-blank-fill" contenteditable="true" style="min-height:auto;" data-placeholder="Key audit matters are those matters that, in our professional judgment, were of most significance in our audit of the financial statements of the current period.">Key audit matters are those matters that, in our professional judgment, were of most significance in our audit of the financial statements of the current period. These matters were addressed in the context of our audit of the financial statements as a whole, and in forming our opinion thereon, and we do not provide a separate opinion on these matters. We have determined that, there are no other key audit matters to communicate in our report.</p>
       <table class="rep-kam-table">
         <tr>
           <th style="width:6%">S.N.</th>
