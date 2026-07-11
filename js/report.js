@@ -169,7 +169,7 @@ function renderRepReport(){
     <h3 class="rep-sec"><span class="rep-section-num">${n1}</span> Report on the Audit of Financial Statement:</h3>
     <p><strong>Opinion:</strong></p>
     <p>We have audited the accompanying financial statements of ${s.entityName}, which comprises the Statement of Financial Position as at ${s.fy.bs} (${s.fy.ad}) and the Statement of Income for the year then ended, Statements of Change in Equity and Statement of Cash Flow and a Summary of Significant Accounting Policies and Other Explanatory Information.</p>
-    <p>In our opinion, the accompanying financial statements present fairly in material respect. The financial position of the ${e.entityNoun} as at ${s.fy.bs} (${s.fy.ad}), its financial performance and its cash flows for the year then ended has been prepared in accordance with the applicable financial reporting framework.</p>
+    <p>In our opinion, the accompanying financial statements present fairly in material respect. The financial position of the ${e.entityNoun} as at ${s.fy.bs} (${s.fy.ad}), its financial performance and its cash flows for the year then ended has been prepared in accordance with Nepal Accounting Standard.</p>
 
     <p><strong>Basis of Opinion:</strong></p>
     <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in according to ICAN's Handbook of Code of Ethics for Professional Accountants. We believe that the audit evidence we have obtained is sufficient and appropriate to provide a basis for our opinion.</p>
@@ -204,7 +204,7 @@ function renderRepReport(){
     </div>` : ``}
 
     <h3 class="rep-sec"><span class="rep-section-num">${n2}</span> Responsibilities of the Management and Those Charged with Governance for the Financial Statements:</h3>
-    <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
+    <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements in accordance with Nepal Accounting Standard and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
     <p>In preparing the financial statements, management is responsible for assessing the ${e.entityNoun}'s ability to continue as going concern, disclosing, as applicable, matters related to going concern basis of accounting unless management either intends to liquidate the ${e.entityNoun} or to cease operations, or has no realistic alternative but to do to so. Those charged with governance are responsible for overseeing the ${e.entityNoun}'s financial reporting process.</p>
 
     <h3 class="rep-sec"><span class="rep-section-num">${n3}</span> Auditor's Responsibility for Audit of the Financial Statements:</h3>
