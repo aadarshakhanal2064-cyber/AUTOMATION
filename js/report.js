@@ -44,6 +44,10 @@ SearchEngine.attachAutocomplete($rep('rep-entityPan'), $rep('rep-pan-autocomplet
 function getRepState(){
   return {
     firm: window.REP_FIRMS[$rep('rep-firm').value],
+    // Only 'unqualified' has real wording today — the other 4 options are
+    // disabled in the dropdown until their report bodies are built, so
+    // renderRepReport() doesn't need to branch on this yet.
+    reportType: $rep('rep-reportType').value,
     entityName: $rep('rep-entityName').value.trim() || "[ENTITY NAME]",
     entityType: window.REP_ENTITY_PROFILES[$rep('rep-entityType').value],
     entityAddress: $rep('rep-entityAddress').value.trim() || "[ADDRESS]",
@@ -236,7 +240,7 @@ function renderRepAll(){
 
 // Need to run initialization logic on window load to ensure DOM is ready
 window.addEventListener('load', () => {
-  ['rep-firm','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan','rep-entityBusiness',
+  ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan','rep-entityBusiness',
    'rep-nasType','rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM'].forEach(id=>{
     const el = document.getElementById(id);
     if (el){
