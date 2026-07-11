@@ -51,10 +51,6 @@ function getRepState(){
     entityType: window.REP_ENTITY_PROFILES[$rep('rep-entityType').value],
     entityAddress: $rep('rep-entityAddress').value.trim() || "[ADDRESS]",
     entityPan: $rep('rep-entityPan').value.trim() || "[PAN]",
-    // No form control for this anymore (removed to shorten the form) — 'mes'
-    // was already the default/only-ever-used option, so this preserves the
-    // exact report wording rather than changing behavior.
-    nas: window.REP_NAS_LABEL['mes'],
     fy: window.REP_FY_DATES[$rep('rep-fy').value],
     reportDate: $rep('rep-reportDate').value.trim() || "[DATE]",
     reportPlace: $rep('rep-reportPlace').value.trim() || "[PLACE]",
@@ -173,10 +169,10 @@ function renderRepReport(){
     <h3 class="rep-sec"><span class="rep-section-num">${n1}</span> Report on the Audit of Financial Statement:</h3>
     <p><strong>Opinion:</strong></p>
     <p>We have audited the accompanying financial statements of ${s.entityName}, which comprises the Statement of Financial Position as at ${s.fy.bs} (${s.fy.ad}) and the Statement of Income for the year then ended, Statements of Change in Equity and Statement of Cash Flow and a Summary of Significant Accounting Policies and Other Explanatory Information.</p>
-    <p>In our opinion, the accompanying financial statements present fairly in material respect. The financial position of the ${e.entityNoun} as at ${s.fy.bs} (${s.fy.ad}), its financial performance and its cash flows for the year then ended has been prepared in accordance with ${s.nas}.</p>
+    <p>In our opinion, the accompanying financial statements present fairly in material respect. The financial position of the ${e.entityNoun} as at ${s.fy.bs} (${s.fy.ad}), its financial performance and its cash flows for the year then ended has been prepared in accordance with the applicable financial reporting framework.</p>
 
     <p><strong>Basis of Opinion:</strong></p>
-    <p>We conducted our audit in accordance with ${s.nas}. Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in according to ICAN's Handbook of Code of Ethics for Professional Accountants. We believe that the audit evidence we have obtained is sufficient and appropriate to provide a basis for our opinion.</p>
+    <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in according to ICAN's Handbook of Code of Ethics for Professional Accountants. We believe that the audit evidence we have obtained is sufficient and appropriate to provide a basis for our opinion.</p>
 
     ${s.includeEOM ? `
     <div class="rep-optional-block">
@@ -208,12 +204,12 @@ function renderRepReport(){
     </div>` : ``}
 
     <h3 class="rep-sec"><span class="rep-section-num">${n2}</span> Responsibilities of the Management and Those Charged with Governance for the Financial Statements:</h3>
-    <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements in accordance with ${s.nas} and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
+    <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
     <p>In preparing the financial statements, management is responsible for assessing the ${e.entityNoun}'s ability to continue as going concern, disclosing, as applicable, matters related to going concern basis of accounting unless management either intends to liquidate the ${e.entityNoun} or to cease operations, or has no realistic alternative but to do to so. Those charged with governance are responsible for overseeing the ${e.entityNoun}'s financial reporting process.</p>
 
     <h3 class="rep-sec"><span class="rep-section-num">${n3}</span> Auditor's Responsibility for Audit of the Financial Statements:</h3>
-    <p>Our objective is to obtain reasonable assurance about whether the financial statements as a whole are free from material misstatements, whether due to fraud or error, and to issue an Auditor's Report that includes our opinion. Reasonable assurance is high level of assurance; but is not guarantee that an audit conducted in accordance with ${s.nas} will always detect a material misstatements when it exists. Misstatements can arise from fraud or error, and are considered material if, individually or taken together, they could reasonably be expected to influence the economic decisions of users taken on the basis these financial statements.</p>
-    <p>As part of the audit accordance with NAS, we exercise professional judgement and maintain professional scepticism throughout the audit. We also;</p>
+    <p>Our objective is to obtain reasonable assurance about whether the financial statements as a whole are free from material misstatements, whether due to fraud or error, and to issue an Auditor's Report that includes our opinion. Reasonable assurance is high level of assurance; but is not guarantee that an audit conducted in accordance with Nepal Standards on Auditing (NSAs) will always detect a material misstatements when it exists. Misstatements can arise from fraud or error, and are considered material if, individually or taken together, they could reasonably be expected to influence the economic decisions of users taken on the basis these financial statements.</p>
+    <p>As part of an audit in accordance with Nepal Standards on Auditing (NSAs), we exercise professional judgement and maintain professional scepticism throughout the audit. We also;</p>
     <ul class="rep-audit-points">
       <li>Identify and assess the risk of material misstatements of the financial statements, whether due to fraud or error, design and perform audit procedures responsive to those risks, and obtain audit evidence that is sufficient and appropriate to provide a basis for our opinion. The risk of not detecting a material misstatement resulting from fraud is higher that for one resulting from error, as fraud may involve collusion, forgery, intentional omissions, misrepresentations, or override of internal control.</li>
       <li>Obtain an understanding of internal control relevant to the audit in order to design audit procedures that are appropriate in the circumstances, but not for expressing an opinion on the effectiveness of the ${e.entityNoun}'s internal control.</li>

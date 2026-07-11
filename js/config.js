@@ -83,11 +83,6 @@ window.REP_ENTITY_PROFILES = {
   cooperative:     { label:"Cooperative", salutationTo:"the Members of the", governingBodyShort:"board of directors", entityNoun:"cooperative", entityNounCap:"Cooperative", act:"Cooperatives Act, 2074", statusLine:"is a Cooperative registered in Nepal" }
 };
 
-window.REP_NAS_LABEL = {
-  mes: "Nepal Accounting Standard for Micro Entities (NAS for MEs)",
-  sme: "Nepal Accounting Standard for Small and Medium Entities (NAS for SMEs)"
-};
-
 window.CLIENT_ENTITY_TO_REP_PROFILE = {
   'pvt. ltd. company': 'private_company',
   'private limited company': 'private_company',
