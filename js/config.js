@@ -74,7 +74,11 @@ window.REP_FY_DATES = {
 };
 
 window.REP_ENTITY_PROFILES = {
-  private_company: { label:"Private Company", salutationTo:"the Shareholders of the", governingBodyShort:"board of directors (owners as the case may be)", entityNoun:"company", entityNounCap:"Company", act:"Companies Act, 2063", statusLine:"is the Private Company in Nepal" },
+  // citeSpecificAct: only Private Company names its governing act by title in
+  // the report ("Companies Act, 2063") — every other entity type instead says
+  // the generic "the applicable law" (see report.js's Report on Other Legal
+  // and Regulatory Requirements paragraph).
+  private_company: { label:"Private Company", salutationTo:"the Shareholders of the", governingBodyShort:"board of directors (owners as the case may be)", entityNoun:"company", entityNounCap:"Company", act:"Companies Act, 2063", citeSpecificAct:true, statusLine:"is the Private Company in Nepal" },
   public_company:  { label:"Public Company", salutationTo:"the Shareholders of the", governingBodyShort:"board of directors (owners as the case may be)", entityNoun:"company", entityNounCap:"Company", act:"Companies Act, 2063", statusLine:"is the Public Company in Nepal" },
   proprietorship:  { label:"Proprietorship", salutationTo:"the Proprietor of the", governingBodyShort:"proprietor", entityNoun:"firm", entityNounCap:"Firm", act:"Private Firm Registration Act, 2034", statusLine:"is a Proprietorship Firm in Nepal" },
   partnership:     { label:"Partnership Firm", salutationTo:"the Partners of the", governingBodyShort:"partner", entityNoun:"firm", entityNounCap:"Firm", act:"Partnership Act, 2020", statusLine:"is a Partnership Firm in Nepal" },
