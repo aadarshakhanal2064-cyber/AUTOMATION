@@ -6,7 +6,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-<link rel="stylesheet" href="css/styles.css?v=202607111852">
+<link rel="stylesheet" href="css/styles.css?v=202607112327">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -439,24 +439,32 @@ function cropLoginLogoIcon(img) {
           <p class="page-subtitle">Configure your audit report details and generate professional reports.</p>
         </div>
         <div class="page-header-actions">
-          <button class="btn btn-outline" onclick="printAuditReport()">
+          <div class="rep-view-toggle">
+            <button id="rep-tab-edit" class="rep-view-btn active" onclick="repSetView('edit')">Edit</button>
+            <button id="rep-tab-preview" class="rep-view-btn" onclick="repSetView('preview')">Preview</button>
+          </div>
+          <button class="btn btn-outline" onclick="saveRepAsWord()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            Save as Word
+          </button>
+          <button class="btn btn-primary" onclick="printAuditReport()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-            Print / Save as PDF
+            Save as PDF / Print
           </button>
         </div>
       </div>
       <div class="card" style="padding:0; overflow:hidden;">
-        <div style="display:grid; grid-template-columns: 380px 1fr; min-height:600px;">
-          <!-- Report form -->
-          <div style="padding:32px; border-right:1px solid var(--border);">
-            <div class="form-group" style="margin-bottom:16px;">
+        <!-- EDIT VIEW: full-width form (default) -->
+        <div id="rep-edit-view" style="padding:32px;">
+          <div class="rep-form-grid">
+            <div class="form-group">
               <label>Auditing Firm</label>
               <select id="rep-firm">
                 <option value="shailesh">Shailesh &amp; Associates</option>
                 <option value="dallakoti">Dallakoti &amp; Company</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom:16px;">
+            <div class="form-group">
               <label>Type of Audit Report</label>
               <select id="rep-reportType">
                 <option value="unqualified">Unqualified Opinion</option>
@@ -466,12 +474,12 @@ function cropLoginLogoIcon(img) {
                 <option value="section57" disabled>Section 57 – Change of Auditor (Coming Soon)</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom:16px; position:relative;">
+            <div class="form-group" style="position:relative;">
               <label>Client Name</label>
               <input type="text" id="rep-entityName" placeholder="Start typing to search clients…" autocomplete="off" />
               <div class="autocomplete-list" id="rep-autocomplete-list" style="display:none;"></div>
             </div>
-            <div class="form-group" style="margin-bottom:16px;">
+            <div class="form-group">
               <label>Entity Type</label>
               <select id="rep-entityType">
                 <option value="private_company">Private Company</option>
@@ -483,16 +491,16 @@ function cropLoginLogoIcon(img) {
                 <option value="cooperative">Cooperative</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom:16px;">
+            <div class="form-group">
               <label>Address</label>
               <input type="text" id="rep-entityAddress" placeholder="e.g. Ratnanagar-10, Chitwan, Nepal" />
             </div>
-            <div class="form-group" style="margin-bottom:16px; position:relative;">
+            <div class="form-group" style="position:relative;">
               <label>PAN</label>
               <input type="text" id="rep-entityPan" placeholder="e.g. 610304639" autocomplete="off" />
               <div class="autocomplete-list" id="rep-pan-autocomplete-list" style="display:none;"></div>
             </div>
-            <div class="form-group" style="margin-bottom:16px;">
+            <div class="form-group">
               <label>Fiscal Year (B.S.)</label>
               <select id="rep-fy">
                 <option value="2078-79">2078/79</option>
@@ -503,39 +511,31 @@ function cropLoginLogoIcon(img) {
               </select>
               <div id="rep-fyDateDisplay" style="margin-top:8px; font-size:12px; background:var(--green-bg); border:1px solid var(--green-border); color:#047857; padding:10px 12px; border-radius:var(--radius);"></div>
             </div>
-            <div class="form-group" style="margin-bottom:8px;">
+            <div class="form-group">
+              <label>Date (B.S.)</label>
+              <input type="text" id="rep-reportDate" placeholder="e.g. 2082/06/04" />
+            </div>
+            <div class="form-group">
+              <label>Place</label>
+              <input type="text" id="rep-reportPlace" value="Chitwan" />
+            </div>
+            <div class="form-group">
+              <label>UDIN</label>
+              <input type="text" id="rep-udin" placeholder="Optional" />
+            </div>
+            <div class="rep-checkboxes">
               <label class="checkbox-label">
                 <input type="checkbox" id="rep-toggleEOM" /> Include "Emphasis of Matter"
               </label>
-            </div>
-            <div class="form-group" style="margin-bottom:20px;">
               <label class="checkbox-label">
                 <input type="checkbox" id="rep-toggleKAM" /> Include "Key Audit Matters"
               </label>
             </div>
-            <div class="form-grid" style="margin-bottom:16px; gap:12px;">
-              <div class="form-group">
-                <label>Date (B.S.)</label>
-                <input type="text" id="rep-reportDate" placeholder="e.g. 2082/06/04" />
-              </div>
-              <div class="form-group">
-                <label>Place</label>
-                <input type="text" id="rep-reportPlace" value="Chitwan" />
-              </div>
-            </div>
-            <div class="form-group" style="margin-bottom:24px;">
-              <label>UDIN</label>
-              <input type="text" id="rep-udin" placeholder="Optional" />
-            </div>
-            <button class="btn btn-primary" style="width:100%;" onclick="printAuditReport()">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-              Print / Save as PDF
-            </button>
           </div>
-          <!-- Report preview -->
-          <div style="background:#e2e8f0; padding:32px; overflow-y:auto; max-height:900px;">
-            <div id="rep-previewRoot"></div>
-          </div>
+        </div>
+        <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
+        <div id="rep-preview-view" hidden style="background:#e2e8f0; padding:32px; overflow-y:auto; max-height:1000px;">
+          <div id="rep-previewRoot"></div>
         </div>
       </div>
     </div>
@@ -1498,33 +1498,33 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-<script src="js/config.js?v=202607111852"></script>
-<script src="js/utils.js?v=202607111852"></script>
-<script src="js/core/moduleRegistry.js?v=202607111852"></script>
-<script src="js/core/statusBox.js?v=202607111852"></script>
-<script src="js/core/nepaliLocale.js?v=202607111852"></script>
-<script src="js/core/documentEngine.js?v=202607111852"></script>
-<script src="js/core/ocrEngine.js?v=202607111852"></script>
-<script src="js/core/searchEngine.js?v=202607111852"></script>
-<script src="js/core/pdfEngine.js?v=202607111852"></script>
-<script src="js/core/visionEngine.js?v=202607111852"></script>
-<script src="js/core/tableEngine.js?v=202607111852"></script>
-<script src="js/core/workflowEngine.js?v=202607111852"></script>
-<script src="js/core/validationEngine.js?v=202607111852"></script>
-<script src="js/core/auditLog.js?v=202607111852"></script>
-<script src="js/core/integrations.js?v=202607111852"></script>
-<script src="js/tabs.js?v=202607111852"></script>
-<script src="js/dashboard.js?v=202607111852"></script>
-<script src="js/registrar.js?v=202607111852"></script>
-<script src="js/clients.js?v=202607111852"></script>
-<script src="js/logs.js?v=202607111852"></script>
-<script src="js/vatReturn.js?v=202607111852"></script>
-<script src="js/vatCompliance.js?v=202607111852"></script>
-<script src="js/billing.js?v=202607111852"></script>
-<script src="js/sendDocument.js?v=202607111852"></script>
-<script src="js/report.js?v=202607111852"></script>
-<script src="js/bmAgmMinutes.js?v=202607111852"></script>
-<script src="js/auth.js?v=202607111852"></script>
+<script src="js/config.js?v=202607112327"></script>
+<script src="js/utils.js?v=202607112327"></script>
+<script src="js/core/moduleRegistry.js?v=202607112327"></script>
+<script src="js/core/statusBox.js?v=202607112327"></script>
+<script src="js/core/nepaliLocale.js?v=202607112327"></script>
+<script src="js/core/documentEngine.js?v=202607112327"></script>
+<script src="js/core/ocrEngine.js?v=202607112327"></script>
+<script src="js/core/searchEngine.js?v=202607112327"></script>
+<script src="js/core/pdfEngine.js?v=202607112327"></script>
+<script src="js/core/visionEngine.js?v=202607112327"></script>
+<script src="js/core/tableEngine.js?v=202607112327"></script>
+<script src="js/core/workflowEngine.js?v=202607112327"></script>
+<script src="js/core/validationEngine.js?v=202607112327"></script>
+<script src="js/core/auditLog.js?v=202607112327"></script>
+<script src="js/core/integrations.js?v=202607112327"></script>
+<script src="js/tabs.js?v=202607112327"></script>
+<script src="js/dashboard.js?v=202607112327"></script>
+<script src="js/registrar.js?v=202607112327"></script>
+<script src="js/clients.js?v=202607112327"></script>
+<script src="js/logs.js?v=202607112327"></script>
+<script src="js/vatReturn.js?v=202607112327"></script>
+<script src="js/vatCompliance.js?v=202607112327"></script>
+<script src="js/billing.js?v=202607112327"></script>
+<script src="js/sendDocument.js?v=202607112327"></script>
+<script src="js/report.js?v=202607112327"></script>
+<script src="js/bmAgmMinutes.js?v=202607112327"></script>
+<script src="js/auth.js?v=202607112327"></script>
 
 </body>
 </html>

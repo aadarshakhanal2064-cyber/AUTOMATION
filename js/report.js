@@ -16,7 +16,7 @@ function selectRepClient(c){
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
   if (mapped) $rep('rep-entityType').value = mapped;
 
-  renderRepAll();
+  repRefresh();
 }
 
 SearchEngine.attachAutocomplete($rep('rep-entityName'), $rep('rep-autocomplete-list'), {
@@ -242,9 +242,37 @@ function renderRepReport(){
   $rep('rep-previewRoot').innerHTML = html;
 }
 
-function renderRepAll(){
+// ── Edit / Preview view switching ──
+// The full document is only rendered on demand (opening Preview, or exporting)
+// rather than live on every keystroke — that's what lets the default view be a
+// wide editing form instead of a constant preview. Only the small F.Y. date
+// box updates live while editing.
+function repIsPreviewOpen(){
+  const pv = document.getElementById('rep-preview-view');
+  return pv && !pv.hidden;
+}
+function repRefresh(){
   renderRepFyDate();
-  renderRepReport();
+  if (repIsPreviewOpen()) renderRepReport();
+}
+function repSetView(mode){
+  const preview = mode === 'preview';
+  const pv = document.getElementById('rep-preview-view');
+  // Render only when entering preview from the edit view — not when Preview is
+  // already open — so manual edits to the document's fill-in blanks (EOM / KAM)
+  // aren't wiped by a re-render.
+  if (preview && pv.hidden) renderRepReport();
+  document.getElementById('rep-edit-view').hidden = preview;
+  pv.hidden = !preview;
+  document.getElementById('rep-tab-edit').classList.toggle('active', !preview);
+  document.getElementById('rep-tab-preview').classList.toggle('active', preview);
+}
+
+// Before exporting: if the user is on the edit view the preview may be empty or
+// stale, so render fresh. If they're already in preview, keep the current DOM
+// as-is so any manual edits to the fill-in blanks survive into the export.
+function repEnsureRendered(){
+  if (!repIsPreviewOpen()) renderRepReport();
 }
 
 // Need to run initialization logic on window load to ensure DOM is ready
@@ -253,12 +281,12 @@ window.addEventListener('load', () => {
    'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM'].forEach(id=>{
     const el = document.getElementById(id);
     if (el){
-      el.addEventListener('input', renderRepAll);
-      el.addEventListener('change', renderRepAll);
+      el.addEventListener('input', repRefresh);
+      el.addEventListener('change', repRefresh);
     }
   });
 
-  renderRepAll();
+  renderRepFyDate();
 });
 
 function buildRepPrintableDoc(){
@@ -285,6 +313,7 @@ function buildRepPrintableDoc(){
 }
 
 function printAuditReport(){
+  repEnsureRendered(); // works straight from the edit view — no need to open Preview first
   const docContent = buildRepPrintableDoc();
   const blob = new Blob([docContent], {type:'text/html'});
   const url = URL.createObjectURL(blob);
@@ -292,4 +321,64 @@ function printAuditReport(){
   if (!win){
     alert('Pop-up blocked — please allow pop-ups for this site, then click Print again.');
   }
+}
+
+// Builds a self-contained stylesheet for the Word export from the same .rep-*
+// rules the on-screen preview and PDF use — so all four outputs stay visually
+// consistent. Word can't read CSS custom properties (var()), so the handful
+// the report styles rely on are resolved to concrete values first.
+function getRepExportCss(){
+  const sheetEl = document.querySelector('.rep-sheet');
+  const rootCs  = getComputedStyle(document.documentElement);
+  const sheetCs = sheetEl ? getComputedStyle(sheetEl) : rootCs;
+  const val = (cs, name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
+  const vars = {
+    '--rep-space-xs':   val(sheetCs, '--rep-space-xs', '4px'),
+    '--rep-space-sm':   val(sheetCs, '--rep-space-sm', '8px'),
+    '--rep-space-md':   val(sheetCs, '--rep-space-md', '14px'),
+    '--rep-space-lg':   val(sheetCs, '--rep-space-lg', '22px'),
+    '--rep-space-xl':   val(sheetCs, '--rep-space-xl', '36px'),
+    '--rep-line-height':val(sheetCs, '--rep-line-height', '1.28'),
+    '--rep-muted':      val(sheetCs, '--rep-muted', '#333'),
+    '--brand-navy':     val(rootCs,  '--brand-navy', '#0b1f3d'),
+    '--radius':         val(rootCs,  '--radius', '10px'),
+    '--border':         val(rootCs,  '--border', '#e6e9f2'),
+  };
+  let css = '';
+  for (const sheet of document.styleSheets){
+    let rules;
+    try { rules = sheet.cssRules; } catch(e){ continue; } // cross-origin sheets throw
+    for (const r of rules){
+      if (r.selectorText && /\.rep|\.rname/.test(r.selectorText)) css += r.cssText + '\n';
+    }
+  }
+  Object.entries(vars).forEach(([k, v]) => { css = css.split('var(' + k + ')').join(v); });
+  css = css.replace(/var\([^)]+\)/g, ''); // strip any leftover vars (e.g. shadows, overridden below)
+  return css;
+}
+
+// Exports the report as a Word-openable .doc — the same document HTML the
+// preview and PDF use, so formatting stays consistent. (A .doc HTML document
+// keeps far higher fidelity in Word than converting to a .docx binary would,
+// since Word renders the original markup natively.)
+function saveRepAsWord(){
+  repEnsureRendered();
+  const inner = document.getElementById('rep-previewRoot').innerHTML;
+  const css = getRepExportCss();
+  const html =
+    "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>" +
+    "<head><meta charset='utf-8'><title>Audit Report</title><style>" +
+    "@page{ size:A4; margin:12mm 16mm; }" +
+    "body{ margin:0; font-family:'Georgia','Times New Roman',serif; color:#111; font-size:12.5px; line-height:1.28; }" +
+    css +
+    // Word overrides: drop screen-only chrome, and lay the flex signature block
+    // out as a table so it stays side-by-side (Word doesn't support flexbox).
+    ".rep-sheet{ box-shadow:none !important; border:none !important; padding:0 !important; max-width:none !important; }" +
+    ".rep-sig-block{ display:table !important; width:100%; }" +
+    ".rep-sig-left,.rep-sig-right{ display:table-cell !important; width:50%; vertical-align:top; }" +
+    "</style></head><body>" + inner + "</body></html>";
+  const blob = new Blob(['﻿', html], { type: 'application/msword' });
+  const clientName = $rep('rep-entityName').value.trim() || 'Report';
+  const filename = ('Audit Report - ' + clientName + '.doc').replace(/[\\/:*?"<>|]/g, '_');
+  DocumentEngine.downloadBlob(blob, filename, { module: 'report', clientName });
 }
