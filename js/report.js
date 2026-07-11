@@ -357,28 +357,40 @@ function getRepExportCss(){
   return css;
 }
 
-// Exports the report as a Word-openable .doc — the same document HTML the
-// preview and PDF use, so formatting stays consistent. (A .doc HTML document
-// keeps far higher fidelity in Word than converting to a .docx binary would,
-// since Word renders the original markup natively.)
-function saveRepAsWord(){
-  repEnsureRendered();
+// Builds the full export HTML (document + resolved CSS + Word overrides) that
+// both the .docx and the .doc-fallback paths share, so their formatting is
+// identical to the preview/PDF.
+function buildRepWordHtml(){
   const inner = document.getElementById('rep-previewRoot').innerHTML;
   const css = getRepExportCss();
-  const html =
-    "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>" +
-    "<head><meta charset='utf-8'><title>Audit Report</title><style>" +
-    "@page{ size:A4; margin:12mm 16mm; }" +
+  return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Audit Report</title><style>" +
     "body{ margin:0; font-family:'Georgia','Times New Roman',serif; color:#111; font-size:12.5px; line-height:1.28; }" +
     css +
-    // Word overrides: drop screen-only chrome, and lay the flex signature block
-    // out as a table so it stays side-by-side (Word doesn't support flexbox).
-    ".rep-sheet{ box-shadow:none !important; border:none !important; padding:0 !important; max-width:none !important; }" +
-    ".rep-sig-block{ display:table !important; width:100%; }" +
-    ".rep-sig-left,.rep-sig-right{ display:table-cell !important; width:50%; vertical-align:top; }" +
+    // Word can't do flexbox — lay the signature block out as a table so it
+    // stays side-by-side — and drop the screen-only sheet chrome.
+    ".rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; }" +
+    ".rep-sig-block{ display:table; width:100%; }" +
+    ".rep-sig-left,.rep-sig-right{ display:table-cell; width:50%; vertical-align:top; }" +
     "</style></head><body>" + inner + "</body></html>";
-  const blob = new Blob(['﻿', html], { type: 'application/msword' });
+}
+
+// Exports the report as a true .docx (OOXML) via html-docx-js, from the same
+// document HTML the preview and PDF use so formatting stays consistent. If the
+// library failed to load, falls back to a Word-openable .doc (HTML) so the
+// button never silently breaks.
+function saveRepAsWord(){
+  repEnsureRendered();
+  const html = buildRepWordHtml();
   const clientName = $rep('rep-entityName').value.trim() || 'Report';
-  const filename = ('Audit Report - ' + clientName + '.doc').replace(/[\\/:*?"<>|]/g, '_');
-  DocumentEngine.downloadBlob(blob, filename, { module: 'report', clientName });
+  const base = ('Audit Report - ' + clientName).replace(/[\\/:*?"<>|]/g, '_');
+
+  if (window.htmlDocx && typeof window.htmlDocx.asBlob === 'function'){
+    // margins in twips (1440 = 1 inch) ≈ the 12mm/16mm print margins
+    const blob = window.htmlDocx.asBlob(html, { margins: { top: 680, bottom: 680, left: 907, right: 907 } });
+    DocumentEngine.downloadBlob(blob, base + '.docx', { module: 'report', clientName });
+    return;
+  }
+
+  const blob = new Blob(['﻿', html], { type: 'application/msword' });
+  DocumentEngine.downloadBlob(blob, base + '.doc', { module: 'report', clientName });
 }
