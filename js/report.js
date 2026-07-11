@@ -94,11 +94,27 @@ function repAssetUrl(path){
   return new URL(path, document.baseURI).href;
 }
 
+// assets/logo-lockup.png has a lot of blank transparent space baked in
+// above/below the actual lockup content, so at the letterhead's rendered
+// width it reads as a big gap before the firm name/address start. Crop it
+// down client-side to just the visible content (same-origin canvas draw, no
+// CORS taint) rather than re-exporting the source file.
+function cropReportLetterheadLogo(img){
+  img.onload = null; // clear first: setting img.src below re-fires 'load'
+  const sx = 130, sy = 255, sw = 1640, sh = 355;
+  const scale = 2; // render 2x for crisp display/print
+  const canvas = document.createElement('canvas');
+  canvas.width = sw * scale;
+  canvas.height = sh * scale;
+  canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  img.src = canvas.toDataURL('image/png');
+}
+
 function renderRepFirmHeader(f){
   // Firms with a letterhead logo (a lockup of the firm name + title) show the
   // image in place of those two text lines; firms without one keep plain text.
   const identity = f.logo
-    ? `<img class="rep-header-logo" src="${repAssetUrl(f.logo)}" alt="${f.name} - ${f.title}" onerror="this.outerHTML='<div class=&quot;rfname&quot;>${f.name}</div><div class=&quot;rftitle&quot;>${f.title}</div>'">`
+    ? `<img class="rep-header-logo" src="${repAssetUrl(f.logo)}" alt="${f.name} - ${f.title}" onerror="this.outerHTML='<div class=&quot;rfname&quot;>${f.name}</div><div class=&quot;rftitle&quot;>${f.title}</div>'" onload="cropReportLetterheadLogo(this)">`
     : `<div class="rfname">${f.name}</div><div class="rftitle">${f.title}</div>`;
 
   return `
