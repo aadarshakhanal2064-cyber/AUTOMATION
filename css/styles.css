@@ -634,7 +634,10 @@ textarea { resize: vertical; min-height: 100px; }
   --rep-line-height: 1.28;
   --rep-muted: #333;
   background: #fff; width: 100%; max-width: 780px; margin: 0 auto 24px; box-shadow: var(--shadow-md);
-  padding: 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 12.5px;
+  /* Top padding is deliberately much smaller than the other 3 sides — the
+     logo/letterhead should sit close to the page's top print margin, not
+     have a second block of empty space stacked on top of it. */
+  padding: var(--rep-space-md) 48px 48px; font-family: "Georgia", "Times New Roman", serif; color: #111; font-size: 12.5px;
   line-height: var(--rep-line-height); border:1px solid var(--border);
 }
 /* orphans/widows stop a paragraph leaving just one stray line dangling at a
