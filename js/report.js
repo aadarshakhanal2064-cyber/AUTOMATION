@@ -152,10 +152,12 @@ function renderRepReport(){
   const e = s.entityType;
 
   const n1 = "1.1";
+  // Key Audit Matters (1.2) now always renders — the checkbox only toggles
+  // the details table below it — so the following section numbers are fixed.
   const nKAM = "1.2";
-  const n2 = s.includeKAM ? "1.3" : "1.2";
-  const n3 = s.includeKAM ? "1.4" : "1.3";
-  const n4 = s.includeKAM ? "1.5" : "1.4";
+  const n2 = "1.3";
+  const n3 = "1.4";
+  const n4 = "1.5";
 
   const html = `
   ${renderRepCoverPage(s)}
@@ -180,10 +182,10 @@ function renderRepReport(){
       <div class="rep-blank-fill" contenteditable="true" data-placeholder="Type the Emphasis of Matter paragraph here&hellip;"></div>
     </div>` : ``}
 
-    ${s.includeKAM ? `
     <div class="rep-optional-block">
       <h3 class="rep-sec"><span class="rep-section-num">${nKAM}</span> Key Audit Matters:</h3>
       <p class="rep-blank-fill" contenteditable="true" style="min-height:auto;" data-placeholder="Key audit matters are those matters that, in our professional judgment, were of most significance in our audit of the financial statements of the current period.">Key audit matters are those matters that, in our professional judgment, were of most significance in our audit of the financial statements of the current period. These matters were addressed in the context of our audit of the financial statements as a whole, and in forming our opinion thereon, and we do not provide a separate opinion on these matters. We have determined that, there are no other key audit matters to communicate in our report.</p>
+      ${s.includeKAM ? `
       <table class="rep-kam-table">
         <tr>
           <th style="width:6%">S.N.</th>
@@ -200,8 +202,8 @@ function renderRepReport(){
           <td class="rep-blank-fill" contenteditable="true" data-placeholder="Description of the matter&hellip;"></td>
           <td class="rep-blank-fill" contenteditable="true" data-placeholder="How addressed&hellip;"></td>
         </tr>
-      </table>
-    </div>` : ``}
+      </table>` : ``}
+    </div>
 
     <h3 class="rep-sec"><span class="rep-section-num">${n2}</span> Responsibilities of the Management and Those Charged with Governance for the Financial Statements:</h3>
     <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements in accordance with Nepal Accounting Standard and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
