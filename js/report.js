@@ -110,12 +110,6 @@ function renderRepFirmHeader(f){
       <div class="rep-contact-col">
         <p>Email:- ${f.email}</p>
         <p>Phone no:- ${f.phone}</p>
-        <p>Firm Registration No. ${f.regNo}</p>
-      </div>
-      <div class="rep-contact-col">
-        <p>M.No. ${f.mNo}</p>
-        <p>PAN:- ${f.pan}</p>
-        <p>COP No. ${f.copNo}</p>
       </div>
     </div>`;
 }
