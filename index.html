@@ -6,7 +6,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-<link rel="stylesheet" href="css/styles.css?v=202607121209">
+<link rel="stylesheet" href="css/styles.css?v=202607121500">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -693,43 +693,133 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
 
-        <!-- ── SUB: AUDITOR CHANGE ── -->
+        <!-- ── SUB: AUDITOR CHANGE ──
+             Two documents (Board Resolution + Registrar notification letter)
+             generated from one shared form — mirrors BM/AGM Minutes' editor
+             shell, reusing its CSS wholesale, with a document-type toggle in
+             the preview toolbar since there are two outputs instead of one. -->
         <div id="regd-auditorChange-panel" class="regd-sub-panel">
-          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
-            <div style="padding:24px; border-right:1px solid var(--border);">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Name</label>
-                <input type="text" id="ac-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="bm-editor-shell">
+            <div class="bm-editor-left">
+              <div class="form-group" style="margin-bottom:18px; position:relative;">
+                <label>Search Company</label>
+                <input type="text" id="ac-companySearch" placeholder="Search by registration number or PAN…" autocomplete="off" />
+                <div class="autocomplete-list" id="ac-company-autocomplete-list" style="display:none;"></div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Previous Auditor</label>
-                <input type="text" id="ac-prevAuditor" placeholder="e.g. Shailesh &amp; Associates" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>New Auditor</label>
-                <input type="text" id="ac-newAuditor" placeholder="e.g. Dallakoti &amp; Company" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Reason for Change</label>
-                <input type="text" id="ac-reason" placeholder="e.g. Rotation as per statute" />
-              </div>
-              <div class="form-grid" style="margin-bottom:24px; gap:12px;">
-                <div class="form-group">
-                  <label>AGM Date (B.S.)</label>
-                  <input type="text" id="ac-resolutionDate" placeholder="e.g. 2082/06/04" />
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Company</div>
                 </div>
-                <div class="form-group">
-                  <label>Effective Date (B.S.)</label>
-                  <input type="text" id="ac-effectiveDate" placeholder="e.g. 2082/06/04" />
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Company Name</label>
+                  <input type="text" id="ac-companyName" placeholder="Auto-filled when you select a company…" />
                 </div>
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Auditor Change')">⚙️ Generate Documents</button>
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Board Meeting</div>
+                </div>
+                <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                  <div class="form-group">
+                    <label>Meeting Date (B.S.)</label>
+                    <input type="text" id="ac-meetingDate" placeholder="e.g. 2082/09/07" autocomplete="off" onblur="acValidateDateField('ac-meetingDate')" />
+                    <div class="field-error-msg" id="ac-meetingDate-error"></div>
+                  </div>
+                  <div class="form-group">
+                    <label>Prior AGM Date (B.S.)</label>
+                    <input type="text" id="ac-priorAgmDate" placeholder="e.g. 2079/08/29" autocomplete="off" onblur="acValidateDateField('ac-priorAgmDate')" />
+                    <div class="field-error-msg" id="ac-priorAgmDate-error"></div>
+                  </div>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Board Chairman Name</label>
+                  <input type="text" id="ac-chairmanName" placeholder="चेयरम्यानको नाम" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Board Member Name</label>
+                  <input type="text" id="ac-boardMemberName" placeholder="सदस्यको नाम" />
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Auditor Change</div>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Nepal Fiscal Year</label>
+                  <select id="ac-fiscalYear">
+                    <option value="2078-79">2078/79</option>
+                    <option value="2079-80">2079/80</option>
+                    <option value="2080-81">2080/81</option>
+                    <option value="2081-82" selected>2081/82</option>
+                    <option value="2082-83">2082/83</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>Outgoing Auditor Name</label>
+                  <input type="text" id="ac-outgoingAuditorName" placeholder="पूर्व लेखा परीक्षकको नाम" />
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>New Auditor Name</label>
+                  <input type="text" id="ac-newAuditorName" placeholder="नयाँ लेखा परीक्षकको नाम" />
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                  <label>New Auditor's Firm</label>
+                  <input type="text" id="ac-newAuditorFirm" placeholder="फर्मको नाम" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Remuneration (Rs.)</label>
+                  <input type="text" id="ac-remuneration" placeholder="e.g. 25,000" />
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title" style="font-size:14px;">Registrar Letter</div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Letter Date (B.S.)</label>
+                  <input type="text" id="ac-letterDate" placeholder="e.g. 2082/09/07" autocomplete="off" onblur="acValidateDateField('ac-letterDate')" />
+                  <div class="field-error-msg" id="ac-letterDate-error"></div>
+                </div>
+              </div>
+
+              <div id="ac-status"></div>
             </div>
-            <div style="background:#f8fafc; padding:24px;">
-              <div class="regd-preview-placeholder">
-                <div class="icon">🧑‍💼</div>
-                <p>Auditor Change document preview will appear here.</p>
+
+            <div class="bm-editor-right">
+              <div class="bm-preview-toolbar">
+                <div class="rep-view-toggle">
+                  <button type="button" id="ac-doc-tab-resolution" class="rep-view-btn active" onclick="acSetPreviewDoc('resolution')">Board Resolution</button>
+                  <button type="button" id="ac-doc-tab-letter" class="rep-view-btn" onclick="acSetPreviewDoc('letter')">Registrar Letter</button>
+                </div>
+                <div class="bm-zoom-controls">
+                  <button type="button" class="btn btn-outline btn-sm" onclick="acZoomOut()">−</button>
+                  <span id="ac-zoom-level">100%</span>
+                  <button type="button" class="btn btn-outline btn-sm" onclick="acZoomIn()">+</button>
+                </div>
               </div>
+              <div class="bm-preview-scroll">
+                <div class="regd-preview-placeholder" id="ac-preview-placeholder">
+                  <div class="icon">🧑‍💼</div>
+                  <p>Select a company and enter the meeting date to see a live preview.</p>
+                </div>
+                <div id="ac-preview-style"></div>
+                <div id="ac-preview-root" class="bm-preview-root" style="display:none;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bm-action-bar">
+            <div class="bm-completion-indicator" id="ac-completion-indicator"></div>
+            <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="acScrollToPreview()">👁️ Preview</button>
+              <button type="button" class="btn btn-outline" onclick="generateAuditorChangeResolution()">⬇️ Download Resolution</button>
+              <button type="button" class="btn btn-outline" onclick="generateAuditorChangeLetter()">⬇️ Download Letter</button>
+              <button type="button" class="btn btn-outline" onclick="acPrintDocument()">🖨️ Print</button>
+              <button type="button" class="btn btn-danger" onclick="acResetForm()">Reset</button>
             </div>
           </div>
         </div>
@@ -1503,33 +1593,34 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 
-<script src="js/config.js?v=202607121209"></script>
-<script src="js/utils.js?v=202607121209"></script>
-<script src="js/core/moduleRegistry.js?v=202607121209"></script>
-<script src="js/core/statusBox.js?v=202607121209"></script>
-<script src="js/core/nepaliLocale.js?v=202607121209"></script>
-<script src="js/core/documentEngine.js?v=202607121209"></script>
-<script src="js/core/ocrEngine.js?v=202607121209"></script>
-<script src="js/core/searchEngine.js?v=202607121209"></script>
-<script src="js/core/pdfEngine.js?v=202607121209"></script>
-<script src="js/core/visionEngine.js?v=202607121209"></script>
-<script src="js/core/tableEngine.js?v=202607121209"></script>
-<script src="js/core/workflowEngine.js?v=202607121209"></script>
-<script src="js/core/validationEngine.js?v=202607121209"></script>
-<script src="js/core/auditLog.js?v=202607121209"></script>
-<script src="js/core/integrations.js?v=202607121209"></script>
-<script src="js/tabs.js?v=202607121209"></script>
-<script src="js/dashboard.js?v=202607121209"></script>
-<script src="js/registrar.js?v=202607121209"></script>
-<script src="js/clients.js?v=202607121209"></script>
-<script src="js/logs.js?v=202607121209"></script>
-<script src="js/vatReturn.js?v=202607121209"></script>
-<script src="js/vatCompliance.js?v=202607121209"></script>
-<script src="js/billing.js?v=202607121209"></script>
-<script src="js/sendDocument.js?v=202607121209"></script>
-<script src="js/report.js?v=202607121209"></script>
-<script src="js/bmAgmMinutes.js?v=202607121209"></script>
-<script src="js/auth.js?v=202607121209"></script>
+<script src="js/config.js?v=202607121500"></script>
+<script src="js/utils.js?v=202607121500"></script>
+<script src="js/core/moduleRegistry.js?v=202607121500"></script>
+<script src="js/core/statusBox.js?v=202607121500"></script>
+<script src="js/core/nepaliLocale.js?v=202607121500"></script>
+<script src="js/core/documentEngine.js?v=202607121500"></script>
+<script src="js/core/ocrEngine.js?v=202607121500"></script>
+<script src="js/core/searchEngine.js?v=202607121500"></script>
+<script src="js/core/pdfEngine.js?v=202607121500"></script>
+<script src="js/core/visionEngine.js?v=202607121500"></script>
+<script src="js/core/tableEngine.js?v=202607121500"></script>
+<script src="js/core/workflowEngine.js?v=202607121500"></script>
+<script src="js/core/validationEngine.js?v=202607121500"></script>
+<script src="js/core/auditLog.js?v=202607121500"></script>
+<script src="js/core/integrations.js?v=202607121500"></script>
+<script src="js/tabs.js?v=202607121500"></script>
+<script src="js/dashboard.js?v=202607121500"></script>
+<script src="js/registrar.js?v=202607121500"></script>
+<script src="js/clients.js?v=202607121500"></script>
+<script src="js/logs.js?v=202607121500"></script>
+<script src="js/vatReturn.js?v=202607121500"></script>
+<script src="js/vatCompliance.js?v=202607121500"></script>
+<script src="js/billing.js?v=202607121500"></script>
+<script src="js/sendDocument.js?v=202607121500"></script>
+<script src="js/report.js?v=202607121500"></script>
+<script src="js/bmAgmMinutes.js?v=202607121500"></script>
+<script src="js/auditorChange.js?v=202607121500"></script>
+<script src="js/auth.js?v=202607121500"></script>
 
 </body>
 </html>
