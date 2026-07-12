@@ -243,6 +243,72 @@ function bmShowPreviewPlaceholder() {
   if (root) root.style.display = 'none';
 }
 
+// Fits each rendered page-section onto exactly one sheet. Pages are split
+// only at the template's explicit page breaks — one page per document, so
+// the company-name header always tops its sheet and the signature block
+// stays with its document. A document that runs taller than the sheet is
+// first given proportionally MORE width (text reflows onto the paper's full
+// breadth once zoomed back down) and then zoomed so its visual size is
+// exactly the sheet — a far gentler shrink than scaling the narrow column.
+// Shared by the live preview and the print window so both paginate
+// identically.
+function bmFitPagesToSheet(container) {
+  const sections = container.querySelectorAll('section.bm-docx');
+  if (!sections.length) return null;
+
+  // Hidden container (e.g. preview refreshed before the tab was opened, such
+  // as a draft restore at load): everything measures 0 in place, so measure
+  // an offscreen clone instead (the docx stylesheet is a global <style>, so
+  // the clone renders identically) and copy the fitted styles back.
+  const hidden = !sections[0].getBoundingClientRect().height;
+  let measureSections = sections;
+  let holder = null;
+  if (hidden) {
+    const wrapper = container.querySelector('.bm-docx-wrapper') || container;
+    holder = document.createElement('div');
+    holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
+    holder.appendChild(wrapper.cloneNode(true));
+    document.body.appendChild(holder);
+    measureSections = holder.querySelectorAll('section.bm-docx');
+  }
+
+  try {
+    const pageW = Math.round(parseFloat(getComputedStyle(measureSections[0]).width));
+    const pageH = Math.round(parseFloat(getComputedStyle(measureSections[0]).minHeight));
+
+    measureSections.forEach((m, i) => {
+      // docx-preview sets the page's width/min-height as INLINE styles —
+      // stash them on first touch and restore (never blank) before
+      // measuring, so a re-fit starts from the true page geometry.
+      if (m.dataset.bmOrigWidth === undefined) {
+        m.dataset.bmOrigWidth = m.style.width;
+        m.dataset.bmOrigMinHeight = m.style.minHeight;
+      }
+      m.style.zoom = '';
+      m.style.width = m.dataset.bmOrigWidth;
+      m.style.minHeight = m.dataset.bmOrigMinHeight;
+      if (m.getBoundingClientRect().height > pageH + 2) {
+        for (let z = 0.95; z >= 0.6; z -= 0.05) {
+          m.style.zoom = z;
+          m.style.width = Math.round(pageW / z) + 'px';
+          m.style.minHeight = Math.round(pageH / z) + 'px';
+          if (m.getBoundingClientRect().height <= pageH + 2) break;
+        }
+      }
+      if (hidden && sections[i]) {
+        sections[i].dataset.bmOrigWidth = m.dataset.bmOrigWidth;
+        sections[i].dataset.bmOrigMinHeight = m.dataset.bmOrigMinHeight;
+        sections[i].style.zoom = m.style.zoom;
+        sections[i].style.width = m.style.width;
+        sections[i].style.minHeight = m.style.minHeight;
+      }
+    });
+    return { pageW, pageH };
+  } finally {
+    if (holder) holder.remove();
+  }
+}
+
 // `isCurrent()` guards against an older, slower render (e.g. the template's
 // first-ever fetch) overwriting a newer one that started after further
 // typing — the last input always wins. See WorkflowEngine.createDebouncedRefresh.
@@ -260,20 +326,23 @@ async function bmRefreshPreview(isCurrent) {
     const blob = await bmRenderDocx(data);
     if (!isCurrent()) return;
 
-    // ignoreLastRenderedPageBreak:false — split pages exactly where Word's
-    // recorded layout does, so preview/print pagination matches the template
-    // opened in Word instead of letting content overflow past page bottoms.
+    // ignoreLastRenderedPageBreak:true — split pages ONLY at the template's
+    // explicit page breaks (one page per document); Word's recorded soft
+    // breaks would scatter each document across half-empty extra pages.
+    // bmFitPagesToSheet then compresses any over-tall document onto its
+    // single sheet.
     await DocumentEngine.previewWordAsHtml(blob, root, document.getElementById('bm-preview-style'), {
       className: 'bm-docx',
       inWrapper: true,
       breakPages: true,
-      ignoreLastRenderedPageBreak: false,
+      ignoreLastRenderedPageBreak: true,
       experimental: true,
     });
     if (!isCurrent()) return;
 
     placeholder.style.display = 'none';
     root.style.display = 'block';
+    bmFitPagesToSheet(root);
     bmWireEditableTokens(data);
   } catch (err) {
     console.error('BM/AGM preview render failed:', err);
@@ -399,12 +468,10 @@ function bmScrollToPreview() {
 }
 
 // Builds print HTML from a FRESH offscreen render (not the preview pane's
-// DOM) at Word's exact pagination: one section.bm-docx per Word page, each
-// forced onto its own printed sheet via page-break-after with @page margins
-// at 0 (the docx page margins are already inside each section as padding).
-// Any section that still runs taller than the page — e.g. extra shareholder
-// rows pushing content past a recorded break — is zoomed down just enough to
-// fit rather than spilling its last lines onto an extra sheet.
+// DOM): one section.bm-docx per document, each fitted onto its own printed
+// sheet by bmFitPagesToSheet and forced onto its own page via
+// page-break-after with @page margins at 0 (the docx page margins are
+// already inside each section as padding).
 async function bmBuildPrintableDoc() {
   if (!bmPreviewReady()) return null;
   const { bm, agm, data } = bmBuildData();
@@ -423,19 +490,13 @@ async function bmBuildPrintableDoc() {
       className: 'bm-docx',
       inWrapper: true,
       breakPages: true,
-      ignoreLastRenderedPageBreak: false,
+      ignoreLastRenderedPageBreak: true,
       experimental: true,
     });
 
-    const sections = content.querySelectorAll('section.bm-docx');
-    if (!sections.length) return null;
-    // The docx's page size, as docx-preview rendered it (Letter -> 816x1056px)
-    const pageW = Math.round(parseFloat(getComputedStyle(sections[0]).width));
-    const pageH = Math.round(parseFloat(getComputedStyle(sections[0]).minHeight));
-    sections.forEach(s => {
-      const h = s.getBoundingClientRect().height;
-      if (h > pageH) s.style.zoom = ((pageH - 2) / h).toFixed(4);
-    });
+    const fit = bmFitPagesToSheet(content);
+    if (!fit) return null;
+    const { pageW, pageH } = fit;
 
     // textContent, not innerHTML — docx-preview injects its CSS as a real
     // nested <style> element, and innerHTML would serialize that tag
