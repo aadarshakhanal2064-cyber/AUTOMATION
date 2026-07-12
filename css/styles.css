@@ -671,14 +671,18 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-cover-firm{ font-size:18px; font-weight:700; margin-bottom:2px; }
 .rep-cover-firmtitle{ font-size:18px; font-weight:700; }
 
-/* Firm letterhead (top of the Auditor's Report sheet) — just the logo/name
-   and a single thin rule beneath it. Contact details live in the navy
-   .rep-footer-bar at the bottom of the sheet instead. */
+/* Firm letterhead + contact row (top of the Auditor's Report sheet) */
 .rep-firm-header{ text-align:center; margin-bottom:var(--rep-space-md); }
 .rep-firm-header .rfname{ font-size:18px; font-weight:700; letter-spacing:0.3px; color:var(--brand-navy); }
-.rep-firm-header .rftitle{ font-style:italic; font-size:13px; color:var(--rep-muted); }
+.rep-firm-header .rftitle, .rep-firm-header .rfaddr{ font-style:italic; font-size:13px; color:var(--rep-muted); }
 .rep-header-logo{ display:block; margin:0 auto var(--rep-space-md); max-width:340px; width:100%; height:auto; }
-.rep-header-rule{ border-bottom:1px solid #000; margin-top:var(--rep-space-sm); }
+/* Only Email/Phone remain here now (Reg./M./PAN/COP numbers still live in
+   the signature block at the end of the report) — same left-aligned layout
+   as before, just without the second column. */
+.rep-contact-row{
+  border-bottom: 3px double #000; padding-bottom: var(--rep-space-sm); margin-bottom: var(--rep-space-lg);
+}
+.rep-contact-row p{ margin:0 0 2px; text-align:left; }
 
 /* Report title + salutation */
 .rep-title{ text-align:center; font-size:16px; font-weight:700; text-decoration:underline; margin: 0 0 var(--rep-space-lg); }
@@ -705,16 +709,6 @@ textarea { resize: vertical; min-height: 100px; }
 .rep-udin{ margin-top: var(--rep-space-sm); }
 .rname{ font-weight:700; }
 .rep-sig-block .rname{ margin-top: 44px; } /* blank space for a wet signature above the signatory's name */
-
-/* Navy contact bar — the sheet's only footer, rendered once at the very end
-   of the content (not a per-printed-page running footer). */
-.rep-footer-bar{
-  display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--rep-space-md);
-  background:var(--brand-navy); color:#fff;
-  margin-top:var(--rep-space-xl); padding:12px 20px; font-size:11px;
-  break-inside:avoid; page-break-inside:avoid;
-}
-.rep-footer-item{ white-space:nowrap; }
 
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
 .rep-blank-fill:focus{ outline:none; border-color:var(--brand-navy); color:#111; font-style:normal; background:#fff; }

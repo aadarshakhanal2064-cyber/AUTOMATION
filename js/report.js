@@ -111,10 +111,6 @@ function cropReportLetterheadLogo(img){
   img.src = canvas.toDataURL('image/png');
 }
 
-// Logo + a single thin rule at the top of the sheet — address/email/phone
-// moved out of here entirely, into the navy footer bar at the bottom of the
-// sheet (renderRepFooterBar) instead of repeating contact details in two
-// places.
 function renderRepFirmHeader(f){
   // Firms with a letterhead logo (a lockup of the firm name + title) show the
   // image in place of those two text lines; firms without one keep plain text.
@@ -125,21 +121,13 @@ function renderRepFirmHeader(f){
   return `
     <div class="rep-firm-header">
       ${identity}
-      <div class="rep-header-rule"></div>
-    </div>`;
-}
-
-// Navy contact bar directly under the report body — placed before the
-// signature block (not after) so it stays anchored to the same page as the
-// logo/title/body instead of trailing behind the signature block's taller,
-// asymmetric two-column layout onto a near-empty final page. Renders exactly
-// once per report — there is no per-printed-page repeating header/footer here.
-function renderRepFooterBar(f){
-  return `
-    <div class="rep-footer-bar">
-      <div class="rep-footer-item">📍 ${f.address}</div>
-      <div class="rep-footer-item">✉️ ${f.email}</div>
-      <div class="rep-footer-item">📞 ${f.phone}</div>
+      <div class="rfaddr">${f.address}</div>
+    </div>
+    <div class="rep-contact-row">
+      <div class="rep-contact-col">
+        <p>Email:- ${f.email}</p>
+        <p>Phone no:- ${f.phone}</p>
+      </div>
     </div>`;
 }
 
@@ -196,8 +184,6 @@ function renderRepReport(){
     <p class="rep-salutation">To ${e.salutationTo} <strong>${s.entityName}</strong></p>
 
     ${renderBody(s, e)}
-
-    ${renderRepFooterBar(f)}
 
     ${renderRepSigBlock(s, f)}
   </div>
@@ -581,8 +567,6 @@ function buildRepWordHtml(){
     ".rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; }" +
     ".rep-sig-block{ display:table; width:100%; }" +
     ".rep-sig-left,.rep-sig-right{ display:table-cell; width:50%; vertical-align:top; }" +
-    ".rep-footer-bar{ display:table; width:100%; }" +
-    ".rep-footer-item{ display:table-cell; text-align:center; }" +
     "</style></head><body>" + inner + "</body></html>";
 }
 
