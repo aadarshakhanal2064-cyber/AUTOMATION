@@ -260,11 +260,14 @@ async function bmRefreshPreview(isCurrent) {
     const blob = await bmRenderDocx(data);
     if (!isCurrent()) return;
 
+    // ignoreLastRenderedPageBreak:false — split pages exactly where Word's
+    // recorded layout does, so preview/print pagination matches the template
+    // opened in Word instead of letting content overflow past page bottoms.
     await DocumentEngine.previewWordAsHtml(blob, root, document.getElementById('bm-preview-style'), {
       className: 'bm-docx',
       inWrapper: true,
       breakPages: true,
-      ignoreLastRenderedPageBreak: true,
+      ignoreLastRenderedPageBreak: false,
       experimental: true,
     });
     if (!isCurrent()) return;
@@ -395,49 +398,74 @@ function bmScrollToPreview() {
   if (right) right.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Mirrors report.js's buildRepPrintableDoc()/printAuditReport() pattern:
-// open the rendered preview in its own tab and let the browser handle
-// print/PDF. "Download PDF" reuses the exact same window — the user picks
-// "Save as PDF" as the print destination — so print and PDF are always
-// byte-for-byte the same rendering as the preview, with no separate
-// PDF-generation dependency whose Devanagari/Mangal font support would need
-// its own validation.
-function bmBuildPrintableDoc() {
-  const root = document.getElementById('bm-preview-root');
-  const styleEl = document.getElementById('bm-preview-style');
-  if (!root || !root.innerHTML.trim()) return null;
+// Builds print HTML from a FRESH offscreen render (not the preview pane's
+// DOM) at Word's exact pagination: one section.bm-docx per Word page, each
+// forced onto its own printed sheet via page-break-after with @page margins
+// at 0 (the docx page margins are already inside each section as padding).
+// Any section that still runs taller than the page — e.g. extra shareholder
+// rows pushing content past a recorded break — is zoomed down just enough to
+// fit rather than spilling its last lines onto an extra sheet.
+async function bmBuildPrintableDoc() {
+  if (!bmPreviewReady()) return null;
+  const { bm, agm, data } = bmBuildData();
+  if (!bm || !agm) return null;
 
-  // textContent, not innerHTML — docx-preview injects its CSS as a real
-  // nested <style> element, and innerHTML would serialize that tag literally,
-  // closing our own wrapping <style> block early.
-  const docxCss = styleEl ? styleEl.textContent : '';
-  const appCss = Array.from(document.styleSheets).map(sheet => {
-    try { return Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); }
-    catch (e) { return ''; }
-  }).join('\n');
+  const blob = await bmRenderDocx(data);
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
+  const styleEl = document.createElement('div');
+  const content = document.createElement('div');
+  holder.appendChild(styleEl);
+  holder.appendChild(content);
+  document.body.appendChild(holder);
+  try {
+    await DocumentEngine.previewWordAsHtml(blob, content, styleEl, {
+      className: 'bm-docx',
+      inWrapper: true,
+      breakPages: true,
+      ignoreLastRenderedPageBreak: false,
+      experimental: true,
+    });
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BM/AGM Minutes</title><style>
-    body { margin:0; background:#fff; padding:24px; }
-    ${appCss}
-    ${docxCss}
-    @media print {
-      body { padding:0; background:#fff; }
-      .bm-docx-wrapper { background:#fff !important; padding:0 !important; }
-      .bm-docx-wrapper > section.bm-docx { box-shadow:none !important; }
-    }
-  </style></head><body>${root.innerHTML}
+    const sections = content.querySelectorAll('section.bm-docx');
+    if (!sections.length) return null;
+    // The docx's page size, as docx-preview rendered it (Letter -> 816x1056px)
+    const pageW = Math.round(parseFloat(getComputedStyle(sections[0]).width));
+    const pageH = Math.round(parseFloat(getComputedStyle(sections[0]).minHeight));
+    sections.forEach(s => {
+      const h = s.getBoundingClientRect().height;
+      if (h > pageH) s.style.zoom = ((pageH - 2) / h).toFixed(4);
+    });
+
+    // textContent, not innerHTML — docx-preview injects its CSS as a real
+    // nested <style> element, and innerHTML would serialize that tag
+    // literally, closing our own wrapping <style> block early.
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BM/AGM Minutes</title><style>
+    @page { size: ${pageW}px ${pageH}px; margin: 0; }
+    html, body { margin:0; padding:0; background:#fff; }
+    ${styleEl.textContent}
+    .bm-docx-wrapper { display:block !important; background:#fff !important; padding:0 !important; }
+    .bm-docx-wrapper > section.bm-docx { box-shadow:none !important; margin:0 auto !important; page-break-after: always; }
+    .bm-docx-wrapper > section.bm-docx:last-child { page-break-after: auto; }
+  </style></head><body>${content.innerHTML}
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
   </body></html>`;
+  } finally {
+    holder.remove();
+  }
 }
 
-function bmOpenPrintWindow(successMessage) {
-  const html = bmBuildPrintableDoc();
+async function bmOpenPrintWindow(successMessage) {
+  bmStatus('<span class="spinner spinner-navy"></span> प्रिन्टका लागि तयार गर्दै (preparing print)…', 'searching');
+  let html = null;
+  try { html = await bmBuildPrintableDoc(); }
+  catch (err) { bmStatus('❌ ' + (err.message || 'Print failed'), 'error'); return; }
   if (!html) { bmStatus('कृपया पहिले कम्पनी र मितिहरू भर्नुहोस् (fill in the company and dates to build a preview first).', 'info'); return; }
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, '_blank');
   if (!win) { bmStatus('❌ पप-अप रोकियो — कृपया पप-अपलाई अनुमति दिनुहोस् (pop-up blocked — please allow pop-ups for this site, then try again).', 'error'); return; }
-  if (successMessage) bmStatus(successMessage, 'success');
+  bmStatus(successMessage || '🖨️ प्रिन्ट विन्डो खुल्यो (print window opened).', 'success');
 }
 
 function bmPrintDocument() {
