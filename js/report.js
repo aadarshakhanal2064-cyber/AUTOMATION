@@ -129,10 +129,11 @@ function renderRepFirmHeader(f){
     </div>`;
 }
 
-// Navy contact bar at the very bottom of the sheet — renders exactly once
-// per report (the sheet is one continuous element; there is no per-printed-
-// page repeating header/footer here), regardless of how many physical pages
-// the content spans when printed or exported.
+// Navy contact bar directly under the report body — placed before the
+// signature block (not after) so it stays anchored to the same page as the
+// logo/title/body instead of trailing behind the signature block's taller,
+// asymmetric two-column layout onto a near-empty final page. Renders exactly
+// once per report — there is no per-printed-page repeating header/footer here.
 function renderRepFooterBar(f){
   return `
     <div class="rep-footer-bar">
@@ -196,9 +197,9 @@ function renderRepReport(){
 
     ${renderBody(s, e)}
 
-    ${renderRepSigBlock(s, f)}
-
     ${renderRepFooterBar(f)}
+
+    ${renderRepSigBlock(s, f)}
   </div>
   `;
 
