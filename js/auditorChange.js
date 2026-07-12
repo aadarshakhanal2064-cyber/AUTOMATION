@@ -197,41 +197,80 @@ function acScrollToPreview() {
   if (right) right.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Mirrors bmBuildPrintableDoc()/report.js's print pattern: print whichever
-// document is currently shown in the preview.
-function acBuildPrintableDoc() {
-  const root = document.getElementById('ac-preview-root');
-  const styleEl = document.getElementById('ac-preview-style');
-  if (!root || !root.innerHTML.trim()) return null;
-
-  const docxCss = styleEl ? styleEl.textContent : '';
-  const appCss = Array.from(document.styleSheets).map(sheet => {
-    try { return Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); }
-    catch (e) { return ''; }
-  }).join('\n');
-
-  const title = acCurrentPreviewDoc === 'letter' ? 'Registrar Letter' : 'Board Resolution';
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>
-    body { margin:0; background:#fff; padding:24px; }
-    ${appCss}
-    ${docxCss}
-    @media print {
-      body { padding:0; background:#fff; }
-      .bm-docx-wrapper { background:#fff !important; padding:0 !important; }
-      .bm-docx-wrapper > section.bm-docx { box-shadow:none !important; }
-    }
-  </style></head><body>${root.innerHTML}
-  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
-  </body></html>`;
+// Renders a generated .docx offscreen WITHOUT docx-preview's page splitting
+// (breakPages:false gives one continuous section), and measures it — so the
+// print layout can decide whether it fits one A4 page as-is or needs to be
+// scaled down a touch.
+async function acRenderDocForPrint(blob) {
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
+  const styleEl = document.createElement('div');
+  const content = document.createElement('div');
+  holder.appendChild(styleEl);
+  holder.appendChild(content);
+  document.body.appendChild(holder);
+  try {
+    await DocumentEngine.previewWordAsHtml(blob, content, styleEl, {
+      className: 'bm-docx',
+      inWrapper: true,
+      breakPages: false,
+      experimental: true,
+    });
+    const section = content.querySelector('section.bm-docx');
+    const rect = section ? section.getBoundingClientRect() : { width: 0, height: 0 };
+    return { html: content.innerHTML, css: styleEl.textContent, width: rect.width, height: rect.height };
+  } finally {
+    holder.remove();
+  }
 }
 
-function acPrintDocument() {
-  const html = acBuildPrintableDoc();
-  if (!html) { acStatus('कृपया पहिले फारम भर्नुहोस् (fill in the form to build a preview first).', 'info'); return; }
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) { acStatus('❌ पप-अप रोकियो — कृपया पप-अपलाई अनुमति दिनुहोस्।', 'error'); }
+// One printed A4 page per document: if the rendered content runs slightly
+// taller than a page (the usual "last line spills onto page 2" problem),
+// shrink it just enough to fit rather than letting it break.
+const AC_A4_W_PX = 794;  // 210mm at 96dpi
+const AC_A4_H_PX = 1123; // 297mm at 96dpi
+function acBuildPrintPage(doc) {
+  const zoom = Math.min(1, (AC_A4_H_PX - 4) / doc.height, AC_A4_W_PX / doc.width);
+  return `<div class="ac-print-page"${zoom < 1 ? ` style="zoom:${zoom.toFixed(4)};"` : ''}>${doc.html}</div>`;
+}
+
+// Prints BOTH documents in one job — Board Resolution as page 1, Registrar
+// Letter as page 2 — always exactly two pages, regardless of which document
+// the preview toggle is showing.
+async function acPrintDocument() {
+  const built = acValidateBeforeGenerate();
+  if (!built) return;
+  if (!document.getElementById('ac-letterDate').value.trim()) { acStatus('पत्रको मिति भर्नुहोस् (enter the letter date).', 'info'); return; }
+  if (!built.letter) { acStatus('पत्रको मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
+
+  try {
+    acStatus('<span class="spinner spinner-navy"></span> प्रिन्टका लागि तयार गर्दै (preparing print)…', 'searching');
+    const resolution = await acRenderDocForPrint(await acRenderResolutionDocx(built.data));
+    const letter = await acRenderDocForPrint(await acRenderLetterDocx(built.data));
+
+    // Both renders emit the same .bm-docx stylesheet — include it once. The
+    // section's own docx page margins (rendered as padding) provide the print
+    // margins, so @page margin stays 0 to keep the px-to-page fit math exact.
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Auditor Change Documents</title><style>
+    @page { size: A4; margin: 0; }
+    html, body { margin:0; padding:0; background:#fff; }
+    ${resolution.css}
+    .bm-docx-wrapper { display:block !important; background:#fff !important; padding:0 !important; }
+    .bm-docx-wrapper > section.bm-docx { box-shadow:none !important; margin:0 auto !important; }
+    .ac-print-page { page-break-after: always; }
+    .ac-print-page:last-child { page-break-after: auto; }
+  </style></head><body>${acBuildPrintPage(resolution)}${acBuildPrintPage(letter)}
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
+  </body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) { acStatus('❌ पप-अप रोकियो — कृपया पप-अपलाई अनुमति दिनुहोस्।', 'error'); return; }
+    acStatus('🖨️ प्रिन्ट विन्डो खुल्यो — दुई पृष्ठ (Board Resolution + Registrar Letter).', 'success');
+  } catch (err) {
+    acStatus('❌ ' + (err.message || 'Print failed'), 'error');
+  }
 }
 
 function acResetForm() {
