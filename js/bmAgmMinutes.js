@@ -247,17 +247,17 @@ function bmShowPreviewPlaceholder() {
 // only at the template's explicit page breaks — one page per document, so
 // the company-name header always tops its sheet and the signature block
 // stays with its document. A document that runs taller than the sheet has
-// its content moved into an inner .bm-page-scale wrapper, given
-// proportionally more width (so text reflows onto the paper's full breadth),
-// and shrunk with transform:scale — while the outer section itself is locked
-// to the sheet's exact pixel size with overflow:hidden. That lock matters
-// for PRINT specifically: CSS zoom visually shrinks an element but some
-// browsers still paginate print output using its PRE-zoom layout box, which
-// silently spills a blank overflow page into the print job even though the
-// screen preview looks correct. transform:scale never changes the element's
-// real layout box, so the outer section is always exactly one sheet as far
-// as the print engine is concerned — no ambiguity, no phantom page. Shared
-// by the live preview and the print window so both paginate identically.
+// its FONT SIZES genuinely reduced (every inline font-size/min-height/
+// line-height the docx renderer emitted, scaled from stashed originals)
+// until the content fits — a real layout change, deliberately NOT a visual
+// trick: CSS zoom paginates print from the pre-zoom layout box (phantom
+// blank page), and transform:scale is skipped outright by Chrome's print
+// engine (content clipped at the paper edge at unscaled size). Font scaling
+// is the one approach where screen and print cannot disagree, because the
+// laid-out geometry IS the shrunk geometry. The section box itself is
+// locked to the sheet's exact pixel size with overflow:hidden as the final
+// guarantee that no page can ever spill. Shared by the live preview and the
+// print window so both paginate identically.
 function bmFitPagesToSheet(container) {
   const sections = container.querySelectorAll('section.bm-docx');
   if (!sections.length) return null;
@@ -265,7 +265,7 @@ function bmFitPagesToSheet(container) {
   // Hidden container (e.g. preview refreshed before the tab was opened, such
   // as a draft restore at load): everything measures 0 in place, so measure
   // an offscreen clone instead (the docx stylesheet is a global <style>, so
-  // the clone renders identically) and copy the fitted styles back.
+  // the clone renders identically) and copy the fitted result back.
   const hidden = !sections[0].getBoundingClientRect().height;
   let measureSections = sections;
   let holder = null;
@@ -278,53 +278,56 @@ function bmFitPagesToSheet(container) {
     measureSections = holder.querySelectorAll('section.bm-docx');
   }
 
+  // Scale one stashed inline value (e.g. "37pt", "16px"), preserving its unit.
+  const scaleLen = (orig, z) => (parseFloat(orig) * z) + (orig.replace(/[\d. ]/g, '') || 'px');
+
   try {
     const pageW = Math.round(parseFloat(getComputedStyle(measureSections[0]).width));
     const pageH = Math.round(parseFloat(getComputedStyle(measureSections[0]).minHeight));
 
     measureSections.forEach((m, i) => {
-      // Move the section's real children into an inner scale wrapper once —
-      // the wrapper is what gets transformed; the section itself stays a
-      // fixed, un-transformed pageW x pageH box.
-      let scaler = m.querySelector(':scope > .bm-page-scale');
-      if (!scaler) {
-        scaler = document.createElement('div');
-        scaler.className = 'bm-page-scale';
-        while (m.firstChild) scaler.appendChild(m.firstChild);
-        m.appendChild(scaler);
-      }
-      scaler.style.transform = '';
-      scaler.style.width = '';
-      scaler.style.transformOrigin = 'top left';
       m.style.width = pageW + 'px';
       m.style.minHeight = pageH + 'px';
       m.style.height = pageH + 'px';
       m.style.overflow = 'hidden';
 
-      const naturalH = scaler.getBoundingClientRect().height;
-      if (naturalH > pageH + 2) {
-        // Set both width and transform, THEN measure — getBoundingClientRect
-        // reflects the real post-transform box, so this is exact. Predicting
-        // the scaled height from a pre-transform measurement (natural height
-        // x z) was wrong: rounding pageW/z to a whole pixel shifts text
-        // reflow at Devanagari line-wrap boundaries in ways that don't scale
-        // linearly, so the prediction silently drifted a few px past pageH —
-        // enough for overflow:hidden to clip the last line.
-        for (let z = 0.95; z >= 0.5; z -= 0.01) {
-          scaler.style.width = Math.round(pageW / z) + 'px';
-          scaler.style.transform = `scale(${z})`;
-          if (scaler.getBoundingClientRect().height <= pageH) break;
-        }
+      // Stash every inline length the docx renderer emitted, once per
+      // element, so each fit attempt scales from the true originals instead
+      // of compounding on a previous attempt.
+      let els = Array.from(m.querySelectorAll('[data-bm-fs]'));
+      if (!els.length) {
+        els = Array.from(m.querySelectorAll('*')).filter(el => el.style && (el.style.fontSize || el.style.minHeight));
+        els.forEach(el => {
+          el.dataset.bmFs = el.style.fontSize || '';
+          el.dataset.bmMh = el.style.minHeight || '';
+          el.dataset.bmLh = el.style.lineHeight || '';
+          el.dataset.bmMb = el.style.marginBottom || '';
+        });
       }
+      const applyScale = z => els.forEach(el => {
+        if (el.dataset.bmFs) el.style.fontSize = scaleLen(el.dataset.bmFs, z);
+        if (el.dataset.bmMh) el.style.minHeight = scaleLen(el.dataset.bmMh, z);
+        if (el.dataset.bmLh && parseFloat(el.dataset.bmLh)) el.style.lineHeight = scaleLen(el.dataset.bmLh, z);
+        if (el.dataset.bmMb) el.style.marginBottom = scaleLen(el.dataset.bmMb, z);
+      });
+
+      // Bisect for the largest scale that fits (each probe forces a full
+      // reflow, so ~6 probes beats a ~25-step linear walk on preview-refresh
+      // latency). Fitting is monotonic in z: smaller text never gets taller.
+      applyScale(1);
+      if (m.scrollHeight > m.clientHeight + 1) {
+        let lo = 0.5, hi = 1;
+        while (hi - lo > 0.01) {
+          const z = (lo + hi) / 2;
+          applyScale(z);
+          if (m.scrollHeight <= m.clientHeight + 1) lo = z; else hi = z;
+        }
+        applyScale(lo);
+      }
+
       if (hidden && sections[i]) {
-        const targetScaler = sections[i].querySelector(':scope > .bm-page-scale')
-          || (() => { const s = document.createElement('div'); s.className = 'bm-page-scale'; while (sections[i].firstChild) s.appendChild(sections[i].firstChild); sections[i].appendChild(s); return s; })();
-        targetScaler.innerHTML = scaler.innerHTML;
-        targetScaler.style.cssText = scaler.style.cssText;
-        sections[i].style.width = m.style.width;
-        sections[i].style.minHeight = m.style.minHeight;
-        sections[i].style.height = m.style.height;
-        sections[i].style.overflow = m.style.overflow;
+        sections[i].innerHTML = m.innerHTML;
+        sections[i].style.cssText = m.style.cssText;
       }
     });
     return { pageW, pageH };
