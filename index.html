@@ -6,7 +6,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-<link rel="stylesheet" href="css/styles.css?v=202607122600">
+<link rel="stylesheet" href="css/styles.css?v=202607122700">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -695,18 +695,42 @@ function cropLoginLogoIcon(img) {
 
         <!-- ── SUB: AUDITOR CHANGE ──
              Two documents (Board Resolution + Registrar notification letter)
-             generated from one shared form — mirrors BM/AGM Minutes' editor
-             shell, reusing its CSS wholesale, with a document-type toggle in
-             the preview toolbar since there are two outputs instead of one. -->
+             generated from one shared form. Edit/Preview toggle layout,
+             matching the Audit Report Builder tab — the resolution/letter
+             document switcher lives inside the Preview view since it selects
+             WHICH of the two rendered documents is shown, distinct from the
+             edit-vs-preview view mode. -->
         <div id="regd-auditorChange-panel" class="regd-sub-panel">
-          <div class="bm-editor-shell">
-            <div class="bm-editor-left">
-              <div class="form-group" style="margin-bottom:18px; position:relative;">
-                <label>Search Company</label>
-                <input type="text" id="ac-companySearch" placeholder="Search by registration number or PAN…" autocomplete="off" />
-                <div class="autocomplete-list" id="ac-company-autocomplete-list" style="display:none;"></div>
-              </div>
+          <div class="regd-view-actions">
+            <div class="rep-view-toggle">
+              <button type="button" id="ac-tab-edit" class="rep-view-btn active" onclick="acSetView('edit')">Edit</button>
+              <button type="button" id="ac-tab-preview" class="rep-view-btn" onclick="acSetView('preview')">Preview</button>
+            </div>
+            <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="generateAuditorChangeResolution()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                Save Resolution as Word
+              </button>
+              <button type="button" class="btn btn-outline" onclick="generateAuditorChangeLetter()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                Save Letter as Word
+              </button>
+              <button type="button" class="btn btn-primary" onclick="acPrintDocument()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Save as PDF / Print
+              </button>
+            </div>
+          </div>
 
+          <!-- EDIT VIEW: full-width form (default) -->
+          <div id="ac-edit-view" class="regd-edit-view">
+            <div class="form-group" style="margin-bottom:18px; max-width:420px; position:relative;">
+              <label>Search Company</label>
+              <input type="text" id="ac-companySearch" placeholder="Search by registration number or PAN…" autocomplete="off" />
+              <div class="autocomplete-list" id="ac-company-autocomplete-list" style="display:none;"></div>
+            </div>
+
+            <div class="regd-form-cards">
               <div class="card">
                 <div class="card-header">
                   <div class="card-title" style="font-size:14px;">Company</div>
@@ -785,42 +809,37 @@ function cropLoginLogoIcon(img) {
                   <div class="field-error-msg" id="ac-letterDate-error"></div>
                 </div>
               </div>
-
-              <div id="ac-status"></div>
             </div>
 
-            <div class="bm-editor-right">
-              <div class="bm-preview-toolbar">
-                <div class="rep-view-toggle">
-                  <button type="button" id="ac-doc-tab-resolution" class="rep-view-btn active" onclick="acSetPreviewDoc('resolution')">Board Resolution</button>
-                  <button type="button" id="ac-doc-tab-letter" class="rep-view-btn" onclick="acSetPreviewDoc('letter')">Registrar Letter</button>
-                </div>
-                <div class="bm-zoom-controls">
-                  <button type="button" class="btn btn-outline btn-sm" onclick="acZoomOut()">−</button>
-                  <span id="ac-zoom-level">100%</span>
-                  <button type="button" class="btn btn-outline btn-sm" onclick="acZoomIn()">+</button>
-                </div>
+            <div id="ac-status" style="margin-top:16px;"></div>
+          </div>
+
+          <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
+          <div id="ac-preview-view" class="regd-preview-view" hidden>
+            <div class="bm-preview-toolbar">
+              <div class="rep-view-toggle">
+                <button type="button" id="ac-doc-tab-resolution" class="rep-view-btn active" onclick="acSetPreviewDoc('resolution')">Board Resolution</button>
+                <button type="button" id="ac-doc-tab-letter" class="rep-view-btn" onclick="acSetPreviewDoc('letter')">Registrar Letter</button>
               </div>
-              <div class="bm-preview-scroll">
-                <div class="regd-preview-placeholder" id="ac-preview-placeholder">
-                  <div class="icon">🧑‍💼</div>
-                  <p>Select a company and enter the meeting date to see a live preview.</p>
-                </div>
-                <div id="ac-preview-style"></div>
-                <div id="ac-preview-root" class="bm-preview-root" style="display:none;"></div>
+              <div class="bm-zoom-controls">
+                <button type="button" class="btn btn-outline btn-sm" onclick="acZoomOut()">−</button>
+                <span id="ac-zoom-level">100%</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="acZoomIn()">+</button>
               </div>
+            </div>
+            <div class="bm-preview-scroll">
+              <div class="regd-preview-placeholder" id="ac-preview-placeholder">
+                <div class="icon">🧑‍💼</div>
+                <p>Select a company and enter the meeting date to see a preview.</p>
+              </div>
+              <div id="ac-preview-style"></div>
+              <div id="ac-preview-root" class="bm-preview-root" style="display:none;"></div>
             </div>
           </div>
 
-          <div class="bm-action-bar">
+          <div class="regd-view-footer">
             <div class="bm-completion-indicator" id="ac-completion-indicator"></div>
-            <div class="bm-action-buttons">
-              <button type="button" class="btn btn-outline" onclick="acScrollToPreview()">👁️ Preview</button>
-              <button type="button" class="btn btn-outline" onclick="generateAuditorChangeResolution()">⬇️ Download Resolution</button>
-              <button type="button" class="btn btn-outline" onclick="generateAuditorChangeLetter()">⬇️ Download Letter</button>
-              <button type="button" class="btn btn-outline" onclick="acPrintDocument()">🖨️ Print</button>
-              <button type="button" class="btn btn-danger" onclick="acResetForm()">Reset</button>
-            </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="acResetForm()">Reset</button>
           </div>
         </div>
 
@@ -859,16 +878,37 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
 
-        <!-- ── SUB: BM/AGM MINUTES ── -->
+        <!-- ── SUB: BM/AGM MINUTES ──
+             Edit/Preview toggle layout, matching the Audit Report Builder tab
+             (js/report.js's repSetView pattern) — wide edit form, wide preview,
+             one visible at a time, rather than a permanently-split two-pane view. -->
         <div id="regd-bmAgmMinutes-panel" class="regd-sub-panel">
-          <div class="bm-editor-shell">
-            <div class="bm-editor-left">
-              <div class="form-group" style="margin-bottom:18px;">
-                <label>Search Company</label>
-                <input type="text" id="bm-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" />
-                <div class="autocomplete-list" id="bm-regNo-autocomplete-list" style="display:none;"></div>
-              </div>
+          <div class="regd-view-actions">
+            <div class="rep-view-toggle">
+              <button type="button" id="bm-tab-edit" class="rep-view-btn active" onclick="bmSetView('edit')">Edit</button>
+              <button type="button" id="bm-tab-preview" class="rep-view-btn" onclick="bmSetView('preview')">Preview</button>
+            </div>
+            <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="generateBmAgmMinutes()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                Save as Word
+              </button>
+              <button type="button" class="btn btn-primary" onclick="bmPrintDocument()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Save as PDF / Print
+              </button>
+            </div>
+          </div>
 
+          <!-- EDIT VIEW: full-width form (default) -->
+          <div id="bm-edit-view" class="regd-edit-view">
+            <div class="form-group" style="margin-bottom:18px; max-width:420px;">
+              <label>Search Company</label>
+              <input type="text" id="bm-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" />
+              <div class="autocomplete-list" id="bm-regNo-autocomplete-list" style="display:none;"></div>
+            </div>
+
+            <div class="regd-form-cards">
               <div class="card bm-summary-card" id="bm-company-summary" style="display:none;">
                 <div class="bm-summary-header">
                   <div class="bm-summary-title">Company</div>
@@ -979,39 +1019,34 @@ function cropLoginLogoIcon(img) {
                   <input type="text" id="bm-auditFee" placeholder="e.g. 50,000" />
                 </div>
               </div>
-
-              <div id="bm-status"></div>
             </div>
 
-            <div class="bm-editor-right">
-              <div class="bm-preview-toolbar">
-                <span class="bm-preview-label">Live Preview</span>
-                <div class="bm-zoom-controls">
-                  <button type="button" class="btn btn-outline btn-sm" onclick="bmZoomOut()">−</button>
-                  <span id="bm-zoom-level">100%</span>
-                  <button type="button" class="btn btn-outline btn-sm" onclick="bmZoomIn()">+</button>
-                </div>
+            <div id="bm-status" style="margin-top:16px;"></div>
+          </div>
+
+          <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
+          <div id="bm-preview-view" class="regd-preview-view" hidden>
+            <div class="bm-preview-toolbar">
+              <span class="bm-preview-label">Preview</span>
+              <div class="bm-zoom-controls">
+                <button type="button" class="btn btn-outline btn-sm" onclick="bmZoomOut()">−</button>
+                <span id="bm-zoom-level">100%</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="bmZoomIn()">+</button>
               </div>
-              <div class="bm-preview-scroll">
-                <div class="regd-preview-placeholder" id="bm-preview-placeholder">
-                  <div class="icon">📝</div>
-                  <p>Select a company and enter the meeting dates to see a live preview.</p>
-                </div>
-                <div id="bm-preview-style"></div>
-                <div id="bm-preview-root" class="bm-preview-root" style="display:none;"></div>
+            </div>
+            <div class="bm-preview-scroll">
+              <div class="regd-preview-placeholder" id="bm-preview-placeholder">
+                <div class="icon">📝</div>
+                <p>Select a company and enter the meeting dates to see a preview.</p>
               </div>
+              <div id="bm-preview-style"></div>
+              <div id="bm-preview-root" class="bm-preview-root" style="display:none;"></div>
             </div>
           </div>
 
-          <div class="bm-action-bar">
+          <div class="regd-view-footer">
             <div class="bm-completion-indicator" id="bm-completion-indicator"></div>
-            <div class="bm-action-buttons">
-              <button type="button" class="btn btn-outline" onclick="bmScrollToPreview()">👁️ Preview</button>
-              <button type="button" class="btn btn-outline" onclick="generateBmAgmMinutes()">⬇️ Download Word</button>
-              <button type="button" class="btn btn-outline" onclick="bmDownloadPdf()">⬇️ Download PDF</button>
-              <button type="button" class="btn btn-outline" onclick="bmPrintDocument()">🖨️ Print</button>
-              <button type="button" class="btn btn-danger" onclick="bmResetForm()">Reset</button>
-            </div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="bmResetForm()">Reset</button>
           </div>
         </div>
 
@@ -1593,34 +1628,34 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 
-<script src="js/config.js?v=202607122600"></script>
-<script src="js/utils.js?v=202607122600"></script>
-<script src="js/core/moduleRegistry.js?v=202607122600"></script>
-<script src="js/core/statusBox.js?v=202607122600"></script>
-<script src="js/core/nepaliLocale.js?v=202607122600"></script>
-<script src="js/core/documentEngine.js?v=202607122600"></script>
-<script src="js/core/ocrEngine.js?v=202607122600"></script>
-<script src="js/core/searchEngine.js?v=202607122600"></script>
-<script src="js/core/pdfEngine.js?v=202607122600"></script>
-<script src="js/core/visionEngine.js?v=202607122600"></script>
-<script src="js/core/tableEngine.js?v=202607122600"></script>
-<script src="js/core/workflowEngine.js?v=202607122600"></script>
-<script src="js/core/validationEngine.js?v=202607122600"></script>
-<script src="js/core/auditLog.js?v=202607122600"></script>
-<script src="js/core/integrations.js?v=202607122600"></script>
-<script src="js/tabs.js?v=202607122600"></script>
-<script src="js/dashboard.js?v=202607122600"></script>
-<script src="js/registrar.js?v=202607122600"></script>
-<script src="js/clients.js?v=202607122600"></script>
-<script src="js/logs.js?v=202607122600"></script>
-<script src="js/vatReturn.js?v=202607122600"></script>
-<script src="js/vatCompliance.js?v=202607122600"></script>
-<script src="js/billing.js?v=202607122600"></script>
-<script src="js/sendDocument.js?v=202607122600"></script>
-<script src="js/report.js?v=202607122600"></script>
-<script src="js/bmAgmMinutes.js?v=202607122600"></script>
-<script src="js/auditorChange.js?v=202607122600"></script>
-<script src="js/auth.js?v=202607122600"></script>
+<script src="js/config.js?v=202607122700"></script>
+<script src="js/utils.js?v=202607122700"></script>
+<script src="js/core/moduleRegistry.js?v=202607122700"></script>
+<script src="js/core/statusBox.js?v=202607122700"></script>
+<script src="js/core/nepaliLocale.js?v=202607122700"></script>
+<script src="js/core/documentEngine.js?v=202607122700"></script>
+<script src="js/core/ocrEngine.js?v=202607122700"></script>
+<script src="js/core/searchEngine.js?v=202607122700"></script>
+<script src="js/core/pdfEngine.js?v=202607122700"></script>
+<script src="js/core/visionEngine.js?v=202607122700"></script>
+<script src="js/core/tableEngine.js?v=202607122700"></script>
+<script src="js/core/workflowEngine.js?v=202607122700"></script>
+<script src="js/core/validationEngine.js?v=202607122700"></script>
+<script src="js/core/auditLog.js?v=202607122700"></script>
+<script src="js/core/integrations.js?v=202607122700"></script>
+<script src="js/tabs.js?v=202607122700"></script>
+<script src="js/dashboard.js?v=202607122700"></script>
+<script src="js/registrar.js?v=202607122700"></script>
+<script src="js/clients.js?v=202607122700"></script>
+<script src="js/logs.js?v=202607122700"></script>
+<script src="js/vatReturn.js?v=202607122700"></script>
+<script src="js/vatCompliance.js?v=202607122700"></script>
+<script src="js/billing.js?v=202607122700"></script>
+<script src="js/sendDocument.js?v=202607122700"></script>
+<script src="js/report.js?v=202607122700"></script>
+<script src="js/bmAgmMinutes.js?v=202607122700"></script>
+<script src="js/auditorChange.js?v=202607122700"></script>
+<script src="js/auth.js?v=202607122700"></script>
 
 </body>
 </html>

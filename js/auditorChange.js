@@ -130,7 +130,7 @@ function acSetPreviewDoc(which) {
   acCurrentPreviewDoc = which;
   document.getElementById('ac-doc-tab-resolution').classList.toggle('active', which === 'resolution');
   document.getElementById('ac-doc-tab-letter').classList.toggle('active', which === 'letter');
-  acSchedulePreviewRefresh();
+  if (acIsPreviewOpen()) acSchedulePreviewRefresh();
 }
 
 function acPreviewReady() {
@@ -184,18 +184,36 @@ function acSchedulePreviewRefresh() {
   acPreviewRefreshCtl.schedule();
 }
 
+// ════════════════════════════════════════════
+//  Edit/Preview view toggle — mirrors bmAgmMinutes.js's bmSetView. Save as
+//  Word and Print never read the preview's DOM (they render fresh offscreen
+//  from acBuildData() every time), so this toggle exists purely to keep the
+//  heavier docx-preview render from firing on every keystroke.
+// ════════════════════════════════════════════
+function acIsPreviewOpen() {
+  const pv = document.getElementById('ac-preview-view');
+  return !!pv && !pv.hidden;
+}
+
+function acSetView(mode) {
+  const preview = mode === 'preview';
+  const pv = document.getElementById('ac-preview-view');
+  const enteringPreview = preview && pv.hidden;
+  document.getElementById('ac-edit-view').hidden = preview;
+  pv.hidden = !preview;
+  document.getElementById('ac-tab-edit').classList.toggle('active', !preview);
+  document.getElementById('ac-tab-preview').classList.toggle('active', preview);
+  if (enteringPreview) acRefreshPreview(acIsPreviewOpen);
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   WorkflowEngine.attachFormWatcher(document.getElementById('regd-auditorChange-panel'), acOnFormChanged);
   acUpdateCompletionIndicator();
 });
 
 // ════════════════════════════════════════════
-//  Action bar: scroll-to-preview, print
+//  Print
 // ════════════════════════════════════════════
-function acScrollToPreview() {
-  const right = document.querySelector('#regd-auditorChange-panel .bm-editor-right');
-  if (right) right.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
 
 // Renders a generated .docx offscreen WITHOUT docx-preview's page splitting
 // (breakPages:false gives one continuous section), and measures it — so the
@@ -281,14 +299,17 @@ function acResetForm() {
   document.getElementById('ac-status').innerHTML = '';
   acSetPreviewDoc('resolution');
   acShowPreviewPlaceholder();
+  acSetView('edit');
   acUpdateCompletionIndicator();
 }
 
 // ════════════════════════════════════════════
 //  Polish: zoom, inline date validation, completion indicator
 // ════════════════════════════════════════════
+// Preview only re-renders while it's the visible view — never while the
+// (hidden) edit form is being typed into.
 function acOnFormChanged() {
-  acSchedulePreviewRefresh();
+  if (acIsPreviewOpen()) acSchedulePreviewRefresh();
   acUpdateCompletionIndicator();
 }
 

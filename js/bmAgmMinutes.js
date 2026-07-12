@@ -382,6 +382,36 @@ function bmSchedulePreviewRefresh() {
 }
 
 // ════════════════════════════════════════════
+//  BM/AGM MINUTES — Edit/Preview view toggle
+//  Mirrors js/report.js's repSetView pattern: a wide edit form and a wide
+//  preview, one visible at a time. Unlike Report Builder, Save as Word and
+//  Print never read the preview's DOM — they call bmRenderDocx(bmBuildData())
+//  fresh from the form fields every time — so switching views never risks an
+//  export seeing empty/stale content; this toggle exists purely so preview
+//  rendering (a real docx-preview render, heavier than Report Builder's HTML
+//  string interpolation) only happens on demand instead of on every keystroke.
+// ════════════════════════════════════════════
+function bmIsPreviewOpen() {
+  const pv = document.getElementById('bm-preview-view');
+  return !!pv && !pv.hidden;
+}
+
+function bmSetView(mode) {
+  const preview = mode === 'preview';
+  const pv = document.getElementById('bm-preview-view');
+  // Render only when entering preview from the edit view — not when Preview
+  // is already open — so a click-to-edit token commit (which itself re-opens
+  // this same code path via bmOnFormChanged) isn't wiped by a redundant
+  // second render racing the first.
+  const enteringPreview = preview && pv.hidden;
+  document.getElementById('bm-edit-view').hidden = preview;
+  pv.hidden = !preview;
+  document.getElementById('bm-tab-edit').classList.toggle('active', !preview);
+  document.getElementById('bm-tab-preview').classList.toggle('active', preview);
+  if (enteringPreview) bmRefreshPreview(bmIsPreviewOpen);
+}
+
+// ════════════════════════════════════════════
 //  BM/AGM MINUTES — inline click-to-edit in the preview
 //  Only wraps values that flow into the template completely unchanged
 //  (company name, chairman name, shareholder names, registration number).
@@ -487,12 +517,8 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // ════════════════════════════════════════════
-//  BM/AGM MINUTES — sticky action bar
+//  BM/AGM MINUTES — export
 // ════════════════════════════════════════════
-function bmScrollToPreview() {
-  const right = document.querySelector('.bm-editor-right');
-  if (right) right.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
 
 // Builds print HTML from a FRESH offscreen render (not the preview pane's
 // DOM): one section.bm-docx per document, each fitted onto its own printed
@@ -556,12 +582,11 @@ async function bmOpenPrintWindow(successMessage) {
   bmStatus(successMessage || '🖨️ प्रिन्ट विन्डो खुल्यो (print window opened).', 'success');
 }
 
+// One button covers both Print and Save-as-PDF (the browser's print dialog
+// itself offers "Save as PDF" as a destination) — matching Report Builder's
+// single "Save as PDF / Print" action instead of two separate buttons.
 function bmPrintDocument() {
-  bmOpenPrintWindow();
-}
-
-function bmDownloadPdf() {
-  bmOpenPrintWindow('📄 प्रिन्ट विन्डो खुल्यो — गन्तव्यको रूपमा "Save as PDF" रोज्नुहोस् (a print window opened — choose "Save as PDF" as the destination).');
+  bmOpenPrintWindow('🖨️ प्रिन्ट विन्डो खुल्यो — प्रिन्ट गर्नुहोस् वा गन्तव्यमा "Save as PDF" रोज्नुहोस् (a print window opened — print, or choose "Save as PDF" as the destination).');
 }
 
 function bmResetForm() {
@@ -580,6 +605,7 @@ function bmResetForm() {
 
   document.getElementById('bm-status').innerHTML = '';
   bmShowPreviewPlaceholder();
+  bmSetView('edit');
   bmClearDraft();
   bmUpdateCompletionIndicator();
 }
@@ -591,9 +617,11 @@ function bmResetForm() {
 
 // Single entry point for "something in the form changed" — keeps the three
 // independent side effects (preview, draft, completion status) from being
-// wired up separately at every call site.
+// wired up separately at every call site. Preview only re-renders while it's
+// the visible view — e.g. a click-to-edit token commit — never while the
+// (hidden) edit form is being typed into.
 function bmOnFormChanged() {
-  bmSchedulePreviewRefresh();
+  if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
   bmScheduleAutosave();
   bmUpdateCompletionIndicator();
 }
@@ -636,7 +664,7 @@ const bmAutosave = WorkflowEngine.createAutosave('bmAgmDraft', {
       if (el) el.value = val;
     });
     (draft.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
-    bmSchedulePreviewRefresh();
+    if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
     bmStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
   },
   debounceMs: 600,
