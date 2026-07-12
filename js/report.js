@@ -180,7 +180,7 @@ function renderRepReport(){
   <div class="rep-sheet" contenteditable="true" spellcheck="false">
     ${renderRepFirmHeader(f)}
 
-    <div class="rep-title">Independent Auditor's Report</div>
+    <div class="rep-title">${s.reportType === 'review' ? 'Report on the Financial Statement' : "Independent Auditor's Report"}</div>
     <p class="rep-salutation">To ${e.salutationTo} <strong>${s.entityName}</strong></p>
 
     ${renderBody(s, e)}
@@ -410,7 +410,6 @@ function renderRepBodyReview(s, e){
   const startYear = $rep('rep-fy').value.split('-')[0];
   const periodStart = `1st Shrawan, ${startYear}`;
   return `
-    <h3 class="rep-sec">Report on the Financial Statement</h3>
     <p>We have reviewed the accompanying financial statements of ${s.entityName}, which comprise the statement of financial position as at ${s.fy.bs} (${s.fy.ad}), and the statement of profit or loss, and statement of cash flows for the period ${periodStart} to ${s.fy.bs} (${s.fy.ad}), and a summary of significant accounting policies and other explanatory information.</p>
 
     <h3 class="rep-sec">Management Responsibility for the Financial Statement</h3>
