@@ -111,6 +111,10 @@ function cropReportLetterheadLogo(img){
   img.src = canvas.toDataURL('image/png');
 }
 
+// Logo + a single thin rule at the top of the sheet — address/email/phone
+// moved out of here entirely, into the navy footer bar at the bottom of the
+// sheet (renderRepFooterBar) instead of repeating contact details in two
+// places.
 function renderRepFirmHeader(f){
   // Firms with a letterhead logo (a lockup of the firm name + title) show the
   // image in place of those two text lines; firms without one keep plain text.
@@ -121,13 +125,20 @@ function renderRepFirmHeader(f){
   return `
     <div class="rep-firm-header">
       ${identity}
-      <div class="rfaddr">${f.address}</div>
-    </div>
-    <div class="rep-contact-row">
-      <div class="rep-contact-col">
-        <p>Email:- ${f.email}</p>
-        <p>Phone no:- ${f.phone}</p>
-      </div>
+      <div class="rep-header-rule"></div>
+    </div>`;
+}
+
+// Navy contact bar at the very bottom of the sheet — renders exactly once
+// per report (the sheet is one continuous element; there is no per-printed-
+// page repeating header/footer here), regardless of how many physical pages
+// the content spans when printed or exported.
+function renderRepFooterBar(f){
+  return `
+    <div class="rep-footer-bar">
+      <div class="rep-footer-item">📍 ${f.address}</div>
+      <div class="rep-footer-item">✉️ ${f.email}</div>
+      <div class="rep-footer-item">📞 ${f.phone}</div>
     </div>`;
 }
 
@@ -186,6 +197,8 @@ function renderRepReport(){
     ${renderBody(s, e)}
 
     ${renderRepSigBlock(s, f)}
+
+    ${renderRepFooterBar(f)}
   </div>
   `;
 
@@ -567,6 +580,8 @@ function buildRepWordHtml(){
     ".rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; }" +
     ".rep-sig-block{ display:table; width:100%; }" +
     ".rep-sig-left,.rep-sig-right{ display:table-cell; width:50%; vertical-align:top; }" +
+    ".rep-footer-bar{ display:table; width:100%; }" +
+    ".rep-footer-item{ display:table-cell; text-align:center; }" +
     "</style></head><body>" + inner + "</body></html>";
 }
 
