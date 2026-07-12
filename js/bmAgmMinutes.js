@@ -246,12 +246,18 @@ function bmShowPreviewPlaceholder() {
 // Fits each rendered page-section onto exactly one sheet. Pages are split
 // only at the template's explicit page breaks — one page per document, so
 // the company-name header always tops its sheet and the signature block
-// stays with its document. A document that runs taller than the sheet is
-// first given proportionally MORE width (text reflows onto the paper's full
-// breadth once zoomed back down) and then zoomed so its visual size is
-// exactly the sheet — a far gentler shrink than scaling the narrow column.
-// Shared by the live preview and the print window so both paginate
-// identically.
+// stays with its document. A document that runs taller than the sheet has
+// its content moved into an inner .bm-page-scale wrapper, given
+// proportionally more width (so text reflows onto the paper's full breadth),
+// and shrunk with transform:scale — while the outer section itself is locked
+// to the sheet's exact pixel size with overflow:hidden. That lock matters
+// for PRINT specifically: CSS zoom visually shrinks an element but some
+// browsers still paginate print output using its PRE-zoom layout box, which
+// silently spills a blank overflow page into the print job even though the
+// screen preview looks correct. transform:scale never changes the element's
+// real layout box, so the outer section is always exactly one sheet as far
+// as the print engine is concerned — no ambiguity, no phantom page. Shared
+// by the live preview and the print window so both paginate identically.
 function bmFitPagesToSheet(container) {
   const sections = container.querySelectorAll('section.bm-docx');
   if (!sections.length) return null;
@@ -277,30 +283,48 @@ function bmFitPagesToSheet(container) {
     const pageH = Math.round(parseFloat(getComputedStyle(measureSections[0]).minHeight));
 
     measureSections.forEach((m, i) => {
-      // docx-preview sets the page's width/min-height as INLINE styles —
-      // stash them on first touch and restore (never blank) before
-      // measuring, so a re-fit starts from the true page geometry.
-      if (m.dataset.bmOrigWidth === undefined) {
-        m.dataset.bmOrigWidth = m.style.width;
-        m.dataset.bmOrigMinHeight = m.style.minHeight;
+      // Move the section's real children into an inner scale wrapper once —
+      // the wrapper is what gets transformed; the section itself stays a
+      // fixed, un-transformed pageW x pageH box.
+      let scaler = m.querySelector(':scope > .bm-page-scale');
+      if (!scaler) {
+        scaler = document.createElement('div');
+        scaler.className = 'bm-page-scale';
+        while (m.firstChild) scaler.appendChild(m.firstChild);
+        m.appendChild(scaler);
       }
-      m.style.zoom = '';
-      m.style.width = m.dataset.bmOrigWidth;
-      m.style.minHeight = m.dataset.bmOrigMinHeight;
-      if (m.getBoundingClientRect().height > pageH + 2) {
-        for (let z = 0.95; z >= 0.6; z -= 0.05) {
-          m.style.zoom = z;
-          m.style.width = Math.round(pageW / z) + 'px';
-          m.style.minHeight = Math.round(pageH / z) + 'px';
-          if (m.getBoundingClientRect().height <= pageH + 2) break;
+      scaler.style.transform = '';
+      scaler.style.width = '';
+      scaler.style.transformOrigin = 'top left';
+      m.style.width = pageW + 'px';
+      m.style.minHeight = pageH + 'px';
+      m.style.height = pageH + 'px';
+      m.style.overflow = 'hidden';
+
+      const naturalH = scaler.getBoundingClientRect().height;
+      if (naturalH > pageH + 2) {
+        // Set both width and transform, THEN measure — getBoundingClientRect
+        // reflects the real post-transform box, so this is exact. Predicting
+        // the scaled height from a pre-transform measurement (natural height
+        // x z) was wrong: rounding pageW/z to a whole pixel shifts text
+        // reflow at Devanagari line-wrap boundaries in ways that don't scale
+        // linearly, so the prediction silently drifted a few px past pageH —
+        // enough for overflow:hidden to clip the last line.
+        for (let z = 0.95; z >= 0.5; z -= 0.01) {
+          scaler.style.width = Math.round(pageW / z) + 'px';
+          scaler.style.transform = `scale(${z})`;
+          if (scaler.getBoundingClientRect().height <= pageH) break;
         }
       }
       if (hidden && sections[i]) {
-        sections[i].dataset.bmOrigWidth = m.dataset.bmOrigWidth;
-        sections[i].dataset.bmOrigMinHeight = m.dataset.bmOrigMinHeight;
-        sections[i].style.zoom = m.style.zoom;
+        const targetScaler = sections[i].querySelector(':scope > .bm-page-scale')
+          || (() => { const s = document.createElement('div'); s.className = 'bm-page-scale'; while (sections[i].firstChild) s.appendChild(sections[i].firstChild); sections[i].appendChild(s); return s; })();
+        targetScaler.innerHTML = scaler.innerHTML;
+        targetScaler.style.cssText = scaler.style.cssText;
         sections[i].style.width = m.style.width;
         sections[i].style.minHeight = m.style.minHeight;
+        sections[i].style.height = m.style.height;
+        sections[i].style.overflow = m.style.overflow;
       }
     });
     return { pageW, pageH };
