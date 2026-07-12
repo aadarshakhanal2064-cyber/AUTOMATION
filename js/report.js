@@ -56,7 +56,8 @@ function getRepState(){
     reportPlace: $rep('rep-reportPlace').value.trim() || "[PLACE]",
     udin: $rep('rep-udin').value.trim(),
     includeEOM: $rep('rep-toggleEOM').checked,
-    includeKAM: $rep('rep-toggleKAM').checked
+    includeKAM: $rep('rep-toggleKAM').checked,
+    includeBasisExample: $rep('rep-toggleBasisExample').checked
   };
 }
 
@@ -156,18 +157,20 @@ function renderRepFyDate(){
   $rep('rep-fyDateDisplay').innerHTML = `Financial position as at <strong>${d.bs}</strong> (<strong>${d.ad}</strong>)`;
 }
 
+// Orchestrator: the cover page, letterhead, title, salutation and signature
+// block are identical for every report type — only the numbered body sections
+// (1.1 onward) differ, so each type supplies its own body renderer.
 function renderRepReport(){
   const s = getRepState();
   const f = s.firm;
   const e = s.entityType;
 
-  const n1 = "1.1";
-  // Key Audit Matters (1.2) now always renders — the checkbox only toggles
-  // the details table below it — so the following section numbers are fixed.
-  const nKAM = "1.2";
-  const n2 = "1.3";
-  const n3 = "1.4";
-  const n4 = "1.5";
+  const bodyRenderers = {
+    unqualified: renderRepBodyUnqualified,
+    adverse:     renderRepBodyAdverse,
+    disclaimer:  renderRepBodyDisclaimer,
+  };
+  const renderBody = bodyRenderers[s.reportType] || renderRepBodyUnqualified;
 
   const html = `
   ${renderRepCoverPage(s)}
@@ -178,6 +181,25 @@ function renderRepReport(){
     <div class="rep-title">Independent Auditor's Report</div>
     <p class="rep-salutation">To ${e.salutationTo} <strong>${s.entityName}</strong></p>
 
+    ${renderBody(s, e)}
+
+    ${renderRepSigBlock(s, f)}
+  </div>
+  `;
+
+  $rep('rep-previewRoot').innerHTML = html;
+}
+
+function renderRepBodyUnqualified(s, e){
+  const n1 = "1.1";
+  // Key Audit Matters (1.2) now always renders — the checkbox only toggles
+  // the details table below it — so the following section numbers are fixed.
+  const nKAM = "1.2";
+  const n2 = "1.3";
+  const n3 = "1.4";
+  const n4 = "1.5";
+
+  return `
     <h3 class="rep-sec"><span class="rep-section-num">${n1}</span> Report on the Audit of Financial Statement:</h3>
     <p><strong>Opinion:</strong></p>
     <p>We have audited the accompanying financial statements of ${s.entityName}, which comprises the Statement of Financial Position as at ${s.fy.bs} (${s.fy.ad}) and the Statement of Income for the year then ended, Statements of Change in Equity and Statement of Cash Flow and a Summary of Significant Accounting Policies and Other Explanatory Information.</p>
@@ -233,13 +255,115 @@ function renderRepReport(){
     <h3 class="rep-sec"><span class="rep-section-num">${n4}</span> Report on Other Legal and Regulatory Requirements:</h3>
     <p>We have obtained information and explanation asked for, which, to the best of our knowledge and belief, were necessary for the purpose of our audit. In our opinion, Statement of Financial Position, Statement of Income, Statement of Change in Equity and Statement of Cash Flows, have been prepared in accordance with the requirement of ${e.citeSpecificAct ? e.act : 'the applicable law'} and are in agreement with the books of accounts maintained by the ${e.entityNoun} and proper books of account as required by the law maintained by the ${e.entityNoun} have been kept so far as it appears form our examination of those books and records of the ${e.entityNoun}.</p>
     <p>In our opinion, so far as it appeared from our examination of the books, the ${e.entityNoun} has maintained adequate capital funds and adequate provisions for possible impairment of assets in accordance with the applicable laws.</p>
-    <p>To the best of our information and according to explanation given to us and so far observed from our examination of the books of accounts of the ${e.entityNoun}, we have not come across cases where ${e.governingBodyShort} or any employee of the ${e.entityNoun} have acted contrary to the provisions of the laws relating to accounts, or committed any misappropriation or caused loss or damage to the ${e.entityNoun} and violated any directives issued by the regulatory authorities or acted in a manner to jeopardise the interest and security of the ${e.entityNoun}, its creditors and ${e.entityNoun === 'company' ? 'shareholders' : 'stakeholders'}.</p>
+    <p>To the best of our information and according to explanation given to us and so far observed from our examination of the books of accounts of the ${e.entityNoun}, we have not come across cases where ${e.governingBodyShort} or any employee of the ${e.entityNoun} have acted contrary to the provisions of the laws relating to accounts, or committed any misappropriation or caused loss or damage to the ${e.entityNoun} and violated any directives issued by the regulatory authorities or acted in a manner to jeopardise the interest and security of the ${e.entityNoun}, its creditors and ${e.entityNoun === 'company' ? 'shareholders' : 'stakeholders'}.</p>`;
+}
 
-    ${renderRepSigBlock(s, f)}
-  </div>
-  `;
+// Adverse Opinion and Disclaimer of Opinion have no Key Audit Matters slot, so
+// their sections are numbered straight through 1.1–1.4. Both reproduce the
+// firm's own draft wording; the "Basis" example paragraph is optional (shown
+// only when its checkbox is ticked) and clearly flagged as example text.
+function renderRepBodyAdverse(s, e){
+  const act = e.citeSpecificAct ? e.act : 'the applicable law';
+  return `
+    <h3 class="rep-sec"><span class="rep-section-num">1.1</span> Report on the Audit of Financial Statement:</h3>
+    <p><strong>Adverse Opinion:</strong></p>
+    <p>We have audited the accompanying financial statements of ${s.entityName}, which comprise the Statement of Financial Position as at ${s.fy.bs} (${s.fy.ad}), the Statement of Income, Statement of Changes in Equity and Statement of Cash Flows for the year then ended, and a summary of significant accounting policies and other explanatory information.</p>
+    <p>In our opinion, because of the significance and pervasiveness of the matters described in the Basis for Adverse Opinion section of our report, the accompanying financial statements do not present fairly the financial position of the ${e.entityNounCap} as at ${s.fy.bs} (${s.fy.ad}), nor its financial performance and cash flows for the year then ended in accordance with Nepal Accounting Standards.</p>
 
-  $rep('rep-previewRoot').innerHTML = html;
+    <p><strong>Basis of Adverse Opinion:</strong></p>
+    ${s.includeBasisExample ? `
+    <div class="rep-optional-block">
+      <p class="rep-edit-hint">Example finding — replace with the actual basis for this engagement.</p>
+      <p contenteditable="true">1. As disclosed in Note __ to the financial statements, the Company owns 100% of the shares of XYZ Trading Private Limited, which qualifies as a subsidiary under applicable Nepal Accounting Standards. However, management has not prepared consolidated financial statements and has accounted for the investment solely at cost.</p>
+      <p contenteditable="true">In addition, the Company has not recognized impairment losses on long-outstanding receivables amounting to NPR 25,000,000 and has not recognized a provision of NPR 18,000,000 relating to a legal claim for which an outflow of economic resources is probable.</p>
+      <p contenteditable="true">Had the requirements of Nepal Accounting Standards been complied with:</p>
+      <ul class="rep-audit-points">
+        <li>Total assets would have been materially adjusted.</li>
+        <li>Total liabilities would have increased by approximately NPR 18,000,000.</li>
+        <li>Profit for the year would have been significantly reduced.</li>
+        <li>Equity would have been materially misstated.</li>
+        <li>The results, assets, liabilities and cash flows of the subsidiary would have been incorporated into the financial statements.</li>
+      </ul>
+      <p contenteditable="true">The effects of these departures from Nepal Accounting Standards are both material and pervasive to the financial statements because they affect multiple elements of the financial statements, including assets, liabilities, income, expenses, equity and cash flows. Consequently, the financial statements as a whole are materially misstated.</p>
+    </div>` : ``}
+    <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in accordance with the ICAN Handbook of Code of Ethics for Professional Accountants and have fulfilled our other ethical responsibilities in accordance with these requirements.</p>
+    <p>We believe that the audit evidence we have obtained is sufficient and appropriate to provide a basis for our Adverse opinion.</p>
+
+    <h3 class="rep-sec"><span class="rep-section-num">1.2</span> Responsibilities of the Management and Those Charged with Governance for the Financial Statements:</h3>
+    <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements in accordance with Nepal Accounting Standards and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
+    <p>In preparing the financial statements, management is responsible for assessing the ${e.entityNoun}'s ability to continue as going concern, disclosing, as applicable, matters related to going concern basis of accounting unless management either intends to liquidate the ${e.entityNoun} or to cease operations, or has no realistic alternative but to do to so. Those charged with governance are responsible for overseeing the ${e.entityNoun}'s financial reporting process.</p>
+
+    <h3 class="rep-sec"><span class="rep-section-num">1.3</span> Auditor's Responsibility for Audit of the Financial Statements:</h3>
+    <p>Our objective is to obtain reasonable assurance about whether the financial statements as a whole are free from material misstatements, whether due to fraud or error, and to issue an Auditor's Report that includes our opinion. Reasonable assurance is high level of assurance; but is not guarantee that an audit conducted in accordance with Nepal Accounting Standard will always detect a material misstatements when it exists. Misstatements can arise from fraud or error, and are considered material if, individually or taken together, they could reasonably be expected to influence the economic decisions of users taken on the basis these financial statements.</p>
+    <p>As part of the audit accordance with NAS, we exercise professional judgement and maintain professional scepticism throughout the audit. We also;</p>
+    <ul class="rep-audit-points">
+      <li>Identify and assess the risk of material misstatements of the financial statements, whether due to fraud or error, design and perform audit procedures responsive to those risks, and obtain audit evidence that is sufficient and appropriate to provide a basis for our opinion. The risk of not detecting a material misstatement resulting from fraud is higher that for one resulting from error, as fraud may involve collusion, forgery, intentional omissions, misrepresentations, or override of internal control.</li>
+      <li>Obtain an understanding of internal control relevant to the audit in order to design audit procedures that are appropriate in the circumstances, but not for expressing an opinion on the effectiveness of the ${e.entityNoun}'s internal control.</li>
+      <li>Evaluate the appropriateness of accounting policies used and the reasonableness of accounting estimates and related disclosure made by the management.</li>
+      <li>Conclude on the appropriateness of management's use of the going concern basis of accounting and, based on the audit evidence obtained, whether a material uncertainty exists, we are required to draw attention in our auditor's report to the related disclosures in the financial statements, or if such disclosures are inadequate, to modify our opinion. Our conclusions are based on the audit evidence obtained up to date of our auditor's report. However, further events or conditions may cause the ${e.entityNoun} to cease to continue as a going concern.</li>
+    </ul>
+    <p>We communicate with Those Charged with Governance regarding among other matters, the planned scope and timing of the audit and significant audit finding including any significant deficiencies in internal control that are identify during our audit.</p>
+
+    <h3 class="rep-sec"><span class="rep-section-num">1.4</span> Report on Other Legal and Regulatory Requirements:</h3>
+    <p>We have obtained all information and explanations which, to the best of our knowledge and belief, were necessary for the purposes of our audit.</p>
+    <p>However, because of the matters described in the Basis for Adverse Opinion section of our report, the financial statements have not been prepared in accordance with the requirements of Nepal Accounting Standards and do not appropriately reflect the financial position, financial performance and cash flows of the ${e.entityNounCap}.</p>
+    <p>Furthermore, due to the material and pervasive effects of the matters described above:</p>
+    <ul class="rep-audit-points">
+      <li>The financial statements are not fully compliant with the financial reporting requirements of the ${act}.</li>
+      <li>The Statement of Financial Position, Statement of Income, Statement of Changes in Equity and Statement of Cash Flows contain material misstatements.</li>
+      <li>Assets, liabilities, income, expenses and equity are materially misstated.</li>
+      <li>Users of the financial statements should not rely on the financial statements without considering the matters described in the Basis for Adverse Opinion section.</li>
+    </ul>
+    <p>To the best of our knowledge and based on the audit evidence obtained, except for the matters giving rise to the adverse opinion, we have not identified any material instances of fraud or misappropriation by management or employees that require separate reporting under applicable laws and regulations.</p>`;
+}
+
+function renderRepBodyDisclaimer(s, e){
+  const act = e.citeSpecificAct ? e.act : 'the applicable law';
+  return `
+    <h3 class="rep-sec"><span class="rep-section-num">1.1</span> Report on the Audit of Financial Statement:</h3>
+    <p><strong>Disclaimer of Opinion:</strong></p>
+    <p>We were engaged to audit the accompanying financial statements of ${s.entityName}, which comprise the Statement of Financial Position as at ${s.fy.bs} (${s.fy.ad}), the Statement of Income, Statement of Changes in Equity and Statement of Cash Flows for the year then ended, and a summary of significant accounting policies and other explanatory information.</p>
+    <p>Because of the significance of the matters described in the Basis for Disclaimer of Opinion section of our report, we have not been able to obtain sufficient appropriate audit evidence to provide a basis for an audit opinion on these financial statements. Accordingly, we do not express an opinion on the accompanying financial statements.</p>
+
+    <p><strong>Basis for Disclaimer of Opinion:</strong></p>
+    ${s.includeBasisExample ? `
+    <div class="rep-optional-block">
+      <p class="rep-edit-hint">Example finding — replace with the actual basis for this engagement.</p>
+      <p contenteditable="true">1. The ${e.entityNoun} did not maintain complete accounting records and was unable to provide sufficient supporting documents relating to significant balances and transactions, including trade receivables, inventories, revenue transactions and certain expenses recorded during the year. In addition, physical verification records and third-party confirmations for material account balances were not made available to us.</p>
+    </div>` : ``}
+    <p>As a result, we were unable to perform alternative audit procedures to satisfy ourselves regarding the completeness, accuracy and existence of these balances and transactions. Consequently, we could not determine whether any adjustments might have been necessary in respect of the reported assets, liabilities, income, expenses, equity and related disclosures in the financial statements.</p>
+    <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in accordance with the ICAN Handbook of Code of Ethics for Professional Accountants and have fulfilled our other ethical responsibilities in accordance with these requirements.</p>
+    <p>Because of the matters described above, we were unable to obtain sufficient appropriate audit evidence to provide a basis for an audit opinion on the financial statements.</p>
+
+    <h3 class="rep-sec"><span class="rep-section-num">1.2</span> Responsibilities of the Management and Those Charged with Governance for the Financial Statements:</h3>
+    <p>The ${e.entityNounCap}'s management is responsible for the preparation and fair presentation of these financial statements in accordance with Nepal Accounting Standards and for such internal control as management determines is necessary to enable the preparation of financial statements that are free from material misstatements, whether due to fraud or error.</p>
+    <p>In preparing the financial statements, management is responsible for assessing the ${e.entityNoun}'s ability to continue as going concern, disclosing, as applicable, matters related to going concern basis of accounting unless management either intends to liquidate the ${e.entityNoun} or to cease operations, or has no realistic alternative but to do to so. Those charged with governance are responsible for overseeing the ${e.entityNoun}'s financial reporting process.</p>
+
+    <h3 class="rep-sec"><span class="rep-section-num">1.3</span> Auditor's Responsibility for Audit of the Financial Statements:</h3>
+    <p>Our responsibility is to conduct an audit of the ${e.entityNoun}'s financial statements in accordance with Nepal Standards on Auditing and to issue an auditor's report. However, because of the matters described in the Basis for Disclaimer of Opinion section of our report, we were unable to obtain sufficient appropriate audit evidence to provide a basis for an audit opinion on these financial statements.</p>
+    <p>We are independent of the ${e.entityNoun} in accordance with the ethical requirements relevant to our audit of the financial statements in Nepal and have fulfilled our other ethical responsibilities in accordance with these requirements.</p>
+
+    <h3 class="rep-sec"><span class="rep-section-num">1.4</span> Report on Other Legal and Regulatory Requirements:</h3>
+    <p>Because of the significance of the matters described in the Basis for Disclaimer of Opinion section, we were unable to obtain sufficient appropriate audit evidence regarding the accounting records and financial information of the ${e.entityNoun}. Accordingly, we are unable to determine whether:</p>
+    <ul class="rep-audit-points">
+      <li>Proper books of account as required by ${act} have been maintained by the ${e.entityNoun}.</li>
+      <li>The Statement of Financial Position, Statement of Income, Statement of Changes in Equity and Statement of Cash Flows are in agreement with the books and records of the ${e.entityNoun}.</li>
+      <li>Adequate provisions have been made for impairment of assets and other potential liabilities in accordance with applicable laws and accounting standards.</li>
+      <li>Any instances of non-compliance with applicable laws and regulations, misappropriation of assets, fraud, or actions prejudicial to the interests of the ${e.entityNoun}, its creditors and ${e.entityNoun === 'company' ? 'shareholders' : 'stakeholders'} have occurred.</li>
+    </ul>
+    <p>Accordingly, we do not express an opinion on these matters.</p>`;
+}
+
+// Each report type exposes only the optional-content checkboxes that exist in
+// its template: EOM/KAM belong to Unqualified; the example-Basis paragraph
+// belongs to Adverse and Disclaimer.
+function repUpdateCheckboxVisibility(){
+  const type = $rep('rep-reportType').value;
+  const isUnqualified = type === 'unqualified';
+  const hasBasisExample = type === 'adverse' || type === 'disclaimer';
+  $rep('rep-label-EOM').hidden = !isUnqualified;
+  $rep('rep-label-KAM').hidden = !isUnqualified;
+  $rep('rep-label-BasisExample').hidden = !hasBasisExample;
 }
 
 // ── Edit / Preview view switching ──
@@ -253,6 +377,7 @@ function repIsPreviewOpen(){
 }
 function repRefresh(){
   renderRepFyDate();
+  repUpdateCheckboxVisibility();
   if (repIsPreviewOpen()) renderRepReport();
 }
 function repSetView(mode){
@@ -278,7 +403,7 @@ function repEnsureRendered(){
 // Need to run initialization logic on window load to ensure DOM is ready
 window.addEventListener('load', () => {
   ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan',
-   'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM'].forEach(id=>{
+   'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM','rep-toggleBasisExample'].forEach(id=>{
     const el = document.getElementById(id);
     if (el){
       el.addEventListener('input', repRefresh);
@@ -287,6 +412,7 @@ window.addEventListener('load', () => {
   });
 
   renderRepFyDate();
+  repUpdateCheckboxVisibility();
 });
 
 function buildRepPrintableDoc(){
@@ -371,6 +497,9 @@ function buildRepWordHtml(){
     ".rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; }" +
     ".rep-sig-block{ display:table; width:100%; }" +
     ".rep-sig-left,.rep-sig-right{ display:table-cell; width:50%; vertical-align:top; }" +
+    // The screen-only "example content" flag is hidden here explicitly — the
+    // @media print rule that hides it for PDF isn't collected by getRepExportCss.
+    ".rep-edit-hint{ display:none; }" +
     "</style></head><body>" + inner + "</body></html>";
 }
 

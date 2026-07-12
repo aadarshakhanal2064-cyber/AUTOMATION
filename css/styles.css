@@ -710,6 +710,11 @@ textarea { resize: vertical; min-height: 100px; }
 .rname{ font-weight:700; }
 .rep-sig-block .rname{ margin-top: 44px; } /* blank space for a wet signature above the signatory's name */
 
+/* Screen-only flag above pre-filled example content (Adverse/Disclaimer basis
+   block) — hidden in print/PDF so it can never leak into an issued report. */
+.rep-edit-hint{ font-style:italic; font-size:11px; color:#b45309; background:#fffbeb; border:1px dashed #fde68a; border-radius:4px; padding:4px 8px; }
+@media print{ .rep-edit-hint{ display:none; } }
+
 .rep-blank-fill{ border:1px dashed #cbd5e1; border-radius:4px; min-height:50px; padding:10px; font-style:italic; color:#94a3b8; background:#f8fafc; transition:all 0.2s; }
 .rep-blank-fill:focus{ outline:none; border-color:var(--brand-navy); color:#111; font-style:normal; background:#fff; }
 .rep-blank-fill:empty:before{ content: attr(data-placeholder); }
