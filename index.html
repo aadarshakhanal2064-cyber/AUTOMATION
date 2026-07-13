@@ -6,7 +6,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-<link rel="stylesheet" href="css/styles.css?v=202607122700">
+<link rel="stylesheet" href="css/styles.css?v=202607122800">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -785,9 +785,10 @@ function cropLoginLogoIcon(img) {
                   <label>Outgoing Auditor Name</label>
                   <input type="text" id="ac-outgoingAuditorName" placeholder="पूर्व लेखा परीक्षकको नाम" />
                 </div>
-                <div class="form-group" style="margin-bottom:14px;">
+                <div class="form-group" style="margin-bottom:14px; position:relative;">
                   <label>New Auditor Name</label>
-                  <input type="text" id="ac-newAuditorName" placeholder="नयाँ लेखा परीक्षकको नाम" />
+                  <input type="text" id="ac-newAuditorName" placeholder="नयाँ लेखा परीक्षकको नाम" autocomplete="off" />
+                  <div class="autocomplete-list" id="ac-newAuditorName-list" style="display:none;"></div>
                 </div>
                 <div class="form-group" style="margin-bottom:14px;">
                   <label>New Auditor's Firm</label>
@@ -986,13 +987,14 @@ function cropLoginLogoIcon(img) {
                 <div class="card-header">
                   <div class="card-title" style="font-size:14px;">Auditor Information</div>
                 </div>
-                <div class="form-group" style="margin-bottom:0;">
+                <div class="form-group" style="margin-bottom:0; position:relative;">
                   <label>Upcoming Auditor</label>
-                  <select id="bm-auditorFirm">
-                    <option value="">— Select Auditor —</option>
-                    <option value="0">शैलेश एण्ड एसोसिएट्स — CA शैलेश डल्लाकोटी</option>
-                    <option value="1">डल्लाकोटी एण्ड कम्पनी — RA देवी प्रसाद डल्लाकोटी</option>
-                  </select>
+                  <div class="regd-select-trigger" id="bm-auditorFirm-trigger" tabindex="0">
+                    <div class="regd-select-value" id="bm-auditorFirm-value"><span class="regd-select-placeholder">— Select Auditor —</span></div>
+                    <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                  <input type="hidden" id="bm-auditorFirm" value="">
+                  <div class="autocomplete-list" id="bm-auditorFirm-list" style="display:none;"></div>
                 </div>
               </div>
 
@@ -1628,34 +1630,34 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 
-<script src="js/config.js?v=202607122700"></script>
-<script src="js/utils.js?v=202607122700"></script>
-<script src="js/core/moduleRegistry.js?v=202607122700"></script>
-<script src="js/core/statusBox.js?v=202607122700"></script>
-<script src="js/core/nepaliLocale.js?v=202607122700"></script>
-<script src="js/core/documentEngine.js?v=202607122700"></script>
-<script src="js/core/ocrEngine.js?v=202607122700"></script>
-<script src="js/core/searchEngine.js?v=202607122700"></script>
-<script src="js/core/pdfEngine.js?v=202607122700"></script>
-<script src="js/core/visionEngine.js?v=202607122700"></script>
-<script src="js/core/tableEngine.js?v=202607122700"></script>
-<script src="js/core/workflowEngine.js?v=202607122700"></script>
-<script src="js/core/validationEngine.js?v=202607122700"></script>
-<script src="js/core/auditLog.js?v=202607122700"></script>
-<script src="js/core/integrations.js?v=202607122700"></script>
-<script src="js/tabs.js?v=202607122700"></script>
-<script src="js/dashboard.js?v=202607122700"></script>
-<script src="js/registrar.js?v=202607122700"></script>
-<script src="js/clients.js?v=202607122700"></script>
-<script src="js/logs.js?v=202607122700"></script>
-<script src="js/vatReturn.js?v=202607122700"></script>
-<script src="js/vatCompliance.js?v=202607122700"></script>
-<script src="js/billing.js?v=202607122700"></script>
-<script src="js/sendDocument.js?v=202607122700"></script>
-<script src="js/report.js?v=202607122700"></script>
-<script src="js/bmAgmMinutes.js?v=202607122700"></script>
-<script src="js/auditorChange.js?v=202607122700"></script>
-<script src="js/auth.js?v=202607122700"></script>
+<script src="js/config.js?v=202607122800"></script>
+<script src="js/utils.js?v=202607122800"></script>
+<script src="js/core/moduleRegistry.js?v=202607122800"></script>
+<script src="js/core/statusBox.js?v=202607122800"></script>
+<script src="js/core/nepaliLocale.js?v=202607122800"></script>
+<script src="js/core/documentEngine.js?v=202607122800"></script>
+<script src="js/core/ocrEngine.js?v=202607122800"></script>
+<script src="js/core/searchEngine.js?v=202607122800"></script>
+<script src="js/core/pdfEngine.js?v=202607122800"></script>
+<script src="js/core/visionEngine.js?v=202607122800"></script>
+<script src="js/core/tableEngine.js?v=202607122800"></script>
+<script src="js/core/workflowEngine.js?v=202607122800"></script>
+<script src="js/core/validationEngine.js?v=202607122800"></script>
+<script src="js/core/auditLog.js?v=202607122800"></script>
+<script src="js/core/integrations.js?v=202607122800"></script>
+<script src="js/tabs.js?v=202607122800"></script>
+<script src="js/dashboard.js?v=202607122800"></script>
+<script src="js/registrar.js?v=202607122800"></script>
+<script src="js/clients.js?v=202607122800"></script>
+<script src="js/logs.js?v=202607122800"></script>
+<script src="js/vatReturn.js?v=202607122800"></script>
+<script src="js/vatCompliance.js?v=202607122800"></script>
+<script src="js/billing.js?v=202607122800"></script>
+<script src="js/sendDocument.js?v=202607122800"></script>
+<script src="js/report.js?v=202607122800"></script>
+<script src="js/bmAgmMinutes.js?v=202607122800"></script>
+<script src="js/auditorChange.js?v=202607122800"></script>
+<script src="js/auth.js?v=202607122800"></script>
 
 </body>
 </html>

@@ -54,16 +54,25 @@ window.REP_FIRMS = {
     phone: "9855062760, 056-562760", regNo: "619", mNo: "954",
     pan: "604101019", copNo: "714",
     signatoryName: "Shailesh Dallakoti, CA", signatoryTitle: "Proprietor",
-    logo: "assets/logo-lockup.png" // full lockup (icon + firm name + "Chartered Accountants"), transparent bg — no equivalent asset for other firms
+    logo: "assets/logo-lockup.png", // full lockup (icon + firm name + "Chartered Accountants"), transparent bg — no equivalent asset for other firms
+    nameNp: "शैलेश एण्ड एसोसिएट्स", auditorNameNp: "शैलेश डल्लाकोटी", titleNp: "सीए"
   },
   dallakoti: {
     name: "Dallakoti & Company", title: "Registered Auditor",
     address: "Ratnanagar-02, Chitwan", email: "dac.audit@gmail.com",
     phone: "9855060014, 056-562760", regNo: '"B" 2716', mNo: "3105",
     pan: "300336179", copNo: "148",
-    signatoryName: "Devi Prasad Dallakoti, RA", signatoryTitle: "Proprietor"
+    signatoryName: "Devi Prasad Dallakoti, RA", signatoryTitle: "Proprietor",
+    nameNp: "डल्लाकोटी एण्ड कम्पनी", auditorNameNp: "देवी प्रसाद डल्लाकोटी", titleNp: "आर.ए."
   }
 };
+
+// Devanagari-display view of REP_FIRMS, for the "known firm" quick-fill
+// pickers on BM/AGM Minutes and Auditor Change — one shared source instead
+// of each module hardcoding its own copy of the same two firms/names.
+window.REGD_AUDIT_FIRMS = Object.values(window.REP_FIRMS).map(f => ({
+  firmName: f.nameNp, auditorName: f.auditorNameNp, title: f.titleNp
+}));
 
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },

@@ -130,13 +130,30 @@ function bmGetAllShareholderNames() {
 // ════════════════════════════════════════════
 const BM_TEMPLATE_URL = 'assets/templates/bm-agm-minutes.docx';
 
-// Pre-configured audit firms - selecting one in the dropdown fills in the
-// firm name, auditor's full name, and the correct professional title (CA
-// vs RA use different Nepali phrasing throughout the letters).
-const BM_AUDIT_FIRMS = [
-  { firmName: 'शैलेश एण्ड एसोसिएट्स', auditorName: 'शैलेश डल्लाकोटी', title: 'सीए' },
-  { firmName: 'डल्लाकोटी एण्ड कम्पनी', auditorName: 'देवी प्रसाद डल्लाकोटी', title: 'आर.ए.' },
-];
+// Pre-configured audit firms (window.REGD_AUDIT_FIRMS, config.js) - picking
+// one fills in the firm name, auditor's full name, and the correct
+// professional title (CA vs RA use different Nepali phrasing throughout the
+// letters). Same list Auditor Change's new-auditor field picks from.
+const BM_AUDIT_FIRMS = window.REGD_AUDIT_FIRMS;
+
+function bmRenderFirmTrigger() {
+  const idx = document.getElementById('bm-auditorFirm').value;
+  const firm = idx !== '' ? BM_AUDIT_FIRMS[idx] : null;
+  document.getElementById('bm-auditorFirm-value').innerHTML = firm
+    ? `<div class="ac-name">${escHtml(firm.firmName)}</div><div class="ac-email">${escHtml(firm.title)} ${escHtml(firm.auditorName)}</div>`
+    : `<span class="regd-select-placeholder">— Select Auditor —</span>`;
+}
+
+attachFirmPicker(document.getElementById('bm-auditorFirm-trigger'), document.getElementById('bm-auditorFirm-list'), {
+  getItems: () => BM_AUDIT_FIRMS,
+  renderItem: f => `<div class="ac-name">${escHtml(f.firmName)}</div><div class="ac-email">${escHtml(f.title)} ${escHtml(f.auditorName)}</div>`,
+  onSelect: (firm, idx) => {
+    const hidden = document.getElementById('bm-auditorFirm');
+    hidden.value = String(idx);
+    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    bmRenderFirmTrigger();
+  },
+});
 
 function bmToDevanagari(s) {
   return NepaliLocale.toDevanagari(s);
@@ -513,6 +530,7 @@ function bmActivateTokenEdit(span, target) {
 document.addEventListener('DOMContentLoaded', function () {
   WorkflowEngine.attachFormWatcher(document.getElementById('regd-bmAgmMinutes-panel'), bmOnFormChanged);
   bmLoadDraft();
+  bmRenderFirmTrigger();
   bmUpdateCompletionIndicator();
 });
 
@@ -596,6 +614,7 @@ function bmResetForm() {
   document.getElementById('bm-agmTime').value = '11:00';
   document.getElementById('bm-fiscalYear').value = '2081-82';
   document.getElementById('bm-auditorFirm').value = '';
+  bmRenderFirmTrigger();
   bmClearExtraShareholders();
 
   document.getElementById('bm-company-summary').style.display = 'none';

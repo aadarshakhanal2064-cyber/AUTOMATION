@@ -34,6 +34,22 @@ function selectAcClient(c) {
   acOnFormChanged();
 }
 
+// Picking one of the firm's own known audit firms (same window.REGD_AUDIT_FIRMS
+// list BM/AGM Minutes' "Upcoming Auditor" field picks from) fills both the
+// auditor's name and their firm — the two fields a real filing always needs
+// together — instead of typing each separately. Still a plain text input
+// underneath, so a new/unlisted auditor can just be typed in as before.
+attachFirmPicker(document.getElementById('ac-newAuditorName'), document.getElementById('ac-newAuditorName-list'), {
+  openOn: 'focus',
+  getItems: () => window.REGD_AUDIT_FIRMS,
+  renderItem: f => `<div class="ac-name">${escHtml(f.auditorName)}</div><div class="ac-email">${escHtml(f.title)} · ${escHtml(f.firmName)}</div>`,
+  onSelect: firm => {
+    document.getElementById('ac-newAuditorName').value = firm.auditorName;
+    document.getElementById('ac-newAuditorFirm').value = firm.firmName;
+    acOnFormChanged();
+  },
+});
+
 // ════════════════════════════════════════════
 //  Document generation — two templates, one shared data object
 // ════════════════════════════════════════════
