@@ -96,6 +96,31 @@ window.REP_ENTITY_PROFILES = {
   cooperative:     { label:"Cooperative", salutationTo:"the Members of the", governingBodyShort:"board of directors", entityNoun:"cooperative", entityNounCap:"Cooperative", act:"Cooperatives Act, 2074", statusLine:"is a Cooperative registered in Nepal" }
 };
 
+// ── Notes to Accounts data ──
+// Accounting-standard wording that fills the "Statement of Compliance" (2.1.1)
+// and "Critical Accounting Estimates" (2.1.3) paragraphs. `full` is the first
+// mention (spelled out + abbreviation), `short` the abbreviation reused after.
+window.NTA_ACCOUNTING_STANDARDS = {
+  micro:    { label: "NAS for Micro Entities", full: "Nepal Accounting Standard for Micro Entities (NAS for MEs)", short: "NAS for MEs" },
+  sme:      { label: "NFRS for SMEs",          full: "Nepal Financial Reporting Standard for Small & Medium-Sized Entities (NFRS for SMEs)", short: "NFRS for SMEs" },
+  existing: { label: "Existing NAS",           full: "Nepal Accounting Standards (NAS)", short: "NAS" }
+};
+
+window.NTA_DEPRECIATION_METHODS = {
+  slm: { label: "SLM (Straight Line Method)", name: "SLM Method" },
+  wdv: { label: "WDV (Written Down Value)",   name: "WDV Method" }
+};
+
+// Default Property, Plant & Equipment useful-life rows — pre-filled but fully
+// editable (rows add/removable) in the Notes to Accounts depreciation section.
+window.NTA_PPE_DEFAULTS = [
+  { type: "Building",               life: "49 years" },
+  { type: "Office Equipments",      life: "4 years" },
+  { type: "Furniture and Fixtures", life: "4 years" },
+  { type: "Vehicles",               life: "14 years" },
+  { type: "Plant and Machinery",    life: "10 years" }
+];
+
 window.CLIENT_ENTITY_TO_REP_PROFILE = {
   'pvt. ltd. company': 'private_company',
   'private limited company': 'private_company',
