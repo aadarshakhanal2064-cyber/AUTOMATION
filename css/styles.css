@@ -769,6 +769,12 @@ table.rep-kam-table th{ background:#f1f5f9; font-weight:700; text-align:center; 
 .rep-form-grid .rep-inline-input{ grid-column:1 / -1; }
 .rep-inline-input textarea{ min-height:70px; }
 .rep-kam-input-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+/* The base .form-group{display:flex} / .checkbox-label{display:inline-flex}
+   rules would otherwise override the UA [hidden]{display:none}, leaving these
+   visible even when the hidden attribute is set — a class+attr rule outranks
+   the plain class rule and restores the intended hide-when-hidden behaviour. */
+.rep-inline-input[hidden]{ display:none; }
+.checkbox-label[hidden]{ display:none; }
 #rep-edit-view[hidden], #rep-preview-view[hidden]{ display:none; }
 #nta-edit-view[hidden], #nta-preview-view[hidden]{ display:none; }
 
