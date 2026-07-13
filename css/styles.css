@@ -764,6 +764,11 @@ table.rep-kam-table th{ background:#f1f5f9; font-weight:700; text-align:center; 
 .rep-view-btn.active{ background:var(--brand-navy); color:#fff; }
 .rep-form-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; align-items:start; }
 .rep-form-grid .rep-checkboxes{ grid-column:1 / -1; display:flex; gap:28px; flex-wrap:wrap; padding-top:4px; }
+/* Inline writing boxes revealed by the Include checkboxes — full-width rows
+   under the checkbox strip; KAM gets a 2x2 grid mirroring its table cells. */
+.rep-form-grid .rep-inline-input{ grid-column:1 / -1; }
+.rep-inline-input textarea{ min-height:70px; }
+.rep-kam-input-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 #rep-edit-view[hidden], #rep-preview-view[hidden]{ display:none; }
 #nta-edit-view[hidden], #nta-preview-view[hidden]{ display:none; }
 

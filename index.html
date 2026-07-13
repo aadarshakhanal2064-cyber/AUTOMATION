@@ -6,7 +6,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-<link rel="stylesheet" href="css/styles.css?v=202607123000">
+<link rel="stylesheet" href="css/styles.css?v=202607123100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -537,6 +537,27 @@ function cropLoginLogoIcon(img) {
               <label class="checkbox-label" id="rep-label-BasisExample" hidden>
                 <input type="checkbox" id="rep-toggleBasisExample" /> Include "Basis" paragraph
               </label>
+            </div>
+
+            <!-- Inline writing boxes — one per Include checkbox, revealed when
+                 ticked, so the content is written here in the form and flows
+                 into the report instead of having to be typed in the Preview. -->
+            <div class="form-group rep-inline-input" id="rep-eom-input-wrap" hidden>
+              <label>Emphasis of Matter</label>
+              <textarea id="rep-eomText" placeholder="Type the Emphasis of Matter paragraph here…"></textarea>
+            </div>
+            <div class="form-group rep-inline-input" id="rep-kam-input-wrap" hidden>
+              <label>Key Audit Matters — details</label>
+              <div class="rep-kam-input-grid">
+                <textarea id="rep-kamHeading" placeholder="Heading + reference note…"></textarea>
+                <textarea id="rep-kamProcedures" placeholder="Audit procedures…"></textarea>
+                <textarea id="rep-kamDescription" placeholder="Description of the matter…"></textarea>
+                <textarea id="rep-kamAddressed" placeholder="How addressed…"></textarea>
+              </div>
+            </div>
+            <div class="form-group rep-inline-input" id="rep-basis-input-wrap" hidden>
+              <label id="rep-basis-input-label">"Basis" paragraph</label>
+              <textarea id="rep-basisText" placeholder="Describe the basis for this opinion…"></textarea>
             </div>
           </div>
         </div>
@@ -1754,35 +1775,35 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 
-<script src="js/config.js?v=202607123000"></script>
-<script src="js/utils.js?v=202607123000"></script>
-<script src="js/core/moduleRegistry.js?v=202607123000"></script>
-<script src="js/core/statusBox.js?v=202607123000"></script>
-<script src="js/core/nepaliLocale.js?v=202607123000"></script>
-<script src="js/core/documentEngine.js?v=202607123000"></script>
-<script src="js/core/ocrEngine.js?v=202607123000"></script>
-<script src="js/core/searchEngine.js?v=202607123000"></script>
-<script src="js/core/pdfEngine.js?v=202607123000"></script>
-<script src="js/core/visionEngine.js?v=202607123000"></script>
-<script src="js/core/tableEngine.js?v=202607123000"></script>
-<script src="js/core/workflowEngine.js?v=202607123000"></script>
-<script src="js/core/validationEngine.js?v=202607123000"></script>
-<script src="js/core/auditLog.js?v=202607123000"></script>
-<script src="js/core/integrations.js?v=202607123000"></script>
-<script src="js/tabs.js?v=202607123000"></script>
-<script src="js/dashboard.js?v=202607123000"></script>
-<script src="js/registrar.js?v=202607123000"></script>
-<script src="js/clients.js?v=202607123000"></script>
-<script src="js/logs.js?v=202607123000"></script>
-<script src="js/vatReturn.js?v=202607123000"></script>
-<script src="js/vatCompliance.js?v=202607123000"></script>
-<script src="js/billing.js?v=202607123000"></script>
-<script src="js/sendDocument.js?v=202607123000"></script>
-<script src="js/report.js?v=202607123000"></script>
-<script src="js/notesToAccounts.js?v=202607123000"></script>
-<script src="js/bmAgmMinutes.js?v=202607123000"></script>
-<script src="js/auditorChange.js?v=202607123000"></script>
-<script src="js/auth.js?v=202607123000"></script>
+<script src="js/config.js?v=202607123100"></script>
+<script src="js/utils.js?v=202607123100"></script>
+<script src="js/core/moduleRegistry.js?v=202607123100"></script>
+<script src="js/core/statusBox.js?v=202607123100"></script>
+<script src="js/core/nepaliLocale.js?v=202607123100"></script>
+<script src="js/core/documentEngine.js?v=202607123100"></script>
+<script src="js/core/ocrEngine.js?v=202607123100"></script>
+<script src="js/core/searchEngine.js?v=202607123100"></script>
+<script src="js/core/pdfEngine.js?v=202607123100"></script>
+<script src="js/core/visionEngine.js?v=202607123100"></script>
+<script src="js/core/tableEngine.js?v=202607123100"></script>
+<script src="js/core/workflowEngine.js?v=202607123100"></script>
+<script src="js/core/validationEngine.js?v=202607123100"></script>
+<script src="js/core/auditLog.js?v=202607123100"></script>
+<script src="js/core/integrations.js?v=202607123100"></script>
+<script src="js/tabs.js?v=202607123100"></script>
+<script src="js/dashboard.js?v=202607123100"></script>
+<script src="js/registrar.js?v=202607123100"></script>
+<script src="js/clients.js?v=202607123100"></script>
+<script src="js/logs.js?v=202607123100"></script>
+<script src="js/vatReturn.js?v=202607123100"></script>
+<script src="js/vatCompliance.js?v=202607123100"></script>
+<script src="js/billing.js?v=202607123100"></script>
+<script src="js/sendDocument.js?v=202607123100"></script>
+<script src="js/report.js?v=202607123100"></script>
+<script src="js/notesToAccounts.js?v=202607123100"></script>
+<script src="js/bmAgmMinutes.js?v=202607123100"></script>
+<script src="js/auditorChange.js?v=202607123100"></script>
+<script src="js/auth.js?v=202607123100"></script>
 
 </body>
 </html>

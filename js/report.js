@@ -57,8 +57,22 @@ function getRepState(){
     udin: $rep('rep-udin').value.trim(),
     includeEOM: $rep('rep-toggleEOM').checked,
     includeKAM: $rep('rep-toggleKAM').checked,
-    includeBasisExample: $rep('rep-toggleBasisExample').checked
+    includeBasisExample: $rep('rep-toggleBasisExample').checked,
+    // Inline writing boxes (shown under each ticked Include checkbox) — their
+    // text flows into the report's corresponding fill-in blanks on render.
+    eomText: $rep('rep-eomText').value.trim(),
+    kamHeading: $rep('rep-kamHeading').value.trim(),
+    kamProcedures: $rep('rep-kamProcedures').value.trim(),
+    kamDescription: $rep('rep-kamDescription').value.trim(),
+    kamAddressed: $rep('rep-kamAddressed').value.trim(),
+    basisText: $rep('rep-basisText').value.trim()
   };
+}
+
+// Form-textarea text -> report HTML: escaped, with line breaks preserved.
+// Empty text stays empty so the .rep-blank-fill :empty placeholder shows.
+function repMultiline(text){
+  return escHtml(text).replace(/\n/g, '<br>');
 }
 
 // Matches the firm's own filed cover-page layout: bordered frame, title
@@ -213,7 +227,7 @@ function renderRepBodyUnqualified(s, e){
     ${s.includeEOM ? `
     <div class="rep-optional-block">
       <p><strong>Emphasis of Matter:</strong></p>
-      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Type the Emphasis of Matter paragraph here&hellip;"></div>
+      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Type the Emphasis of Matter paragraph here&hellip;">${repMultiline(s.eomText)}</div>
     </div>` : ``}
 
     <div class="rep-optional-block">
@@ -228,13 +242,13 @@ function renderRepBodyUnqualified(s, e){
         </tr>
         <tr>
           <td class="rep-sn-col">1</td>
-          <td class="rep-blank-fill" contenteditable="true" data-placeholder="Heading + reference note&hellip;"></td>
-          <td class="rep-blank-fill" contenteditable="true" data-placeholder="Audit procedures&hellip;"></td>
+          <td class="rep-blank-fill" contenteditable="true" data-placeholder="Heading + reference note&hellip;">${repMultiline(s.kamHeading)}</td>
+          <td class="rep-blank-fill" contenteditable="true" data-placeholder="Audit procedures&hellip;">${repMultiline(s.kamProcedures)}</td>
         </tr>
         <tr>
           <td class="rep-sn-col"></td>
-          <td class="rep-blank-fill" contenteditable="true" data-placeholder="Description of the matter&hellip;"></td>
-          <td class="rep-blank-fill" contenteditable="true" data-placeholder="How addressed&hellip;"></td>
+          <td class="rep-blank-fill" contenteditable="true" data-placeholder="Description of the matter&hellip;">${repMultiline(s.kamDescription)}</td>
+          <td class="rep-blank-fill" contenteditable="true" data-placeholder="How addressed&hellip;">${repMultiline(s.kamAddressed)}</td>
         </tr>
       </table>` : ``}
     </div>
@@ -277,7 +291,7 @@ function renderRepBodyAdverse(s, e){
     <p><strong>Basis of Adverse Opinion:</strong></p>
     ${s.includeBasisExample ? `
     <div class="rep-optional-block">
-      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Describe the matter(s) causing the financial statements not to present fairly, and why their effect is both material and pervasive…"></div>
+      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Describe the matter(s) causing the financial statements not to present fairly, and why their effect is both material and pervasive…">${repMultiline(s.basisText)}</div>
     </div>` : ``}
     <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in accordance with the ICAN Handbook of Code of Ethics for Professional Accountants and have fulfilled our other ethical responsibilities in accordance with these requirements.</p>
     <p>We believe that the audit evidence we have obtained is sufficient and appropriate to provide a basis for our Adverse opinion.</p>
@@ -321,7 +335,7 @@ function renderRepBodyDisclaimer(s, e){
     <p><strong>Basis for Disclaimer of Opinion:</strong></p>
     ${s.includeBasisExample ? `
     <div class="rep-optional-block">
-      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Describe why sufficient appropriate audit evidence could not be obtained — records unavailable, procedures unable to be performed, etc…"></div>
+      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Describe why sufficient appropriate audit evidence could not be obtained — records unavailable, procedures unable to be performed, etc…">${repMultiline(s.basisText)}</div>
     </div>` : ``}
     <p>As a result, we were unable to perform alternative audit procedures to satisfy ourselves regarding the completeness, accuracy and existence of these balances and transactions. Consequently, we could not determine whether any adjustments might have been necessary in respect of the reported assets, liabilities, income, expenses, equity and related disclosures in the financial statements.</p>
     <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in accordance with the ICAN Handbook of Code of Ethics for Professional Accountants and have fulfilled our other ethical responsibilities in accordance with these requirements.</p>
@@ -364,7 +378,7 @@ function renderRepBodyQualified(s, e){
     <p><strong>Basis of Qualified Opinion:</strong></p>
     ${s.includeBasisExample ? `
     <div class="rep-optional-block">
-      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Describe the specific matter causing the qualification, its estimated financial effect, and why it is material but not pervasive…"></div>
+      <div class="rep-blank-fill" contenteditable="true" data-placeholder="Describe the specific matter causing the qualification, its estimated financial effect, and why it is material but not pervasive…">${repMultiline(s.basisText)}</div>
     </div>` : ``}
     <p>We conducted our audit in accordance with Nepal Standards on Auditing (NSAs). Our responsibilities under those standards are further described in the Auditor's Responsibilities for the Audit of the Financial Statements section of our report. We are independent of the ${e.entityNoun} in accordance with the ICAN Handbook of Code of Ethics for Professional Accountants and have fulfilled our other ethical responsibilities in accordance with these requirements.</p>
     <p>We believe that the audit evidence we have obtained is sufficient and appropriate to provide a basis for our qualified opinion.</p>
@@ -434,6 +448,20 @@ function repUpdateCheckboxVisibility(){
   $rep('rep-label-EOM').hidden = !isUnqualified;
   $rep('rep-label-KAM').hidden = !isUnqualified;
   $rep('rep-label-BasisExample').hidden = !hasBasisExample;
+
+  // Each Include checkbox, when ticked, reveals its inline writing box below
+  // the checkbox strip — content is written in the form and flows into the
+  // report, instead of having to be typed into the Preview.
+  $rep('rep-eom-input-wrap').hidden = !(isUnqualified && $rep('rep-toggleEOM').checked);
+  $rep('rep-kam-input-wrap').hidden = !(isUnqualified && $rep('rep-toggleKAM').checked);
+  $rep('rep-basis-input-wrap').hidden = !(hasBasisExample && $rep('rep-toggleBasisExample').checked);
+
+  const basisLabels = {
+    adverse: 'Basis of Adverse Opinion',
+    disclaimer: 'Basis of Disclaimer of Opinion',
+    qualified: 'Basis of Qualified Opinion',
+  };
+  if (basisLabels[type]) $rep('rep-basis-input-label').textContent = basisLabels[type];
 }
 
 // ── Edit / Preview view switching ──
@@ -473,7 +501,8 @@ function repEnsureRendered(){
 // Need to run initialization logic on window load to ensure DOM is ready
 window.addEventListener('load', () => {
   ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan',
-   'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM','rep-toggleBasisExample'].forEach(id=>{
+   'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM','rep-toggleBasisExample',
+   'rep-eomText','rep-kamHeading','rep-kamProcedures','rep-kamDescription','rep-kamAddressed','rep-basisText'].forEach(id=>{
     const el = document.getElementById(id);
     if (el){
       el.addEventListener('input', repRefresh);
