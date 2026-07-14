@@ -41,8 +41,8 @@ Later files depend on globals set up by earlier ones. Order in `index.html`:
 ```
 CDN libraries → config.js → utils.js → js/core/* (9 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, logs, vatCompliance,
-  billing, sendDocument, report, notesToAccounts, bmAgmMinutes,
-  auditorChange) → auth.js (LAST — triggers the boot sequence)
+  billing, sendDocument, report, notesToAccounts, depreciation,
+  bmAgmMinutes, auditorChange) → auth.js (LAST — triggers the boot sequence)
 ```
 
 ### 2.3 CDN dependencies
@@ -53,7 +53,8 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 |---|---|---|
 | Google API + GSI clients | (Google-hosted) | OAuth token client, Drive/Gmail |
 | `@supabase/supabase-js` | `@2` (**floating**, not pinned) | Postgres REST client |
-| `xlsx` (SheetJS) | 0.18.5 full build | Excel/CSV/**ODS** *import* (full build needed for ODS) |
+| `xlsx` (SheetJS) | 0.18.5 full build | Excel/CSV/**ODS** *import* (full build needed for ODS). Read-only — its free build can't write styles/merges/formats. |
+| `exceljs` | 4.4.0 | Excel *generation* with faithful merges/borders/number-formats/formulas (Depreciation). SheetJS can't do this on write. |
 | `pizzip` + `docxtemplater` | 3.1.7 / 3.50.0 | Word template filling (`{{token}}`) |
 | `jszip` | 3.10.1 | ZIP handling |
 | `docx-preview` | 0.3.7 | Live in-browser preview of generated Word docs |
@@ -127,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
+Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
@@ -164,10 +165,13 @@ Significant Accounting Policies & Notes generator. Mirrors report.js 1:1 (same E
 ### 5.7 Clients Directory (`js/clients.js`)
 CRUD + search over `clients` (Tabulator via TableEngine), plus the Excel/CSV/ODS import wizard: header auto-mapping by keyword (`IMPORT_FIELDS` in config.js), duplicate/invalid preview, **backfill-on-duplicate** (re-importing fills blank fields on existing clients, never overwrites non-blank), and nameless-rows-after-a-company-row attach as extra shareholders (`client_shareholders`). Statutory fields (registration number, chairman, shareholder, three capitals) are deliberately not table columns but are editable per client.
 
-### 5.8 Send Logs (`js/logs.js`)
+### 5.8 Depreciation (`js/depreciation.js`, `dep-` prefix)
+Income Tax pool-depreciation schedule (Nepal). Editable grid of 7 statutory pools (Building 5%, Furniture 25%, Vehicles 20%, Plant 15% — reducing balance; Software & Leasehold — 5-year straight line; Land — none). User enters opening value, three timing-bucketed additions, and disposals; the module live-computes Total Value, Depreciation Base, Depreciation, and closing WDV. Empty pools render as "–" (accounting format). Formulas: `Total = Opening + ΣAdditions − Disposal`; `Base = Opening + Add₁ − Disposal + Add₂·⅔ + Add₃·⅓`; `Depreciation = Base×rate` (WDV) or `Base÷years` (SLM); `WDV = Total − Depreciation`. Features: **Import from Excel/ODS** (matches pools by particular text, any row order), **Addition-details helper** (itemize purchases by B.S. date → auto-bucketed into the three columns: Shrawan–Poush full, Magh–Chaitra ⅔, Baishakh–Ashadh ⅓), and **Generate Excel** via ExcelJS reproducing the template (merged headers, borders, formulas, accounting number format). Pool rates are statutory constants in `DEP_POOLS`, not user-editable. The source sheet's Land Total-Value formula pointed at the Leasehold row (a real bug); the generator writes it correctly.
+
+### 5.9 Send Logs (`js/logs.js`)
 Audit trail of sent documents from `send_logs`. Staff see only their own sends; admins see all with a staff filter. Client name/email are snapshots, intentionally not FK'd.
 
-### 5.9 Company Registrar (topbar dropdown → `regd` group)
+### 5.10 Company Registrar (topbar dropdown → `regd` group)
 
 **a) BM/AGM Minutes (`js/bmAgmMinutes.js`, `bm-` prefix)** — generates Board Meeting + AGM minutes (plus Section 51 report and two registrar letters, all in one document) as a Word file in Nepali. Fills `assets/templates/bm-agm-minutes.docx` via DocumentEngine/docxtemplater (`{{token}}` delimiters, `paragraphLoop` for the shareholder list — loop markers must each be their own paragraph). Client search by registration number/PAN (digit-agnostic); shareholders = `clients.shareholder_name` + `client_shareholders` rows; chairman unnumbered, shareholders numbered from १. Live docx preview, autosave draft, completion indicator, zoom, print (one page per sub-document via `transform:scale`, not zoom). The template's history (Preeti→Unicode conversion, formatting-group rebuild pipeline) is in `HANDOFF.md` §4–5 — **the build tooling was never committed**; rebuilding the template requires recreating it from that description and re-validating.
 
@@ -175,7 +179,7 @@ Audit trail of sent documents from `send_logs`. Staff see only their own sends; 
 
 **c) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `regdComingSoon()` in `js/registrar.js`. Real remaining product surface.
 
-> **Removed module — VAT Return OCR** (removed 2026-07-14 by user decision; the firm won't use it). It read scanned IRD VAT Return PDFs via digit-only OCR and filled the firm's Excel workbook. The removal took with it `js/vatReturn.js`, four engines whose only consumer it was (`ocrEngine`, `pdfEngine`, `visionEngine`, `validationEngine`), `DocumentEngine.workbookToBlob`, three CDN libraries (`pdfjs-dist`, `tesseract.js`, `exceljs`), and `assets/templates/vat-detail.xlsx`. All of it is recoverable from git history (last commit containing it: `ad0e9f2`); its engineering record lives in `HANDOFF_VAT.md` / `HANDOFF_2026-07-05.md`. Historical `audit_log` rows with `module: 'vatReturn'` remain valid; `vat_filings.status` keeps `ocr_processing` as a manual status.
+> **Removed module — VAT Return OCR** (removed 2026-07-14 by user decision; the firm won't use it). It read scanned IRD VAT Return PDFs via digit-only OCR and filled the firm's Excel workbook. The removal took with it `js/vatReturn.js`, four engines whose only consumer it was (`ocrEngine`, `pdfEngine`, `visionEngine`, `validationEngine`), `DocumentEngine.workbookToBlob`, the `pdfjs-dist`/`tesseract.js`/`exceljs` CDN tags, and `assets/templates/vat-detail.xlsx`. (`exceljs` was re-added shortly after for the Depreciation module — §5.8 — but the four engines and the OCR/PDF CDN libraries stay gone.) All of it is recoverable from git history (last commit containing it: `ad0e9f2`); its engineering record lives in `HANDOFF_VAT.md` / `HANDOFF_2026-07-05.md`. Historical `audit_log` rows with `module: 'vatReturn'` remain valid; `vat_filings.status` keeps `ocr_processing` as a manual status.
 
 ---
 
@@ -257,9 +261,10 @@ The document is rendered as styled HTML in a preview root, then exported two way
 ### 9.3 PDF via PDF-Lib (Billing invoices)
 Drawn programmatically: firm letterhead, line items, bank details, QR image (or dashed placeholder).
 
-> There is no OCR or Excel-generation path anymore — both belonged to the removed VAT Return module (§5.9). Excel *import* (SheetJS) still exists in the Clients module. If a future module needs Excel generation, ExcelJS and `DocumentEngine.workbookToBlob` can be restored from git history.
+### 9.4 Excel via ExcelJS (Depreciation)
+`js/depreciation.js` builds the workbook programmatically with ExcelJS (no template asset) — merged headers, thin borders, accounting number format (`#,##0.00;(#,##0.00);"–"`), live formulas, and percent/`" yrs"` rate formats. There is no shared Excel engine (the removed VAT Return module had one, `DocumentEngine.workbookToBlob`); Depreciation is the only Excel generator, so it owns its layout. Excel/ODS *import* uses SheetJS (`XLSX.read`, read-only). If a second Excel-generating module appears, extract a shared workbook→Blob helper then (the same "generalize after two consumers" rule the engines followed).
 
-### 9.4 Nepali locale
+### 9.5 Nepali locale
 All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes through `NepaliLocale`. **Fiscal-year string formats are deliberately inconsistent per module** — normalize at boundaries, never unify without asking:
 
 | Format | Used by |
@@ -284,6 +289,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `rep-` | Audit Report Builder | | `vatc-` | VAT Compliance |
 | `nta-` | Notes to Accounts | | `st-`/`ic-`/`cr-`/`pr-` | Registrar stubs |
 | `bm-` | BM/AGM Minutes | | `billing-` | Billing |
+| `dep-` | Depreciation | | | |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
 
 ### 10.3 Interaction patterns
@@ -356,14 +362,14 @@ The established working pattern — **investigate with real evidence → impleme
 - **Preeti → Mangal (Unicode) template conversion** — explicit user decision. Never revert to Preeti.
 - **Billing QR is a static uploaded image** — never add a QR-generation library or a scannable-looking placeholder.
 - **Invoice status is trigger-owned** — never set `paid`/`partially_paid` from JS.
-- **Fiscal-year formats differ per module** (§9.4) — don't unify without asking.
+- **Fiscal-year formats differ per module** (§9.5) — don't unify without asking.
 - **Capital amounts are text** — preserves the firm's comma grouping.
 - **VAT "Filed" status is always manual.**
 - **VAT clients are a hand-picked subset** — never bulk-activate.
 - **Clients table / import preview show a curated column subset**, not all fields.
 - **Dashboard is not the default landing tab** — Send Document stays default.
 - **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
-- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its engines, or its CDN libraries unless the user asks.
+- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.)
 
 ## 17. AI Assistant Instructions
 

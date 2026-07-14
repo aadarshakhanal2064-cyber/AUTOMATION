@@ -110,6 +110,10 @@ function cropLoginLogoIcon(img) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
       Notes to Accounts
     </button>
+    <button class="nav-item" onclick="switchTab('depreciation'); depInit();" id="nav-depreciation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="3" x2="3" y2="21"></line><line x1="3" y1="21" x2="21" y2="21"></line><path d="M19 7l-5 6-3-3-4 5"></path></svg>
+      Depreciation
+    </button>
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
       Clients
@@ -1199,6 +1203,106 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: DEPRECIATION ── -->
+    <div id="tab-depreciation-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Depreciation</span></div>
+          <h2 class="page-title">Depreciation Schedule</h2>
+          <p class="page-subtitle">Income Tax pool depreciation. Enter each pool's opening value, additions and disposals — Total Value, Depreciation Base, Depreciation and closing WDV calculate automatically.</p>
+        </div>
+        <div class="page-header-actions">
+          <input type="file" id="dep-file" accept=".xlsx,.xls,.ods,.csv" style="display:none;" onchange="depImportExcel(this)" />
+          <button class="btn btn-outline" onclick="document.getElementById('dep-file').click()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            Import from Excel
+          </button>
+          <button class="btn btn-primary" onclick="depGenerateExcel()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
+            Generate Excel
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="form-grid" style="gap:16px;">
+          <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" id="dep-company" placeholder="e.g. Shikhar Traders Pvt. Ltd." />
+          </div>
+          <div class="form-group">
+            <label>Fiscal Year</label>
+            <input type="text" id="dep-fy" placeholder="e.g. 2081-82" />
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="padding:0; overflow-x:auto;">
+        <table class="client-table dep-table" style="min-width:1180px;">
+          <thead>
+            <tr>
+              <th rowspan="2">Pool</th>
+              <th rowspan="2" class="dep-particular">Particular</th>
+              <th rowspan="2">Rate</th>
+              <th rowspan="2">Opening Value</th>
+              <th colspan="3" style="text-align:center;">Addition</th>
+              <th rowspan="2">Disposal</th>
+              <th rowspan="2">Total Value</th>
+              <th rowspan="2">Depreciation Base</th>
+              <th rowspan="2">Depreciation</th>
+              <th rowspan="2">WDV Amount</th>
+            </tr>
+            <tr>
+              <th class="dep-subhead">Up to Paush</th>
+              <th class="dep-subhead">Magh–Chaitra</th>
+              <th class="dep-subhead">Baishakh–Ashadh</th>
+            </tr>
+          </thead>
+          <tbody id="dep-tbody"></tbody>
+          <tfoot>
+            <tr class="dep-total-row">
+              <td></td>
+              <td class="dep-particular">Total</td>
+              <td></td>
+              <td id="dep-tot-opening">–</td>
+              <td id="dep-tot-add1">–</td>
+              <td id="dep-tot-add2">–</td>
+              <td id="dep-tot-add3">–</td>
+              <td id="dep-tot-disposal">–</td>
+              <td id="dep-tot-total">–</td>
+              <td id="dep-tot-base">–</td>
+              <td id="dep-tot-dep">–</td>
+              <td id="dep-tot-wdv">–</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div id="dep-status"></div>
+
+      <div class="card" style="margin-top:24px;">
+        <div class="card-header" style="justify-content:space-between; display:flex; align-items:center;">
+          <div>
+            <div class="card-title" style="font-size:14px;">Addition details <span style="font-weight:500; color:var(--text-muted);">(optional)</span></div>
+            <div class="card-desc">Itemize each purchase with its B.S. date; "Apply" buckets them into the three Addition columns automatically (Shrawan–Paush at full value, Magh–Chaitra at ⅔, Baishakh–Ashadh at ⅓).</div>
+          </div>
+        </div>
+        <div class="table-wrap" style="padding:0; box-shadow:none; border:1px solid var(--border); margin-top:12px;">
+          <table class="client-table" style="min-width:640px;">
+            <thead>
+              <tr><th style="width:150px;">Date (B.S.)</th><th>Pool</th><th>Particular</th><th style="width:140px;">Amount</th><th style="width:90px;"></th></tr>
+            </thead>
+            <tbody id="dep-add-tbody"></tbody>
+          </table>
+        </div>
+        <div class="action-row" style="margin-top:16px;">
+          <button class="btn btn-outline btn-sm" onclick="depAddLine()">＋ Add line</button>
+          <button class="btn btn-primary btn-sm" onclick="depApplyAdditions()">Apply to schedule</button>
+          <button class="btn btn-danger btn-sm" onclick="depReset()" style="margin-left:auto;">Reset all</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── TAB: CLIENTS ── -->
     <div id="tab-clients-panel" class="tab-panel">
       <div class="page-header">
@@ -1681,6 +1785,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
@@ -1708,6 +1813,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/sendDocument.js?v=202607141030"></script>
 <script src="js/report.js?v=202607141030"></script>
 <script src="js/notesToAccounts.js?v=202607141030"></script>
+<script src="js/depreciation.js?v=202607141400"></script>
 <script src="js/bmAgmMinutes.js?v=202607141030"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/auth.js?v=202607141030"></script>
