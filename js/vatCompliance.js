@@ -6,10 +6,12 @@
 //  real state change: a VAT-active client with no row simply displays as
 //  Not Started, so months never need to be pre-created and history is
 //  never overwritten (enforced by the table's unique constraint).
-//  Separate concern from vatReturn.js, which reads ONE client's PDF —
-//  this tracks the whole portfolio's filing state.
 // ════════════════════════════════════════════
 ModuleRegistry.register({ id: 'vatCompliance', group: 'main', buttonId: 'nav-vatCompliance', panelId: 'tab-vatCompliance-panel' });
+
+// Fiscal-order month names: index 1 = Shrawan (NOT the B.S. calendar month
+// number — Shrawan is calendar month 4). vat_filings.month uses this index.
+const VAT_MONTH_ORDER = ['Shrawan','Bhadra','Ashwin','Kartik','Mangshir','Poush','Magh','Falgun','Chaitra','Baishak','Jestha','Ashadh'];
 
 // IRD rule: a month's VAT return is due by the 25th of the FOLLOWING B.S. month.
 const VATC_DEADLINE_DAY = 25;
@@ -59,9 +61,9 @@ function vatcStatusMsg(html, type) {
   showStatus(html, type, 'vatc-status-area');
 }
 
-// Every status change — quick action, drawer save, later the automatic
-// vatReturn.js hooks — goes through this one flow, which persists the row
-// and writes the audit entry together.
+// Every status change — quick action, drawer save, bulk change — goes
+// through this one flow, which persists the row and writes the audit
+// entry together.
 const vatcFlow = WorkflowEngine.createStatusFlow({
   statuses: VATC_STATUSES,
   onTransition: async (row, from, to, ctx) => {
@@ -669,45 +671,6 @@ async function vatcPickerToggle(clientId, makeActive) {
   });
   document.getElementById('vatc-picker-status').innerHTML = '';
   vatcRenderPickerList();
-}
-
-// ── Integration API (called from vatReturn.js) ──
-// Progresses a client's months automatically when the OCR module extracts
-// or generates for them. Works directly against vat_filings (the tab need
-// not be open), through the SAME status flow as manual changes, and only
-// ever moves FORWARD along this chain — a month a human already moved
-// further (or set Filed / On Hold / Not Required) is never downgraded.
-const VATC_AUTO_ORDER = ['not_started', 'waiting_docs', 'ocr_processing', 'under_review', 'ready_to_file'];
-
-async function vatcAutoProgress({ clientId, clientName, fiscalYear, months, toStatus, patchByMonth }) {
-  const { data: existing, error } = await window.sb.from('vat_filings')
-    .select('*').eq('client_id', clientId).eq('fiscal_year', fiscalYear).in('month', months);
-  if (error) throw error;
-  const byMonth = new Map((existing || []).map(f => [f.month, f]));
-  const toIdx = VATC_AUTO_ORDER.indexOf(toStatus);
-
-  for (const m of months) {
-    const f = byMonth.get(m);
-    const row = f
-      ? Object.assign({ client_name: clientName }, f)
-      : { id: null, client_id: clientId, client_name: clientName, fiscal_year: fiscalYear, month: m, status: 'not_started', filed_at: null, filed_date_bs: null };
-    const curIdx = VATC_AUTO_ORDER.indexOf(row.status);
-    if (curIdx === -1) continue; // filed / on hold / not required — hands off
-    const patch = (patchByMonth && patchByMonth[m]) || {};
-    if (curIdx < toIdx) {
-      await vatcFlow.transition(row, toStatus, { patch, note: 'Automatic (VAT Return module)' });
-    } else if (Object.keys(patch).length) {
-      // Same or later stage: don't move it, but refresh what the OCR run
-      // learned (validation summary, workbook filename).
-      await vatcSaveFiling(row, patch);
-    }
-  }
-
-  // If the user is looking at an affected period right now, reflect it.
-  if (vatcInitDone && document.getElementById('vatc-fy').value === fiscalYear
-      && months.includes(parseInt(document.getElementById('vatc-month').value, 10))) {
-    vatcRefresh();
-  }
 }
 
 async function vatcRenderHistory(row) {

@@ -19,7 +19,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 5. **Never break existing features** — regression-check before calling anything done.
 6. **Don't "fix" the deliberate decisions in §16.**
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (10 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (10 tables, §6).
 
 ---
 
@@ -39,10 +39,10 @@ State is `window.*` globals (`window.clientsList`, `window.currentUser`, …) �
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
-→ feature modules (dashboard, registrar, clients, logs, vatReturn,
-  vatCompliance, billing, sendDocument, report, notesToAccounts,
-  bmAgmMinutes, auditorChange) → auth.js (LAST — triggers the boot sequence)
+CDN libraries → config.js → utils.js → js/core/* (9 engines) → tabs.js
+→ feature modules (dashboard, registrar, clients, logs, vatCompliance,
+  billing, sendDocument, report, notesToAccounts, bmAgmMinutes,
+  auditorChange) → auth.js (LAST — triggers the boot sequence)
 ```
 
 ### 2.3 CDN dependencies
@@ -57,11 +57,8 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 | `pizzip` + `docxtemplater` | 3.1.7 / 3.50.0 | Word template filling (`{{token}}`) |
 | `jszip` | 3.10.1 | ZIP handling |
 | `docx-preview` | 0.3.7 | Live in-browser preview of generated Word docs |
-| `pdfjs-dist` | **3.11.174 — deliberate pin** | PDF page rendering. Newer versions dropped the plain-`<script>` UMD build; this app has no `type="module"` scripts. Do not upgrade casually. |
-| `tesseract.js` | 7.0.0 | Digit-only OCR (WASM, offline after language download) |
-| `exceljs` | 4.4.0 | Excel *generation* (round-trips formulas/merges/formats faithfully, unlike SheetJS on write) |
 | `fuse.js` | 7.0.0 | Fuzzy search (SearchEngine) |
-| `pdf-lib` | 1.17.1 | PDF construction (invoices) + PDF structure inspection |
+| `pdf-lib` | 1.17.1 | PDF construction (Billing invoices) |
 | `tabulator-tables` | 6.3.0 | Clients directory table (TableEngine) |
 | `chart.js` | 4.4.0 | Dashboard doughnut chart |
 | `html-docx-js` | 0.3.1 | HTML → OOXML .docx export (Report, Notes to Accounts) |
@@ -93,14 +90,13 @@ AUTOMATION AI APP/
 │   └── templates/
 │       ├── bm-agm-minutes.docx          # BM/AGM Word template (Unicode/Mangal, tokenized)
 │       ├── auditor-change-resolution.docx
-│       ├── auditor-change-registrar-letter.docx
-│       └── vat-detail.xlsx              # Sanitized real "Detail of Sale & Purchase" workbook
+│       └── auditor-change-registrar-letter.docx
 ├── js/
 │   ├── config.js            # Constants, window.* state, Supabase init, REP_FIRMS/REP_ENTITY_PROFILES/NTA_*/IMPORT_FIELDS
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64, stringSimilarity
 │   ├── tabs.js              # Tab switching driven by ModuleRegistry; Company Registrar topbar dropdown
 │   ├── auth.js              # Boot sequence, Google sign-in/out, app_users authorization
-│   ├── core/                # 13 reusable engines — see §4
+│   ├── core/                # 9 reusable engines — see §4
 │   └── <feature>.js         # One file per feature module — see §5
 ├── CLAUDE.md                # This file
 ├── README.md                # OUTDATED — superseded by this file (§18)
@@ -118,14 +114,10 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 | ModuleRegistry | `moduleRegistry.js` | `register({id, group, buttonId, panelId})` / `getGroup()`. Groups: `'main'` (tabs) and `'regd'` (Company Registrar sub-modules). Pre-registry modules are registered centrally in this file (transitional); **new modules self-register from their own file** — `dashboard.js` is the model. |
 | StatusBox | `statusBox.js` | `showStatus(msg, type, targetId)`. Each module wraps it in a one-line `xxStatus()` pointing at its own status element (`vatStatus`, `bmStatus`, …). |
 | NepaliLocale | `nepaliLocale.js` | `toEnglishDigits`, `toDevanagari`, `formatAmount` (lakh/crore), `parseBsDate`, `fiscalParts`, `todayBs`, `NEPALI_MONTHS`. B.S. calendar table covers **2080–2090 — extend before 2090**. |
-| DocumentEngine | `documentEngine.js` | `downloadBlob(blob, filename, meta?)` (meta fires an AuditLog event), `getTemplate(url)` (fetch-once cache), `renderWord(buffer, data)` (PizZip+docxtemplater), `previewWordAsHtml(...)` (docx-preview), `workbookToBlob(workbook)` (ExcelJS). |
-| OcrEngine | `ocrEngine.js` | `createDigitSession()` → `{recognizeDigits, recognizeDigitLines, terminate}`. Digit-only Tesseract wrapper (whitelist `0123456789` — **cannot represent minus signs**; compare absolute values). |
+| DocumentEngine | `documentEngine.js` | `downloadBlob(blob, filename, meta?)` (meta fires an AuditLog event), `getTemplate(url)` (fetch-once cache), `renderWord(buffer, data)` (PizZip+docxtemplater), `previewWordAsHtml(...)` (docx-preview). |
 | SearchEngine | `searchEngine.js` | `attachAutocomplete(inputEl, listEl, config)` / `buildIndex` wrapping Fuse.js. One shared autocomplete (keyboard nav included); supports `normalizeQuery/normalizeItem` for digit-agnostic search. |
-| PdfEngine | `pdfEngine.js` | `getImagePlacement(page, w, h)` (per-page CTM/margin from the PDF operator list), `renderPageToCanvas`, `cropCanvas`, `mergePdfs`. |
-| VisionEngine | `visionEngine.js` | Scanned-page geometry via plain canvas pixel math (no OpenCV): `detectSkewAngle` + `rotateCanvas` (deskew), `detectHorizontalLines` + `repairLineGaps`, `alignLinear` (RANSAC-style mapping of reference rule-lines onto a new scan so calibrated field boxes carry over). |
 | TableEngine | `tableEngine.js` | `createTable(container, options)` wrapping Tabulator with the app's `.app-table` look. Only the Clients directory uses it (deliberate — don't migrate other tables without cause). |
 | WorkflowEngine | `workflowEngine.js` | `attachFormWatcher`, `createDebouncedRefresh` (staleness-guarded live preview), `createAutosave` (localStorage draft), `updateCompletionIndicator`, `createZoomControl`, `createStatusFlow` (one `transition()` choke point per status-tracked module — badge, persistence, and audit entry can never disagree). |
-| ValidationEngine | `validationEngine.js` | `run(rules, data)` → `{severity: 'block'|'warn', message}` list, `hasBlocking`, `confidenceTier` (🟢/🟡/🔴), `statusHtml`. The same rule output feeds both the review UI and the generate-blocking gate. |
 | AuditLog | `auditLog.js` | `record(eventType, detail)`, `recent`, `countSince` → Supabase `audit_log`. Every call is try/catch-wrapped and never throws — a logging failure must not break the feature. |
 | Integrations | `integrations.js` | `driveGet`, `findFolderByName`, `listAllFilesInFolder`, `downloadDriveFile`, `sendEmailWithAttachment`. All Drive calls append `supportsAllDrives=true&includeItemsFromAllDrives=true` (Shared Drive visibility). |
 
@@ -138,10 +130,10 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
 
 ### 5.1 Dashboard (`js/dashboard.js`)
-Stat cards (client count, documents this month, OCR jobs this month), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
+Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
 
 ### 5.2 VAT Compliance (`js/vatCompliance.js`, table `vat_filings`)
-Portfolio-wide tracker of monthly VAT filing status per client. Separate concern from VAT Return OCR (§5.9c): this tracks the whole portfolio's filing state; that reads one client's PDF.
+Portfolio-wide tracker of monthly VAT filing status per client. `VAT_MONTH_ORDER` (fiscal-order month names, index 1 = Shrawan) lives at the top of this file.
 - **VAT clients are a hand-picked subset** of the directory (`clients.vat_status = 'active'`), managed via the "Manage VAT Clients" picker. Never bulk-activate the directory — most of the ~309 clients do not file VAT with the firm.
 - **Rows are lazy**: no `vat_filings` row = "Not Started". Upsert on the `(client_id, fiscal_year, month)` unique constraint; never pre-create months.
 - Statuses: `not_started → waiting_docs → ocr_processing → under_review → ready_to_file → filed / filed_adjustments`, plus `on_hold`, `not_required`. Every change goes through `vatcFlow.transition()` (WorkflowEngine.createStatusFlow) which persists + writes the audit entry with `record_ref` = filing id. Auto-progress (`vatcAutoProgress`) only moves **forward** and never touches filed/on_hold/not_required. **Filed is always manual.**
@@ -181,9 +173,9 @@ Audit trail of sent documents from `send_logs`. Staff see only their own sends; 
 
 **b) Auditor Change (`js/auditorChange.js`, `ac-` prefix — shares the prefix with Add Client, §10.2)** — two documents from one shared form: Board Resolution + registrar notification letter (`auditor-change-*.docx` templates). Same DocumentEngine architecture as BM/AGM, same UI pattern as the Report Builder (Edit/Preview, per-document preview tabs); B.S. date validation on blur; known-firm quick-fill picker (`attachFirmPicker` over `REGD_AUDIT_FIRMS`). No autosave/inline-edit yet (deliberate trim).
 
-**c) VAT Return OCR (`js/vatReturn.js`, `vat-` prefix — largest module, ~1200 lines)** — reads a scanned IRD VAT Return PDF (अनुसुची-१०, one page per month) and fills the real `vat-detail.xlsx` template. Zero AI/API calls; nothing leaves the browser. Pipeline: structural validation (page count/size/single-image checks + dark-pixel anchor densities) → per-page render + **CTM margin correction** (margins vary per page) → VisionEngine deskew + rule-line alignment (carries calibrated field boxes onto differently-scanned pages) → digit-only OCR → ValidationEngine rules (13% VAT-rate cross-check is the primary **blocking** validator; duplicate-month detection; all-zero-page; item ५/६/७ identity checks — item ७ prints signed, compare absolute values) → human review table (editable, confidence tiers) → business rules (`Difference = D−G−J+L−M`; `Total = prev + Diff − VatPaid`; VatPaid defaults to prev-Total-if-positive but is **override-able per month** — real firms deviate) → ExcelJS fill. **Calibrated against one scanner profile; other profiles fail safe (block), not silently.** Fiscal year format here is **dot**: `2083.084`. Cross-module hook: when the PDF matches a known client (`window.vatMatchedClient`), extraction and Excel generation call `vatcAutoProgress` to advance that client's VAT Compliance filings (`under_review` on extraction, `ready_to_file` on generation) — note the `vatcFyLabel(fyStart)` format conversion at the boundary. Deep engineering history: `HANDOFF_VAT.md`, `HANDOFF_2026-07-05.md`.
+**c) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `regdComingSoon()` in `js/registrar.js`. Real remaining product surface.
 
-**d) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `regdComingSoon()` in `js/registrar.js`. Real remaining product surface.
+> **Removed module — VAT Return OCR** (removed 2026-07-14 by user decision; the firm won't use it). It read scanned IRD VAT Return PDFs via digit-only OCR and filled the firm's Excel workbook. The removal took with it `js/vatReturn.js`, four engines whose only consumer it was (`ocrEngine`, `pdfEngine`, `visionEngine`, `validationEngine`), `DocumentEngine.workbookToBlob`, three CDN libraries (`pdfjs-dist`, `tesseract.js`, `exceljs`), and `assets/templates/vat-detail.xlsx`. All of it is recoverable from git history (last commit containing it: `ad0e9f2`); its engineering record lives in `HANDOFF_VAT.md` / `HANDOFF_2026-07-05.md`. Historical `audit_log` rows with `module: 'vatReturn'` remain valid; `vat_filings.status` keeps `ocr_processing` as a manual status.
 
 ---
 
@@ -254,7 +246,7 @@ All 10 tables have RLS **disabled**; anyone with the publishable key can read/wr
 
 ## 9. Document Generation
 
-Four distinct generation paths — pick the one that matches the document family:
+Three distinct generation paths — pick the one that matches the document family:
 
 ### 9.1 Word via templates (BM/AGM, Auditor Change)
 Pre-built tokenized `.docx` in `assets/templates/` filled through `DocumentEngine.renderWord` (PizZip + docxtemplater, `{{ }}` delimiters, `paragraphLoop: true`). Loop markers (`{{#items}}`/`{{/items}}`) must each occupy their **own paragraph**. Live preview via `DocumentEngine.previewWordAsHtml` (docx-preview). The BM/AGM template is a Preeti→Unicode (Mangal) conversion with a formatting-group-preserving rebuild — never revert to Preeti, and treat any template modification as a re-validation project (`HANDOFF.md` §4–5; tooling not committed).
@@ -262,23 +254,19 @@ Pre-built tokenized `.docx` in `assets/templates/` filled through `DocumentEngin
 ### 9.2 Word/PDF via HTML (Report Builder, Notes to Accounts)
 The document is rendered as styled HTML in a preview root, then exported two ways: `htmlDocx.asBlob(html, {margins})` for `.docx`, and a standalone print window (auto-`window.print()` after 300ms) for PDF. Print CSS controls pagination — verify page breaks after any layout change.
 
-### 9.3 Excel via real template (VAT Return)
-`DocumentEngine.getTemplate('assets/templates/vat-detail.xlsx')` + ExcelJS fill + `workbookToBlob`. The template is a sanitized copy of the firm's actual workbook; generated output has been verified cell-by-cell identical to the real file (styles, merges, formulas, incl. rows 21–22 tie-out and the deliberate missing K19 SUM).
-
-### 9.4 PDF via PDF-Lib (Billing invoices)
+### 9.3 PDF via PDF-Lib (Billing invoices)
 Drawn programmatically: firm letterhead, line items, bank details, QR image (or dashed placeholder).
 
-### 9.5 OCR & scanned-document geometry (VAT Return)
-Digit-only Tesseract through OcrEngine; page geometry through PdfEngine + VisionEngine (§5.9c). Ground rules learned the hard way: never trust a single OCR read (validate against independent signals like the 13% VAT-rate identity); confidence is a review-prioritization hint, not a correctness guarantee; tight crops only (loose crops corrupt digit segmentation); minus signs are invisible to the digit whitelist. *(Needs User Confirmation: the 2026-07-05 PaddleOCR-hybrid recommendation — the VisionEngine deskew/alignment path appears to have been built instead, but whether PaddleOCR is still planned was never recorded.)*
+> There is no OCR or Excel-generation path anymore — both belonged to the removed VAT Return module (§5.9). Excel *import* (SheetJS) still exists in the Clients module. If a future module needs Excel generation, ExcelJS and `DocumentEngine.workbookToBlob` can be restored from git history.
 
-### 9.6 Nepali locale
+### 9.4 Nepali locale
 All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes through `NepaliLocale`. **Fiscal-year string formats are deliberately inconsistent per module** — normalize at boundaries, never unify without asking:
 
 | Format | Used by |
 |---|---|
 | `2081-82` (dash) | Send Document, Report Builder, Notes, Billing |
 | `2083/84` (slash) | VAT Compliance (canonical: `vatcFyLabel`) |
-| `2083.084` (dot) | VAT Return OCR field, Drive year folders |
+| `2083.084` (dot) | Drive year folders (Send Document folder walk) |
 
 Fiscal month index is **1–12 with 1 = Shrawan** (not the B.S. calendar month number).
 
@@ -293,9 +281,9 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 
 | Prefix | Module | | Prefix | Module |
 |---|---|---|---|---|
-| `rep-` | Audit Report Builder | | `vat-` | VAT Return OCR |
-| `nta-` | Notes to Accounts | | `vatc-` | VAT Compliance |
-| `bm-` | BM/AGM Minutes | | `st-`/`ic-`/`cr-`/`pr-` | Registrar stubs |
+| `rep-` | Audit Report Builder | | `vatc-` | VAT Compliance |
+| `nta-` | Notes to Accounts | | `st-`/`ic-`/`cr-`/`pr-` | Registrar stubs |
+| `bm-` | BM/AGM Minutes | | `billing-` | Billing |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
 
 ### 10.3 Interaction patterns
@@ -309,7 +297,7 @@ Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list p
 2. **Always check `js/core/` and `js/utils.js` first** — the engines are the component library (§4).
 3. **Keep files modular** — one concern per file; UI + API + business logic don't pile into one file.
 4. **Never create unnecessary files** — new file only for a genuinely distinct concern.
-5. **Flag files that grow too large** explicitly (`vatReturn.js` at ~1200 lines is the current watch item).
+5. **Flag files that grow too large** explicitly rather than letting them grow silently (`vatCompliance.js` and `billing.js`, ~700+ lines each, are the current largest).
 6. **Prefer reusable helpers** over copy-paste, even for small snippets.
 7. **Readable over clever. Comments explain *why*, never *what*** — and only when non-obvious. Calibration findings, root-cause notes, and deliberate trade-offs are exactly what belongs in comments.
 8. **Reuse the design system** (§10) — no new visual styles.
@@ -354,13 +342,11 @@ The established working pattern — **investigate with real evidence → impleme
 | Item | Severity | Notes |
 |---|---|---|
 | RLS disabled on all 10 tables | **Critical** (accepted) | Blocked on an auth-strategy decision (§6.6). Re-raise if user scope grows. |
-| VAT OCR calibrated to one scanner profile | High | Other profiles fail safe (block). VisionEngine alignment was built to generalize; PaddleOCR hybrid decision unrecorded (§9.5). |
-| Template-build & OCR-calibration tooling never committed | High | Exists only as prose in `HANDOFF.md`/`HANDOFF_VAT.md`. Any template rebuild/recalibration starts by recreating it. |
+| BM/AGM template-build tooling never committed | High | Exists only as prose in `HANDOFF.md`. Any template rebuild starts by recreating it. |
 | No automated tests | Medium | All verification is manual/ad-hoc per §13. |
 | `supabase-js@2` unpinned; no CDN integrity hashes | Medium | Everything else is version-pinned. |
 | Email header-injection sanitization missing; no CSP | Medium | §14. |
 | 4 Company Registrar stubs (Share Transfer, Increase Capital, Company Registration, PIN Reset) | Feature gap | UI-only, `regdComingSoon()`. |
-| Digital (text-layer) VAT PDFs have no extraction path | Feature gap | Correctly rejected today; needs a pdf.js text-layer path, not OCR. |
 | `README.md` badly outdated | Low | Superseded by this file (§18). |
 | Section 51 "collected amount" in BM/AGM template is static sample text | Low | Known, deliberate cap during tokenization. |
 | Untracked stray file `_tmp_click_test.pdf` in repo root | Trivial | Delete or ignore. |
@@ -370,15 +356,14 @@ The established working pattern — **investigate with real evidence → impleme
 - **Preeti → Mangal (Unicode) template conversion** — explicit user decision. Never revert to Preeti.
 - **Billing QR is a static uploaded image** — never add a QR-generation library or a scannable-looking placeholder.
 - **Invoice status is trigger-owned** — never set `paid`/`partially_paid` from JS.
-- **Fiscal-year formats differ per module** (§9.6) — don't unify without asking.
+- **Fiscal-year formats differ per module** (§9.4) — don't unify without asking.
 - **Capital amounts are text** — preserves the firm's comma grouping.
-- **VAT "Filed" status is always manual**; auto-progress only moves forward.
-- **VAT Paid is an override-able default**, not a law — real workbooks deviate.
+- **VAT "Filed" status is always manual.**
 - **VAT clients are a hand-picked subset** — never bulk-activate.
 - **Clients table / import preview show a curated column subset**, not all fields.
 - **Dashboard is not the default landing tab** — Send Document stays default.
 - **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
-- **item5/items-strip checks stay supplementary** where not identity-verified — don't promote or delete without new evidence.
+- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its engines, or its CDN libraries unless the user asks.
 
 ## 17. AI Assistant Instructions
 
@@ -386,7 +371,7 @@ The established working pattern — **investigate with real evidence → impleme
 
 **Do:**
 - Follow the evidence-first pattern (§13) — this project's history is full of assumptions that real data disproved.
-- Ask before anything in the Needs-User-Confirmation register: (1) migrations via MCP vs. user-run (§1); (2) PaddleOCR hybrid status (§9.5).
+- Ask before anything in the Needs-User-Confirmation register: (1) migrations via MCP vs. user-run (§1).
 - Keep this file updated in the same commit as the change it documents.
 - State honestly what was and wasn't verified.
 
@@ -395,7 +380,6 @@ The established working pattern — **investigate with real evidence → impleme
 - Guess at Nepali-language/legal wording — propose and get user confirmation (established pattern for Preeti gaps and statutory text).
 - Consolidate or refactor things the user deferred, without a fresh explicit ask.
 - Trust `README.md` or the HANDOFF files as current state — they are historical.
-- Claim "production ready" for the VAT OCR module without the single-scanner-profile qualifier.
 
 ## 18. Related Documents
 
@@ -403,6 +387,6 @@ The established working pattern — **investigate with real evidence → impleme
 |---|---|---|
 | `README.md` | **Outdated** (pre-engine era) | Nothing authoritative; update or retire it as a separate task. |
 | `HANDOFF.md` (2026-07-03) | Historical | The only record of the BM/AGM Preeti→Unicode template pipeline, token list, and formatting-group rebuild — required reading before touching that template. |
-| `HANDOFF_VAT.md` (2026-07-04) | Historical | VAT OCR calibration methodology, field-box derivation, validation evidence. |
-| `HANDOFF_2026-07-05.md` | Historical | The 13-engine rebuild rationale, per-engine migration notes, PaddleOCR evaluation. |
+| `HANDOFF_VAT.md` (2026-07-04) | Historical | VAT Return OCR engineering record (module removed 2026-07-14 — §5.9). |
+| `HANDOFF_2026-07-05.md` | Historical | The engine-layer rebuild rationale and per-engine migration notes (four of those engines were removed with the VAT Return module). |
 | Memory (`~/.claude/projects/.../memory/`) | Live | Cross-session conventions for VAT Compliance and Billing (mirrored into §5.2/§5.3). |

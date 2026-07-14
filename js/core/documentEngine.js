@@ -1,9 +1,8 @@
 // ════════════════════════════════════════════
 //  DOCUMENT ENGINE
-//  One place that wraps Word generation (PizZip + docxtemplater), Word
-//  preview (docx-preview), and Excel generation (ExcelJS) — proven first
-//  against bmAgmMinutes.js and vatReturn.js, the two already-working
-//  modules that used to each hand-roll this themselves. Any future
+//  One place that wraps Word generation (PizZip + docxtemplater) and Word
+//  preview (docx-preview) — proven against the already-working modules
+//  that used to each hand-roll this themselves. Any future
 //  document-producing module (Financial Statements, Company Registration,
 //  Audit Working Papers, ...) calls this instead of repeating it.
 // ════════════════════════════════════════════
@@ -60,18 +59,5 @@ window.DocumentEngine = (function () {
     await window.docx.renderAsync(buffer, container, styleEl, options);
   }
 
-  // ── Excel (ExcelJS) ──
-  // Sheet layout (columns, formulas, merged cells) is business logic that
-  // stays in each module — this only wraps the generic "workbook -> Blob"
-  // step, the one piece every ExcelJS consumer needs identically. Right now
-  // vatReturn.js is the only real consumer; a shared header/formula-block
-  // helper is worth extracting once a second Excel-generating module exists
-  // to validate the abstraction against, matching how renderWord() above was
-  // only generalized after proving it against two real modules.
-  async function workbookToBlob(workbook) {
-    const buf = await workbook.xlsx.writeBuffer();
-    return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  }
-
-  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml, workbookToBlob };
+  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml };
 })();

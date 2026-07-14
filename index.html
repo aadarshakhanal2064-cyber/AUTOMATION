@@ -6,7 +6,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-<link rel="stylesheet" href="css/styles.css?v=202607123200">
+<link rel="stylesheet" href="css/styles.css?v=202607141030">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -65,7 +65,6 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openRegdModule('auditorChange', 'Auditor Change')">Auditor Change</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('pinReset', 'PIN Reset')">PIN Reset</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('bmAgmMinutes', 'BM/AGM Minutes')">BM/AGM Minutes</button>
-        <button class="topbar-dropdown-item" onclick="openRegdModule('vatReturn', 'VAT Return')">VAT Return</button>
       </div>
     </div>
   </div>
@@ -1197,90 +1196,6 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
 
-        <!-- ── SUB: VAT RETURN ── -->
-        <div id="regd-vatReturn-panel" class="regd-sub-panel">
-          <div style="padding:24px;">
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title" style="font-size:14px;">Company &amp; opening balance</div>
-              </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>Company Name</label>
-                  <input type="text" id="vat-companyName" placeholder="e.g. Parewashwori Oil Stores Pvt.Ltd" />
-                </div>
-                <div class="form-group">
-                  <label>Address</label>
-                  <input type="text" id="vat-companyAddress" placeholder="e.g. Rapti-02, Gadauli, Chitwan" />
-                </div>
-              </div>
-              <div class="form-grid" style="gap:12px;">
-                <div class="form-group">
-                  <label>Opening Balance (last year's closing Total)</label>
-                  <input type="text" id="vat-openingBalance" placeholder="e.g. -986681 (leave blank if none)" oninput="vatRenderWorkbookPreview()" />
-                </div>
-                <div class="form-group">
-                  <label>Fiscal Year</label>
-                  <input type="text" id="vat-fiscalYear" placeholder="Auto-filled from PDF after extraction — confirm it" />
-                </div>
-              </div>
-            </div>
-
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title" style="font-size:14px;">Upload VAT Return PDF</div>
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <input type="file" id="vat-pdfFile" accept="application/pdf" />
-              </div>
-              <button class="btn btn-primary" onclick="vatExtractPdf()">🔎 Extract from PDF</button>
-              <div id="vat-status"></div>
-            </div>
-
-            <div class="card" id="vat-review-card" style="display:none;">
-              <div class="card-header">
-                <div class="card-title" style="font-size:14px;">Review extracted data</div>
-                <div class="card-desc">Values with a low confidence or a failed checksum are highlighted — correct them before generating.</div>
-              </div>
-              <div class="table-wrap" style="overflow-x:auto;">
-                <table class="client-table" id="vat-review-table" style="min-width:1400px;">
-                  <thead>
-                    <tr>
-                      <th>Month</th>
-                      <th>Taxable Sales</th><th>VAT</th><th>Tax Free Sales</th>
-                      <th>Taxable Purchase</th><th>VAT</th><th>Tax Free Purchase</th>
-                      <th>Taxable Import</th><th>VAT</th><th>Tax Free Import</th>
-                      <th>Adj. Sales</th><th>Adj. Purchase</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody id="vat-review-tbody"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="card" id="vat-workbook-card" style="display:none;">
-              <div class="card-header">
-                <div class="card-title" style="font-size:14px;">Workbook preview</div>
-                <div class="card-desc">Exactly what the Excel will contain. Vat Paid defaults to the carry-forward rule (previous month's Total if positive) — edit any month where the real payment differed.</div>
-              </div>
-              <div class="table-wrap" style="overflow-x:auto;">
-                <table class="client-table" id="vat-workbook-table" style="min-width:1100px;">
-                  <thead>
-                    <tr>
-                      <th>Month</th><th>Taxable Sales</th><th>VAT</th><th>Taxable Purchase</th><th>VAT</th>
-                      <th>Import VAT</th><th>Adj. Sales</th><th>Adj. Purchase</th><th>Vat Paid</th><th>Difference</th><th>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody id="vat-workbook-tbody"></tbody>
-                </table>
-              </div>
-              <div class="action-row">
-                <button class="btn btn-primary" onclick="vatGenerateExcel()">⚙️ Generate &amp; Download Excel</button>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -1766,44 +1681,36 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 
-<script src="js/config.js?v=202607123200"></script>
-<script src="js/utils.js?v=202607123200"></script>
-<script src="js/core/moduleRegistry.js?v=202607123200"></script>
-<script src="js/core/statusBox.js?v=202607123200"></script>
-<script src="js/core/nepaliLocale.js?v=202607123200"></script>
-<script src="js/core/documentEngine.js?v=202607123200"></script>
-<script src="js/core/ocrEngine.js?v=202607123200"></script>
-<script src="js/core/searchEngine.js?v=202607123200"></script>
-<script src="js/core/pdfEngine.js?v=202607123200"></script>
-<script src="js/core/visionEngine.js?v=202607123200"></script>
-<script src="js/core/tableEngine.js?v=202607123200"></script>
-<script src="js/core/workflowEngine.js?v=202607123200"></script>
-<script src="js/core/validationEngine.js?v=202607123200"></script>
-<script src="js/core/auditLog.js?v=202607123200"></script>
-<script src="js/core/integrations.js?v=202607123200"></script>
-<script src="js/tabs.js?v=202607123200"></script>
-<script src="js/dashboard.js?v=202607123200"></script>
-<script src="js/registrar.js?v=202607123200"></script>
-<script src="js/clients.js?v=202607123200"></script>
-<script src="js/logs.js?v=202607123200"></script>
-<script src="js/vatReturn.js?v=202607123200"></script>
-<script src="js/vatCompliance.js?v=202607123200"></script>
-<script src="js/billing.js?v=202607123200"></script>
-<script src="js/sendDocument.js?v=202607123200"></script>
-<script src="js/report.js?v=202607123200"></script>
-<script src="js/notesToAccounts.js?v=202607123200"></script>
-<script src="js/bmAgmMinutes.js?v=202607123200"></script>
-<script src="js/auditorChange.js?v=202607123200"></script>
-<script src="js/auth.js?v=202607123200"></script>
+<script src="js/config.js?v=202607141030"></script>
+<script src="js/utils.js?v=202607141030"></script>
+<script src="js/core/moduleRegistry.js?v=202607141030"></script>
+<script src="js/core/statusBox.js?v=202607141030"></script>
+<script src="js/core/nepaliLocale.js?v=202607141030"></script>
+<script src="js/core/documentEngine.js?v=202607141030"></script>
+<script src="js/core/searchEngine.js?v=202607141030"></script>
+<script src="js/core/tableEngine.js?v=202607141030"></script>
+<script src="js/core/workflowEngine.js?v=202607141030"></script>
+<script src="js/core/auditLog.js?v=202607141030"></script>
+<script src="js/core/integrations.js?v=202607141030"></script>
+<script src="js/tabs.js?v=202607141030"></script>
+<script src="js/dashboard.js?v=202607141030"></script>
+<script src="js/registrar.js?v=202607141030"></script>
+<script src="js/clients.js?v=202607141030"></script>
+<script src="js/logs.js?v=202607141030"></script>
+<script src="js/vatCompliance.js?v=202607141030"></script>
+<script src="js/billing.js?v=202607141030"></script>
+<script src="js/sendDocument.js?v=202607141030"></script>
+<script src="js/report.js?v=202607141030"></script>
+<script src="js/notesToAccounts.js?v=202607141030"></script>
+<script src="js/bmAgmMinutes.js?v=202607141030"></script>
+<script src="js/auditorChange.js?v=202607141030"></script>
+<script src="js/auth.js?v=202607141030"></script>
 
 </body>
 </html>

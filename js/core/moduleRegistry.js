@@ -34,4 +34,3 @@ ModuleRegistry.register({ id: 'companyRegistration', group: 'regd', buttonId: 's
 ModuleRegistry.register({ id: 'auditorChange',       group: 'regd', buttonId: 'subtab-auditorChange',       panelId: 'regd-auditorChange-panel' });
 ModuleRegistry.register({ id: 'pinReset',            group: 'regd', buttonId: 'subtab-pinReset',            panelId: 'regd-pinReset-panel' });
 ModuleRegistry.register({ id: 'bmAgmMinutes',        group: 'regd', buttonId: 'subtab-bmAgmMinutes',         panelId: 'regd-bmAgmMinutes-panel' });
-ModuleRegistry.register({ id: 'vatReturn',           group: 'regd', buttonId: 'subtab-vatReturn',            panelId: 'regd-vatReturn-panel' });
