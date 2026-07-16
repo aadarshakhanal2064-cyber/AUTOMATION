@@ -655,7 +655,13 @@ textarea { resize: vertical; min-height: 100px; }
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
   padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--white);
 }
-.regd-form-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: start; }
+/* Masonry-style packing: a plain grid with align-items:start made the tall
+   Company Details card set the row height, leaving dead space beside the
+   shorter cards and pushing the next card onto a new row (long vertical
+   scroll). CSS multi-column flows the cards into balanced columns instead,
+   packing them top-to-bottom then across — the form stays compact. */
+.regd-form-cards { columns: 320px; column-gap: 20px; }
+.regd-form-cards > .card { break-inside: avoid; margin-bottom: 20px; width: 100%; }
 .regd-edit-view { padding: 24px; }
 .regd-preview-view { background: #f8fafc; }
 .regd-preview-view .bm-preview-scroll { max-height: calc(100vh - var(--topbar-h) - 300px); min-height: 420px; }
