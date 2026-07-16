@@ -87,7 +87,9 @@ function bmToggleCompanyEdit() {
   const toggleBtn = document.getElementById('bm-edit-toggle-btn');
   if (!editFields) return;
   const willOpen = editFields.style.display === 'none';
-  editFields.style.display = willOpen ? 'block' : 'none';
+  // 'contents' (not 'block') so its child .form-groups flatten straight into
+  // the parent .rep-form-grid — this div is a toggle unit, not a layout box.
+  editFields.style.display = willOpen ? 'contents' : 'none';
   if (toggleBtn) toggleBtn.textContent = willOpen ? 'Hide Company Details' : 'Edit Company Details';
 }
 
@@ -618,7 +620,7 @@ function bmResetForm() {
   bmClearExtraShareholders();
 
   document.getElementById('bm-company-summary').style.display = 'none';
-  document.getElementById('bm-company-edit-fields').style.display = 'block';
+  document.getElementById('bm-company-edit-fields').style.display = 'contents';
   const toggleBtn = document.getElementById('bm-edit-toggle-btn');
   if (toggleBtn) toggleBtn.textContent = 'Edit Company Details';
 
