@@ -664,6 +664,10 @@ function billingCloseSettings() {
 function billingRenderSettingsBody() {
   const body = document.getElementById('billing-settings-body');
   const firms = Object.keys(window.REP_FIRMS);
+  // Bank details + payment QR are the payment-fraud target, so writes are
+  // admin-only (enforced by RLS in the DB — this read-only rendering for
+  // staff just keeps the UI honest about it).
+  const isAdmin = window.currentUser && window.currentUser.role === 'admin';
   body.innerHTML = firms.map(key => {
     const firm = window.REP_FIRMS[key];
     const bank = (billingFirmDetails && billingFirmDetails[key]) || {};
@@ -672,19 +676,21 @@ function billingRenderSettingsBody() {
     <div class="card" style="margin-bottom:16px; padding:16px;">
       <h4 style="margin:0 0 12px; color:var(--brand-navy);">${escHtml(firm.name)}</h4>
       <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-        <div class="form-group"><label>Bank Name</label><input type="text" id="billing-bank-name-${key}" value="${escHtml(bank.bank_name || '')}" /></div>
-        <div class="form-group"><label>Account Name</label><input type="text" id="billing-bank-acname-${key}" value="${escHtml(bank.account_name || '')}" /></div>
-        <div class="form-group"><label>Account Number</label><input type="text" id="billing-bank-acno-${key}" value="${escHtml(bank.account_number || '')}" /></div>
-        <div class="form-group"><label>Branch</label><input type="text" id="billing-bank-branch-${key}" value="${escHtml(bank.branch || '')}" /></div>
+        <div class="form-group"><label>Bank Name</label><input type="text" id="billing-bank-name-${key}" value="${escHtml(bank.bank_name || '')}" ${isAdmin ? '' : 'disabled'} /></div>
+        <div class="form-group"><label>Account Name</label><input type="text" id="billing-bank-acname-${key}" value="${escHtml(bank.account_name || '')}" ${isAdmin ? '' : 'disabled'} /></div>
+        <div class="form-group"><label>Account Number</label><input type="text" id="billing-bank-acno-${key}" value="${escHtml(bank.account_number || '')}" ${isAdmin ? '' : 'disabled'} /></div>
+        <div class="form-group"><label>Branch</label><input type="text" id="billing-bank-branch-${key}" value="${escHtml(bank.branch || '')}" ${isAdmin ? '' : 'disabled'} /></div>
       </div>
       <div class="form-group">
         <label>Payment QR Image</label>
-        <input type="file" accept="image/png,image/jpeg" onchange="billingHandleQrUpload('${key}', this)" />
+        ${isAdmin ? `<input type="file" accept="image/png,image/jpeg" onchange="billingHandleQrUpload('${key}', this)" />` : ''}
         ${qrSrc ? `<img class="billing-qr-preview" src="${qrSrc}" />` : `<div class="billing-qr-placeholder">No QR uploaded yet — an example placeholder box will print on invoices until one is added here.</div>`}
       </div>
+      ${isAdmin ? `
       <div class="action-row">
         <button class="btn btn-primary btn-sm" onclick="billingSaveFirmDetails('${key}')">Save</button>
-      </div>
+      </div>` : `
+      <p style="font-size:12.5px; color:var(--text-muted); margin:8px 0 0;">Only admins can change bank details or the payment QR.</p>`}
       <div id="billing-settings-status-${key}"></div>
     </div>`;
   }).join('');

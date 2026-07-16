@@ -13,7 +13,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 **Hard rules that must never be broken:**
 
 1. **Never `git push` without explicit user approval** — every time, no standing permission. Committing locally is fine proactively.
-2. **Never run SQL migrations yourself** — generate the SQL, tell the user to run it in the Supabase SQL Editor, wait for confirmation. *(Needs User Confirmation: a Supabase MCP server is now available in sessions, including `apply_migration`. Until the user says otherwise, the generate-and-user-runs rule stands; the MCP may be used read-only for schema verification.)*
+2. **SQL migrations: show the SQL, then apply via the Supabase MCP.** *(User approved 2026-07-16, during the RLS lockdown work.)* Keep the annotated migration + a rollback script as files under `db/` in the same commit; the MCP is also fine for read-only schema verification. Never run destructive DDL without the SQL having been shown first.
 3. **Never rewrite pushed history** (`--amend`, rebase, force-push) without explicit approval each time.
 4. **Bump the cache-busting `?v=` version** on `index.html`'s local script/CSS tags when shipping changes — GitHub Pages serves stale files otherwise.
 5. **Never break existing features** — regression-check before calling anything done.
@@ -220,11 +220,17 @@ Supabase/PostgREST caps a single select at **1000 rows** — any query that can 
 
 ### 6.5 Migration workflow
 
-Generate the SQL → tell the user exactly where to run it (Supabase Dashboard → SQL Editor) → wait for confirmation → only then write code that depends on it. See the Needs-User-Confirmation note in §1 rule 2 about the MCP.
+Show the SQL (annotated migration + rollback script as files under `db/`) → apply via the Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
 
-### 6.6 RLS — disabled everywhere (critical known debt)
+### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All 10 tables have RLS **disabled**; anyone with the publishable key can read/write every row. Known and flagged to the user; enabling RLS requires an auth-strategy decision first (there is no Supabase Auth session to write policies against). Accepted for now under the 8-trusted-users threat model. Do not enable RLS unilaterally — it would block all access.
+All 10 tables have RLS **enabled** (migration `db/2026-07-16_rls_lockdown.sql`; rollback script alongside it). The permission model:
+
+- **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
+- **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
+- Triggers (`set_invoice_number`, `sync_invoice_payment_totals`) run as the invoking member — the member UPDATE policy on `invoices` is what lets them work. Don't remove it.
+- The 4 RPCs are EXECUTE-revoked for `anon`; `get_db_storage_usage` (SECURITY DEFINER) additionally guards internally on `is_app_user()`.
+- When adding a **new table**: enable RLS + add membership policies in the same migration, or the app can't read it at all.
 
 ---
 

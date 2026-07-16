@@ -18,7 +18,10 @@ window.addEventListener('load', () => {
     } else if (event === 'SIGNED_IN') {
       afterSupabaseSignIn(session);
     } else if (event === 'SIGNED_OUT') {
-      showSignInScreen();
+      // Skip if the Access Denied screen is up — that sign-out is ours
+      // (afterSupabaseSignIn rejecting a non-member) and the denial message
+      // must stay visible rather than bouncing back to the sign-in screen.
+      if (document.getElementById('access-denied-wrap').style.display !== 'flex') showSignInScreen();
     }
   });
 
@@ -152,7 +155,10 @@ async function afterSupabaseSignIn(session) {
     .maybeSingle();
 
   if (error || !data) {
-    // Not in app_users — show access denied
+    // Not in app_users — show access denied. Also end the Supabase session:
+    // RLS gives non-members zero rows anyway, but a lingering authenticated
+    // session has no business persisting for someone we just rejected.
+    window.sb.auth.signOut();
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'none';
     document.getElementById('access-denied-msg').textContent =
