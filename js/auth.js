@@ -16,6 +16,8 @@ window.addEventListener('load', () => {
     if (cachedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry, 10)) {
       // Token is still valid! Skip Google API and go straight to app
       window.accessToken = cachedToken;
+      window._rememberMeActive = true;
+      scheduleTokenRenewal(parseInt(tokenExpiry, 10));
       document.getElementById('loading-screen').style.display = 'none';
       afterGoogleSignIn();
       return;
@@ -67,36 +69,80 @@ function saveClientId() {
 // ════════════════════════════════════════════
 //  GOOGLE AUTH
 // ════════════════════════════════════════════
-function signIn() {
-  if (!window.CLIENT_ID) { showSetup(); return; }
+const TOKEN_LIFETIME_MS = 55 * 60 * 1000; // Google tokens last 60m; match existing cache margin
+const RENEW_BEFORE_MS   = 5  * 60 * 1000; // silently renew 5 min before that mark
 
+// Single callback shared by interactive sign-in and background silent renewal —
+// window._silentRenewalInFlight tells it which one just happened, since a
+// fresh sign-in needs afterGoogleSignIn() (load the app UI) while a renewal
+// just needs the token value swapped out underneath an already-loaded app.
+function handleTokenResponse(resp) {
+  const isSilent = window._silentRenewalInFlight;
+  window._silentRenewalInFlight = false;
+
+  if (resp.error) {
+    if (isSilent) {
+      // Google session/cookie is gone — stop trying; next Drive/Gmail call
+      // will fail and the user re-signs in same as before this change.
+      clearTimeout(window._renewalTimer);
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('tokenExpiry');
+      return;
+    }
+    showAuthError('Google sign-in failed: ' + resp.error);
+    return;
+  }
+
+  window.accessToken = resp.access_token;
+  const expiresAt = Date.now() + TOKEN_LIFETIME_MS;
+
+  if (window._rememberMeActive) {
+    localStorage.setItem('accessToken', resp.access_token);
+    localStorage.setItem('tokenExpiry', expiresAt);
+  }
+
+  scheduleTokenRenewal(expiresAt);
+
+  if (!isSilent) afterGoogleSignIn();
+}
+
+function ensureTokenClient() {
+  if (window.tokenClient) return;
   window.tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: window.CLIENT_ID,
     scope: SCOPES,
-    callback: async (resp) => {
-      if (resp.error) {
-        showAuthError('Google sign-in failed: ' + resp.error);
-        return;
-      }
-      window.accessToken = resp.access_token;
-      // Save token if "remember me" flag is ticked (expires in 1 hour)
-      if (document.getElementById('rememberMeCheck')?.checked) {
-        localStorage.setItem('accessToken', resp.access_token);
-        // Set expiry to 55 minutes from now to be safe (Google tokens are 60m)
-        localStorage.setItem('tokenExpiry', Date.now() + (55 * 60 * 1000));
-      }
-      await afterGoogleSignIn();
-    },
+    callback: handleTokenResponse,
   });
+}
+
+function scheduleTokenRenewal(expiresAt) {
+  clearTimeout(window._renewalTimer);
+  const delay = Math.max(expiresAt - Date.now() - RENEW_BEFORE_MS, 10000);
+  window._renewalTimer = setTimeout(renewTokenSilently, delay);
+}
+
+function renewTokenSilently() {
+  if (!window.CLIENT_ID) return;
+  ensureTokenClient();
+  window._silentRenewalInFlight = true;
+  window.tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function signIn() {
+  if (!window.CLIENT_ID) { showSetup(); return; }
+  window._rememberMeActive = !!document.getElementById('rememberMeCheck')?.checked;
+  ensureTokenClient();
   window.tokenClient.requestAccessToken();
 }
 
 function signOut() {
+  clearTimeout(window._renewalTimer);
+  window._rememberMeActive = false;
   window.accessToken = null;
   window.currentUser = null;
   window.clientsList = [];
   window.allLogs     = [];
-  
+
   // Clear remember-me cached token
   localStorage.removeItem('accessToken');
   localStorage.removeItem('tokenExpiry');
