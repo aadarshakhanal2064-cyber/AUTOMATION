@@ -2,55 +2,37 @@
 //  BOOT
 // ════════════════════════════════════════════
 window.addEventListener('load', () => {
-  const tryAutoSignIn = () => {
-    if (!window.CLIENT_ID) {
-      document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('auth-section-wrap').style.display = 'flex';
-      return;
-    }
-
-    // Check for cached token from "Remember Me"
-    const cachedToken = localStorage.getItem('accessToken');
-    const tokenExpiry = localStorage.getItem('tokenExpiry');
-
-    if (cachedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry, 10)) {
-      // Token is still valid! Skip Google API and go straight to app
-      window.accessToken = cachedToken;
-      window._rememberMeActive = true;
-      scheduleTokenRenewal(parseInt(tokenExpiry, 10));
-      document.getElementById('loading-screen').style.display = 'none';
-      afterGoogleSignIn();
-      return;
-    }
-
-    // If we reach here, token is missing or expired
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('tokenExpiry');
-    
+  const showSignInScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'flex';
   };
 
-  // GIS loads async — poll until ready
-  const interval = setInterval(() => {
-    if (window.google?.accounts?.oauth2) {
-      clearInterval(interval);
-      tryAutoSignIn();
+  // Supabase Auth owns session state now — onAuthStateChange fires once on
+  // load with whatever session it restored (INITIAL_SESSION), then again on
+  // every subsequent sign-in/out. TOKEN_REFRESHED (Supabase's own ~1hr JWT
+  // refresh) is intentionally ignored here — the app is already initialized
+  // by that point, nothing to redo.
+  window.sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'INITIAL_SESSION') {
+      session ? afterSupabaseSignIn(session) : showSignInScreen();
+    } else if (event === 'SIGNED_IN') {
+      afterSupabaseSignIn(session);
+    } else if (event === 'SIGNED_OUT') {
+      showSignInScreen();
     }
-  }, 100);
+  });
 
-  // Safety timeout — if GIS never loads in 5s, show auth screen
+  // Safety timeout — if Supabase's client never resolves a session state
+  // (e.g. network issue), fall back to the sign-in screen rather than hang.
   setTimeout(() => {
-    clearInterval(interval);
-    if (document.getElementById('loading-screen').style.display !== 'none') {
-      document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('auth-section-wrap').style.display = 'flex';
-    }
+    if (document.getElementById('loading-screen').style.display !== 'none') showSignInScreen();
   }, 5000);
 });
 
 // ════════════════════════════════════════════
 //  SETUP MODAL
+//  Only needed for the GIS silent-renewal calls below now — Supabase Auth
+//  owns the login flow itself and doesn't need this app to know a client_id.
 // ════════════════════════════════════════════
 function showSetup() {
   document.getElementById('setup-modal').classList.add('open');
@@ -63,47 +45,43 @@ function saveClientId() {
   window.CLIENT_ID = val;
   localStorage.setItem('gClientId', val);
   closeSetup();
-  alert('✅ Client ID saved! Now click "Sign in with Google".');
+  alert('✅ Client ID saved! It will be used to silently renew your Drive/Gmail access.');
 }
 
 // ════════════════════════════════════════════
-//  GOOGLE AUTH
+//  GOOGLE AUTH (via Supabase Auth) + DRIVE/GMAIL TOKEN RENEWAL (via GIS)
+//
+//  Login and the Drive/Gmail access token come from ONE Google consent
+//  screen: signInWithOAuth() requests the Drive/Gmail scopes alongside
+//  login, and Supabase hands back session.provider_token — Google's raw
+//  access token, usable exactly like before. Google ties a consent grant to
+//  (user, client_id, scope, origin) regardless of which SDK asked for it, so
+//  GIS's silent renewal (same Google Cloud OAuth Client ID, configured via
+//  the Setup modal) can keep reissuing that token afterward without a
+//  second prompt. Supabase itself does NOT auto-refresh provider_token, so
+//  this renewal loop (carried over from the earlier silent-refresh change)
+//  is still what keeps Drive/Gmail working hour after hour.
 // ════════════════════════════════════════════
 const TOKEN_LIFETIME_MS = 55 * 60 * 1000; // Google tokens last 60m; match existing cache margin
 const RENEW_BEFORE_MS   = 5  * 60 * 1000; // silently renew 5 min before that mark
 
-// Single callback shared by interactive sign-in and background silent renewal —
-// window._silentRenewalInFlight tells it which one just happened, since a
-// fresh sign-in needs afterGoogleSignIn() (load the app UI) while a renewal
-// just needs the token value swapped out underneath an already-loaded app.
 function handleTokenResponse(resp) {
   const isSilent = window._silentRenewalInFlight;
   window._silentRenewalInFlight = false;
 
   if (resp.error) {
     if (isSilent) {
-      // Google session/cookie is gone — stop trying; next Drive/Gmail call
-      // will fail and the user re-signs in same as before this change.
+      // Google session/cookie is gone — stop trying; Drive/Gmail calls will
+      // fail until the next sign-in, same fallback as before this existed.
       clearTimeout(window._renewalTimer);
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('tokenExpiry');
+      window.accessToken = null;
       return;
     }
-    showAuthError('Google sign-in failed: ' + resp.error);
-    return;
+    return; // interactive GIS calls aren't used anymore; nothing else to do
   }
 
   window.accessToken = resp.access_token;
-  const expiresAt = Date.now() + TOKEN_LIFETIME_MS;
-
-  if (window._rememberMeActive) {
-    localStorage.setItem('accessToken', resp.access_token);
-    localStorage.setItem('tokenExpiry', expiresAt);
-  }
-
-  scheduleTokenRenewal(expiresAt);
-
-  if (!isSilent) afterGoogleSignIn();
+  scheduleTokenRenewal(Date.now() + TOKEN_LIFETIME_MS);
 }
 
 function ensureTokenClient() {
@@ -122,32 +100,32 @@ function scheduleTokenRenewal(expiresAt) {
 }
 
 function renewTokenSilently() {
-  if (!window.CLIENT_ID) return;
+  if (!window.CLIENT_ID) return; // Setup modal never configured — nothing to renew with
   ensureTokenClient();
   window._silentRenewalInFlight = true;
   window.tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function signIn() {
-  if (!window.CLIENT_ID) { showSetup(); return; }
-  window._rememberMeActive = !!document.getElementById('rememberMeCheck')?.checked;
-  ensureTokenClient();
-  window.tokenClient.requestAccessToken();
+  window.sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      scopes: SCOPES,
+      redirectTo: window.location.origin + window.location.pathname,
+    },
+  });
 }
 
 function signOut() {
   clearTimeout(window._renewalTimer);
-  window._rememberMeActive = false;
+  const tokenToRevoke = window.accessToken;
   window.accessToken = null;
   window.currentUser = null;
   window.clientsList = [];
   window.allLogs     = [];
 
-  // Clear remember-me cached token
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('tokenExpiry');
-
-  if (window.tokenClient) google.accounts.oauth2.revoke(window.accessToken, () => {});
+  if (window.tokenClient && tokenToRevoke) google.accounts.oauth2.revoke(tokenToRevoke, () => {});
+  window.sb.auth.signOut();
 
   document.getElementById('topbar').style.display       = 'none';
   document.getElementById('sidebar').style.display      = 'none';
@@ -156,15 +134,17 @@ function signOut() {
   document.getElementById('auth-section-wrap').style.display  = 'flex';
 }
 
-async function afterGoogleSignIn() {
-  // 1. Get Google user info
-  const infoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-    headers: { Authorization: 'Bearer ' + window.accessToken }
-  });
-  const info = await infoResp.json();
-  const email = info.email || '';
+async function afterSupabaseSignIn(session) {
+  const email = session.user.email || '';
 
-  // 2. Check app_users table in Supabase
+  // Seed the Drive/Gmail token from this same sign-in's OAuth grant, then
+  // hand off to the renewal loop above for everything after.
+  if (session.provider_token) {
+    window.accessToken = session.provider_token;
+    scheduleTokenRenewal(Date.now() + TOKEN_LIFETIME_MS);
+  }
+
+  // Check app_users table in Supabase
   const { data, error } = await window.sb
     .from('app_users')
     .select('email, role')
@@ -173,6 +153,7 @@ async function afterGoogleSignIn() {
 
   if (error || !data) {
     // Not in app_users — show access denied
+    document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'none';
     document.getElementById('access-denied-msg').textContent =
       `"${email}" is not registered as an authorised user. Ask your admin to add you in Supabase → app_users.`;
@@ -180,11 +161,11 @@ async function afterGoogleSignIn() {
     return;
   }
 
-  // 3. Authorised — store user
+  // Authorised — store user
   window.currentUser = { email: data.email, role: data.role };
 
   // Update sidebar UI
-  const initial = (info.name || email)[0].toUpperCase();
+  const initial = (session.user.user_metadata?.full_name || email)[0].toUpperCase();
   document.getElementById('user-avatar').textContent = initial;
   document.getElementById('user-name').textContent   = email;
   document.getElementById('role-badge').textContent  = data.role;
@@ -204,6 +185,7 @@ async function afterGoogleSignIn() {
   }
 
   // Show app
+  document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('auth-section-wrap').style.display = 'none';
   document.getElementById('app-section').style.display  = 'block';
 
