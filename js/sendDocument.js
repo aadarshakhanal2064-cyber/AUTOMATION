@@ -22,7 +22,7 @@ async function findDocument() {
     const file = await searchDrive(clientName, docType, fiscalYear);
 
     if (!file) {
-      showStatus(`❌ No file found for "<strong>${clientName}</strong>" (<strong>${docType}</strong>). Check the file name contains the client name inside the correct folder.`, 'error');
+      showStatus(`❌ No file found for "<strong>${escHtml(clientName)}</strong>" (<strong>${escHtml(docType)}</strong>). Check the file name contains the client name inside the correct folder.`, 'error');
       btn.disabled = false; btn.innerHTML = '🔍 Find Document';
       return;
     }
@@ -33,9 +33,11 @@ async function findDocument() {
     document.getElementById('file-preview').style.display = 'flex';
 
     if (file._warning) {
-      showStatus('⚠️ ' + file._warning + ' — Please verify before sending.', 'info');
+      // _warning embeds clientName; escape since it flows into innerHTML
+      showStatus('⚠️ ' + escHtml(file._warning) + ' — Please verify before sending.', 'info');
     } else {
-      showStatus(`✅ File found: <strong>${file.name}</strong> — Confirm this is correct then click <strong>Send to Client</strong>.`, 'success');
+      // file.name comes from Google Drive — treat as untrusted in HTML context
+      showStatus(`✅ File found: <strong>${escHtml(file.name)}</strong> — Confirm this is correct then click <strong>Send to Client</strong>.`, 'success');
     }
     document.getElementById('sendBtn').style.display = 'inline-flex';
 
@@ -56,7 +58,7 @@ async function sendFoundDocument() {
   const searchBtn = document.getElementById('searchBtn');
   sendBtn.disabled = true; searchBtn.disabled = true;
   sendBtn.innerHTML = '<span class="spinner"></span> Sending…';
-  showStatus(`<span class="spinner spinner-navy"></span> Sending <strong>${window.foundFile.name}</strong> to <strong>${clientEmail}</strong>…`, 'searching');
+  showStatus(`<span class="spinner spinner-navy"></span> Sending <strong>${escHtml(window.foundFile.name)}</strong> to <strong>${escHtml(clientEmail)}</strong>…`, 'searching');
 
   const logEntry = {
     sent_by:       window.currentUser.email,
@@ -73,7 +75,7 @@ async function sendFoundDocument() {
   try {
     await sendEmail(window.foundFile, clientName, docType, fiscalYear, clientEmail);
     logEntry.status = 'sent';
-    showStatus(`✅ Successfully sent <strong>${window.foundFile.name}</strong> to <strong>${clientEmail}</strong>`, 'success');
+    showStatus(`✅ Successfully sent <strong>${escHtml(window.foundFile.name)}</strong> to <strong>${escHtml(clientEmail)}</strong>`, 'success');
     sendBtn.style.display = 'none';
     window.foundFile = null;
   } catch (err) {
