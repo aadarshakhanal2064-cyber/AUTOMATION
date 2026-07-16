@@ -52,7 +52,7 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 | Library | Version | Used for / notes |
 |---|---|---|
 | Google API + GSI clients | (Google-hosted) | OAuth token client, Drive/Gmail |
-| `@supabase/supabase-js` | `@2` (**floating**, not pinned) | Postgres REST client |
+| `@supabase/supabase-js` | `2.110.7` (pinned + SRI, UMD build) | Postgres REST client + Supabase Auth |
 | `xlsx` (SheetJS) | 0.18.5 full build | Excel/CSV/**ODS** *import* (full build needed for ODS). Read-only — its free build can't write styles/merges/formats. |
 | `exceljs` | 4.4.0 | Excel *generation* with faithful merges/borders/number-formats/formulas (Depreciation). SheetJS can't do this on write. |
 | `pizzip` + `docxtemplater` | 3.1.7 / 3.50.0 | Word template filling (`{{token}}`) |
@@ -64,7 +64,7 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 | `chart.js` | 4.4.0 | Dashboard doughnut chart |
 | `html-docx-js` | 0.3.1 | HTML → OOXML .docx export (Report, Notes to Accounts) |
 
-No integrity hashes anywhere (known debt, §15).
+All pinned CDN deps carry Subresource Integrity (`sha384`) + `crossorigin` hashes (added 2026-07-16). The two Google loaders (`apis.google.com/js/api.js`, `accounts.google.com/gsi/client`) are dynamic and can't be SRI-pinned — constrained by the CSP `script-src` allow-list instead. When bumping any pinned version, recompute its hash (`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`) and update the tag, or the file won't load.
 
 ### 2.4 Hosting & deployment
 
@@ -344,11 +344,15 @@ The established working pattern — **investigate with real evidence → impleme
 
 ## 14. Security Practices
 
-- `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
-- The Supabase publishable key and disabled RLS mean **the database has no server-side protection** — acceptable only under the current threat model; revisit before widening access (§6.6).
-- OAuth token cached in `localStorage`; no CSP is set (known debt).
-- Email raw-MIME construction has no To/Subject header-injection sanitization (known debt).
-- No secrets belong in this repo beyond the publishable key — anything else the user manages.
+Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
+
+- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 10 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
+- `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers. Google Drive filenames are untrusted — escape them in any HTML context (`sendDocument.js`).
+- **Email raw-MIME construction is sanitized** — `Integrations.sendRawEmailWithBlob` CRLF-strips every header value and RFC 2047-encodes Subject/filename. Don't reintroduce raw interpolation into header lines.
+- **Drive `q` strings are escaped** via `escDriveQuery` in `integrations.js` — keep using it for any name interpolated into a Drive query.
+- **CSP** (meta tag in `index.html`) + **SRI** on every pinned CDN dependency + **security headers** (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts (inline handlers + blob print windows), so it does NOT stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard; when adding an integration to a new external host, add it there or the call is blocked.
+- OAuth/Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk; the escHtml audit + CSP `connect-src` are the mitigations).
+- No secrets belong in this repo beyond the publishable key — anything else the user manages. (The Google **Client Secret** now lives only in the Supabase Dashboard, never in the repo.)
 
 ---
 
@@ -356,15 +360,14 @@ The established working pattern — **investigate with real evidence → impleme
 
 | Item | Severity | Notes |
 |---|---|---|
-| RLS disabled on all 10 tables | **Critical** (accepted) | Blocked on an auth-strategy decision (§6.6). Re-raise if user scope grows. |
 | BM/AGM template-build tooling never committed | High | Exists only as prose in `HANDOFF.md`. Any template rebuild starts by recreating it. |
+| CSP keeps `'unsafe-inline'` for scripts | Medium | Full fix = refactoring the ~hundreds of inline `onclick=` handlers + blob print windows off inline script; a separate project. escHtml audit is the current mitigation (§14). |
 | No automated tests | Medium | All verification is manual/ad-hoc per §13. |
-| `supabase-js@2` unpinned; no CDN integrity hashes | Medium | Everything else is version-pinned. |
-| Email header-injection sanitization missing; no CSP | Medium | §14. |
 | 4 Company Registrar stubs (Share Transfer, Increase Capital, Company Registration, PIN Reset) | Feature gap | UI-only, `regdComingSoon()`. |
 | `README.md` badly outdated | Low | Superseded by this file (§18). |
 | Section 51 "collected amount" in BM/AGM template is static sample text | Low | Known, deliberate cap during tokenization. |
-| Untracked stray file `_tmp_click_test.pdf` in repo root | Trivial | Delete or ignore. |
+
+**Resolved 2026-07-16** (security hardening pass): RLS now enabled on all 10 tables (§6.6); `supabase-js` pinned + SRI on all CDN deps; CSP + security headers added; email header-injection + Drive-query sanitization added; `_tmp_click_test.pdf` gone.
 
 ## 16. Deliberate Decisions — Do NOT "Fix"
 
