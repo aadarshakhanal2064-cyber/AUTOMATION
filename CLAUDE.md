@@ -19,7 +19,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 5. **Never break existing features** — regression-check before calling anything done.
 6. **Don't "fix" the deliberate decisions in §16.**
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (10 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (11 tables, §6).
 
 ---
 
@@ -166,7 +166,12 @@ Significant Accounting Policies & Notes generator. Mirrors report.js 1:1 (same E
 CRUD + search over `clients` (Tabulator via TableEngine), plus the Excel/CSV/ODS import wizard: header auto-mapping by keyword (`IMPORT_FIELDS` in config.js), duplicate/invalid preview, **backfill-on-duplicate** (re-importing fills blank fields on existing clients, never overwrites non-blank), and nameless-rows-after-a-company-row attach as extra shareholders (`client_shareholders`). Statutory fields (registration number, chairman, shareholder, three capitals) are deliberately not table columns but are editable per client.
 
 ### 5.8 Depreciation (`js/depreciation.js`, `dep-` prefix)
-Income Tax pool-depreciation schedule (Nepal). Editable grid of 7 statutory pools (Building 5%, Furniture 25%, Vehicles 20%, Plant 15% — reducing balance; Software & Leasehold — 5-year straight line; Land — none). User enters opening value, three timing-bucketed additions, and disposals; the module live-computes Total Value, Depreciation Base, Depreciation, and closing WDV. Empty pools render as "–" (accounting format). Formulas: `Total = Opening + ΣAdditions − Disposal`; `Base = Opening + Add₁ − Disposal + Add₂·⅔ + Add₃·⅓`; `Depreciation = Base×rate` (WDV) or `Base÷years` (SLM); `WDV = Total − Depreciation`. Features: **Import from Excel/ODS** (matches pools by particular text, any row order), **Addition-details helper** (itemize purchases by B.S. date → auto-bucketed into the three columns: Shrawan–Poush full, Magh–Chaitra ⅔, Baishakh–Ashadh ⅓), and **Generate Excel** via ExcelJS reproducing the template (merged headers, borders, formulas, accounting number format). Pool rates are statutory constants in `DEP_POOLS`, not user-editable. The source sheet's Land Total-Value formula pointed at the Leasehold row (a real bug); the generator writes it correctly.
+Income Tax pool-depreciation schedule (Nepal). Editable grid of 7 statutory pools; user enters opening value, three timing-bucketed additions, and disposals; the module live-computes Total Value, Depreciation Base, Depreciation, and closing WDV. Empty pools render as "–" (accounting format). Formulas: `Total = Opening + ΣAdditions − Disposal`; `Base = Opening + Add₁ − Disposal + Add₂·⅔ + Add₃·⅓`; `Depreciation = Base×rate` (WDV) or `Base÷years` (SLM); `WDV = Total − Depreciation`.
+- **Two schemes, one engine** (`DEP_SCHEMES`, toggled by a segmented control): **normal** = standard Income Tax rates (A Building 5%, B Furniture 25%, C Vehicles 20%, D Plant 15% — reducing balance); **special** = Special Industries, where A–D depreciate at the accelerated rate (normal × 4/3 = the 1/3 additional depreciation the Act grants → A 6.667%, B 33.333%, C 26.667%, D 20%). The special rates derive from the normal ones via `DEP_SPECIAL_FACTOR` (not four magic constants). Reducing-balance rates are not user-editable.
+- **Software & Leasehold years are user-editable** (SLM, any positive number of years — no longer fixed at 5); Land is never depreciated.
+- **Client search** wired via `SearchEngine.attachAutocomplete` over `clientsList` (name/PAN) — selecting a client fills company + PAN and drives carry-forward. Fiscal Year is a generated dropdown (a few back years through current + 6, dash format, from `NepaliLocale.todayBs`).
+- **Year-over-year carry-forward** (`depreciation_schedules` table, §6): **manual save only** — a Save button upserts on `(client_id, scheme, fiscal_year)`; **generating Excel never saves** (so testing is safe), and there's a Delete button. On client/FY/scheme change: load this year's saved sheet if present, else prefill each pool's **Opening from last year's stored closing WDV** (with a banner), else blank. Saving requires a *selected* client (stable `client_id` key); a manually-typed company name still generates Excel but can't be saved.
+- **Import from Excel/ODS** (matches pools by particular text, any row order), **Addition-details helper** (itemize purchases by B.S. date → auto-bucketed into the three columns: Shrawan–Poush full, Magh–Chaitra ⅔, Baishakh–Ashadh ⅓), and **Generate Excel** via ExcelJS reproducing the template (merged headers, borders, formulas, accounting number format; scheme + editable years flow into the rate cell/formulas). The source sheet's Land Total-Value formula pointed at the Leasehold row (a real bug); the generator writes it correctly.
 
 ### 5.9 Send Logs (`js/logs.js`)
 Audit trail of sent documents from `send_logs`. Staff see only their own sends; admins see all with a staff filter. Client name/email are snapshots, intentionally not FK'd.
@@ -187,7 +192,7 @@ Audit trail of sent documents from `send_logs`. Staff see only their own sends; 
 
 Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-14** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (10)
+### 6.1 Tables (11)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -201,6 +206,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `invoices` | `invoice_number` (unique, trigger-assigned), `client_id`/`firm_key` FKs, `status` CHECK (`draft`/`sent`/`partially_paid`/`paid`/`void`), amounts numeric, `tax_rate` default 0.13. |
 | `invoice_items` | Line items: `description`, `quantity`, `rate`, `amount`, `sort_order`. |
 | `invoice_payments` | `amount > 0` CHECK, `method` CHECK (`cash`/`bank_transfer`/`qr`/`cheque`/`other`). |
+| `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (per-pool inputs + closing WDV → next year's Opening), `addition_details` jsonb, `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
 
@@ -224,7 +230,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All 10 tables have RLS **enabled** (migration `db/2026-07-16_rls_lockdown.sql`; rollback script alongside it). The permission model:
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules` added its own policies in `db/2026-07-17_depreciation_schedules.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
@@ -346,7 +352,7 @@ The established working pattern — **investigate with real evidence → impleme
 
 Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 
-- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 10 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
+- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 11 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers. Google Drive filenames are untrusted — escape them in any HTML context (`sendDocument.js`).
 - **Email raw-MIME construction is sanitized** — `Integrations.sendRawEmailWithBlob` CRLF-strips every header value and RFC 2047-encodes Subject/filename. Don't reintroduce raw interpolation into header lines.
 - **Drive `q` strings are escaped** via `escDriveQuery` in `integrations.js` — keep using it for any name interpolated into a Drive query.
