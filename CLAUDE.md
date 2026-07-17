@@ -42,7 +42,7 @@ Later files depend on globals set up by earlier ones. Order in `index.html`:
 CDN libraries → config.js → utils.js → js/core/* (9 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, logs, vatCompliance,
   billing, sendDocument, report, notesToAccounts, depreciation,
-  bmAgmMinutes, auditorChange) → auth.js (LAST — triggers the boot sequence)
+  bmAgmMinutes, auditorChange, salesPurchaseBook) → auth.js (LAST — triggers the boot sequence)
 ```
 
 ### 2.3 CDN dependencies
@@ -128,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
+Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Sales & Purchase Book, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
@@ -173,10 +173,18 @@ Income Tax pool-depreciation schedule (Nepal). Editable grid of 7 statutory pool
 - **Year-over-year carry-forward** (`depreciation_schedules` table, §6): **manual save only** — a Save button upserts on `(client_id, scheme, fiscal_year)`; **generating Excel never saves** (so testing is safe), and there's a Delete button. On client/FY/scheme change: load this year's saved sheet if present, else prefill each pool's **Opening from last year's stored closing WDV** (with a banner), else blank. Saving requires a *selected* client (stable `client_id` key); a manually-typed company name still generates Excel but can't be saved.
 - **Import from Excel/ODS** (matches pools by particular text, any row order), **Addition-details helper** (itemize purchases by B.S. date → auto-bucketed into the three columns: Shrawan–Poush full, Magh–Chaitra ⅔, Baishakh–Ashadh ⅓), and **Generate Excel** via ExcelJS reproducing the template (merged headers, borders, formulas, accounting number format; scheme + editable years flow into the rate cell/formulas). The source sheet's Land Total-Value formula pointed at the Leasehold row (a real bug); the generator writes it correctly.
 
-### 5.9 Send Logs (`js/logs.js`)
+### 5.9 Sales & Purchase Book (`js/salesPurchaseBook.js`, `spb-` prefix)
+Automated reporting workbook from the two raw books a client maintains (Sales / Purchase: Date, Bill No., Party Name, Pan No., Tax Free, Taxable Amount, Vat — B.S. dates `2081.04.01`). Upload one workbook or two files (sheet names matched by Sales/Bikri · Purchase/Kharid, derived-sheet names skipped so a generated workbook can be re-uploaded); output is a 7-sheet .xlsx via ExcelJS with live formulas: Sales, Sales Summary (party-grouped alphabetical with subtotal rows), Sales Details (one `<Party> Total` row per party, taxable desc, cross-sheet formulas + a Grand Total that ties to the book), the Purchase trio, and Monthly (fiscal-month totals + VAT-return reconciliation).
+- **The raw sheets embed 12 month-subtotal rows that duplicate the transactions** (a naive sum doubles). Stripped on import (dateless rows matching `/total/i`), regenerated in the output as live SUMs.
+- **"As Per VAT Return" is typed by the user, never derived** — the reference file proved filed figures differ from book by real amounts (up to 3.7M). Filed figures are whole rupees by **truncation** (not rounding), so the reconciliation tolerance is <1 rupee; anything ≥1 flags as a gap (`SPB_ROUNDING_TOLERANCE`). VAT joins the verdict even though only Taxable/Taxfree get printed Diff columns (the firm's layout). Typed figures autosave to localStorage keyed `(company, FY)`.
+- **Party merging is two-level**: trivially-safe normalization (case/whitespace/trailing period/`PVT.LTD` punctuation, `spbSafeKey`) auto-merges; everything looser (shared PAN, similar spelling) goes into a per-name-checkbox review list the user applies per file. PAN suggests but never decides — one PAN in the reference file spans two unrelated companies. Subtotal rows carry a PAN only when the group's rows agree on exactly one.
+- Deliberate fixes vs the firm's hand-built file (output won't tie cell-for-cell): uniform `Return − Book` diff sign in both Monthly sections, Monthly total row sums every column, Details serial header is `S.No.`, plus a Remarks column and Grand Total rows. FY dot format (`2081.2082`) in sheet titles — a fourth FY format, per the §9.5 rule.
+- Rows with unreadable dates are **excluded and loudly reported** (they can't be month-grouped); dates outside the chosen FY, VAT≠13% rows, missing PANs and credit notes are surfaced as import warnings.
+
+### 5.10 Send Logs (`js/logs.js`)
 Audit trail of sent documents from `send_logs`. Staff see only their own sends; admins see all with a staff filter. Client name/email are snapshots, intentionally not FK'd.
 
-### 5.10 Company Registrar (topbar dropdown → `regd` group)
+### 5.11 Company Registrar (topbar dropdown → `regd` group)
 
 **a) BM/AGM Minutes (`js/bmAgmMinutes.js`, `bm-` prefix)** — generates Board Meeting + AGM minutes (plus Section 51 report and two registrar letters, all in one document) as a Word file in Nepali. Fills `assets/templates/bm-agm-minutes.docx` via DocumentEngine/docxtemplater (`{{token}}` delimiters, `paragraphLoop` for the shareholder list — loop markers must each be their own paragraph). Client search by registration number/PAN (digit-agnostic); shareholders = `clients.shareholder_name` + `client_shareholders` rows; chairman unnumbered, shareholders numbered from १. Live docx preview, autosave draft, completion indicator, zoom, print (one page per sub-document via `transform:scale`, not zoom). The template's history (Preeti→Unicode conversion, formatting-group rebuild pipeline) is in `HANDOFF.md` §4–5 — **the build tooling was never committed**; rebuilding the template requires recreating it from that description and re-validating.
 
@@ -304,7 +312,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `rep-` | Audit Report Builder | | `vatc-` | VAT Compliance |
 | `nta-` | Notes to Accounts | | `st-`/`ic-`/`cr-`/`pr-` | Registrar stubs |
 | `bm-` | BM/AGM Minutes | | `billing-` | Billing |
-| `dep-` | Depreciation | | | |
+| `dep-` | Depreciation | | `spb-` | Sales & Purchase Book |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
 
 ### 10.3 Interaction patterns
@@ -411,6 +419,6 @@ Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 |---|---|---|
 | `README.md` | **Outdated** (pre-engine era) | Nothing authoritative; update or retire it as a separate task. |
 | `HANDOFF.md` (2026-07-03) | Historical | The only record of the BM/AGM Preeti→Unicode template pipeline, token list, and formatting-group rebuild — required reading before touching that template. |
-| `HANDOFF_VAT.md` (2026-07-04) | Historical | VAT Return OCR engineering record (module removed 2026-07-14 — §5.9). |
+| `HANDOFF_VAT.md` (2026-07-04) | Historical | VAT Return OCR engineering record (module removed 2026-07-14 — removal note at the end of §5). |
 | `HANDOFF_2026-07-05.md` | Historical | The engine-layer rebuild rationale and per-engine migration notes (four of those engines were removed with the VAT Return module). |
 | Memory (`~/.claude/projects/.../memory/`) | Live | Cross-session conventions for VAT Compliance and Billing (mirrored into §5.2/§5.3). |
