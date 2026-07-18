@@ -131,6 +131,15 @@ function spbNormPan(v) {
   return NepaliLocale.toEnglishDigits(String(v == null ? '' : v)).trim();
 }
 
+// A Nepal PAN is always exactly 9 digits. A value that isn't is far more
+// likely a typo (one dropped/extra digit) than proof of a different real
+// PAN, so it must not carry the weight of a genuine PAN when we decide
+// whether an identical party name is actually two different companies —
+// only a well-formed PAN is trustworthy enough to trigger that split.
+function spbIsValidPan(pan) {
+  return /^\d{9}$/.test(pan);
+}
+
 // ════════════════════════════════════════════
 //  IMPORT — one workbook with both sheets, or two files. Sheet classification
 //  is by name (Sales/Bikri vs Purchase/Kharid), skipping derived sheets so a
@@ -248,6 +257,7 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
     rowsRead: 0, subtotalsStripped: 0, badDates: [], outsideFy: 0,
     missingPan: 0, creditRows: 0, vatOutliers: [], unnamed: 0,
     monthNameDates: 0, monthNameSamples: [],
+    malformedPan: 0, malformedPanSamples: [],
   };
   for (let i = hRow + 1; i < rows.length; i++) {
     const r = rows[i] || [];
@@ -289,6 +299,14 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
     const vat = spbNum(col.vat != null ? r[col.vat] : 0);
     const pan = spbNormPan(col.pan != null ? r[col.pan] : '');
     if (!pan) stats.missingPan++;
+    else if (!spbIsValidPan(pan)) {
+      // Not 9 digits — almost certainly a typo, not a real PAN. Kept on the
+      // row (still shown in the output), but excluded from the party-
+      // duplicate-detection evidence (spbPansBySafeKey) so a mistyped PAN
+      // can never wrongly split an otherwise-single party in two.
+      stats.malformedPan++;
+      if (stats.malformedPanSamples.length < 5) stats.malformedPanSamples.push({ excelRow: i + 1, party, pan });
+    }
     if (!party) stats.unnamed++;
     if (taxable < 0 || vat < 0) stats.creditRows++;
     // VAT is a flat 13% — a row that strays by more than 1% (or Rs 1) is
@@ -420,18 +438,56 @@ function spbComputeBook() {
   return book;
 }
 
+// Byte-identical (post-normalization) names are NOT proof of one entity —
+// two unrelated companies can share a name (the reference file proved it:
+// "Muktinath Food Products" appears against two different PANs). So before
+// grouping, find every safeKey that carries more than one distinct PAN —
+// those get split into one group PER PAN (plus a shared bucket for any
+// blank-PAN rows under that name), instead of silently merging. A name that
+// agrees on a single PAN (or has none at all) groups exactly as before.
+function spbPansBySafeKey(txns) {
+  const map = new Map();
+  txns.forEach(x => {
+    if (!spbIsValidPan(x.pan)) return;
+    const sk = spbSafeKey(x.party);
+    if (!map.has(sk)) map.set(sk, new Set());
+    map.get(sk).add(x.pan);
+  });
+  return map;
+}
+
+// NUL joins the safeKey to the PAN — a normalized name legitimately contains
+// spaces, so a plain separator couldn't be split back apart safely.
+function spbGroupKey(x, pansBySafeKey) {
+  const sk = spbSafeKey(x.party);
+  const pans = pansBySafeKey.get(sk);
+  return (pans && pans.size > 1 && spbIsValidPan(x.pan)) ? sk + ' ' + x.pan : sk;
+}
+
+// Concatenated Sales + Purchase transactions — the PAN-conflict split (and
+// the merge decisions built on it) must be computed from the SAME evidence
+// in both books, or a party could split in one book but not the other and
+// a ticked merge in the review UI would silently fail to apply to one side.
+function spbAllTxns() {
+  return SPB_SECTIONS.reduce((acc, { key }) => spbData[key] ? acc.concat(spbData[key].txns) : acc, []);
+}
+
 function spbComputeGroups() {
   const out = {};
+  const pansBySafeKey = spbPansBySafeKey(spbAllTxns());
   SPB_SECTIONS.forEach(({ key }) => {
     if (!spbData[key]) { out[key] = null; return; }
     const map = new Map();
     spbData[key].txns.forEach(x => {
-      let k = spbSafeKey(x.party);
+      let k = spbGroupKey(x, pansBySafeKey);
       k = spbMergeMap[k] || k;
       if (!map.has(k)) map.set(k, { key: k, names: new Map(), pans: new Map(), rows: [], taxfree: 0, taxable: 0, vat: 0 });
       const g = map.get(k);
       g.names.set(x.party, (g.names.get(x.party) || 0) + 1);
-      if (x.pan) g.pans.set(x.pan, (g.pans.get(x.pan) || 0) + 1);
+      // Only a well-formed PAN counts toward "does this group agree on one
+      // PAN" — a malformed outlier (typo) shouldn't blank out an otherwise-
+      // unanimous subtotal PAN.
+      if (spbIsValidPan(x.pan)) g.pans.set(x.pan, (g.pans.get(x.pan) || 0) + 1);
       g.rows.push(x);
       g.taxfree += x.taxfree; g.taxable += x.taxable; g.vat += x.vat;
     });
@@ -442,6 +498,18 @@ function spbComputeGroups() {
         .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0][0];
       // PAN shown on subtotal rows only when the group's rows agree on one.
       g.pan = g.pans.size === 1 ? Array.from(g.pans.keys())[0] : '';
+      // A same-name/different-PAN split leaves two rows both labeled e.g.
+      // "Muktinath Food Products Total" unless disambiguated — tag which
+      // PAN (or "no PAN") each one is, so it reads as separate parties
+      // rather than as a duplicate-looking bug, until the user merges them.
+      // Skipped once a group has genuinely absorbed 2+ PANs (g.pans.size >
+      // 1) — that only happens after the user ticks a merge in the review
+      // list, at which point it's a deliberate single entity, not a
+      // still-open conflict, and the suffix would misleadingly suggest one.
+      const baseSafeKey = g.key.split(' ')[0];
+      if (g.pans.size <= 1 && pansBySafeKey.get(baseSafeKey) && pansBySafeKey.get(baseSafeKey).size > 1) {
+        g.display += g.pan ? ` (PAN ${g.pan})` : ' (PAN not specified)';
+      }
       g.rows.sort((a, b) => a.fi - b.fi || a.d - b.d || a.src - b.src);
     });
     groups.sort((a, b) => a.display.toUpperCase() < b.display.toUpperCase() ? -1 : 1);
@@ -457,17 +525,28 @@ function spbComputeGroups() {
 //  similarity-only members default UNCHECKED: a shared PAN in the reference
 //  file spanned two unrelated companies, so PAN suggests but never decides.
 // ════════════════════════════════════════════
+// True only when BOTH sides carry a PAN and share none of them — a real
+// conflict. Either side having no PAN can't rule out being the same entity.
+function spbPansConflict(a, b) {
+  return a.length > 0 && b.length > 0 && !a.some(p => b.includes(p));
+}
+
 function spbBuildSuggestions() {
-  // Collect per-safeKey stats across BOTH sections (one decision, applied to both).
+  // Collect per GROUP KEY (post PAN-split, §spbComputeGroups) stats across
+  // BOTH sections (one decision, applied to both) — using the same key
+  // space spbComputeGroups uses is what lets a same-name/different-PAN
+  // split (e.g. two "Muktinath Food Products") surface here as its own
+  // review entry instead of never being considered for merging at all.
+  const pansBySafeKey = spbPansBySafeKey(spbAllTxns());
   const nodes = new Map();
   SPB_SECTIONS.forEach(({ key }) => {
     if (!spbData[key]) return;
     spbData[key].txns.forEach(x => {
-      const k = spbSafeKey(x.party);
+      const k = spbGroupKey(x, pansBySafeKey);
       if (!nodes.has(k)) nodes.set(k, { key: k, fuzzy: spbFuzzyKey(x.party), names: new Map(), pans: new Set(), count: 0, taxable: 0 });
       const n = nodes.get(k);
       n.names.set(x.party, (n.names.get(x.party) || 0) + 1);
-      if (x.pan) n.pans.add(x.pan);
+      if (spbIsValidPan(x.pan)) n.pans.add(x.pan);
       n.count++; n.taxable += x.taxable;
     });
   });
@@ -509,17 +588,32 @@ function spbBuildSuggestions() {
     const members = memberKeys.map(k => nodes.get(k));
     // Anchor = highest-volume member; punctuation-level variants of it start
     // checked, everything looser starts unchecked for the user to decide.
+    // "Variant of the anchor" must be judged against the WHOLE identical-
+    // fuzzy-text cluster, not the anchor alone — if the anchor itself
+    // happens to be one half of a genuine same-name/different-PAN conflict
+    // (its row count says nothing about which of two real companies is
+    // "correct"), comparing only to the anchor would default IT to checked
+    // by definition (nothing conflicts with itself) while leaving its
+    // conflicting twin unchecked, which is an arbitrary, misleading split.
+    // So: if ANY pair within the identical-name cluster has a real PAN
+    // conflict, NONE of that cluster defaults checked.
     members.sort((a, b) => b.count - a.count);
     const anchorFuzzy = members[0].fuzzy;
+    const sameFuzzy = members.filter(n => n.fuzzy === anchorFuzzy);
+    const clusterHasConflict = sameFuzzy.some((a, i) =>
+      sameFuzzy.some((b, j) => i < j && spbPansConflict(Array.from(a.pans), Array.from(b.pans))));
     suggestions.push({
-      members: members.map(n => ({
-        key: n.key,
-        display: Array.from(n.names.entries()).sort((a, b) => b[1] - a[1])[0][0],
-        count: n.count,
-        taxable: n.taxable,
-        pans: Array.from(n.pans),
-        checked: n.fuzzy === anchorFuzzy,
-      })),
+      members: members.map(n => {
+        const pans = Array.from(n.pans);
+        return {
+          key: n.key,
+          display: Array.from(n.names.entries()).sort((a, b) => b[1] - a[1])[0][0],
+          count: n.count,
+          taxable: n.taxable,
+          pans,
+          checked: n.fuzzy === anchorFuzzy && !clusterHasConflict,
+        };
+      }),
       panConflict: new Set(members.flatMap(n => Array.from(n.pans))).size > 1,
     });
   });
@@ -567,6 +661,10 @@ function spbRenderImportSummary(notes) {
     if (s.monthNameDates) {
       const ex = s.monthNameSamples[0];
       warn.push(`<span class="spb-warn">ℹ ${s.monthNameDates} row(s) dated by MONTH NAME rather than a full date (e.g. row ${ex.excelRow}: "${escHtml(ex.raw)}" → ${escHtml(ex.normalized)}${ex.approxDay ? ', day assumed as the 1st' : ''}). Grouping by month is unaffected; only day-level ordering within the month is approximate.</span>`);
+    }
+    if (s.malformedPan) {
+      const ex = s.malformedPanSamples[0];
+      warn.push(`<span class="spb-warn">ℹ ${s.malformedPan} row(s) have a PAN that isn't 9 digits (e.g. row ${ex.excelRow}, ${escHtml(String(ex.party))}: "${escHtml(ex.pan)}") — likely a typo. Kept on the row, but not used to tell two same-named parties apart.</span>`);
     }
     html += `<div class="spb-import-sec">
       <strong>${label}</strong> <span style="color:var(--text-muted);">(${escHtml(d.source || '')})</span><br>
