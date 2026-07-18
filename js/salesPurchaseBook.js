@@ -166,6 +166,51 @@ function spbFindHeader(rows) {
 
 const SPB_DATE_RE = /^(\d{4})[.\/\-](\d{1,2})[.\/\-](\d{1,2})$/;
 
+// Fallback for rows dated by B.S. MONTH NAME instead of a full numeric date
+// ("Baishakh", "15 Baishakh 2082", "Baishakh-2082" …) — some clients' books
+// are kept that way rather than pure date-wise. Tried only after the strict
+// numeric date fails, and always reported (never a silent guess) since the
+// day and/or year may be inferred.
+const SPB_MONTH_ALIASES = {
+  baishakh: 1, baisakh: 1, baishak: 1, baisake: 1,
+  jestha: 2, jeth: 2,
+  ashadh: 3, ashad: 3, asar: 3, ashar: 3,
+  shrawan: 4, shrawn: 4, shravan: 4, saun: 4, srawan: 4,
+  bhadra: 5, bhadau: 5, bhadrapad: 5,
+  ashoj: 6, ashwin: 6, asoj: 6,
+  kartik: 7, kartick: 7,
+  mangsir: 8, mansir: 8, marga: 8, mangshir: 8, margashir: 8,
+  poush: 9, paush: 9, push: 9,
+  magh: 10, maagh: 10,
+  falgun: 11, fagun: 11, phalgun: 11,
+  chaitra: 12, chait: 12,
+};
+
+// Returns { year, mon, day, approxDay } or null. `fyStartYear` lets us infer
+// a missing year from the month's position in the fiscal year (Shrawan–
+// Chaitra = fyStartYear, Baishakh–Ashadh = fyStartYear + 1) when the cell
+// only names the month — without a selected FY we refuse to guess the year.
+function spbParseMonthNameDate(dateStr, fyStartYear) {
+  const tokens = String(dateStr || '').toLowerCase().match(/[a-z]+|\d+/g);
+  if (!tokens) return null;
+  let mon = null, day = null, year = null;
+  tokens.forEach(tok => {
+    if (/^[a-z]+$/.test(tok)) {
+      if (mon == null && SPB_MONTH_ALIASES[tok] != null) mon = SPB_MONTH_ALIASES[tok];
+    } else {
+      const n = parseInt(tok, 10);
+      if (tok.length === 4 && n > 2000 && n < 2200) year = n;
+      else if (n >= 1 && n <= 32 && day == null) day = n;
+    }
+  });
+  if (mon == null) return null;
+  if (year == null) {
+    if (!fyStartYear) return null;
+    year = mon >= 4 ? fyStartYear : fyStartYear + 1;
+  }
+  return { year, mon, day: day || 1, approxDay: day == null };
+}
+
 // Pure row-level parse (also exercised headlessly by the verification
 // harness — keep it free of DOM access). Returns clean transactions plus
 // everything worth reporting about what was skipped or looks wrong.
@@ -175,6 +220,7 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
   const stats = {
     rowsRead: 0, subtotalsStripped: 0, badDates: [], outsideFy: 0,
     missingPan: 0, creditRows: 0, vatOutliers: [], unnamed: 0,
+    monthNameDates: 0, monthNameSamples: [],
   };
   for (let i = hRow + 1; i < rows.length; i++) {
     const r = rows[i] || [];
@@ -183,9 +229,14 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
     const party = String(r[col.party] == null ? '' : r[col.party]).trim();
     const dateStr = String(r[col.date] == null ? '' : r[col.date]).trim();
     const m = SPB_DATE_RE.exec(dateStr);
-    const day = m ? parseInt(m[3], 10) : 0;
-    const mon = m ? parseInt(m[2], 10) : 0;
-    const valid = m && mon >= 1 && mon <= 12 && day >= 1 && day <= 32;
+    let year, mon, day, approxDay = false;
+    if (m) {
+      year = parseInt(m[1], 10); mon = parseInt(m[2], 10); day = parseInt(m[3], 10);
+    } else {
+      const alt = spbParseMonthNameDate(dateStr, fyStartYear);
+      if (alt) { year = alt.year; mon = alt.mon; day = alt.day; approxDay = alt.approxDay; }
+    }
+    const valid = mon >= 1 && mon <= 12 && day >= 1 && day <= 32;
     if (!valid) {
       // The embedded month-subtotal rows are dateless "Total Of <Month>"
       // lines — stripping them is what stops the double-count.
@@ -193,11 +244,18 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
       stats.badDates.push({ excelRow: i + 1, date: dateStr, party });
       continue;
     }
-    const year = parseInt(m[1], 10);
     const fi = SPB_BS_MONTHS.indexOf(mon);
     if (fyStartYear) {
       const expected = mon >= 4 ? fyStartYear : fyStartYear + 1;
       if (year !== expected) stats.outsideFy++;
+    }
+    // Normalize month-name-only rows to a real date (day defaults to the
+    // 1st) so the generated book sorts and displays consistently — the
+    // original text is preserved in the reported sample, never silently lost.
+    const normDate = m ? dateStr : `${year}.${String(mon).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
+    if (!m) {
+      stats.monthNameDates++;
+      if (stats.monthNameSamples.length < 5) stats.monthNameSamples.push({ excelRow: i + 1, raw: dateStr, normalized: normDate, approxDay });
     }
     const taxfree = spbNum(col.taxfree != null ? r[col.taxfree] : 0);
     const taxable = spbNum(r[col.taxable]);
@@ -215,7 +273,7 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
       }
     }
     txns.push({
-      date: dateStr, y: year, m: mon, d: day, fi,
+      date: normDate, y: year, m: mon, d: day, fi,
       bill: r[col.bill] != null ? r[col.bill] : '',
       party: party || '(UNNAMED)',
       pan, taxfree, taxable, vat, src: txns.length,
@@ -462,6 +520,10 @@ function spbRenderImportSummary(notes) {
     if (s.outsideFy) warn.push(`<span class="spb-warn">⚠ ${s.outsideFy} row(s) dated outside F.Y. ${escHtml(spbVal('spb-fy'))} — check the fiscal year selector.</span>`);
     if (s.vatOutliers.length) warn.push(`<span class="spb-warn">⚠ ${s.vatOutliers.length} row(s) where VAT ≠ 13% of taxable (e.g. row ${s.vatOutliers[0].excelRow}, ${escHtml(String(s.vatOutliers[0].party))}).</span>`);
     if (s.unnamed) warn.push(`<span class="spb-warn">⚠ ${s.unnamed} row(s) with no party name — grouped as “(UNNAMED)”.</span>`);
+    if (s.monthNameDates) {
+      const ex = s.monthNameSamples[0];
+      warn.push(`<span class="spb-warn">ℹ ${s.monthNameDates} row(s) dated by MONTH NAME rather than a full date (e.g. row ${ex.excelRow}: "${escHtml(ex.raw)}" → ${escHtml(ex.normalized)}${ex.approxDay ? ', day assumed as the 1st' : ''}). Grouping by month is unaffected; only day-level ordering within the month is approximate.</span>`);
+    }
     html += `<div class="spb-import-sec">
       <strong>${label}</strong> <span style="color:var(--text-muted);">(${escHtml(d.source || '')})</span><br>
       ${d.txns.length} transactions · ${spbGroups[key].length} parties · taxable ${spbFmt(total)}
