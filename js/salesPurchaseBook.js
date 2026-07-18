@@ -145,13 +145,19 @@ function spbClassifySheet(sheetName) {
   return null;
 }
 
+// Some clients' books don't have a per-row date at all — the whole column is
+// headed "Month"/"Months" and every cell just names the B.S. month
+// (see spbParseMonthNameDate below, which already handles that content —
+// this only widens which HEADER TEXT is recognized as that column).
+const SPB_DATE_HEADER_RE = /^(date|months?)$/;
+
 function spbFindHeader(rows) {
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const cells = (rows[i] || []).map(c => String(c == null ? '' : c).toLowerCase().trim());
-    if (!cells.some(c => /^date/.test(c)) || !cells.some(c => /party/.test(c))) continue;
+    if (!cells.some(c => SPB_DATE_HEADER_RE.test(c)) || !cells.some(c => /party/.test(c))) continue;
     const col = {};
     cells.forEach((c, j) => {
-      if (/^date/.test(c)) col.date = j;
+      if (SPB_DATE_HEADER_RE.test(c)) col.date = j;
       else if (/bill/.test(c)) col.bill = j;
       else if (/party/.test(c)) col.party = j;
       else if (/pan/.test(c)) col.pan = j;
@@ -172,19 +178,38 @@ const SPB_DATE_RE = /^(\d{4})[.\/\-](\d{1,2})[.\/\-](\d{1,2})$/;
 // numeric date fails, and always reported (never a silent guess) since the
 // day and/or year may be inferred.
 const SPB_MONTH_ALIASES = {
-  baishakh: 1, baisakh: 1, baishak: 1, baisake: 1,
-  jestha: 2, jeth: 2,
-  ashadh: 3, ashad: 3, asar: 3, ashar: 3,
-  shrawan: 4, shrawn: 4, shravan: 4, saun: 4, srawan: 4,
-  bhadra: 5, bhadau: 5, bhadrapad: 5,
-  ashoj: 6, ashwin: 6, asoj: 6,
-  kartik: 7, kartick: 7,
-  mangsir: 8, mansir: 8, marga: 8, mangshir: 8, margashir: 8,
-  poush: 9, paush: 9, push: 9,
-  magh: 10, maagh: 10,
-  falgun: 11, fagun: 11, phalgun: 11,
-  chaitra: 12, chait: 12,
+  baishakh: 1, baisakh: 1, baishak: 1, baisake: 1, baisak: 1,
+  jestha: 2, jeth: 2, jestta: 2,
+  ashadh: 3, ashad: 3, asar: 3, ashar: 3, asadh: 3,
+  shrawan: 4, sharawan: 4, shrawn: 4, shravan: 4, saun: 4, srawan: 4, sawan: 4,
+  bhadra: 5, bhadau: 5, bhadrapad: 5, bhaddra: 5,
+  ashoj: 6, ashwin: 6, asoj: 6, ashwoj: 6,
+  kartik: 7, kartick: 7, katik: 7,
+  mangsir: 8, mansir: 8, marga: 8, mangshir: 8, margashir: 8, mangsire: 8,
+  poush: 9, paush: 9, push: 9, pous: 9,
+  magh: 10, maagh: 10, maag: 10,
+  falgun: 11, fagun: 11, phalgun: 11, phagun: 11,
+  chaitra: 12, chait: 12, chaitraa: 12,
 };
+
+// One canonical spelling per month, used only as the target set for fuzzy
+// matching below — the exhaustive alias list above already covers every
+// commonly-seen variant we've observed; this is the safety net for the ones
+// we haven't (a stray typo in some client's book).
+const SPB_MONTH_CANONICAL = ['baishakh', 'jestha', 'ashadh', 'shrawan', 'bhadra', 'ashoj', 'kartik', 'mangsir', 'poush', 'magh', 'falgun', 'chaitra'];
+
+// Last-resort fuzzy match for an alpha token that isn't in the alias table —
+// e.g. an unanticipated misspelling. Requires a fairly close match (and a
+// minimum length) so it can't mistake an unrelated word for a month name.
+function spbFuzzyMonthMatch(tok) {
+  if (tok.length < 4) return null;
+  let best = 0, bestIdx = -1;
+  SPB_MONTH_CANONICAL.forEach((name, i) => {
+    const sim = stringSimilarity(tok, name);
+    if (sim > best) { best = sim; bestIdx = i; }
+  });
+  return best >= 0.75 ? bestIdx + 1 : null;
+}
 
 // Returns { year, mon, day, approxDay } or null. `fyStartYear` lets us infer
 // a missing year from the month's position in the fiscal year (Shrawan–
@@ -196,7 +221,9 @@ function spbParseMonthNameDate(dateStr, fyStartYear) {
   let mon = null, day = null, year = null;
   tokens.forEach(tok => {
     if (/^[a-z]+$/.test(tok)) {
-      if (mon == null && SPB_MONTH_ALIASES[tok] != null) mon = SPB_MONTH_ALIASES[tok];
+      if (mon != null) return;
+      if (SPB_MONTH_ALIASES[tok] != null) mon = SPB_MONTH_ALIASES[tok];
+      else mon = spbFuzzyMonthMatch(tok);
     } else {
       const n = parseInt(tok, 10);
       if (tok.length === 4 && n > 2000 && n < 2200) year = n;
@@ -321,6 +348,16 @@ function spbHandleFiles(input) {
   input.value = '';
 }
 
+// Bare month-name dates (no year in the cell) borrow the SELECTED fiscal
+// year to fill in a calendar year — so if that selector doesn't match the
+// file, every such row gets tagged with the wrong year (grouping by month is
+// still correct; only the printed date is wrong). Filenames commonly carry
+// the real F.Y. ("...2081.082...", "...2081-82...") — a cheap cross-check.
+function spbGuessFyFromText(text) {
+  const m = String(text || '').match(/20[7-9]\d/);
+  return m ? parseInt(m[0], 10) : null;
+}
+
 function spbAfterRead(found, notes) {
   if (!found.sales && !found.purchase) {
     spbStatus('❌ ' + escHtml(notes.join(' ') || 'No usable sheets found.'), 'error');
@@ -333,6 +370,13 @@ function spbAfterRead(found, notes) {
   };
   if (spbData.sales) spbData.sales.source = found.sales.source;
   if (spbData.purchase) spbData.purchase.source = found.purchase.source;
+  if (fyStart) {
+    const guessed = [found.sales && found.sales.source, found.purchase && found.purchase.source]
+      .map(spbGuessFyFromText).find(y => y != null);
+    if (guessed != null && guessed !== fyStart) {
+      notes.push(`⚠ The uploaded file name suggests F.Y. ${guessed}-${String((guessed + 1) % 100).padStart(2, '0')}, but F.Y. ${spbVal('spb-fy')} is selected above. Rows dated by month name only (no year in the cell) use the SELECTED fiscal year to fill in the year — double-check the selector before generating, or those rows' printed dates will land in the wrong calendar year.`);
+    }
+  }
   spbMergeMap = {};
   spbBook = spbComputeBook();
   spbGroups = spbComputeGroups();
