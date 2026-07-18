@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607171500">
+<link rel="stylesheet" href="css/styles.css?v=202607181900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1356,8 +1356,32 @@ function cropLoginLogoIcon(img) {
       <div id="spb-status"></div>
 
       <div class="card" id="spb-import-card" style="display:none; margin-top:20px;">
-        <div class="card-header"><div class="card-title" style="font-size:14px;">Import summary</div></div>
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="card-title" style="font-size:14px;">Import summary</div>
+          <button class="btn btn-outline btn-sm" onclick="spbToggleMapping()">Adjust columns</button>
+        </div>
         <div id="spb-import-body"></div>
+      </div>
+
+      <div class="card" id="spb-map-card" style="display:none; margin-top:20px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size:14px;">Column mapping</div>
+            <div class="card-desc">Tell the importer which column is which when a client's headers aren't standard. Date/Month, Party Name and Taxable Amount are required; the rest are optional.</div>
+          </div>
+        </div>
+        <div id="spb-map-body"></div>
+      </div>
+
+      <div class="card" id="spb-doctor-card" style="display:none; margin-top:20px;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div class="card-title" style="font-size:14px;">Data Doctor</div>
+            <div class="card-desc">Every problem found in the uploaded book, each with a one-click fix. Corrections re-read the file from source, are logged, and travel with the workbook as a "Corrections" sheet.</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="spbResetCorrections()">↩ Reset corrections</button>
+        </div>
+        <div id="spb-doctor-body"></div>
       </div>
 
       <div class="card" id="spb-merge-card" style="display:none; margin-top:20px;">
@@ -1902,7 +1926,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/depreciation.js?v=202607171200"></script>
 <script src="js/bmAgmMinutes.js?v=202607170100"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
-<script src="js/salesPurchaseBook.js?v=202607181500"></script>
+<script src="js/salesPurchaseBook.js?v=202607181900"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>

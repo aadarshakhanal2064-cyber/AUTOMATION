@@ -531,6 +531,25 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-merge-group { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; background: var(--bg-page-alt); }
 .spb-merge-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px; font-size: 13px; background: #fff; cursor: pointer; }
 .spb-merge-item input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-blue); }
+.spb-ok { color: var(--green-dk); font-size: 12.5px; }
+/* Data Doctor */
+.spb-ready { padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.spb-ready-ok { background: var(--green-bg); border: 1px solid var(--green-border); color: var(--green-dk); }
+.spb-ready-amber { background: var(--yellow-bg); border: 1px solid var(--yellow-border); color: var(--yellow-dk); }
+.spb-ready-red { background: var(--red-bg); border: 1px solid var(--red-border); color: var(--red-dk); }
+.spb-issue { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 13px; background: #fff; }
+.spb-issue-red { border-left: 3px solid var(--red); }
+.spb-issue-amber { border-left: 3px solid var(--yellow); }
+.spb-issue-info { border-left: 3px solid var(--border); }
+.spb-issue-head { line-height: 1.55; }
+.spb-issue-sub { padding: 6px 0 0 18px; color: var(--text-muted); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.spb-issue-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+/* Column mapping */
+.spb-map-sec { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.spb-map-sec:last-child { border-bottom: none; }
+.spb-map-grid { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; font-size: 12.5px; }
+.spb-map-grid label { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-weight: 500; }
+.spb-map-grid select { padding: 6px 8px; font-size: 12.5px; border-radius: 6px; border: 1px solid var(--border); }
 
 /* ── STATUS BOXES ── */
 .status-box { padding: 13px 18px; border-radius: var(--radius); font-size: 13.5px; font-weight: 500; display: flex; align-items: center; gap: 10px; margin-top: 16px; }

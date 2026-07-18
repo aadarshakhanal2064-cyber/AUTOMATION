@@ -48,6 +48,16 @@ let spbGroups = null;        // { sales: [party groups], purchase: ... }
 let spbSuggestions = [];     // duplicate-party review groups
 let spbMergeMap = {};        // safeKey → canonical safeKey (approved merges only)
 let spbVr = null;            // typed VAT-return figures { sales:[12×{t,v,f}], purchase:[...] }
+// Data-Doctor state — the raw sheets are kept so corrections re-parse from
+// source instead of mutating parsed rows (declarative, reproducible, and
+// exportable as a Corrections sheet).
+let spbRaw = null;           // { sales: {rows, header|null, source} | null, purchase: ... }
+let spbOverrides = null;     // { sales: {excelRow: {date/vat/pan/exclude/..}}, purchase: {...} }
+let spbCorrectionLog = [];   // [{section, excelRow, field, from, to, ts}] — feeds the Corrections sheet
+let spbDismissed = null;     // Set of issue keys the user marked "keep as-is"
+let spbIssues = [];          // current Data-Doctor findings
+let spbChecksums = null;     // embedded-subtotal checksum comparison per section
+let spbImportNotes = [];     // file-level notes, re-shown across reparses
 
 function spbStatus(html, type) { showStatus(html, type, 'spb-status'); }
 
@@ -158,11 +168,14 @@ function spbClassifySheet(sheetName) {
 // headed "Month"/"Months" and every cell just names the B.S. month
 // (see spbParseMonthNameDate below, which already handles that content —
 // this only widens which HEADER TEXT is recognized as that column).
-const SPB_DATE_HEADER_RE = /^(date|months?)$/;
+// Nepali header spellings (मिति = date, महिना = month) are accepted too.
+const SPB_DATE_HEADER_RE = /^(date|months?|miti|mahina|मिति|महिना)$/;
 
 function spbFindHeader(rows) {
-  for (let i = 0; i < Math.min(rows.length, 10); i++) {
-    const cells = (rows[i] || []).map(c => String(c == null ? '' : c).toLowerCase().trim());
+  // Scan deep (25 rows): real files carry title rows, blank spacers and
+  // merged-cell banners above the actual header.
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const cells = (rows[i] || []).map(c => String(c == null ? '' : c).toLowerCase().replace(/\s+/g, ' ').trim());
     if (!cells.some(c => SPB_DATE_HEADER_RE.test(c)) || !cells.some(c => /party/.test(c))) continue;
     const col = {};
     cells.forEach((c, j) => {
@@ -198,8 +211,40 @@ const SPB_MONTH_ALIASES = {
   poush: 9, paush: 9, push: 9, pous: 9,
   magh: 10, maagh: 10, maag: 10,
   falgun: 11, fagun: 11, phalgun: 11, phagun: 11,
-  chaitra: 12, chait: 12, chaitraa: 12,
+  chaitra: 12, chait: 12, chaitraa: 12, chiatra: 12,  // "Chiatra" observed in a real client book
+
+  // Devanagari spellings — some books are typed in Nepali.
+  'बैशाख': 1, 'बैसाख': 1, 'वैशाख': 1,
+  'जेठ': 2, 'जेष्ठ': 2,
+  'असार': 3, 'आषाढ': 3, 'अषाढ': 3,
+  'साउन': 4, 'श्रावण': 4, 'सावन': 4, 'साउँन': 4,
+  'भदौ': 5, 'भाद्र': 5, 'भदौरा': 5,
+  'असोज': 6, 'आश्विन': 6, 'अशोज': 6,
+  'कार्तिक': 7, 'कात्तिक': 7, 'कातिक': 7,
+  'मंसिर': 8, 'मार्ग': 8, 'मङ्सिर': 8, 'मङसिर': 8,
+  'पौष': 9, 'पुस': 9, 'पुष': 9,
+  'माघ': 10,
+  'फागुन': 11, 'फाल्गुन': 11, 'फागुण': 11,
+  'चैत': 12, 'चैत्र': 12,
 };
+
+// Extract just the B.S. month from any text ("Total Of Shrawan", "माघ",
+// "Sharawan") — the shared core for date parsing AND for resolving which
+// month an embedded subtotal row claims (the checksum layer). Devanagari
+// digits are normalized first so mixed-script cells tokenize cleanly.
+function spbMonthFromText(text) {
+  const tokens = NepaliLocale.toEnglishDigits(String(text || '')).toLowerCase().match(/[a-zऀ-ॿ]+|\d+/g);
+  if (!tokens) return null;
+  for (const tok of tokens) {
+    if (!/^[a-zऀ-ॿ]+$/.test(tok)) continue;
+    if (SPB_MONTH_ALIASES[tok] != null) return SPB_MONTH_ALIASES[tok];
+    if (/^[a-z]+$/.test(tok)) {
+      const fuzzy = spbFuzzyMonthMatch(tok);
+      if (fuzzy != null) return fuzzy;
+    }
+  }
+  return null;
+}
 
 // One canonical spelling per month, used only as the target set for fuzzy
 // matching below — the exhaustive alias list above already covers every
@@ -225,21 +270,15 @@ function spbFuzzyMonthMatch(tok) {
 // Chaitra = fyStartYear, Baishakh–Ashadh = fyStartYear + 1) when the cell
 // only names the month — without a selected FY we refuse to guess the year.
 function spbParseMonthNameDate(dateStr, fyStartYear) {
-  const tokens = String(dateStr || '').toLowerCase().match(/[a-z]+|\d+/g);
-  if (!tokens) return null;
-  let mon = null, day = null, year = null;
-  tokens.forEach(tok => {
-    if (/^[a-z]+$/.test(tok)) {
-      if (mon != null) return;
-      if (SPB_MONTH_ALIASES[tok] != null) mon = SPB_MONTH_ALIASES[tok];
-      else mon = spbFuzzyMonthMatch(tok);
-    } else {
-      const n = parseInt(tok, 10);
-      if (tok.length === 4 && n > 2000 && n < 2200) year = n;
-      else if (n >= 1 && n <= 32 && day == null) day = n;
-    }
-  });
+  const mon = spbMonthFromText(dateStr);
   if (mon == null) return null;
+  let day = null, year = null;
+  const digits = NepaliLocale.toEnglishDigits(String(dateStr || '')).match(/\d+/g) || [];
+  digits.forEach(tok => {
+    const n = parseInt(tok, 10);
+    if (tok.length === 4 && n > 2000 && n < 2200) year = n;
+    else if (n >= 1 && n <= 32 && day == null) day = n;
+  });
   if (year == null) {
     if (!fyStartYear) return null;
     year = mon >= 4 ? fyStartYear : fyStartYear + 1;
@@ -250,21 +289,33 @@ function spbParseMonthNameDate(dateStr, fyStartYear) {
 // Pure row-level parse (also exercised headlessly by the verification
 // harness — keep it free of DOM access). Returns clean transactions plus
 // everything worth reporting about what was skipped or looks wrong.
-function spbParseRows(rows, headerInfo, fyStartYear) {
+// `overrides` (optional) is the Data-Doctor correction map keyed by 1-based
+// Excel row: {date, party, pan, vat, taxable, taxfree, exclude} — applied on
+// top of the raw cells so every correction re-parses from source and stays
+// reproducible.
+function spbParseRows(rows, headerInfo, fyStartYear, overrides) {
   const { row: hRow, col } = headerInfo;
   const txns = [];
   const stats = {
-    rowsRead: 0, subtotalsStripped: 0, badDates: [], outsideFy: 0,
+    rowsRead: 0, subtotalsStripped: 0, badDates: [], outsideFy: 0, outsideFyRows: [],
     missingPan: 0, creditRows: 0, vatOutliers: [], unnamed: 0,
     monthNameDates: 0, monthNameSamples: [],
     malformedPan: 0, malformedPanSamples: [],
+    embeddedSubtotals: [],       // the stripped rows, kept as an independent checksum
+    corrected: 0, excludedByUser: 0,
   };
   for (let i = hRow + 1; i < rows.length; i++) {
     const r = rows[i] || [];
     if (!r.some(c => c !== null && c !== '')) continue;
     stats.rowsRead++;
-    const party = String(r[col.party] == null ? '' : r[col.party]).trim();
-    const dateStr = String(r[col.date] == null ? '' : r[col.date]).trim();
+    const ov = overrides && overrides[i + 1];
+    if (ov && ov.exclude) { stats.excludedByUser++; continue; }
+    if (ov && Object.keys(ov).length) stats.corrected++;
+    let party = String(r[col.party] == null ? '' : r[col.party]).trim();
+    if (ov && ov.party != null) party = String(ov.party).trim();
+    // Devanagari digits in a numeric date ("२०८१.०४.०१") normalize first.
+    let dateStr = NepaliLocale.toEnglishDigits(String(r[col.date] == null ? '' : r[col.date])).trim();
+    if (ov && ov.date != null) dateStr = String(ov.date).trim();
     const m = SPB_DATE_RE.exec(dateStr);
     let year, mon, day, approxDay = false;
     if (m) {
@@ -276,15 +327,32 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
     const valid = mon >= 1 && mon <= 12 && day >= 1 && day <= 32;
     if (!valid) {
       // The embedded month-subtotal rows are dateless "Total Of <Month>"
-      // lines — stripping them is what stops the double-count.
-      if (/total/i.test(party)) { stats.subtotalsStripped++; continue; }
+      // lines — stripping them is what stops the double-count. Their values
+      // are captured, not discarded: the client's own subtotal is an
+      // INDEPENDENT record of what the month should sum to, so it becomes a
+      // free checksum against our computed totals (spbComputeChecksums).
+      if (/total/i.test(party)) {
+        stats.subtotalsStripped++;
+        const subMon = spbMonthFromText(party);
+        stats.embeddedSubtotals.push({
+          excelRow: i + 1, label: party,
+          fi: subMon != null ? SPB_BS_MONTHS.indexOf(subMon) : -1,
+          taxfree: spbNum(col.taxfree != null ? r[col.taxfree] : 0),
+          taxable: spbNum(r[col.taxable]),
+          vat: spbNum(col.vat != null ? r[col.vat] : 0),
+        });
+        continue;
+      }
       stats.badDates.push({ excelRow: i + 1, date: dateStr, party });
       continue;
     }
     const fi = SPB_BS_MONTHS.indexOf(mon);
     if (fyStartYear) {
       const expected = mon >= 4 ? fyStartYear : fyStartYear + 1;
-      if (year !== expected) stats.outsideFy++;
+      if (year !== expected) {
+        stats.outsideFy++;
+        if (stats.outsideFyRows.length < 100) stats.outsideFyRows.push({ excelRow: i + 1, date: dateStr, party, year, mon, day, expected });
+      }
     }
     // Normalize month-name-only rows to a real date (day defaults to the
     // 1st) so the generated book sorts and displays consistently — the
@@ -294,10 +362,14 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
       stats.monthNameDates++;
       if (stats.monthNameSamples.length < 5) stats.monthNameSamples.push({ excelRow: i + 1, raw: dateStr, normalized: normDate, approxDay });
     }
-    const taxfree = spbNum(col.taxfree != null ? r[col.taxfree] : 0);
-    const taxable = spbNum(r[col.taxable]);
-    const vat = spbNum(col.vat != null ? r[col.vat] : 0);
-    const pan = spbNormPan(col.pan != null ? r[col.pan] : '');
+    let taxfree = spbNum(col.taxfree != null ? r[col.taxfree] : 0);
+    if (ov && ov.taxfree != null) taxfree = spbNum(ov.taxfree);
+    let taxable = spbNum(r[col.taxable]);
+    if (ov && ov.taxable != null) taxable = spbNum(ov.taxable);
+    let vat = spbNum(col.vat != null ? r[col.vat] : 0);
+    if (ov && ov.vat != null) vat = spbNum(ov.vat);
+    let pan = spbNormPan(col.pan != null ? r[col.pan] : '');
+    if (ov && ov.pan != null) pan = spbNormPan(ov.pan);
     if (!pan) stats.missingPan++;
     else if (!spbIsValidPan(pan)) {
       // Not 9 digits — almost certainly a typo, not a real PAN. Kept on the
@@ -305,7 +377,7 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
       // duplicate-detection evidence (spbPansBySafeKey) so a mistyped PAN
       // can never wrongly split an otherwise-single party in two.
       stats.malformedPan++;
-      if (stats.malformedPanSamples.length < 5) stats.malformedPanSamples.push({ excelRow: i + 1, party, pan });
+      if (stats.malformedPanSamples.length < 100) stats.malformedPanSamples.push({ excelRow: i + 1, party, pan });
     }
     if (!party) stats.unnamed++;
     if (taxable < 0 || vat < 0) stats.creditRows++;
@@ -314,11 +386,11 @@ function spbParseRows(rows, headerInfo, fyStartYear) {
     if (taxable !== 0) {
       const expectedVat = taxable * 0.13;
       if (Math.abs(vat - expectedVat) > Math.max(1, Math.abs(expectedVat) * 0.01)) {
-        stats.vatOutliers.push({ excelRow: i + 1, party, taxable, vat });
+        stats.vatOutliers.push({ excelRow: i + 1, party, taxable, vat, expected: Math.round(expectedVat * 100) / 100 });
       }
     }
     txns.push({
-      date: normDate, y: year, m: mon, d: day, fi,
+      date: normDate, y: year, m: mon, d: day, fi, xr: i + 1,
       bill: r[col.bill] != null ? r[col.bill] : '',
       party: party || '(UNNAMED)',
       pan, taxfree, taxable, vat, src: txns.length,
@@ -348,8 +420,11 @@ function spbHandleFiles(input) {
           if (!kind) return;
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: null });
           const header = spbFindHeader(rows);
-          if (!header) { notes.push(`"${sn}" in ${file.name} looks like a ${kind} sheet but has no Date/Party header row — skipped.`); return; }
           if (found[kind]) { notes.push(`Second ${kind} sheet ("${sn}" in ${file.name}) ignored — already loaded one.`); return; }
+          // No recognizable header is no longer a dead end: the sheet is kept
+          // (header: null) and the column-mapping card lets the user assign
+          // Date/Party/... columns by hand, then it parses like any other.
+          if (!header) notes.push(`"${sn}" in ${file.name} looks like a ${kind} sheet but its columns weren't auto-recognized — use "Column mapping" below to assign them.`);
           found[kind] = { rows, header, source: file.name + ' → ' + sn };
           claimed = true;
         });
@@ -382,12 +457,6 @@ function spbAfterRead(found, notes) {
     return;
   }
   const fyStart = spbFyStartYear();
-  spbData = {
-    sales: found.sales ? spbParseRows(found.sales.rows, found.sales.header, fyStart) : null,
-    purchase: found.purchase ? spbParseRows(found.purchase.rows, found.purchase.header, fyStart) : null,
-  };
-  if (spbData.sales) spbData.sales.source = found.sales.source;
-  if (spbData.purchase) spbData.purchase.source = found.purchase.source;
   if (fyStart) {
     const guessed = [found.sales && found.sales.source, found.purchase && found.purchase.source]
       .map(spbGuessFyFromText).find(y => y != null);
@@ -395,26 +464,58 @@ function spbAfterRead(found, notes) {
       notes.push(`⚠ The uploaded file name suggests F.Y. ${guessed}-${String((guessed + 1) % 100).padStart(2, '0')}, but F.Y. ${spbVal('spb-fy')} is selected above. Rows dated by month name only (no year in the cell) use the SELECTED fiscal year to fill in the year — double-check the selector before generating, or those rows' printed dates will land in the wrong calendar year.`);
     }
   }
+  // Fresh import — reset every decision layer.
+  spbRaw = found;
+  spbOverrides = { sales: {}, purchase: {} };
+  spbCorrectionLog = [];
+  spbDismissed = new Set();
   spbMergeMap = {};
-  spbBook = spbComputeBook();
-  spbGroups = spbComputeGroups();
-  spbSuggestions = spbBuildSuggestions();
+  spbImportNotes = notes;
   spbVr = spbBlankVr();
   spbVrLoadDraft();          // restore this client+FY's typed figures if drafted
-  spbRenderImportSummary(notes);
-  spbRenderSuggestions();
-  spbRenderVrGrid();
-  document.getElementById('spb-generate-btn').disabled = false;
+  spbReparse();
   const parts = SPB_SECTIONS.filter(s => spbData[s.key])
     .map(s => `${s.label}: ${spbData[s.key].txns.length} transactions`);
-  spbStatus('✅ Imported — ' + escHtml(parts.join(' · ')) +
-    (found.sales && found.purchase ? '' : ' ⚠️ Only one of the two books was found.'), 'success');
+  document.getElementById('spb-generate-btn').disabled = parts.length === 0;
+  if (!parts.length) {
+    spbStatus('⚠️ Sheets loaded, but no columns were recognized — assign them in "Column mapping" below.', 'info');
+  } else {
+    spbStatus('✅ Imported — ' + escHtml(parts.join(' · ')) +
+      (found.sales && found.purchase ? '' : ' ⚠️ Only one of the two books was found.'), 'success');
+  }
+}
+
+// Everything downstream of the raw sheets, re-runnable: called on first
+// import, after every Data-Doctor correction, after a column-mapping change,
+// and on FY change. Corrections NEVER mutate parsed rows — they re-parse
+// from source with the overrides applied, so state can't drift.
+function spbReparse() {
+  const fyStart = spbFyStartYear();
+  spbData = { sales: null, purchase: null };
+  SPB_SECTIONS.forEach(({ key }) => {
+    const raw = spbRaw && spbRaw[key];
+    if (!raw || !raw.header) return;          // header may be null until mapped by hand
+    spbData[key] = spbParseRows(raw.rows, raw.header, fyStart, spbOverrides[key]);
+    spbData[key].source = raw.source;
+  });
+  spbBook = spbComputeBook();
+  spbChecksums = spbComputeChecksums();
+  spbGroups = spbComputeGroups();
+  spbSuggestions = spbBuildSuggestions();     // rebuilt from corrected data; merge ticks re-default
+  spbBuildIssues();
+  spbRenderImportSummary(spbImportNotes);
+  spbRenderMapping();
+  spbRenderDoctor();
+  spbRenderSuggestions();
+  spbRenderVrGrid();
 }
 
 function spbReset() {
   spbData = null; spbBook = null; spbGroups = null;
   spbSuggestions = []; spbMergeMap = {}; spbVr = null;
-  ['spb-import-card', 'spb-merge-card', 'spb-vr-card'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+  spbRaw = null; spbOverrides = null; spbCorrectionLog = [];
+  spbDismissed = null; spbIssues = []; spbChecksums = null; spbImportNotes = [];
+  ['spb-import-card', 'spb-map-card', 'spb-doctor-card', 'spb-merge-card', 'spb-vr-card'].forEach(id => { document.getElementById(id).style.display = 'none'; });
   document.getElementById('spb-generate-btn').disabled = true;
   spbStatus('', 'info');
 }
@@ -436,6 +537,57 @@ function spbComputeBook() {
     book[key] = months;
   });
   return book;
+}
+
+// ════════════════════════════════════════════
+//  CHECKSUMS — the embedded month-subtotal rows we strip are the CLIENT'S
+//  OWN independent record of each month's total. Comparing them against our
+//  computed sums audits every import for free: a disagreement means the
+//  client's file itself is internally inconsistent (rows added/deleted/
+//  edited after their subtotal was written) — pointed at the exact month.
+// ════════════════════════════════════════════
+const SPB_CHECKSUM_TOL = 0.015;   // float-dust guard; a real gap is rupees, not paisa
+
+function spbComputeChecksums() {
+  const out = {};
+  SPB_SECTIONS.forEach(({ key }) => {
+    if (!spbData[key] || !spbBook[key]) { out[key] = null; return; }
+    const res = { rows: [], mismatches: 0, unresolved: 0 };
+    spbData[key].stats.embeddedSubtotals.forEach(sub => {
+      if (sub.fi < 0) { res.unresolved++; return; }   // label's month not recognizable — can't compare
+      const b = spbBook[key][sub.fi];
+      const diffs = { t: sub.taxable - b.t, v: sub.vat - b.v, f: sub.taxfree - b.f };
+      const ok = Math.abs(diffs.t) <= SPB_CHECKSUM_TOL && Math.abs(diffs.v) <= SPB_CHECKSUM_TOL && Math.abs(diffs.f) <= SPB_CHECKSUM_TOL;
+      if (!ok) res.mismatches++;
+      res.rows.push({ label: sub.label, excelRow: sub.excelRow, fi: sub.fi, ok, diffs, embedded: { t: sub.taxable, v: sub.vat, f: sub.taxfree } });
+    });
+    out[key] = res;
+  });
+  return out;
+}
+
+// Internal tie-out, run immediately before generating: the transactions,
+// the party groups, and the monthly book must all sum to the same figures.
+// They're computed from the same txns so they can only disagree if a bug
+// (or an unforeseen edge case) crept in — in which case the workbook must
+// refuse to generate rather than write a wrong file.
+function spbTieOut() {
+  const problems = [];
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    if (!spbData[key]) return;
+    const sum3 = (arr, ft, fv, ff) => arr.reduce((a, x) => ({ t: a.t + x[ft], v: a.v + x[fv], f: a.f + x[ff] }), { t: 0, v: 0, f: 0 });
+    const fromTxns = sum3(spbData[key].txns, 'taxable', 'vat', 'taxfree');
+    const fromGroups = sum3(spbGroups[key], 'taxable', 'vat', 'taxfree');
+    const fromMonthly = sum3(spbBook[key], 't', 'v', 'f');
+    [['party groups', fromGroups], ['monthly totals', fromMonthly]].forEach(([what, sums]) => {
+      ['t', 'v', 'f'].forEach(fld => {
+        if (Math.abs(sums[fld] - fromTxns[fld]) > 0.01) {
+          problems.push(`${label}: ${what} ${fld === 't' ? 'taxable' : fld === 'v' ? 'VAT' : 'taxfree'} ${spbFmt(sums[fld])} ≠ transactions ${spbFmt(fromTxns[fld])}`);
+        }
+      });
+    });
+  });
+  return { ok: problems.length === 0, problems };
 }
 
 // Byte-identical (post-normalization) names are NOT proof of one entity —
@@ -642,6 +794,320 @@ function spbApplyMerges() {
 }
 
 // ════════════════════════════════════════════
+//  DATA DOCTOR — every problem the import can detect, each with an inline
+//  correction the user applies (or explicitly keeps as-is). Corrections are
+//  stored as row-level overrides and re-parsed from source (spbReparse), so
+//  they're reproducible, loggable, and exportable as a Corrections sheet.
+//  Nothing is ever auto-"fixed" — the user decides, the tool recomputes.
+// ════════════════════════════════════════════
+function spbIssueKey(iss) {
+  return iss.type + '|' + (iss.section || '') + '|' + (iss.excelRow != null ? iss.excelRow : (iss.refKey || ''));
+}
+
+function spbBuildIssues() {
+  const issues = [];
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    const d = spbData[key];
+    if (!d) return;
+    const s = d.stats;
+    // Blockers: rows excluded because their date can't be read.
+    s.badDates.forEach(b => issues.push({ type: 'badDate', sev: 'red', section: key, sectionLabel: label, excelRow: b.excelRow, date: b.date, party: b.party }));
+    // The client's own subtotal disagreeing with its transactions.
+    const cs = spbChecksums && spbChecksums[key];
+    if (cs) cs.rows.filter(r => !r.ok).forEach(r => issues.push({ type: 'checksum', sev: 'amber', section: key, sectionLabel: label, excelRow: r.excelRow, refKey: r.label, label: r.label, diffs: r.diffs }));
+    s.outsideFyRows.forEach(b => issues.push({ type: 'fy', sev: 'amber', section: key, sectionLabel: label, excelRow: b.excelRow, date: b.date, party: b.party, year: b.year, expected: b.expected, mon: b.mon, day: b.day }));
+    s.vatOutliers.forEach(b => issues.push({ type: 'vat', sev: 'amber', section: key, sectionLabel: label, excelRow: b.excelRow, party: b.party, taxable: b.taxable, vat: b.vat, expected: b.expected }));
+    // Possible double entries: same party + same bill + same amounts.
+    const dupMap = new Map();
+    d.txns.forEach(x => {
+      const bill = String(x.bill == null ? '' : x.bill).trim().toLowerCase();
+      if (!bill || (!x.taxable && !x.vat && !x.taxfree)) return;
+      const k = spbSafeKey(x.party) + '|' + bill + '|' + x.taxable + '|' + x.vat;
+      (dupMap.get(k) || dupMap.set(k, []).get(k)).push(x);
+    });
+    dupMap.forEach(list => {
+      if (list.length < 2) return;
+      issues.push({ type: 'dup', sev: 'amber', section: key, sectionLabel: label, refKey: list.map(x => x.xr).join(','), rows: list.map(x => ({ excelRow: x.xr, date: x.date, party: x.party, bill: String(x.bill), taxable: x.taxable })) });
+    });
+    // Malformed PANs, with the party's own valid PAN suggested where one exists.
+    const validPanBySafeKey = new Map();
+    d.txns.forEach(x => {
+      if (!spbIsValidPan(x.pan)) return;
+      const sk = spbSafeKey(x.party);
+      if (!validPanBySafeKey.has(sk)) validPanBySafeKey.set(sk, new Set());
+      validPanBySafeKey.get(sk).add(x.pan);
+    });
+    s.malformedPanSamples.forEach(b => {
+      let suggestion = null, best = 0;
+      (validPanBySafeKey.get(spbSafeKey(b.party)) || []).forEach(p => {
+        const sim = stringSimilarity(p, String(b.pan));
+        if (sim > best) { best = sim; suggestion = p; }
+      });
+      issues.push({ type: 'pan', sev: 'amber', section: key, sectionLabel: label, excelRow: b.excelRow, party: b.party, pan: b.pan, suggestion });
+    });
+    // Blank PANs fillable from the same party's rows — only when unambiguous.
+    const blankBySafeKey = new Map();
+    d.txns.forEach(x => {
+      if (x.pan) return;
+      const sk = spbSafeKey(x.party);
+      (blankBySafeKey.get(sk) || blankBySafeKey.set(sk, []).get(sk)).push(x);
+    });
+    blankBySafeKey.forEach((list, sk) => {
+      const pans = Array.from(validPanBySafeKey.get(sk) || []);
+      if (pans.length !== 1) return;
+      issues.push({ type: 'panFill', sev: 'info', section: key, sectionLabel: label, refKey: sk, party: list[0].party, pan: pans[0], rows: list.map(x => x.xr) });
+    });
+    // Sales invoice continuity — missing numbers in a bill series are an IRD
+    // audit point. Series = everything before the trailing digits; only
+    // series with real volume are checked, so odd one-off bills don't spam.
+    if (key === 'sales') {
+      const series = new Map();
+      d.txns.forEach(x => {
+        const m2 = String(x.bill == null ? '' : x.bill).trim().match(/^(.*?)(\d+)$/);
+        if (!m2) return;
+        (series.get(m2[1]) || series.set(m2[1], []).get(m2[1])).push(parseInt(m2[2], 10));
+      });
+      series.forEach((nums, pre) => {
+        if (nums.length < 10) return;
+        const uniq = Array.from(new Set(nums)).sort((a, b) => a - b);
+        const missing = [];
+        for (let i = 1; i < uniq.length && missing.length <= 200; i++) {
+          for (let n = uniq[i - 1] + 1; n < uniq[i] && missing.length <= 200; n++) missing.push(n);
+        }
+        if (!missing.length) return;
+        issues.push({ type: 'billGap', sev: 'info', section: key, sectionLabel: label, refKey: pre || '(no prefix)', series: pre, count: uniq.length, min: uniq[0], max: uniq[uniq.length - 1], missing });
+      });
+    }
+  });
+  const sevRank = { red: 0, amber: 1, info: 2 };
+  issues.sort((a, b) => sevRank[a.sev] - sevRank[b.sev]);
+  issues.forEach(iss => { iss.dismissed = spbDismissed.has(spbIssueKey(iss)); });
+  spbIssues = issues;
+}
+
+// One override = one logged, auditable decision.
+function spbSetOverride(section, excelRow, field, from, to) {
+  const o = spbOverrides[section][excelRow] = spbOverrides[section][excelRow] || {};
+  o[field] = to;
+  spbCorrectionLog = spbCorrectionLog.filter(l => !(l.section === section && l.excelRow === excelRow && l.field === field));
+  spbCorrectionLog.push({ section, excelRow, field, from: String(from == null ? '' : from), to: String(to == null ? '' : to), ts: Date.now() });
+  AuditLog.record('spb_correction', { module: 'salesPurchaseBook', detail: { section, excelRow, field, to: String(to == null ? '' : to) } });
+}
+
+function spbDoctorAction(idx, action) {
+  const iss = spbIssues[idx];
+  if (!iss) return;
+  if (action === 'dismiss') {
+    spbDismissed.add(spbIssueKey(iss));
+    spbBuildIssues();
+    spbRenderDoctor();
+    return;
+  }
+  if (action === 'fixDate') {
+    const el = document.getElementById('spb-fix-' + idx);
+    const vRaw = el ? el.value.trim() : '';
+    if (!vRaw) { spbStatus('❌ Type the corrected date first.', 'error'); return; }
+    const norm = NepaliLocale.toEnglishDigits(vRaw);
+    if (!SPB_DATE_RE.test(norm) && !spbParseMonthNameDate(norm, spbFyStartYear())) {
+      spbStatus('❌ "' + escHtml(vRaw) + '" is not a readable B.S. date — try 2081.04.01 or "15 Shrawan".', 'error');
+      return;
+    }
+    spbSetOverride(iss.section, iss.excelRow, 'date', iss.date, norm);
+  } else if (action === 'exclude') {
+    spbSetOverride(iss.section, iss.excelRow, 'exclude', '', true);
+  } else if (action === 'fixVat') {
+    spbSetOverride(iss.section, iss.excelRow, 'vat', iss.vat, iss.expected);
+  } else if (action === 'fixPan') {
+    if (!iss.suggestion) return;
+    spbSetOverride(iss.section, iss.excelRow, 'pan', iss.pan, iss.suggestion);
+  } else if (action === 'fillPan') {
+    iss.rows.forEach(xr => spbSetOverride(iss.section, xr, 'pan', '', iss.pan));
+  } else if (action === 'fixYear') {
+    const to = `${iss.expected}.${String(iss.mon).padStart(2, '0')}.${String(iss.day).padStart(2, '0')}`;
+    spbSetOverride(iss.section, iss.excelRow, 'date', iss.date, to);
+  } else {
+    return;
+  }
+  spbReparse();
+  spbStatus('✅ Correction applied — everything recomputed from the source rows.', 'success');
+}
+
+// Duplicate-entry card: exclusion is per specific row, not per issue.
+function spbDoctorExcludeRow(idx, excelRow) {
+  const iss = spbIssues[idx];
+  if (!iss) return;
+  spbSetOverride(iss.section, excelRow, 'exclude', '', true);
+  spbReparse();
+  spbStatus('✅ Row ' + excelRow + ' excluded as a duplicate — recomputed.', 'success');
+}
+
+function spbResetCorrections() {
+  if (!spbRaw) return;
+  if (!confirm('Remove ALL corrections and "keep as-is" decisions for this import, and re-read the file exactly as uploaded?')) return;
+  spbOverrides = { sales: {}, purchase: {} };
+  spbCorrectionLog = [];
+  spbDismissed = new Set();
+  spbReparse();
+  spbStatus('↩️ All corrections cleared — back to the file exactly as uploaded.', 'info');
+}
+
+function spbIssueHtml(iss, idx) {
+  const head = (icon, title) => `<div class="spb-issue-head">${icon} <strong>${escHtml(iss.sectionLabel)}</strong> — ${title}</div>`;
+  const dismissBtn = label => `<button class="btn btn-outline btn-sm" onclick="spbDoctorAction(${idx},'dismiss')">${label || 'Keep as-is'}</button>`;
+  let inner = '';
+  if (iss.type === 'badDate') {
+    inner = head('⛔', `row ${iss.excelRow}: unreadable date "${escHtml(iss.date)}" (${escHtml(iss.party)}) — row is EXCLUDED from the book until fixed`) +
+      `<div class="spb-issue-actions">
+        <input class="spb-in" id="spb-fix-${idx}" placeholder="e.g. 2081.04.01 or 15 Shrawan" style="width:190px; text-align:left;">
+        <button class="btn btn-primary btn-sm" onclick="spbDoctorAction(${idx},'fixDate')">Fix date</button>
+        <button class="btn btn-outline btn-sm" onclick="spbDoctorAction(${idx},'exclude')">Exclude permanently</button>
+      </div>`;
+  } else if (iss.type === 'checksum') {
+    const worst = ['t', 'v', 'f'].map(f => ({ f, d: iss.diffs[f] })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d))[0];
+    const fName = worst.f === 't' ? 'Taxable' : worst.f === 'v' ? 'VAT' : 'Tax Free';
+    inner = head('🔎', `the file's own "${escHtml(iss.label)}" (row ${iss.excelRow}) disagrees with its transactions by ${spbFmt(worst.d)} on ${fName} — rows were likely added, deleted or edited after that subtotal was written. The generated workbook uses the TRANSACTIONS (recomputed live), but check the source.`) +
+      `<div class="spb-issue-actions">${dismissBtn('Understood — use transactions')}</div>`;
+  } else if (iss.type === 'fy') {
+    inner = head('📅', `row ${iss.excelRow}: dated ${escHtml(iss.date)} (${escHtml(iss.party)}) — year ${iss.year} is outside the selected fiscal year (expected ${iss.expected} for that month)`) +
+      `<div class="spb-issue-actions">
+        <button class="btn btn-primary btn-sm" onclick="spbDoctorAction(${idx},'fixYear')">Change year to ${iss.expected}</button>
+        <button class="btn btn-outline btn-sm" onclick="spbDoctorAction(${idx},'exclude')">Exclude row</button>
+        ${dismissBtn()}
+      </div>`;
+  } else if (iss.type === 'vat') {
+    inner = head('🧮', `row ${iss.excelRow}: ${escHtml(iss.party)} — VAT ${spbFmt(iss.vat)} but 13% of taxable ${spbFmt(iss.taxable)} is ${spbFmt(iss.expected)}`) +
+      `<div class="spb-issue-actions">
+        <button class="btn btn-primary btn-sm" onclick="spbDoctorAction(${idx},'fixVat')">Set VAT to ${spbFmt(iss.expected)}</button>
+        ${dismissBtn('Keep — exempt/mixed supply')}
+      </div>`;
+  } else if (iss.type === 'dup') {
+    inner = head('👯', `possible double entry — same party, bill no. and amount:`) +
+      iss.rows.map(r => `<div class="spb-issue-sub">row ${r.excelRow}: ${escHtml(r.date)} · bill ${escHtml(r.bill)} · ${escHtml(r.party)} · ${spbFmt(r.taxable)}
+        <button class="btn btn-outline btn-sm" onclick="spbDoctorExcludeRow(${idx},${r.excelRow})">Exclude this row</button></div>`).join('') +
+      `<div class="spb-issue-actions">${dismissBtn('Keep all — genuinely separate')}</div>`;
+  } else if (iss.type === 'pan') {
+    inner = head('🆔', `row ${iss.excelRow}: ${escHtml(iss.party)} — PAN "${escHtml(iss.pan)}" isn't 9 digits (likely a typo)`) +
+      `<div class="spb-issue-actions">
+        ${iss.suggestion ? `<button class="btn btn-primary btn-sm" onclick="spbDoctorAction(${idx},'fixPan')">Change to ${escHtml(iss.suggestion)} (this party's PAN elsewhere)</button>` : '<span style="color:var(--text-muted); font-size:12.5px;">No valid PAN found for this party elsewhere in the book.</span>'}
+        ${dismissBtn()}
+      </div>`;
+  } else if (iss.type === 'panFill') {
+    inner = head('🪪', `${escHtml(iss.party)} — ${iss.rows.length} row(s) have no PAN, but this party's other rows all use ${escHtml(iss.pan)}`) +
+      `<div class="spb-issue-actions">
+        <button class="btn btn-primary btn-sm" onclick="spbDoctorAction(${idx},'fillPan')">Fill ${escHtml(iss.pan)} on all ${iss.rows.length} row(s)</button>
+        ${dismissBtn('Leave blank')}
+      </div>`;
+  } else if (iss.type === 'billGap') {
+    const shown = iss.missing.slice(0, 12).join(', ');
+    inner = head('🔢', `sales bill series ${iss.series ? '"' + escHtml(iss.series) + '"' : '(plain numbers)'} runs ${iss.min}–${iss.max} but ${iss.missing.length >= 200 ? '200+' : iss.missing.length} number(s) are missing (${escHtml(shown)}${iss.missing.length > 12 ? '…' : ''}) — invoice continuity is an IRD audit point; check for unrecorded/cancelled bills`) +
+      `<div class="spb-issue-actions">${dismissBtn('Noted')}</div>`;
+  }
+  return `<div class="spb-issue spb-issue-${iss.sev}">${inner}</div>`;
+}
+
+function spbRenderDoctor() {
+  const card = document.getElementById('spb-doctor-card');
+  if (!card) return;
+  if (!spbData || (!spbData.sales && !spbData.purchase)) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const open = spbIssues.filter(i => !i.dismissed);
+  const reds = open.filter(i => i.sev === 'red').length;
+  const ambers = open.filter(i => i.sev === 'amber').length;
+  const infos = open.filter(i => i.sev === 'info').length;
+  let ready;
+  if (reds) ready = `<div class="spb-ready spb-ready-red">⛔ ${reds} blocking issue(s) — those rows are EXCLUDED from the book until fixed below.</div>`;
+  else if (ambers) ready = `<div class="spb-ready spb-ready-amber">⚠️ ${ambers} warning(s) to review — you can generate, but look at them first.</div>`;
+  else ready = `<div class="spb-ready spb-ready-ok">✅ All checks passed${infos ? ` (${infos} informational note(s) below)` : ''} — ready to generate.</div>`;
+  const csBits = SPB_SECTIONS.map(({ key, label }) => {
+    const cs = spbChecksums && spbChecksums[key];
+    if (!cs || !cs.rows.length) return null;
+    return `${label} ${cs.rows.filter(r => r.ok).length}/${cs.rows.length} month checksums matched`;
+  }).filter(Boolean).join(' · ');
+  const meta = `<div style="color:var(--text-muted); font-size:12.5px; margin-bottom:4px;">${spbCorrectionLog.length ? spbCorrectionLog.length + ' correction(s) applied · ' : ''}${spbDismissed.size ? spbDismissed.size + ' kept as-is · ' : ''}${csBits || 'no embedded subtotals to checksum against'}</div>`;
+  const body = spbIssues.map((iss, idx) => iss.dismissed ? '' : spbIssueHtml(iss, idx)).join('');
+  document.getElementById('spb-doctor-body').innerHTML = ready + meta + body;
+}
+
+// ════════════════════════════════════════════
+//  COLUMN MAPPING — manual assignment when a sheet's headers weren't
+//  auto-recognized (or the user wants to override the detection). Makes
+//  virtually any column layout importable.
+// ════════════════════════════════════════════
+function spbColLetter(n) {
+  let s = ''; n++;
+  while (n > 0) { s = String.fromCharCode(65 + (n - 1) % 26) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+const SPB_MAP_FIELDS = [
+  ['date', 'Date / Month', true], ['bill', 'Bill No.', false], ['party', 'Party Name', true],
+  ['pan', 'PAN', false], ['taxfree', 'Tax Free', false], ['taxable', 'Taxable Amount', true], ['vat', 'VAT', false],
+];
+
+function spbRenderMapping() {
+  const card = document.getElementById('spb-map-card');
+  if (!card) return;
+  if (!spbRaw || (!spbRaw.sales && !spbRaw.purchase)) { card.style.display = 'none'; return; }
+  const unmapped = SPB_SECTIONS.some(({ key }) => spbRaw[key] && !spbRaw[key].header);
+  const show = unmapped || card.dataset.forced === '1';
+  card.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  let html = '';
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    const raw = spbRaw[key];
+    if (!raw) return;
+    const guessRow = raw.header ? raw.header.row
+      : Math.max(0, raw.rows.findIndex(r => (r || []).filter(c => c != null && c !== '').length >= 3));
+    const headerCells = raw.rows[guessRow] || [];
+    const maxCols = Math.max(1, ...raw.rows.slice(0, 30).map(r => (r || []).length));
+    const cur = raw.header ? raw.header.col : {};
+    html += `<div class="spb-map-sec">
+      <div style="font-weight:600; margin-bottom:8px;">${label} <span style="color:var(--text-muted); font-weight:400;">(${escHtml(raw.source)})</span>
+      ${raw.header ? '' : ' — <span class="spb-warn">columns not auto-recognized, assign them:</span>'}</div>
+      <div class="spb-map-grid">
+        <label>Header row<input class="spb-in" id="spb-map-${key}-row" value="${guessRow + 1}" style="width:56px;"></label>
+        ${SPB_MAP_FIELDS.map(([f, lab, req]) => `
+          <label>${lab}${req ? ' *' : ''}
+            <select id="spb-map-${key}-${f}">
+              <option value="">—</option>
+              ${Array.from({ length: maxCols }, (_, j) =>
+                `<option value="${j}"${cur[f] === j ? ' selected' : ''}>${spbColLetter(j)}${headerCells[j] != null && headerCells[j] !== '' ? ' · ' + escHtml(String(headerCells[j]).slice(0, 16)) : ''}</option>`).join('')}
+            </select>
+          </label>`).join('')}
+        <button class="btn btn-primary btn-sm" onclick="spbApplyMapping('${key}')">Apply</button>
+      </div>
+    </div>`;
+  });
+  document.getElementById('spb-map-body').innerHTML = html;
+}
+
+function spbToggleMapping() {
+  const card = document.getElementById('spb-map-card');
+  if (!card) return;
+  card.dataset.forced = card.dataset.forced === '1' ? '' : '1';
+  spbRenderMapping();
+}
+
+function spbApplyMapping(key) {
+  const raw = spbRaw && spbRaw[key];
+  if (!raw) return;
+  const rowNum = parseInt(spbVal(`spb-map-${key}-row`), 10);
+  const col = {};
+  SPB_MAP_FIELDS.forEach(([f]) => {
+    const v = spbVal(`spb-map-${key}-${f}`);
+    if (v !== '') col[f] = parseInt(v, 10);
+  });
+  if (!(rowNum >= 1) || col.date == null || col.party == null || col.taxable == null) {
+    spbStatus('❌ Mapping needs at least the header row plus Date/Month, Party Name and Taxable Amount columns.', 'error');
+    return;
+  }
+  raw.header = { row: rowNum - 1, col };
+  spbReparse();
+  document.getElementById('spb-generate-btn').disabled = !(spbData.sales || spbData.purchase);
+  spbStatus(`✅ ${key === 'sales' ? 'Sales' : 'Purchase'} columns mapped — sheet imported.`, 'success');
+}
+
+// ════════════════════════════════════════════
 //  RENDER — import summary, duplicate review, reconciliation grid
 // ════════════════════════════════════════════
 function spbRenderImportSummary(notes) {
@@ -650,7 +1116,11 @@ function spbRenderImportSummary(notes) {
   let html = '';
   SPB_SECTIONS.forEach(({ key, label }) => {
     const d = spbData[key];
-    if (!d) { html += `<div class="spb-import-sec"><strong>${label}:</strong> not uploaded.</div>`; return; }
+    if (!d) {
+      const pendingMap = spbRaw && spbRaw[key] && !spbRaw[key].header;
+      html += `<div class="spb-import-sec"><strong>${label}:</strong> ${pendingMap ? '<span class="spb-warn">sheet loaded, columns not recognized — assign them in Column mapping.</span>' : 'not uploaded.'}</div>`;
+      return;
+    }
     const s = d.stats;
     const total = d.txns.reduce((a, x) => a + x.taxable, 0);
     const warn = [];
@@ -666,10 +1136,23 @@ function spbRenderImportSummary(notes) {
       const ex = s.malformedPanSamples[0];
       warn.push(`<span class="spb-warn">ℹ ${s.malformedPan} row(s) have a PAN that isn't 9 digits (e.g. row ${ex.excelRow}, ${escHtml(String(ex.party))}: "${escHtml(ex.pan)}") — likely a typo. Kept on the row, but not used to tell two same-named parties apart.</span>`);
     }
+    // The embedded-subtotal checksum verdict — the one line that says
+    // whether the client's file is internally consistent.
+    const cs = spbChecksums && spbChecksums[key];
+    let csLine = '';
+    if (cs && cs.rows.length) {
+      csLine = cs.mismatches
+        ? `<br><span class="spb-warn">⚠ Checksum: ${cs.mismatches} of ${cs.rows.length} embedded month subtotal(s) DISAGREE with their own transactions — see Data Doctor below.</span>`
+        : `<br><span class="spb-ok">✓ Checksum: all ${cs.rows.length} embedded month subtotals agree with the transactions to the paisa.</span>`;
+    }
+    const fixedBits = [];
+    if (s.corrected) fixedBits.push(`${s.corrected} row(s) corrected`);
+    if (s.excludedByUser) fixedBits.push(`${s.excludedByUser} row(s) excluded by you`);
     html += `<div class="spb-import-sec">
       <strong>${label}</strong> <span style="color:var(--text-muted);">(${escHtml(d.source || '')})</span><br>
       ${d.txns.length} transactions · ${spbGroups[key].length} parties · taxable ${spbFmt(total)}
       · ${s.subtotalsStripped} embedded subtotal row(s) stripped · ${s.missingPan} without PAN · ${s.creditRows} credit note(s)
+      ${fixedBits.length ? ' · <span class="spb-ok">' + fixedBits.join(' · ') + '</span>' : ''}${csLine}
       ${warn.length ? '<br>' + warn.join('<br>') : ''}
     </div>`;
   });
@@ -838,6 +1321,18 @@ function spbVrLoadDraft() {
 // ════════════════════════════════════════════
 const SPB_MONEY = '#,##0.00';
 
+// Highlight fills — yellow makes every total row findable at a scroll
+// (user-requested), amber marks grand totals as a higher level, light red
+// flags reconciliation gaps. Classic Excel palette so prints stay familiar.
+const SPB_FILL_YELLOW = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+const SPB_FILL_AMBER = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC000' } };
+const SPB_FILL_BAD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+const SPB_NEG_FONT = { color: { argb: 'FF9C0006' } };
+
+function spbFillRow(ws, r, fromCol, toCol, fill) {
+  for (let c = fromCol; c <= toCol; c++) ws.getRow(r).getCell(c).fill = fill;
+}
+
 function spbHeaderRow(ws, rowIdx, labels) {
   labels.forEach((txt, i) => {
     const c = ws.getRow(rowIdx).getCell(i + 1);
@@ -857,6 +1352,7 @@ function spbTxnCells(ws, r, x) {
   [['E', x.taxfree], ['F', x.taxable], ['G', x.vat]].forEach(([col, v]) => {
     const c = ws.getCell(`${col}${r}`);
     c.value = v; c.numFmt = SPB_MONEY;
+    if (v < 0) c.font = SPB_NEG_FONT;   // credit notes readable at a glance
   });
 }
 
@@ -871,6 +1367,7 @@ function spbSubtotalRow(ws, r, label, from, to, pan, res) {
     c.numFmt = SPB_MONEY;
   });
   ws.getRow(r).font = { bold: true };
+  spbFillRow(ws, r, 1, 7, SPB_FILL_YELLOW);
 }
 
 const SPB_BOOK_COLS = [{ width: 12 }, { width: 22 }, { width: 44 }, { width: 14 }, { width: 12 }, { width: 15 }, { width: 13 }];
@@ -898,6 +1395,7 @@ function spbSheetBook(wb, name, txns) {
     r++;
   });
   ws.views = [{ state: 'frozen', ySplit: 1 }];
+  ws.autoFilter = 'A1:G1';
   return ws;
 }
 
@@ -918,6 +1416,7 @@ function spbSheetSummary(wb, name, groups) {
     r++;
   });
   ws.views = [{ state: 'frozen', ySplit: 1 }];
+  ws.autoFilter = 'A1:G1';
   return subRow;
 }
 
@@ -951,7 +1450,9 @@ function spbSheetDetails(wb, name, groups, summaryName, subRow) {
     c.numFmt = SPB_MONEY;
   });
   ws.getRow(tr).font = { bold: true };
+  spbFillRow(ws, tr, 1, 6, SPB_FILL_AMBER);
   ws.views = [{ state: 'frozen', ySplit: 1 }];
+  ws.autoFilter = 'A1:F1';
 }
 
 // Monthly sheet: same geometry as the firm's file (Sales block rows 4–18,
@@ -1007,6 +1508,7 @@ function spbSheetMonthly(wb) {
         if (v.bad.length) {
           remark.value = 'MISMATCH — ' + v.bad.join(', ') + ' beyond rounding';
           remark.font = { bold: true, color: { argb: 'FFB42318' } };
+          spbFillRow(ws, r, 1, 10, SPB_FILL_BAD);   // the whole month row reads as a gap
         } else {
           remark.value = 'Matched';
           remark.font = { color: { argb: 'FF067647' } };
@@ -1032,7 +1534,26 @@ function spbSheetMonthly(wb) {
       c.numFmt = SPB_MONEY;
     });
     ws.getRow(totR).font = { bold: true };
+    spbFillRow(ws, totR, 1, 10, SPB_FILL_YELLOW);
     base = 20;   // Purchase block starts at row 21, matching the firm's layout
+  });
+}
+
+// Every Data-Doctor decision travels WITH the workbook — an auditor opening
+// the file can see exactly what was adjusted from the client's raw book.
+function spbSheetCorrections(wb) {
+  if (!spbCorrectionLog.length) return;
+  const ws = wb.addWorksheet('Corrections');
+  ws.columns = [{ width: 10 }, { width: 8 }, { width: 10 }, { width: 28 }, { width: 28 }, { width: 20 }];
+  spbHeaderRow(ws, 1, ['Book', 'Row', 'Field', 'Original', 'Corrected', 'Applied']);
+  spbCorrectionLog.forEach((l, i) => {
+    const r = i + 2;
+    ws.getCell(`A${r}`).value = l.section === 'sales' ? 'Sales' : 'Purchase';
+    ws.getCell(`B${r}`).value = l.excelRow;
+    ws.getCell(`C${r}`).value = l.field;
+    ws.getCell(`D${r}`).value = l.from;
+    ws.getCell(`E${r}`).value = l.field === 'exclude' ? 'row excluded' : l.to;
+    ws.getCell(`F${r}`).value = new Date(l.ts).toLocaleString();
   });
 }
 
@@ -1046,12 +1567,20 @@ function spbBuildWorkbook() {
     spbSheetDetails(wb, label + ' Details', spbGroups[key], label + ' Summary', subRow);
   });
   spbSheetMonthly(wb);
+  spbSheetCorrections(wb);
   return wb;
 }
 
 async function spbGenerateExcel() {
-  if (!spbData) { spbStatus('❌ Upload the Sales/Purchase file first.', 'error'); return; }
+  if (!spbData || (!spbData.sales && !spbData.purchase)) { spbStatus('❌ Upload the Sales/Purchase file first (and map its columns if prompted).', 'error'); return; }
   if (!window.ExcelJS) { spbStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
+  // Refuse to write a workbook whose own layers disagree — transactions,
+  // party groups and monthly totals must tie to the paisa first.
+  const tie = spbTieOut();
+  if (!tie.ok) {
+    spbStatus('❌ Internal tie-out FAILED — not generating a possibly wrong workbook: ' + escHtml(tie.problems.join(' · ')), 'error');
+    return;
+  }
   // Not a blocker — the reconciliation columns simply stay blank — but say so.
   const missing = SPB_SECTIONS.filter(s => spbData[s.key] &&
     SPB_BS_MONTHS.some((_, fi) => !spbMonthVerdict(s.key, fi).entered)).map(s => s.label);
@@ -1070,11 +1599,13 @@ async function spbGenerateExcel() {
 }
 
 // ── Client search + FY change wiring (module loads before auth) ──
+// FY drives year inference for month-name dates and the outside-FY check,
+// so changing it re-parses from source, not just the reconciliation grid.
 function spbOnContextChange() {
-  if (!spbData) return;
+  if (!spbRaw) return;
   spbVr = spbBlankVr();
   spbVrLoadDraft();
-  spbRenderVrGrid();
+  spbReparse();
 }
 
 (function spbWireSearch() {
