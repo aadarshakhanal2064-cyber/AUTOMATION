@@ -128,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Sales & Purchase Book, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
+Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Sales & Purchase Book, Confirmation Letters, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
@@ -199,6 +199,18 @@ Audit trail of sent documents from `send_logs`. Staff see only their own sends; 
 **c) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `regdComingSoon()` in `js/registrar.js`. Real remaining product surface.
 
 > **Removed module — VAT Return OCR** (removed 2026-07-14 by user decision; the firm won't use it). It read scanned IRD VAT Return PDFs via digit-only OCR and filled the firm's Excel workbook. The removal took with it `js/vatReturn.js`, four engines whose only consumer it was (`ocrEngine`, `pdfEngine`, `visionEngine`, `validationEngine`), `DocumentEngine.workbookToBlob`, the `pdfjs-dist`/`tesseract.js`/`exceljs` CDN tags, and `assets/templates/vat-detail.xlsx`. (`exceljs` was re-added shortly after for the Depreciation module — §5.8 — but the four engines and the OCR/PDF CDN libraries stay gone.) All of it is recoverable from git history (last commit containing it: `ad0e9f2`); its engineering record lives in `HANDOFF_VAT.md` / `HANDOFF_2026-07-05.md`. Historical `audit_log` rows with `module: 'vatReturn'` remain valid; `vat_filings.status` keeps `ocr_processing` as a manual status.
+
+### 5.12 Confirmation Letters (`js/confirmationLetters.js`, `cl-` prefix)
+
+Bulk-generates "Confirmation of Account Balance & Transaction" letters — one per customer/supplier of an audit client — as an audit-fieldwork follow-on to the Sales & Purchase Book (§5.9). Standalone main tab (not a live-session extension of SPB): the user uploads an already-generated SPB workbook each time.
+
+- **Data source**: reads the uploaded workbook's `Sales Details`/`Purchase Details` sheets back via SheetJS, using the exact column layout `spbSheetDetails()` writes (`B` `"<Party> Total"`, `C` Pan, `E` Taxable, `F` Vat; stops at the `Grand Total` row). Parties are merged by normalized name across both sheets so a party can qualify by Sales alone, Purchase alone, or both.
+- **Threshold** (`cl-threshold`, default 100000/1 lakh on Taxable) is user-editable per run; a party crossing it on either side is pre-checked in the review grid, everything else stays hidden unless "show parties below threshold" is ticked.
+- **Nothing generates without an explicit per-party choice** — the review grid is a checklist (include/exclude), with Sales/Purchase Taxable+Vat editable (pre-filled from the workbook, not recomputed at a flat 13%) and Opening/Closing Balance always manual (the workbook carries no ledger-balance data).
+- **Firm identity** (letterhead Name/Address/PAN/Phone — the audit client's own, not S&A/Dallakoti's) auto-fills from the matched `clients` row when the company search resolves to one, editable either way.
+- **Template** (`assets/templates/confirmation-letter.docx`) is tokenized from a real firm letter: the firm block lives in the Word header (repeats on every page natively); the per-party body (To/Subject/table/signature) is wrapped in a docxtemplater loop `{{#letters}}...{{/letters}}` with a `{{^last}}`-guarded page break, so **one render function serves both outputs** — a combined multi-page `.docx` (all selected letters) and a ZIP of individual `.docx` files (JSZip), one call per party with a single-item array.
+- **Fixed a wording bug present in every real sample** (including the firm's own blank master): the Subject line and the paragraph below it referenced fiscal years one year apart. The new template uses one `{{fyLabel}}` token in both places.
+- No Tax Free line on this letter (never existed in the format) — Total = Taxable + Vat only.
 
 ---
 
@@ -300,7 +312,9 @@ All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes thro
 |---|---|
 | `2081-82` (dash) | Send Document, Report Builder, Notes, Billing |
 | `2083/84` (slash) | VAT Compliance (canonical: `vatcFyLabel`) |
-| `2083.084` (dot) | Drive year folders (Send Document folder walk) |
+| `2083.084` (dot, 3-digit) | Drive year folders (Send Document folder walk) |
+| `2081.2082` (dot, full 4-digit) | Sales & Purchase Book sheet titles (`spbFyDot()`) |
+| `2081/082` (slash, 3-digit) | Confirmation Letters (`clFyLabel()`) — matches the firm's own real letters |
 
 Fiscal month index is **1–12 with 1 = Shrawan** (not the B.S. calendar month number).
 

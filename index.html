@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607181900">
+<link rel="stylesheet" href="css/styles.css?v=202607191800">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -141,6 +141,10 @@ function cropLoginLogoIcon(img) {
     <button class="nav-item" onclick="switchTab('salesPurchaseBook'); spbInit();" id="nav-salesPurchaseBook">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
       Sales &amp; Purchase
+    </button>
+    <button class="nav-item" onclick="switchTab('confirmationLetters'); clInit();" id="nav-confirmationLetters">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"></path><path d="M4 8h16"></path><path d="M9 4v16"></path><path d="M13 13l2 2 4-4"></path></svg>
+      Confirmation Letters
     </button>
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -1408,6 +1412,105 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: CONFIRMATION LETTERS ── -->
+    <div id="tab-confirmationLetters-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Confirmation Letters</span></div>
+          <h2 class="page-title">Confirmation Letters</h2>
+          <p class="page-subtitle">Upload a generated Sales &amp; Purchase Book workbook — every party whose Taxable Sales or Purchase crosses the threshold is listed for review, then bulk-generated as confirmation letters.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title" style="font-size:14px;">Step 1 — Company &amp; fiscal year</div></div>
+        <div class="form-grid" style="gap:16px;">
+          <div class="form-group" style="position:relative;">
+            <label>Issuing Company (the audit client)</label>
+            <input type="text" id="cl-company" placeholder="Start typing to search clients…" autocomplete="off" />
+            <div class="autocomplete-list" id="cl-company-autocomplete-list" style="display:none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Firm Name (on the letterhead)</label>
+            <input type="text" id="cl-firm-name" placeholder="Auto-fills from the selected client" />
+          </div>
+          <div class="form-group">
+            <label>Firm Address</label>
+            <input type="text" id="cl-firm-address" placeholder="Auto-fills from the selected client" />
+          </div>
+          <div class="form-group">
+            <label>Firm PAN</label>
+            <input type="text" id="cl-firm-pan" placeholder="Auto-fills from the selected client" />
+          </div>
+          <div class="form-group">
+            <label>Firm Phone</label>
+            <input type="text" id="cl-firm-phone" placeholder="Auto-fills from the selected client" />
+          </div>
+          <div class="form-group">
+            <label>Fiscal Year</label>
+            <select id="cl-fy"></select>
+          </div>
+          <div class="form-group">
+            <label>Threshold (Taxable, RS)</label>
+            <input type="text" id="cl-threshold" inputmode="decimal" value="100000" oninput="clOnThresholdChange()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header"><div class="card-title" style="font-size:14px;">Step 2 — Upload the generated workbook</div></div>
+        <input type="file" id="cl-workbook-upload" accept=".xlsx" style="display:none;" onchange="clHandleUpload(this)" />
+        <button class="btn btn-outline" onclick="document.getElementById('cl-workbook-upload').click()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Upload Sales &amp; Purchase Book workbook
+        </button>
+        <p style="font-size:12.5px; color:var(--text-muted); margin-top:12px;">
+          Reads the "Sales Details" and "Purchase Details" sheets from a workbook already generated by the Sales &amp; Purchase Book module.
+        </p>
+      </div>
+
+      <div id="cl-status"></div>
+
+      <div class="card" id="cl-review-card" style="display:none; margin-top:20px;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div class="card-title" style="font-size:14px;">Step 3 — Review &amp; select</div>
+            <div class="card-desc">Tick which letters to generate. Sales/Purchase figures are pre-filled from the workbook and editable; Opening/Closing Balance are always manual.</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span id="cl-review-count" style="font-size:12.5px; color:var(--text-muted);"></span>
+            <label style="font-size:12.5px; display:flex; align-items:center; gap:6px;"><input type="checkbox" onchange="clToggleShowBelowThreshold(this.checked)"> Show parties below threshold</label>
+            <button class="btn btn-outline btn-sm" onclick="clSelectAll(true)">Select all</button>
+            <button class="btn btn-outline btn-sm" onclick="clSelectAll(false)">Select none</button>
+          </div>
+        </div>
+        <div class="table-wrap" style="padding:0; overflow-x:auto; box-shadow:none; border:1px solid var(--border);">
+          <table class="client-table cl-table" style="min-width:1180px;">
+            <thead>
+              <tr>
+                <th></th><th>Party</th><th>PAN</th>
+                <th>Sales Taxable</th><th>Sales Vat</th>
+                <th>Purchase Taxable</th><th>Purchase Vat</th>
+                <th>Opening Balance</th><th>Closing Balance</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="cl-review-body"></tbody>
+          </table>
+        </div>
+        <div class="action-row" style="margin-top:16px;">
+          <button class="btn btn-outline" onclick="clPreviewCombined()">Preview Combined</button>
+          <button class="btn btn-primary" onclick="clGenerateAll()">Generate Confirmation Letters</button>
+        </div>
+      </div>
+
+      <div class="card" id="cl-preview-card" style="display:none; margin-top:20px;">
+        <div class="card-header"><div class="card-title" style="font-size:14px;">Preview</div></div>
+        <div id="cl-preview-placeholder" style="display:flex; align-items:center; justify-content:center; min-height:200px; color:var(--text-muted); font-size:13px;">Nothing to preview yet.</div>
+        <style id="cl-preview-style"></style>
+        <div id="cl-preview-root" style="display:none;"></div>
+      </div>
+    </div>
+
     <!-- ── TAB: CLIENTS ── -->
     <div id="tab-clients-panel" class="tab-panel">
       <div class="page-header">
@@ -1927,6 +2030,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/bmAgmMinutes.js?v=202607170100"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607181900"></script>
+<script src="js/confirmationLetters.js?v=202607191800"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>
