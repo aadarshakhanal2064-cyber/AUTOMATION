@@ -100,6 +100,7 @@ function cropLoginLogoIcon(img) {
       <div class="topbar-dropdown-menu" id="topbar-acct-menu">
         <button class="topbar-dropdown-item" onclick="openAcctModule('salesPurchaseBook')">Sales &amp; Purchase Book</button>
         <button class="topbar-dropdown-item" onclick="openAcctModule('confirmationLetters')">Confirmation Letters</button>
+        <button class="topbar-dropdown-item" onclick="openAcctModule('depreciation')">Depreciation</button>
       </div>
     </div>
   </div>
@@ -144,10 +145,6 @@ function cropLoginLogoIcon(img) {
     <button class="nav-item" onclick="switchTab('notesToAccounts')" id="nav-notesToAccounts">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
       Notes to Accounts
-    </button>
-    <button class="nav-item" onclick="switchTab('depreciation'); depInit();" id="nav-depreciation">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="3" x2="3" y2="21"></line><line x1="3" y1="21" x2="21" y2="21"></line><path d="M19 7l-5 6-3-3-4 5"></path></svg>
-      Depreciation
     </button>
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -2019,7 +2016,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/workflowEngine.js?v=202607141030"></script>
 <script src="js/core/auditLog.js?v=202607141030"></script>
 <script src="js/core/integrations.js?v=202607162100"></script>
-<script src="js/tabs.js?v=202607191730"></script>
+<script src="js/tabs.js?v=202607191830"></script>
 <script src="js/dashboard.js?v=202607141030"></script>
 <script src="js/registrar.js?v=202607141030"></script>
 <script src="js/clients.js?v=202607141030"></script>
@@ -2029,7 +2026,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/sendDocument.js?v=202607162100"></script>
 <script src="js/report.js?v=202607141030"></script>
 <script src="js/notesToAccounts.js?v=202607141030"></script>
-<script src="js/depreciation.js?v=202607171200"></script>
+<script src="js/depreciation.js?v=202607191830"></script>
 <script src="js/bmAgmMinutes.js?v=202607170100"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
