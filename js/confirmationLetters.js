@@ -16,7 +16,8 @@
 //  looped via docxtemplater's paragraphLoop (the whole per-party block,
 //  including the table, repeats — not just a list of items).
 // ════════════════════════════════════════════
-ModuleRegistry.register({ id: 'confirmationLetters', group: 'main', buttonId: 'nav-confirmationLetters', panelId: 'tab-confirmationLetters-panel' });
+// No buttonId — launched from the topbar "Accounting" dropdown, not a sidebar button.
+ModuleRegistry.register({ id: 'confirmationLetters', group: 'main', buttonId: null, panelId: 'tab-confirmationLetters-panel' });
 
 const CL_TEMPLATE_URL = 'assets/templates/confirmation-letter.docx';
 const CL_DEFAULT_THRESHOLD = 100000;

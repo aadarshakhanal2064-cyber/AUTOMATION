@@ -20,35 +20,50 @@ function switchTab(tab) {
 }
 
 // ════════════════════════════════════════════
-//  COMPANY REGISTRAR — picked from a topbar dropdown (Xero-style: choose a
-//  module from the menu, then it opens directly) instead of an in-page row
-//  of sub-tab buttons.
+//  TOPBAR DROPDOWN MENUS — one shared open/close mechanic (Xero-style:
+//  choose a module from the menu, then it opens directly). Two menus use
+//  it: Company Registrar ('regd') and Accounting ('acct'). Opening one
+//  closes the other.
 // ════════════════════════════════════════════
+function toggleTopbarMenu(event, key) {
+  event.stopPropagation();
+  const menu = document.getElementById('topbar-' + key + '-menu');
+  const wasOpen = menu.classList.contains('open');
+  closeTopbarMenus();
+  if (!wasOpen) {
+    menu.classList.add('open');
+    document.getElementById('topbar-' + key + '-trigger').classList.add('menu-open');
+  }
+}
+
+function closeTopbarMenus() {
+  document.querySelectorAll('.topbar-dropdown-menu.open').forEach(m => m.classList.remove('open'));
+  document.querySelectorAll('.app-tag.menu-open').forEach(b => b.classList.remove('menu-open'));
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.app-tag-dropdown')) closeTopbarMenus();
+});
+
+// ── Company Registrar — its own sub-module group inside one 'regd' tab ──
 function switchRegdSub(sub) {
   switchModuleGroup('regd', sub);
-}
-
-function toggleRegdMenu(event) {
-  event.stopPropagation();
-  document.getElementById('topbar-regd-menu').classList.toggle('open');
-  document.getElementById('topbar-regd-trigger').classList.toggle('menu-open');
-}
-
-function closeRegdMenu() {
-  document.getElementById('topbar-regd-menu').classList.remove('open');
-  document.getElementById('topbar-regd-trigger').classList.remove('menu-open');
 }
 
 function openRegdModule(sub, label) {
   switchTab('regd');
   switchRegdSub(sub);
   document.getElementById('regd-module-crumb').textContent = label;
-  closeRegdMenu();
+  closeTopbarMenus();
 }
 
-document.addEventListener('click', (e) => {
-  const menu = document.getElementById('topbar-regd-menu');
-  if (menu && menu.classList.contains('open') && !e.target.closest('.app-tag-dropdown')) {
-    closeRegdMenu();
-  }
-});
+// ── Accounting — Sales & Purchase Book and Confirmation Letters are
+//  ordinary 'main'-group tabs (each a full panel of its own), just launched
+//  from the topbar menu instead of sidebar buttons. ──
+const ACCT_INITS = { salesPurchaseBook: () => spbInit(), confirmationLetters: () => clInit() };
+
+function openAcctModule(tab) {
+  switchTab(tab);
+  if (ACCT_INITS[tab]) ACCT_INITS[tab]();
+  closeTopbarMenus();
+}

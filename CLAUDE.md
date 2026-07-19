@@ -128,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs: Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Sales & Purchase Book, Confirmation Letters, Clients, Send Logs — plus **Company Registrar**, opened from a topbar dropdown (Xero-style menu, not sidebar), containing its own sub-modules.
+Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Depreciation, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
