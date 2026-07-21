@@ -19,7 +19,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 5. **Never break existing features** — regression-check before calling anything done.
 6. **Don't "fix" the deliberate decisions in §16.**
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (11 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (14 tables, §6).
 
 ---
 
@@ -128,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Service Memo, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters, Depreciation — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
+Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Service Memo, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters, Depreciation, Bank Book — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
@@ -232,13 +232,22 @@ Internal **service record + fee-tracking** — the firm's guarantee that no prof
 - **PDF** via PDF-Lib (pattern of `billingBuildInvoicePdf`), re-skinned as a formal **SERVICE MEMO** stamped **"Internal service record — not a tax invoice."**
 - Fiscal year format: **dash** (`2081-82`), default from `NepaliLocale.todayBs`. Filters: firm, category, FY, status, date range + fuzzy search. `client_id` is a **nullable** FK (typed-only clients still save; name/PAN/address always snapshotted). Migration: `db/2026-07-21_service_memos.sql`.
 
+### 5.14 Bank Book (`js/bankBook.js`, `bb-` prefix, tables `bank_accounts` + `bank_transactions`)
+
+Receipts & payments ledger for the firm's **own** bank accounts — internal bookkeeping (the firm's cash/bank position), **not** a client-facing document. Launched from the topbar **Accounting** dropdown (`buttonId: null`, `bbInit()` in `ACCT_INITS`). Seeded from the CA's `Work Performed.xlsx` sketch. One panel with three sections toggled by a `.rep-view-toggle`: **Accounts**, **Transactions**, **Reports**. Reuses TableEngine, `SearchEngine.attachAutocomplete` (client link on Fee Receipt), NepaliLocale (B.S. dates), PDF-Lib + ExcelJS (exports), AuditLog, self-registration.
+- **Accounts master** (`bank_accounts`, user-managed CRUD — the holder/bank list is **data, not JS config**, unlike `SERVICE_MEMO_FIRMS`): Account Name (holder), Bank Name, Account Number (text, preserves leading zeros), Opening Balance + opening date (B.S., FY start). Sample holders span both firms + two individuals (Devi Prasad Dallakoti, Shailesh Dallakoti). An account **with transactions can't be hard-deleted** (FK `on delete restrict` + a JS guard) — it offers **soft-deactivate** (`is_active=false`) instead, so history survives; zero-transaction accounts delete outright.
+- **Transactions** (`bank_transactions`): one row per receipt/payment. `particular` ∈ `fee_receipt`/`expenses`/`sapati`/`inter_bank_transfer` (config maps `BANK_RECEIPT_TYPES`/`BANK_PAYMENT_TYPES`); the drawer's contextual party field relabels per particular — Fee Receipt → client autocomplete (`client_id` + snapshot), Sapati → person, Expenses → nature, Transfer → counterpart-account select.
+- **Inter-bank transfer** is entered **once** (From → To) and stored as **TWO paired rows** sharing `transfer_group_id` (a `crypto.randomUUID()`): a `payment` leg on the source (`counterparty_account_id` = dest) and a `receipt` leg on the dest (`counterparty_account_id` = source). **Editing or deleting either leg acts on BOTH** (`bbTransferSiblings`) so they can never desync — the module's key integrity rule.
+- **Reports** (per account, B.S. `From→To`): **Receipt register**, **Payment register**, and a running **Statement** (opening balance for the range = account opening + net of everything before `From`, then running balance per row, closing at the end). B.S. dates ordered/compared via `NepaliLocale.bsOrdinal` (2080–2090 table). On-screen HTML table + **PDF** (PDF-Lib, A4 landscape, page-breaking) + **Excel** (ExcelJS, merged header/borders/accounting format `#,##0.00;(#,##0.00);"–"`, live SUM/opening/closing).
+- **No stored balances or numbers**: running balances derived at read time (billing-overdue discipline); no memo-number trigger (transactions carry no external number). Fiscal year: **dash** (`2083-84`), derived from `txn_date`. RLS member-CRUD on both tables. Migration: `db/2026-07-22_bank_book.sql`.
+
 ---
 
 ## 6. Database (Supabase Postgres)
 
 Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-14** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (12)
+### 6.1 Tables (14)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -254,6 +263,8 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `invoice_payments` | `amount > 0` CHECK, `method` CHECK (`cash`/`bank_transfer`/`qr`/`cheque`/`other`). |
 | `service_memos` | Internal service records + fee tracking (§5.13). One row per memo (no line-item/payments subtable). `memo_number` (trigger-assigned `SM-{firm}-{id}`), `memo_prefix` (NOT NULL, from config), `firm_key`, `client_id` (**nullable** FK → clients, on delete set null), client name/pan/address snapshots, `nature_category`/`nature_subcategory`/`nature_other`, `description`, `fiscal_year`, `professional_fee`/`vat_amount`/`total_amount` numeric, `payment_status` CHECK (`pending`/`partially_paid`/`paid`), `amount_received`, `payment_date`, `remarks`. Member-CRUD RLS. `set_service_memo_number` AFTER INSERT trigger + shared `set_updated_at`. Added by `db/2026-07-21_service_memos.sql`. |
 | `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`/`slm`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (Income-Tax: per-pool inputs + closing WDV; **SLM: per-asset line array** + carry-forward snapshots → next year's Opening), `addition_details` jsonb (Income-Tax only; `[]` for SLM), `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. `slm` added by `db/2026-07-21_slm_scheme.sql`. |
+| `bank_accounts` | Bank Book master (§5.14). `account_name` (holder), `bank_name`, `account_number` (text), `opening_balance` numeric, `opening_date` (B.S. text), `is_active` (soft-deactivate), `sort_order`. User-managed CRUD; holder/bank list is data, not config. Member-CRUD RLS. `db/2026-07-22_bank_book.sql`. |
+| `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`expenses`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK, Fee Receipt link), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migration. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
 
@@ -278,7 +289,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules` and `service_memos` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql` and `db/2026-07-21_service_memos.sql`). The permission model:
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos` and the Bank Book pair `bank_accounts`/`bank_transactions` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql` and `db/2026-07-22_bank_book.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
@@ -324,8 +335,8 @@ The document is rendered as styled HTML in a preview root, then exported two way
 ### 9.3 PDF via PDF-Lib (Billing invoices)
 Drawn programmatically: firm letterhead, line items, bank details, QR image (or dashed placeholder).
 
-### 9.4 Excel via ExcelJS (Depreciation)
-`js/depreciation.js` builds the workbook programmatically with ExcelJS (no template asset) — merged headers, thin borders, accounting number format (`#,##0.00;(#,##0.00);"–"`), live formulas, and percent/`" yrs"` rate formats. There is no shared Excel engine (the removed VAT Return module had one, `DocumentEngine.workbookToBlob`); Depreciation is the only Excel generator, so it owns its layout. Excel/ODS *import* uses SheetJS (`XLSX.read`, read-only). If a second Excel-generating module appears, extract a shared workbook→Blob helper then (the same "generalize after two consumers" rule the engines followed).
+### 9.4 Excel via ExcelJS (Depreciation, Sales & Purchase Book, Bank Book)
+`js/depreciation.js` builds its workbook programmatically with ExcelJS (no template asset) — merged headers, thin borders, accounting number format (`#,##0.00;(#,##0.00);"–"`), live formulas, and percent/`" yrs"` rate formats. `js/salesPurchaseBook.js` (7-sheet workbook) and `js/bankBook.js` (report exports) do the same with the same conventions. There is no shared Excel engine (the removed VAT Return module had one, `DocumentEngine.workbookToBlob`); each generator owns its layout, copying the styling idiom above. Excel/ODS *import* uses SheetJS (`XLSX.read`, read-only). **Now that there are three ExcelJS generators, extracting a shared workbook→Blob / styling helper is a live cleanup opportunity** (the "generalize after two consumers" rule the engines followed) — deferred, not yet done.
 
 ### 9.5 Nepali locale
 All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes through `NepaliLocale`. **Fiscal-year string formats are deliberately inconsistent per module** — normalize at boundaries, never unify without asking:
@@ -357,6 +368,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `dep-` | Depreciation | | `spb-` | Sales & Purchase Book |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
 | `cl-` | Confirmation Letters | | `sm-` | Service Memo |
+| `bb-` | Bank Book | | | |
 
 ### 10.3 Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern (Notes and Auditor Change already mirror it — copy it for new document builders).
@@ -403,7 +415,7 @@ The established working pattern — **investigate with real evidence → impleme
 
 Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 
-- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 11 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
+- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 14 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers. Google Drive filenames are untrusted — escape them in any HTML context (`sendDocument.js`).
 - **Email raw-MIME construction is sanitized** — `Integrations.sendRawEmailWithBlob` CRLF-strips every header value and RFC 2047-encodes Subject/filename. Don't reintroduce raw interpolation into header lines.
 - **Drive `q` strings are escaped** via `escDriveQuery` in `integrations.js` — keep using it for any name interpolated into a Drive query.
