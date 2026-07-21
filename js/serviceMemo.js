@@ -10,15 +10,15 @@
 // ════════════════════════════════════════════
 ModuleRegistry.register({ id: 'serviceMemo', group: 'main', buttonId: 'nav-serviceMemo', panelId: 'tab-serviceMemo-panel' });
 
-// Payment status is the ONE source for badge + label everywhere (list, PDF,
-// dashboard). meta()/badgeHtml() come from the shared WorkflowEngine so the
-// badge a table shows can never disagree with what's persisted.
+// Payment status has no visible badge anywhere in the module UI (removed per
+// user feedback — dashboard tiles, drawer, list table and Recent Memos all
+// show no status indicator). It's still computed (smDeriveStatus) and saved,
+// and this map is the one source for the PDF's printed "Payment Status" line.
 const SM_PAYMENT_STATUSES = {
-  pending:        { label: 'Pending',        icon: '🕒', badgeClass: 'badge-amber' },
-  partially_paid: { label: 'Partially Paid', icon: '🟡', badgeClass: 'badge-blue' },
-  paid:           { label: 'Paid',           icon: '✅', badgeClass: 'badge-sent' },
+  pending:        { label: 'Pending' },
+  partially_paid: { label: 'Partially Paid' },
+  paid:           { label: 'Paid' },
 };
-const smStatusFlow = WorkflowEngine.createStatusFlow({ statuses: SM_PAYMENT_STATUSES, onTransition: r => r });
 
 const SM_FILTERS_EMPTY = { firm: '', category: '', fy: '', from: '', to: '' };
 
@@ -94,7 +94,6 @@ function smRenderRecent() {
   if (!rows.length) { el.innerHTML = '<div class="log-empty">No memos yet.</div>'; return; }
   el.innerHTML = rows.map(m => `
     <div class="log-item">
-      ${smStatusFlow.badgeHtml(m.payment_status)}
       <div class="log-details">
         <div class="log-client">${escHtml(m.memo_number || '—')} — ${escHtml(m.client_name || '—')}</div>
         <div class="log-sub">${escHtml(smNatureText(m))}</div>
@@ -132,7 +131,6 @@ function smRenderTable() {
           const bal = smBalance(c.getRow().getData());
           return bal > 0.005 ? `<span style="font-weight:600; color:var(--red);">${smNum(bal)}</span>` : '—';
         } },
-      { title: 'Status', field: 'payment_status', width: 150, formatter: c => smStatusFlow.badgeHtml(c.getValue()) },
       { title: 'Actions', field: 'id', headerSort: false, minWidth: 210, formatter: () => smRowActions(),
         cellClick: (e, cell) => {
           const btn = e.target.closest('[data-action]');
