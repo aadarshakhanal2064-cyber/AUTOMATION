@@ -41,6 +41,13 @@ function clFmt(n) {
   return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Accounting-style: a zero/blank amount prints as "-" on the letter (matches
+// the firm's format), a real amount prints comma-grouped with 2 decimals.
+function clDash(n) {
+  const v = clNum(n);
+  return v === 0 ? '-' : clFmt(v);
+}
+
 function clVal(id) {
   const el = document.getElementById(id);
   return el ? el.value.trim() : '';
@@ -52,6 +59,12 @@ function clVal(id) {
 function clInit() {
   clBuildFyOptions();
   clAttachCompanySearch();
+  // Default the letter date to today's B.S. date (YYYY.MM.DD), editable.
+  const dateEl = document.getElementById('cl-date');
+  if (dateEl && !dateEl.value) {
+    const bs = NepaliLocale.todayBs && NepaliLocale.todayBs();
+    if (bs) dateEl.value = `${bs.year}.${String(bs.month).padStart(2, '0')}.${String(bs.day).padStart(2, '0')}`;
+  }
 }
 
 function clBuildFyOptions() {
@@ -147,8 +160,9 @@ function clHandleUpload(fileInput) {
 }
 
 // Column layout written by spbSheetDetails(): A S.No., B "<Party> Total",
-// C Pan No., D Tax Free (discarded — this letter has no Tax Free line), E
-// Taxable Amount, F Vat. Stops at the bold "Grand Total" row.
+// C Pan No., D Tax Free, E Taxable Amount, F Vat. Stops at the bold
+// "Grand Total" row. (The firm's newer letter format shows Tax Free too,
+// so it's no longer discarded.)
 function clParseDetailsSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   const out = [];
@@ -159,6 +173,7 @@ function clParseDetailsSheet(sheet) {
     out.push({
       name: rawName.replace(/\s+Total$/i, ''),
       pan: String(r[2] || '').trim(),
+      taxfree: clNum(r[3]),
       taxable: clNum(r[4]),
       vat: clNum(r[5]),
     });
@@ -172,20 +187,21 @@ function clBuildCandidates(salesRows, purchaseRows) {
   const get = key => {
     if (!map.has(key)) map.set(key, {
       key, name: '', pan: '',
-      salesTaxable: 0, salesVat: 0, purchaseTaxable: 0, purchaseVat: 0,
-      include: false, openingBalance: '', closingBalance: 0,
+      salesTaxfree: 0, salesTaxable: 0, salesVat: 0,
+      purchaseTaxfree: 0, purchaseTaxable: 0, purchaseVat: 0,
+      include: false, openingBalance: '', closingBalance: '',
     });
     return map.get(key);
   };
   salesRows.forEach(r => {
     const c = get(norm(r.name));
     c.name = r.name; if (r.pan) c.pan = r.pan;
-    c.salesTaxable = r.taxable; c.salesVat = r.vat;
+    c.salesTaxfree = r.taxfree; c.salesTaxable = r.taxable; c.salesVat = r.vat;
   });
   purchaseRows.forEach(r => {
     const c = get(norm(r.name));
     c.name = c.name || r.name; if (r.pan && !c.pan) c.pan = r.pan;
-    c.purchaseTaxable = r.taxable; c.purchaseVat = r.vat;
+    c.purchaseTaxfree = r.taxfree; c.purchaseTaxable = r.taxable; c.purchaseVat = r.vat;
   });
   const list = Array.from(map.values());
   list.forEach(c => { c.include = clCrossesThreshold(c); });
@@ -231,7 +247,8 @@ function clToggleInclude(i, checked) {
 }
 
 function clFieldInput(i, field, value) {
-  clCandidates[i][field] = (field === 'openingBalance') ? value : clNum(value);
+  const textFields = ['openingBalance', 'closingBalance'];
+  clCandidates[i][field] = textFields.includes(field) ? value : clNum(value);
 }
 
 function clRenderTable() {
@@ -248,12 +265,14 @@ function clRenderTable() {
       <td><input type="checkbox" ${c.include ? 'checked' : ''} onchange="clToggleInclude(${i}, this.checked)"></td>
       <td>${escHtml(c.name)}</td>
       <td>${escHtml(c.pan || '—')}</td>
+      ${inp(i, 'salesTaxfree', c.salesTaxfree || '')}
       ${inp(i, 'salesTaxable', c.salesTaxable || '')}
       ${inp(i, 'salesVat', c.salesVat || '')}
+      ${inp(i, 'purchaseTaxfree', c.purchaseTaxfree || '')}
       ${inp(i, 'purchaseTaxable', c.purchaseTaxable || '')}
       ${inp(i, 'purchaseVat', c.purchaseVat || '')}
       ${inp(i, 'openingBalance', c.openingBalance, '–')}
-      ${inp(i, 'closingBalance', c.closingBalance)}
+      ${inp(i, 'closingBalance', c.closingBalance, '–')}
       <td><button class="btn btn-outline btn-sm" onclick="clPreviewOne(${i})">Preview</button></td>
     </tr>`).join('');
 
@@ -273,25 +292,34 @@ function clFirmData() {
     firmAddress: clVal('cl-firm-address'),
     firmPan: clVal('cl-firm-pan'),
     firmPhone: clVal('cl-firm-phone'),
+    letterDate: clVal('cl-date'),
   };
 }
 
+// Row total = Tax Free + Taxable + Vat (the firm's newer format sums all
+// three). A side with nothing on it prints "-" across, matching the samples.
 function clBuildLetterData(c) {
   const firm = clFirmData();
-  const salesTotal = c.salesTaxable ? c.salesTaxable + c.salesVat : 0;
-  const purchaseTotal = c.purchaseTaxable ? c.purchaseTaxable + c.purchaseVat : 0;
+  const salesSum = clNum(c.salesTaxfree) + clNum(c.salesTaxable) + clNum(c.salesVat);
+  const purchaseSum = clNum(c.purchaseTaxfree) + clNum(c.purchaseTaxable) + clNum(c.purchaseVat);
   return {
     partyName: c.name,
     partyPan: c.pan || '',
     fyLabel: clFyLabel(),
-    openingBalance: c.openingBalance || '',
-    salesTaxable: c.salesTaxable ? clFmt(c.salesTaxable) : '',
-    salesVat: c.salesTaxable ? clFmt(c.salesVat) : '',
-    salesTotal: c.salesTaxable ? clFmt(salesTotal) : '',
-    purchaseTaxable: c.purchaseTaxable ? clFmt(c.purchaseTaxable) : '',
-    purchaseVat: c.purchaseTaxable ? clFmt(c.purchaseVat) : '',
-    purchaseTotal: c.purchaseTaxable ? clFmt(purchaseTotal) : '',
-    closingBalance: c.closingBalance ? clFmt(c.closingBalance) : '0',
+    // Opening/Closing carry no ledger data from the workbook — "-" unless the
+    // user types a balance in the grid (kept editable per the original design).
+    openingTaxfree: '-', openingTaxable: '-', openingVat: '-',
+    openingBalance: c.openingBalance ? clFmt(c.openingBalance) : '-',
+    salesTaxfree: clDash(c.salesTaxfree),
+    salesTaxable: clDash(c.salesTaxable),
+    salesVat: clDash(c.salesVat),
+    salesTotal: salesSum === 0 ? '-' : clFmt(salesSum),
+    purchaseTaxfree: clDash(c.purchaseTaxfree),
+    purchaseTaxable: clDash(c.purchaseTaxable),
+    purchaseVat: clDash(c.purchaseVat),
+    purchaseTotal: purchaseSum === 0 ? '-' : clFmt(purchaseSum),
+    closingTaxfree: '-', closingTaxable: '-', closingVat: '-',
+    closingBalance: c.closingBalance ? clFmt(c.closingBalance) : '-',
     contactPhone: firm.firmPhone,
   };
 }

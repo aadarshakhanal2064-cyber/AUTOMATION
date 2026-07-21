@@ -1451,6 +1451,10 @@ function cropLoginLogoIcon(img) {
             <select id="cl-fy"></select>
           </div>
           <div class="form-group">
+            <label>Letter Date (B.S.)</label>
+            <input type="text" id="cl-date" placeholder="2082.09.08" />
+          </div>
+          <div class="form-group">
             <label>Threshold (Taxable, RS)</label>
             <input type="text" id="cl-threshold" inputmode="decimal" value="100000" oninput="clOnThresholdChange()" />
           </div>
@@ -1475,7 +1479,7 @@ function cropLoginLogoIcon(img) {
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div class="card-title" style="font-size:14px;">Step 3 — Review &amp; select</div>
-            <div class="card-desc">Tick which letters to generate. Sales/Purchase figures are pre-filled from the workbook and editable; Opening/Closing Balance are always manual.</div>
+            <div class="card-desc">Tick which letters to generate. Sales/Purchase figures (Tax Free, Taxable, Vat) are pre-filled from the workbook and editable; Opening/Closing Balance are always manual. Row Total = Tax Free + Taxable + Vat.</div>
           </div>
           <div style="display:flex; align-items:center; gap:12px;">
             <span id="cl-review-count" style="font-size:12.5px; color:var(--text-muted);"></span>
@@ -1485,12 +1489,12 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
         <div class="table-wrap" style="padding:0; overflow-x:auto; box-shadow:none; border:1px solid var(--border);">
-          <table class="client-table cl-table" style="min-width:1180px;">
+          <table class="client-table cl-table" style="min-width:1440px;">
             <thead>
               <tr>
                 <th></th><th>Party</th><th>PAN</th>
-                <th>Sales Taxable</th><th>Sales Vat</th>
-                <th>Purchase Taxable</th><th>Purchase Vat</th>
+                <th>Sales Tax Free</th><th>Sales Taxable</th><th>Sales Vat</th>
+                <th>Purchase Tax Free</th><th>Purchase Taxable</th><th>Purchase Vat</th>
                 <th>Opening Balance</th><th>Closing Balance</th><th></th>
               </tr>
             </thead>
@@ -2030,7 +2034,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/bmAgmMinutes.js?v=202607170100"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
-<script src="js/confirmationLetters.js?v=202607191730"></script>
+<script src="js/confirmationLetters.js?v=202607211200"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>
