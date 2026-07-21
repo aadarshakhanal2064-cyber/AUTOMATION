@@ -26,6 +26,7 @@ let smMemos = [];
 let smTable = null;
 let smSelectedClient = null;
 let smEditingId = null;
+let smEditingRow = null;
 let smInitDone = false;
 let smFilters = { ...SM_FILTERS_EMPTY };
 
@@ -242,18 +243,26 @@ function smRenderTotals() {
   document.getElementById('sm-total-amount').textContent = smNum(t.total);
   smDeriveStatus();
 }
-// Auto-set the payment status from amount received vs total, but leave the
-// select editable so staff can override (e.g. mark paid on a promise).
+// Payment status is fully derived from amount received vs total — no manual
+// override control in the drawer (removed per user feedback); the live badge
+// and Balance Due readout are just a reflection of this, updated on every edit.
 function smDeriveStatus() {
   const total = smComputeTotals().total;
   const recv = parseFloat(document.getElementById('sm-amount-received').value) || 0;
-  const sel = document.getElementById('sm-payment-status');
-  sel.value = (recv >= total && total > 0) ? 'paid' : recv > 0 ? 'partially_paid' : 'pending';
+  const status = (recv >= total && total > 0) ? 'paid' : recv > 0 ? 'partially_paid' : 'pending';
+  document.getElementById('sm-payment-status-badge').innerHTML = smStatusFlow.badgeHtml(status);
+  const balance = Math.max(total - recv, 0);
+  const balEl = document.getElementById('sm-balance-due');
+  balEl.textContent = smNum(balance);
+  balEl.style.color = balance > 0.005 ? 'var(--red)' : 'var(--green-dk)';
+  return status;
 }
 
 function smOpenCreate(existing) {
   smEditingId = existing ? existing.id : null;
+  smEditingRow = existing || null;
   smSelectedClient = null;
+  document.getElementById('sm-delete-btn').style.display = existing ? '' : 'none';
   document.getElementById('sm-drawer-title').textContent = existing ? `Edit ${existing.memo_number || 'Service Memo'}` : 'New Service Memo';
   document.getElementById('sm-drawer-status').innerHTML = '';
 
@@ -286,10 +295,18 @@ function smOpenCreate(existing) {
   }
 
   smRenderTotals();
-  if (existing) document.getElementById('sm-payment-status').value = existing.payment_status || 'pending';
   document.getElementById('sm-memo-drawer').classList.add('open');
 }
 function smCloseCreate() { document.getElementById('sm-memo-drawer').classList.remove('open'); }
+
+async function smDeleteFromDrawer() {
+  if (!smEditingRow) return;
+  await smDeleteMemo(smEditingRow);
+  // smDeleteMemo no-ops (keeps the drawer open) if the user cancels the
+  // confirm() prompt — only close once the row is actually gone.
+  const stillExists = smMemos.some(m => m.id === smEditingRow.id);
+  if (!stillExists) smCloseCreate();
+}
 
 function smDrawerErr(msg) { showStatus(escHtml(msg), 'info', 'sm-drawer-status'); }
 
@@ -325,7 +342,7 @@ async function smSaveMemo() {
     apply_vat: document.getElementById('sm-apply-vat').checked,
     vat_amount: t.vat,
     total_amount: t.total,
-    payment_status: document.getElementById('sm-payment-status').value || 'pending',
+    payment_status: smDeriveStatus(),
     amount_received: recv,
     payment_date: document.getElementById('sm-payment-date').value || null,
     remarks: document.getElementById('sm-remarks').value.trim() || null,
