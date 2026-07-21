@@ -20,7 +20,7 @@ const SM_PAYMENT_STATUSES = {
 };
 const smStatusFlow = WorkflowEngine.createStatusFlow({ statuses: SM_PAYMENT_STATUSES, onTransition: r => r });
 
-const SM_FILTERS_EMPTY = { firm: '', category: '', fy: '', status: '', from: '', to: '' };
+const SM_FILTERS_EMPTY = { firm: '', category: '', fy: '', from: '', to: '' };
 
 let smMemos = [];
 let smTable = null;
@@ -63,7 +63,6 @@ async function smRefresh() {
       .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false }));
     smRenderStats();
     smRenderRecent();
-    smRenderPending();
     smRenderTable();
     document.getElementById('sm-status-area').innerHTML = '';
   } catch (e) {
@@ -75,32 +74,21 @@ async function smRefresh() {
 function smRenderStats() {
   const grid = document.getElementById('sm-stat-grid');
   if (!grid) return;
-  let pendingAmt = 0, paidAmt = 0, pendingCount = 0, paidCount = 0;
+  let pendingAmt = 0, paidAmt = 0;
   smMemos.forEach(m => {
     paidAmt += Number(m.amount_received || 0);
     const bal = smBalance(m);
-    if (m.payment_status === 'paid' || bal <= 0.005) paidCount++; else pendingCount++;
     if (bal > 0.005) pendingAmt += bal;
   });
   const cards = [
-    { key: 'pending', label: 'Total Pending Amount', value: smMoney(pendingAmt), clickable: true },
-    { key: null,      label: 'Total Collected',      value: smMoney(paidAmt),    clickable: false },
-    { key: 'pending', label: 'Pending Memos',        value: pendingCount,        clickable: false },
-    { key: 'paid',    label: 'Paid Memos',           value: paidCount,           clickable: true },
+    { label: 'Total Pending Amount', value: smMoney(pendingAmt) },
+    { label: 'Total Collected',      value: smMoney(paidAmt) },
   ];
   grid.innerHTML = cards.map(c => `
-    <div class="stat-card ${c.clickable ? 'clickable' : ''} ${c.clickable && smFilters.status === c.key ? 'active-filter' : ''}"
-      ${c.clickable ? `onclick="smFilterByStatus('${c.key}')" title="Click to filter the table below"` : ''}>
+    <div class="stat-card">
       <div class="stat-num" style="font-size:20px;">${c.value}</div>
       <div class="stat-label">${c.label}</div>
     </div>`).join('');
-}
-
-function smFilterByStatus(key) {
-  smFilters.status = smFilters.status === key ? '' : key;
-  document.getElementById('sm-filter-status').value = smFilters.status;
-  smRenderStats();
-  smApplyFilters();
 }
 
 function smRenderRecent() {
@@ -116,21 +104,6 @@ function smRenderRecent() {
         <div class="log-sub">${escHtml(smNatureText(m))}</div>
       </div>
       <div class="log-time">${smMoney(m.total_amount)}</div>
-    </div>`).join('');
-}
-
-function smRenderPending() {
-  const el = document.getElementById('sm-pending-list');
-  if (!el) return;
-  const rows = smMemos.filter(m => smBalance(m) > 0.005).sort((a, b) => smBalance(b) - smBalance(a)).slice(0, 8);
-  if (!rows.length) { el.innerHTML = '<div class="log-empty">No pending collections. 🎉</div>'; return; }
-  el.innerHTML = rows.map(m => `
-    <div class="log-item">
-      <div class="log-details">
-        <div class="log-client">${escHtml(m.client_name || '—')}</div>
-        <div class="log-sub">${escHtml(m.memo_number || '')} · ${escHtml(smNatureText(m))}</div>
-      </div>
-      <div class="log-time" style="font-weight:700; color:var(--red);">${smMoney(smBalance(m))}</div>
     </div>`).join('');
 }
 
@@ -197,7 +170,6 @@ function smReadFilters() {
     firm: document.getElementById('sm-filter-firm').value,
     category: document.getElementById('sm-filter-category').value,
     fy: document.getElementById('sm-filter-fy').value.trim(),
-    status: document.getElementById('sm-filter-status').value,
     from: document.getElementById('sm-filter-from').value,
     to: document.getElementById('sm-filter-to').value,
   };
@@ -209,7 +181,6 @@ function smApplyFilters() {
     if (smFilters.firm && m.firm_key !== smFilters.firm) return false;
     if (smFilters.category && m.nature_category !== smFilters.category) return false;
     if (smFilters.fy && (m.fiscal_year || '') !== smFilters.fy) return false;
-    if (smFilters.status && m.payment_status !== smFilters.status) return false;
     if (smFilters.from && (m.memo_date || '') < smFilters.from) return false;
     if (smFilters.to && (m.memo_date || '') > smFilters.to) return false;
     return true;
@@ -221,13 +192,12 @@ function smApplyFilters() {
   }
   smTable.replaceData(rows);
 }
-function smOnFilterChange() { smReadFilters(); smRenderStats(); smApplyFilters(); }
+function smOnFilterChange() { smReadFilters(); smApplyFilters(); }
 function smClearFilters() {
-  ['sm-filter-firm', 'sm-filter-category', 'sm-filter-fy', 'sm-filter-status', 'sm-filter-from', 'sm-filter-to', 'sm-search'].forEach(id => {
+  ['sm-filter-firm', 'sm-filter-category', 'sm-filter-fy', 'sm-filter-from', 'sm-filter-to', 'sm-search'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   smFilters = { ...SM_FILTERS_EMPTY };
-  smRenderStats();
   smApplyFilters();
 }
 

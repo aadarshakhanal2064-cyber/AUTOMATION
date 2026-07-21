@@ -419,15 +419,9 @@ function cropLoginLogoIcon(img) {
 
       <div class="stat-grid compact" id="sm-stat-grid"></div>
 
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:24px; align-items:start;">
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Memos</h3>
-          <div id="sm-recent-list"><div class="log-empty">Loading…</div></div>
-        </div>
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Pending Collections</h3>
-          <div id="sm-pending-list"><div class="log-empty">Loading…</div></div>
-        </div>
+      <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+        <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Memos</h3>
+        <div id="sm-recent-list"><div class="log-empty">Loading…</div></div>
       </div>
 
       <div class="table-wrap" style="padding:24px;">
@@ -439,10 +433,9 @@ function cropLoginLogoIcon(img) {
             <input type="text" class="search-bar" id="sm-search" placeholder="Search memo #, client, PAN, nature…" oninput="smApplyFilters()" />
           </div>
         </div>
-        <div class="form-grid" style="grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:16px;">
+        <div class="form-grid" style="grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:16px;">
           <div class="form-group" style="margin:0;"><label>Firm</label><select id="sm-filter-firm" onchange="smOnFilterChange()"></select></div>
           <div class="form-group" style="margin:0;"><label>Category</label><select id="sm-filter-category" onchange="smOnFilterChange()"></select></div>
-          <div class="form-group" style="margin:0;"><label>Status</label><select id="sm-filter-status" onchange="smOnFilterChange()"><option value="">All</option><option value="pending">Pending</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option></select></div>
           <div class="form-group" style="margin:0;"><label>F.Y.</label><input type="text" id="sm-filter-fy" placeholder="e.g. 2081-82" oninput="smOnFilterChange()" /></div>
           <div class="form-group" style="margin:0;"><label>From</label><input type="date" id="sm-filter-from" onchange="smOnFilterChange()" /></div>
           <div class="form-group" style="margin:0;"><label>To</label><input type="date" id="sm-filter-to" onchange="smOnFilterChange()" /></div>
@@ -2278,7 +2271,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/logs.js?v=202607141030"></script>
 <script src="js/vatCompliance.js?v=202607141030"></script>
 <script src="js/billing.js?v=202607162100"></script>
-<script src="js/serviceMemo.js?v=202607211900"></script>
+<script src="js/serviceMemo.js?v=202607212030"></script>
 <script src="js/sendDocument.js?v=202607162100"></script>
 <script src="js/report.js?v=202607141030"></script>
 <script src="js/notesToAccounts.js?v=202607141030"></script>
