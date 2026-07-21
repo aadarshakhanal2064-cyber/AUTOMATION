@@ -121,6 +121,24 @@ window.NTA_PPE_DEFAULTS = [
   { type: "Plant and Machinery",    life: "10 years" }
 ];
 
+// Standard PPE asset classes for the accounting-standard (SLM) depreciation
+// method (§5.8, "Dep as Books" / 3.1 PPE note). These are BOTH the row-groups
+// of the schedule and the columns of the PPE note, so the two always line up.
+// `life` = default useful life in years (editable per asset in the grid),
+// mirroring NTA_PPE_DEFAULTS where a class matches; Land is never depreciated.
+// `kw` drives Excel-import row→class matching (same tolerant approach as the
+// Income-Tax pools). Order here is the display + PPE-note column order.
+window.DEP_SLM_CLASSES = [
+  { key: 'land',      name: 'Land',                   depreciable: false, life: 0,  kw: ['land'] },
+  { key: 'building',  name: 'Building & Structures',  depreciable: true,  life: 49, kw: ['building', 'structure'] },
+  { key: 'machine',   name: 'Machine & Other Assets', depreciable: true,  life: 10, kw: ['machine', 'plant', 'other asset'] },
+  { key: 'vehicle',   name: 'Vehicles',               depreciable: true,  life: 14, kw: ['vehicle'] },
+  { key: 'office',    name: 'Office Equipment',       depreciable: true,  life: 4,  kw: ['office equip', 'equipment'] },
+  { key: 'furniture', name: 'Furniture & Fixtures',   depreciable: true,  life: 4,  kw: ['furniture', 'fixture'] },
+  { key: 'software',  name: 'Software',               depreciable: true,  life: 5,  kw: ['software'] },
+  { key: 'leasehold', name: 'Leasehold Assets',       depreciable: true,  life: 5,  kw: ['leasehold', 'leashold'] },
+];
+
 window.CLIENT_ENTITY_TO_REP_PROFILE = {
   'pvt. ltd. company': 'private_company',
   'private limited company': 'private_company',

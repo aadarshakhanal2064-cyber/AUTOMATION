@@ -515,6 +515,27 @@ textarea { resize: vertical; min-height: 100px; }
 .dep-carry-banner.carry { background: var(--yellow-bg); border-color: var(--yellow-border); color: var(--yellow-dk); }
 .dep-carry-banner.error { background: var(--red-bg); border-color: var(--red-border); color: var(--red-dk); }
 
+/* ── DEPRECIATION · Accounting-Standard (SLM) per-asset grid ── */
+.dep-slm-table td, .dep-slm-table th { padding: 6px 8px; }
+.dep-slm-table th.dep-slm-cls, .dep-slm-table td.dep-slm-cls { text-align: left; min-width: 150px; }
+.dep-slm-table td.dep-slm-cls select { width: 100%; padding: 6px 8px; font-size: 12.5px; }
+.dep-slm-table input.dep-in { min-width: 74px; }
+.dep-slm-table input.dep-slm-particular, .dep-slm-table input.dep-slm-date { text-align: left; min-width: 130px; }
+.dep-slm-table input.dep-slm-life, .dep-slm-table input.dep-slm-rem { text-align: center; min-width: 60px; }
+/* Faint tint bands so the Cost and Depreciation column groups read apart */
+.dep-slm-table .dep-slm-grp-cost { background: rgba(37, 99, 235, 0.045); }
+.dep-slm-table .dep-slm-grp-dep  { background: rgba(16, 122, 87, 0.05); }
+.dep-slm-table td.dep-slm-check { text-align: center; font-weight: 800; }
+.dep-slm-table td.dep-slm-check.ok  { color: var(--green-dk); }
+.dep-slm-table td.dep-slm-check.bad { color: var(--red-dk); }
+.dep-slm-table tr.dep-slm-empty td { white-space: normal; }
+/* 3.1 PPE note preview — read-only reconciliation table */
+.dep-slm-ppe-table td, .dep-slm-ppe-table th { text-align: right; }
+.dep-slm-ppe-table td.dep-particular, .dep-slm-ppe-table th.dep-particular { text-align: left; }
+.dep-slm-ppe-table tr.dep-slm-ppe-section td { background: var(--bg-page-alt); font-weight: 700; color: var(--brand-navy); text-align: left; text-transform: uppercase; font-size: 10.5px; letter-spacing: .04em; }
+.dep-slm-ppe-table tr.dep-slm-ppe-strong td { font-weight: 700; color: var(--brand-navy); border-top: 1px solid var(--border); }
+.dep-slm-ppe-table .dep-slm-ppe-tot { font-weight: 700; color: var(--brand-navy); background: var(--bg-page-alt); }
+
 /* ── SALES & PURCHASE BOOK ── */
 .spb-table th, .spb-table td { text-align: right; white-space: nowrap; padding: 8px 10px; font-variant-numeric: tabular-nums; }
 .spb-table th:first-child, .spb-table td:first-child { text-align: left; }

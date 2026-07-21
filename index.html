@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607191800">
+<link rel="stylesheet" href="css/styles.css?v=202607211600">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1199,7 +1199,7 @@ function cropLoginLogoIcon(img) {
         <div class="ph-text">
           <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Depreciation</span></div>
           <h2 class="page-title">Depreciation Schedule</h2>
-          <p class="page-subtitle">Income Tax pool depreciation. Enter each pool's opening value, additions and disposals — Total Value, Depreciation Base, Depreciation and closing WDV calculate automatically.</p>
+          <p class="page-subtitle" id="dep-page-subtitle">Depreciation as per Income Tax — pool depreciation (reducing balance). Enter each pool's opening value, additions and disposals; totals calculate automatically.</p>
         </div>
         <div class="page-header-actions">
           <input type="file" id="dep-file" accept=".xlsx,.xls,.ods,.csv" style="display:none;" onchange="depImportExcel(this)" />
@@ -1215,13 +1215,13 @@ function cropLoginLogoIcon(img) {
       </div>
 
       <div class="card">
-        <!-- Scheme toggle — Income Tax (normal) vs Special Industries -->
+        <!-- Method toggle — Income Tax pools vs Accounting-Standard SLM -->
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
           <div class="rep-view-toggle">
-            <button type="button" id="dep-scheme-normal" class="rep-view-btn active" onclick="depSetScheme('normal')">Income Tax</button>
-            <button type="button" id="dep-scheme-special" class="rep-view-btn" onclick="depSetScheme('special')">Special Industries</button>
+            <button type="button" id="dep-method-incometax" class="rep-view-btn active" onclick="depSetMethod('incometax')">As per Income Tax</button>
+            <button type="button" id="dep-method-slm" class="rep-view-btn" onclick="depSetMethod('slm')">As per Accounting Standard (SLM)</button>
           </div>
-          <div id="dep-scheme-sub" style="font-size:12.5px; color:var(--text-muted);">Depreciation as per Income Tax — standard reducing-balance rates.</div>
+          <div id="dep-method-sub" style="font-size:12.5px; color:var(--text-muted);">Two independent workings — pool depreciation for tax, or book/SLM depreciation with the PPE note.</div>
         </div>
 
         <div class="form-grid" style="gap:16px;">
@@ -1248,6 +1248,19 @@ function cropLoginLogoIcon(img) {
       </div>
 
       <div id="dep-carry-banner" class="dep-carry-banner" style="display:none;"></div>
+      <div id="dep-status"></div>
+
+      <!-- ══ INCOME TAX METHOD ══ -->
+      <div id="dep-incometax-ui">
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div class="rep-view-toggle">
+              <button type="button" id="dep-scheme-normal" class="rep-view-btn active" onclick="depSetScheme('normal')">Income Tax</button>
+              <button type="button" id="dep-scheme-special" class="rep-view-btn" onclick="depSetScheme('special')">Special Industries</button>
+            </div>
+            <div id="dep-scheme-sub" style="font-size:12.5px; color:var(--text-muted);">Depreciation as per Income Tax — standard reducing-balance rates.</div>
+          </div>
+        </div>
 
       <div class="table-wrap" style="padding:0; overflow-x:auto;">
         <table class="client-table dep-table" style="min-width:1180px;">
@@ -1290,8 +1303,6 @@ function cropLoginLogoIcon(img) {
         </table>
       </div>
 
-      <div id="dep-status"></div>
-
       <div class="card" style="margin-top:24px;">
         <div class="card-header" style="justify-content:space-between; display:flex; align-items:center;">
           <div>
@@ -1313,6 +1324,84 @@ function cropLoginLogoIcon(img) {
           <button class="btn btn-danger btn-sm" onclick="depReset()" style="margin-left:auto;">Reset all</button>
         </div>
       </div>
+      </div><!-- /dep-incometax-ui -->
+
+      <!-- ══ ACCOUNTING-STANDARD (SLM) METHOD ══ -->
+      <div id="dep-slm-ui" style="display:none;">
+        <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <div class="card-title" style="font-size:14px;">Dep as Books — per-asset SLM schedule</div>
+              <div class="card-desc">One row per asset. Enter <strong>Date of Use</strong>, <strong>Useful Life</strong>, <strong>Original Cost</strong>, and (for existing assets) <strong>Opening WDV</strong> / <strong>Opening Depreciation</strong>. Addition, days-in-year, depreciation and closing WDV compute automatically; the <strong>✓</strong> column confirms Cost − Accumulated Dep = Closing WDV.</div>
+            </div>
+            <div class="action-row" style="margin:0;">
+              <button class="btn btn-primary btn-sm" onclick="depSlmAdd()">＋ Add asset</button>
+              <button class="btn btn-danger btn-sm" onclick="depSlmReset()">Reset all</button>
+            </div>
+          </div>
+          <div class="table-wrap" style="padding:0; box-shadow:none; border:1px solid var(--border); margin-top:12px; overflow-x:auto;">
+            <table class="client-table dep-table dep-slm-table" style="min-width:1720px;">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="dep-slm-cls">Class</th>
+                  <th rowspan="2" class="dep-particular">Particulars</th>
+                  <th colspan="4" style="text-align:center;">Timing</th>
+                  <th colspan="5" style="text-align:center;" class="dep-slm-grp-cost">Cost / WDV (Rs)</th>
+                  <th colspan="6" style="text-align:center;" class="dep-slm-grp-dep">Depreciation (Rs)</th>
+                  <th rowspan="2" title="Cost − Accumulated Dep = Closing WDV">✓</th>
+                  <th rowspan="2"></th>
+                </tr>
+                <tr>
+                  <th class="dep-subhead">Date of Use</th>
+                  <th class="dep-subhead">Days</th>
+                  <th class="dep-subhead">Life (yr)</th>
+                  <th class="dep-subhead">Rem. Life (days)</th>
+                  <th class="dep-subhead dep-slm-grp-cost">Original Cost</th>
+                  <th class="dep-subhead dep-slm-grp-cost">Opening WDV</th>
+                  <th class="dep-subhead dep-slm-grp-cost">Addition</th>
+                  <th class="dep-subhead dep-slm-grp-cost">Deletion (cost)</th>
+                  <th class="dep-subhead dep-slm-grp-cost">Balance</th>
+                  <th class="dep-subhead dep-slm-grp-dep">Opening Dep</th>
+                  <th class="dep-subhead dep-slm-grp-dep">Depreciation</th>
+                  <th class="dep-subhead dep-slm-grp-dep">Deletion (dep)</th>
+                  <th class="dep-subhead dep-slm-grp-dep">Impairment</th>
+                  <th class="dep-subhead dep-slm-grp-dep">Total Dep</th>
+                  <th class="dep-subhead dep-slm-grp-dep">Closing WDV</th>
+                </tr>
+              </thead>
+              <tbody id="dep-slm-tbody"></tbody>
+              <tfoot>
+                <tr class="dep-total-row">
+                  <td colspan="6" class="dep-particular">Grand Total</td>
+                  <td id="dep-slm-tot-origCost">–</td>
+                  <td id="dep-slm-tot-openWDV">–</td>
+                  <td id="dep-slm-tot-addition">–</td>
+                  <td></td>
+                  <td id="dep-slm-tot-balance">–</td>
+                  <td id="dep-slm-tot-openDep">–</td>
+                  <td id="dep-slm-tot-charge">–</td>
+                  <td></td>
+                  <td></td>
+                  <td id="dep-slm-tot-total">–</td>
+                  <td id="dep-slm-tot-wdv">–</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">3.1 Property, Plant &amp; Equipment (note preview)</div>
+              <div class="card-desc">Auto-built from the schedule above — cost, depreciation and carrying-amount reconciliation by asset class. This is the second sheet of the generated Excel; the closing carrying amount always ties to the grand-total closing WDV.</div>
+            </div>
+          </div>
+          <div id="dep-slm-ppe" style="margin-top:12px; overflow-x:auto;"></div>
+        </div>
+      </div><!-- /dep-slm-ui -->
     </div>
 
     <!-- ── TAB: SALES & PURCHASE BOOK ── -->
@@ -2009,11 +2098,11 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202607141030"></script>
+<script src="js/config.js?v=202607211600"></script>
 <script src="js/utils.js?v=202607141030"></script>
 <script src="js/core/moduleRegistry.js?v=202607141030"></script>
 <script src="js/core/statusBox.js?v=202607141030"></script>
-<script src="js/core/nepaliLocale.js?v=202607141030"></script>
+<script src="js/core/nepaliLocale.js?v=202607211600"></script>
 <script src="js/core/documentEngine.js?v=202607141030"></script>
 <script src="js/core/searchEngine.js?v=202607141030"></script>
 <script src="js/core/tableEngine.js?v=202607141030"></script>
@@ -2030,7 +2119,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/sendDocument.js?v=202607162100"></script>
 <script src="js/report.js?v=202607141030"></script>
 <script src="js/notesToAccounts.js?v=202607141030"></script>
-<script src="js/depreciation.js?v=202607191830"></script>
+<script src="js/depreciation.js?v=202607211600"></script>
+<script src="js/depreciationSlm.js?v=202607211600"></script>
 <script src="js/bmAgmMinutes.js?v=202607170100"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>

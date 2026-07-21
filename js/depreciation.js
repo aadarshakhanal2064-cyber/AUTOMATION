@@ -63,7 +63,8 @@ const DEP_SCHEMES = { normal: depBuildScheme(false), special: depBuildScheme(tru
 const DEP_INPUT_COLS = ['opening', 'add1', 'add2', 'add3', 'disposal'];
 
 // ── Module state ──
-let depScheme   = 'normal';   // active scheme
+let depMethod   = 'incometax';// active method: 'incometax' (this file) | 'slm' (depreciationSlm.js)
+let depScheme   = 'normal';   // active Income-Tax scheme ('normal' | 'special')
 let depClientId = null;       // selected client id (required to save/carry-forward)
 
 function depPools() { return DEP_SCHEMES[depScheme]; }
@@ -110,6 +111,28 @@ function depCompute(p, inp) {
 function depInit() {
   depBuildGrid();
   depBuildFyOptions();
+  if (typeof depSlmInit === 'function') depSlmInit();
+}
+
+// ── Method toggle (Income Tax pools ⇄ Accounting-Standard SLM) ──
+// Swaps the whole working shown in the panel. The Client/PAN/Fiscal-Year
+// selectors, Save/Delete buttons and the carry-forward banner are SHARED; the
+// header Import/Generate buttons and depReloadForContext/depSave/depDelete
+// branch on depMethod and delegate to the depSlm* engine when method === 'slm'.
+function depSetMethod(m) {
+  if (m !== 'incometax' && m !== 'slm') return;
+  depMethod = m;
+  document.getElementById('dep-method-incometax').classList.toggle('active', m === 'incometax');
+  document.getElementById('dep-method-slm').classList.toggle('active', m === 'slm');
+  const it = document.getElementById('dep-incometax-ui'), slm = document.getElementById('dep-slm-ui');
+  if (it) it.style.display = m === 'incometax' ? '' : 'none';
+  if (slm) slm.style.display = m === 'slm' ? '' : 'none';
+  const sub = document.getElementById('dep-page-subtitle');
+  if (sub) sub.textContent = m === 'slm'
+    ? 'Depreciation as per Accounting Standard (SLM) — per-asset, day-accurate straight-line with the 3.1 PPE note and year-over-year carry-forward.'
+    : "Depreciation as per Income Tax — pool depreciation (reducing balance). Enter each pool's opening value, additions and disposals; totals calculate automatically.";
+  depStatus('', 'info');
+  depReloadForContext();
 }
 
 function depBuildGrid() {
@@ -289,6 +312,7 @@ function depApplyAdditions() {
 //  matching each pool by its Particular text (any row order tolerated).
 // ════════════════════════════════════════════
 function depImportExcel(input) {
+  if (depMethod === 'slm') return depSlmImport(input);
   const file = input.files && input.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -429,6 +453,7 @@ function depApplyAdditionLines(lines) {
 }
 
 async function depReloadForContext() {
+  if (depMethod === 'slm') return depSlmReload();
   if (depClientId == null) { depCarryBanner(''); return; }
   const fy = document.getElementById('dep-fy').value;
   const startYear = depFyStartYear(fy);
@@ -466,6 +491,7 @@ async function depReloadForContext() {
 }
 
 async function depSave() {
+  if (depMethod === 'slm') return depSlmSave();
   if (depClientId == null) { depStatus('❌ Select a client first — saving needs a client to carry the balances forward.', 'error'); return; }
   depRecalc();
   const fy = document.getElementById('dep-fy').value;
@@ -496,6 +522,7 @@ async function depSave() {
 }
 
 async function depDelete() {
+  if (depMethod === 'slm') return depSlmDelete();
   if (depClientId == null) { depStatus('❌ No client selected.', 'error'); return; }
   const fy = document.getElementById('dep-fy').value;
   if (!confirm(`Delete the saved ${depScheme === 'special' ? 'Special Industries' : 'Income Tax'} depreciation schedule for F.Y. ${fy}? This only removes the saved copy — the grid on screen stays.`)) return;
@@ -520,6 +547,7 @@ async function depDelete() {
 //  explicit action so testing/generating a throwaway copy is safe.
 // ════════════════════════════════════════════
 async function depGenerateExcel() {
+  if (depMethod === 'slm') return depSlmGenerateExcel();
   if (!window.ExcelJS) { depStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
   depRecalc();
 

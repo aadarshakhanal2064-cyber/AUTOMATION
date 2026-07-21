@@ -88,6 +88,50 @@ window.NepaliLocale = (function () {
     };
   }
 
+  // ── B.S. day-count helpers (SLM day-accurate depreciation, §5.8) ──
+  // All reuse BS_MONTH_LENGTHS above, so they share its 2080–2090 range (extend
+  // the table before 2090). These return NUMBERS, not Devanagari — they feed
+  // arithmetic (days in service, remaining useful life), not display.
+  function bsPartsNum(str) {
+    const p = String(str || '').trim().split(/[\/\-.]/).map(x => parseInt(toEnglishDigits(x), 10));
+    if (p.length < 3 || p.some(isNaN)) return null;
+    const [year, month, day] = p;
+    if (month < 1 || month > 12 || day < 1 || day > 32) return null;
+    return { year, month, day };
+  }
+  // Day index since 1 Baishakh 2080 (0-based); null if the year isn't tabulated.
+  function bsOrdinal(bs) {
+    if (!bs || !BS_MONTH_LENGTHS[bs.year]) return null;
+    let n = 0;
+    for (let y = 2080; y < bs.year; y++) { const t = BS_MONTH_LENGTHS[y]; if (!t) return null; for (let i = 0; i < 12; i++) n += t[i]; }
+    for (let m = 1; m < bs.month; m++) n += BS_MONTH_LENGTHS[bs.year][m - 1];
+    return n + (bs.day - 1);
+  }
+  // Inclusive day count from a→b (both {year,month,day}); null if out of range.
+  function daysBetweenBs(a, b) { const oa = bsOrdinal(a), ob = bsOrdinal(b); return (oa == null || ob == null) ? null : (ob - oa + 1); }
+  // Fiscal year runs 1 Shrawan (month 4) startYear → last day Ashadh (month 3) startYear+1.
+  function fyStartBs(startYear) { return { year: startYear, month: 4, day: 1 }; }
+  function fyEndBs(startYear) { const t = BS_MONTH_LENGTHS[startYear + 1]; return t ? { year: startYear + 1, month: 3, day: t[2] } : null; }
+  // Days an asset was in service within fiscal year `startYear`. A whole-year
+  // asset returns 365 (the firm's template basis); a mid-year acquisition or
+  // disposal returns the actual inclusive B.S. day count. `dateOfUse`/`disposal`
+  // are B.S. strings ("2081/09/15") or null. Falls back to 365 if uncomputable.
+  function daysInServiceThisFy(dateOfUse, startYear, disposal) {
+    const s0 = fyStartBs(startYear), e0 = fyEndBs(startYear);
+    const use = dateOfUse ? bsPartsNum(dateOfUse) : null;
+    const disp = disposal ? bsPartsNum(disposal) : null;
+    const oS0 = bsOrdinal(s0), oE0 = e0 ? bsOrdinal(e0) : null;
+    const oUse = use ? bsOrdinal(use) : null;
+    const oDisp = disp ? bsOrdinal(disp) : null;
+    const startsMid = oUse != null && oS0 != null && oUse > oS0;
+    const endsMid = oDisp != null && oE0 != null && oDisp < oE0;
+    if (!startsMid && !endsMid) return 365;
+    const start = startsMid ? use : s0;
+    const end = endsMid ? disp : e0;
+    const d = end ? daysBetweenBs(start, end) : null;
+    return (d == null || d < 0) ? 365 : d;
+  }
+
   // "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
   function fiscalParts(fyValue) {
     const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
@@ -97,5 +141,6 @@ window.NepaliLocale = (function () {
     return { fy: toDevanagari(fmt(y1)), next: toDevanagari(fmt(y1 + 1)) };
   }
 
-  return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS };
+  return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
+           bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy };
 })();
