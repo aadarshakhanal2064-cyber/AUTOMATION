@@ -105,6 +105,24 @@ window.SERVICE_MEMO_TASKS = [
   { category: 'Others',                  subs: ['Others'] },
 ];
 
+// ── Bank Book module data ──
+// Receipt / payment "particular" types (js/bankBook.js). `party` labels the
+// contextual counterparty field in the entry drawer. The bank/holder list is
+// NOT config — it's user-managed data in the bank_accounts table (unlike the
+// fixed SERVICE_MEMO_FIRMS list), because staff add/edit their own accounts.
+// inter_bank_transfer is entered once and stored as two paired legs (payment
+// out + receipt in) sharing a transfer_group_id — see bankBook.js.
+window.BANK_RECEIPT_TYPES = [
+  { key: 'fee_receipt',         label: 'Fee Receipt',         party: 'Name of Client' },
+  { key: 'sapati',              label: 'Sapati',              party: 'Name of Person' },
+  { key: 'inter_bank_transfer', label: 'Inter-bank Transfer', party: 'From / To Account' },
+];
+window.BANK_PAYMENT_TYPES = [
+  { key: 'expenses',            label: 'Expenses',            party: 'Nature of Expense' },
+  { key: 'sapati',              label: 'Sapati',              party: 'Name of Person' },
+  { key: 'inter_bank_transfer', label: 'Inter-bank Transfer', party: 'From / To Account' },
+];
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },

@@ -60,7 +60,7 @@ function openRegdModule(sub, label) {
 // ── Accounting — Sales & Purchase Book and Confirmation Letters are
 //  ordinary 'main'-group tabs (each a full panel of its own), just launched
 //  from the topbar menu instead of sidebar buttons. ──
-const ACCT_INITS = { salesPurchaseBook: () => spbInit(), confirmationLetters: () => clInit(), depreciation: () => depInit() };
+const ACCT_INITS = { salesPurchaseBook: () => spbInit(), confirmationLetters: () => clInit(), depreciation: () => depInit(), bankBook: () => bbInit() };
 
 function openAcctModule(tab) {
   switchTab(tab);

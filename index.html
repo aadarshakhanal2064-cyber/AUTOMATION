@@ -101,6 +101,7 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openAcctModule('salesPurchaseBook')">Sales &amp; Purchase Book</button>
         <button class="topbar-dropdown-item" onclick="openAcctModule('confirmationLetters')">Confirmation Letters</button>
         <button class="topbar-dropdown-item" onclick="openAcctModule('depreciation')">Depreciation</button>
+        <button class="topbar-dropdown-item" onclick="openAcctModule('bankBook')">Bank Book</button>
       </div>
     </div>
   </div>
@@ -1653,6 +1654,89 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: BANK BOOK ── -->
+    <div id="tab-bankBook-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Accounting</span><span>›</span><span class="current">Bank Book</span></div>
+          <h2 class="page-title">Bank Book</h2>
+          <p class="page-subtitle">Record receipts &amp; payments across the firm's own bank accounts and generate per-account registers and statements.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="bb-tab-accounts" class="rep-view-btn active" onclick="bbShowSection('accounts')">Accounts</button>
+            <button id="bb-tab-txns" class="rep-view-btn" onclick="bbShowSection('txns')">Transactions</button>
+            <button id="bb-tab-reports" class="rep-view-btn" onclick="bbShowSection('reports')">Reports</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="bb-status-area"></div>
+
+      <!-- Section 1: Accounts -->
+      <div id="bb-section-accounts">
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+            <h3 style="margin:0; font-size:15px; color:var(--brand-navy);">Bank Accounts</h3>
+            <button class="btn btn-primary btn-sm" onclick="bbOpenAccount()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Add Account
+            </button>
+          </div>
+          <div id="bb-accounts-table-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- Section 2: Transactions -->
+      <div id="bb-section-txns" style="display:none;">
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+            <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+              <span class="sb-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              </span>
+              <input type="text" class="search-bar" id="bb-txn-search" placeholder="Search account, party, description…" oninput="bbApplyTxnFilters()" />
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-primary btn-sm" onclick="bbOpenTxn('receipt')">New Receipt</button>
+              <button class="btn btn-primary btn-sm" onclick="bbOpenTxn('payment')" style="background:var(--brand-navy); border-color:var(--brand-navy);">New Payment</button>
+            </div>
+          </div>
+          <div class="form-grid" style="grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:16px;">
+            <div class="form-group" style="margin:0;"><label>Account</label><select id="bb-filter-account" onchange="bbOnTxnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Type</label><select id="bb-filter-type" onchange="bbOnTxnFilterChange()"><option value="">All</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div>
+            <div class="form-group" style="margin:0;"><label>Particular</label><select id="bb-filter-particular" onchange="bbOnTxnFilterChange()"><option value="">All</option><option value="fee_receipt">Fee Receipt</option><option value="expenses">Expenses</option><option value="sapati">Sapati</option><option value="inter_bank_transfer">Inter-bank Transfer</option></select></div>
+            <div class="form-group" style="margin:0;"><label>F.Y.</label><input type="text" id="bb-filter-fy" placeholder="e.g. 2083-84" oninput="bbOnTxnFilterChange()" /></div>
+            <div class="form-group" style="margin:0;"><label>From (B.S.)</label><input type="text" id="bb-filter-from" placeholder="2083.04.01" oninput="bbOnTxnFilterChange()" /></div>
+            <div class="form-group" style="margin:0;"><label>To (B.S.)</label><input type="text" id="bb-filter-to" placeholder="2083.06.30" oninput="bbOnTxnFilterChange()" /></div>
+          </div>
+          <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="bbClearTxnFilters()">Clear Filters</button></div>
+          <div id="bb-txn-table-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- Section 3: Reports -->
+      <div id="bb-section-reports" style="display:none;">
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Generate a report</div></div>
+          <div class="form-grid" style="grid-template-columns:repeat(4, 1fr); gap:14px;">
+            <div class="form-group"><label>Account</label><select id="bb-report-account"></select></div>
+            <div class="form-group"><label>Report</label><select id="bb-report-type"><option value="statement">Statement</option><option value="receipt">Receipt Report</option><option value="payment">Payment Report</option></select></div>
+            <div class="form-group"><label>From (B.S.)</label><input type="text" id="bb-report-from" placeholder="2083.04.01" /></div>
+            <div class="form-group"><label>To (B.S.)</label><input type="text" id="bb-report-to" placeholder="2083.06.30" /></div>
+          </div>
+          <div class="action-row">
+            <button class="btn btn-primary" onclick="bbGenerateReport()">Generate</button>
+            <button class="btn btn-outline" id="bb-report-pdf-btn" onclick="bbReportToPdf()" disabled>Save as PDF</button>
+            <button class="btn btn-outline" id="bb-report-excel-btn" onclick="bbReportToExcel()" disabled>Save as Excel</button>
+          </div>
+        </div>
+        <div class="card" style="margin-top:20px;">
+          <div id="bb-report-output"><div class="log-empty">Choose an account and period, then click Generate.</div></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── TAB: CLIENTS ── -->
     <div id="tab-clients-panel" class="tab-panel">
       <div class="page-header">
@@ -1990,6 +2074,107 @@ function cropLoginLogoIcon(img) {
   </div>
 </div>
 
+<!-- BANK BOOK — ACCOUNT DRAWER -->
+<div class="modal-overlay drawer-right" id="bb-account-drawer">
+  <div class="modal drawer-panel" style="width:520px;">
+    <div class="modal-header">
+      <h3 id="bb-account-drawer-title">Add Account</h3>
+      <button class="modal-close" onclick="bbCloseAccount()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full">
+          <label>Account Name (holder)</label>
+          <input type="text" id="bb-account-name" placeholder="e.g. Shailesh &amp; Associates" />
+        </div>
+        <div class="form-group">
+          <label>Bank Name</label>
+          <input type="text" id="bb-account-bank" placeholder="e.g. Nepal Bank" />
+        </div>
+        <div class="form-group">
+          <label>Account Number</label>
+          <input type="text" id="bb-account-number" placeholder="e.g. 123456789" />
+        </div>
+        <div class="form-group">
+          <label>Opening Balance</label>
+          <input type="number" id="bb-account-opening" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label>Opening Balance as on (B.S.)</label>
+          <input type="text" id="bb-account-opening-date" placeholder="2083.04.01" />
+        </div>
+        <div class="form-group full">
+          <label class="checkbox-label"><input type="checkbox" id="bb-account-active" checked /> Active (shown in new-entry dropdowns)</label>
+        </div>
+      </div>
+      <div class="action-row" style="justify-content:space-between;">
+        <button class="btn btn-danger" id="bb-account-delete-btn" style="display:none;" onclick="bbDeleteAccount(bbAccountById(bbEditingAccountId))">Delete</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline" onclick="bbCloseAccount()">Cancel</button>
+          <button class="btn btn-primary" onclick="bbSaveAccount()">Save Account</button>
+        </div>
+      </div>
+      <div id="bb-account-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BANK BOOK — TRANSACTION DRAWER -->
+<div class="modal-overlay drawer-right" id="bb-txn-drawer">
+  <div class="modal drawer-panel" style="width:560px;">
+    <div class="modal-header">
+      <h3 id="bb-txn-drawer-title">New Receipt</h3>
+      <button class="modal-close" onclick="bbCloseTxn()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group">
+          <label id="bb-txn-account-label">Account</label>
+          <select id="bb-txn-account"></select>
+        </div>
+        <div class="form-group">
+          <label>Date (B.S.)</label>
+          <input type="text" id="bb-txn-date" placeholder="2083.04.15" />
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" id="bb-txn-amount" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label>Particular</label>
+          <select id="bb-txn-particular" onchange="bbOnParticularChange()"></select>
+        </div>
+        <div class="form-group full" id="bb-txn-client-group" style="display:none;">
+          <label>Name of Client</label>
+          <input type="text" id="bb-txn-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="autocomplete-list" id="bb-txn-client-autocomplete" style="display:none;"></div>
+        </div>
+        <div class="form-group full" id="bb-txn-party-group" style="display:none;">
+          <label id="bb-txn-party-label">Name of Person</label>
+          <input type="text" id="bb-txn-party" placeholder="Type a name" />
+        </div>
+        <div class="form-group full" id="bb-txn-transfer-group" style="display:none;">
+          <label>Other Account (the counterpart)</label>
+          <select id="bb-txn-counter-account"></select>
+          <p style="font-size:12px; color:var(--text-muted); margin:6px 0 0;">This transfer is recorded on both accounts automatically — a payment out of one and a receipt into the other.</p>
+        </div>
+        <div class="form-group full">
+          <label>Description</label>
+          <input type="text" id="bb-txn-description" placeholder="Optional" />
+        </div>
+      </div>
+      <div class="action-row" style="justify-content:space-between;">
+        <button class="btn btn-danger" id="bb-txn-delete-btn" style="display:none;" onclick="bbDeleteTxnFromDrawer()">Delete</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline" onclick="bbCloseTxn()">Cancel</button>
+          <button class="btn btn-primary" onclick="bbSaveTxn()">Save</button>
+        </div>
+      </div>
+      <div id="bb-txn-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay drawer-right" id="billing-invoice-drawer">
   <div class="modal drawer-panel" style="width:640px;">
     <div class="modal-header">
@@ -2251,7 +2436,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202607211900"></script>
+<script src="js/config.js?v=202607220900"></script>
 <script src="js/utils.js?v=202607141030"></script>
 <script src="js/core/moduleRegistry.js?v=202607141030"></script>
 <script src="js/core/statusBox.js?v=202607141030"></script>
@@ -2262,7 +2447,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/workflowEngine.js?v=202607141030"></script>
 <script src="js/core/auditLog.js?v=202607141030"></script>
 <script src="js/core/integrations.js?v=202607162100"></script>
-<script src="js/tabs.js?v=202607191830"></script>
+<script src="js/tabs.js?v=202607220900"></script>
 <script src="js/dashboard.js?v=202607141030"></script>
 <script src="js/registrar.js?v=202607141030"></script>
 <script src="js/clients.js?v=202607141030"></script>
@@ -2279,6 +2464,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
 <script src="js/confirmationLetters.js?v=202607211200"></script>
+<script src="js/bankBook.js?v=202607220900"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>
