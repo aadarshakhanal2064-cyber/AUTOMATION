@@ -74,6 +74,37 @@ window.REGD_AUDIT_FIRMS = Object.values(window.REP_FIRMS).map(f => ({
   firmName: f.nameNp, auditorName: f.auditorNameNp, title: f.titleNp
 }));
 
+// ── Service Memo module data ──
+// Four selectable firms (the two audit firms + two sister concerns from the
+// firm's "Work Performed" sheet). This is the ONE source for both the memo's
+// firm dropdown and its PDF letterhead, so a new firm needs no DB migration —
+// the memo-number trigger is driven by `prefix` sent from the app.
+//   · shailesh/dallakoti reference REP_FIRMS for full letterhead (address/PAN/
+//     signatory); resolved via `ref`.
+//   · rosp/rtc carry their own name; address/PAN are left blank for the firm to
+//     fill in here later (the PDF prints "—" until then).
+window.SERVICE_MEMO_FIRMS = {
+  shailesh:  { key: 'shailesh',  name: window.REP_FIRMS.shailesh.name,  prefix: 'SM-SA',   ref: 'shailesh' },
+  dallakoti: { key: 'dallakoti', name: window.REP_FIRMS.dallakoti.name, prefix: 'SM-DC',   ref: 'dallakoti' },
+  rosp:      { key: 'rosp',      name: 'Ratnanagar Offset Screen Print', prefix: 'SM-ROSP', address: '', pan: '', phone: '', email: '' },
+  rtc:       { key: 'rtc',       name: 'Ratnanagar Tax Consultancy',     prefix: 'SM-RTC',  address: '', pan: '', phone: '', email: '' },
+};
+
+// Nature-of-task category → sub-category tree, seeded from the firm's "Work
+// Performed" sheet (typos fixed: "Business", "Income Tax Filing"; "OCR"
+// relabeled "Company Registrar (OCR)" and the "OCR-" sub-category prefixes
+// dropped). Every category ends in "Others" (free text when chosen). Easily
+// extensible — add a category object or a sub-category string.
+window.SERVICE_MEMO_TASKS = [
+  { category: 'Audit',                   subs: ['Statutory Audit', 'Internal Audit', 'Others'] },
+  { category: 'IRD Related',             subs: ['VAT Filing', 'Income Tax Filing', 'Tax Clearance', 'Full Audit', 'Others'] },
+  { category: 'Company Registrar (OCR)', subs: ['Annual Return', 'Share Transfer', 'Capital Increase', 'Company Registration', 'Company Deregistration', 'Others'] },
+  { category: 'Consultancy',             subs: ['Book Keeping', 'Others'] },
+  { category: 'Bank Loan Related',       subs: ['Provisional/Projected', 'Business Plan', 'Stock Verification', 'Others'] },
+  { category: 'Certification',           subs: ['CA Report', 'Valuation', 'Others'] },
+  { category: 'Others',                  subs: ['Others'] },
+];
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },

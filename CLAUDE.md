@@ -128,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters, Depreciation — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
+Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Service Memo, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters, Depreciation — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
@@ -221,13 +221,24 @@ Bulk-generates "Confirmation of Account Balance & Transaction" letters — one p
 - **Template** (`assets/templates/confirmation-letter.docx`) is tokenized from a real firm letter: the per-party body (To/Subject/table/signature) is wrapped in a docxtemplater loop `{{#letters}}...{{/letters}}` with a `{{^last}}`-guarded page break, so **one render function (`clRenderLetters`) serves both outputs** — a combined multi-page `.docx` (all selected letters) and a ZIP of individual `.docx` files (JSZip), one call per party with a single-item array.
 - **Fixed a wording bug present in every real sample** (including the firm's own blank master): the Subject line and the paragraph below it referenced fiscal years one year apart. The template uses one `{{fyLabel}}` token in both places. Also corrected the firm's baked-in "Conformation" → "Confirmation" typo.
 
+### 5.13 Service Memo (`js/serviceMemo.js`, `sm-` prefix, table `service_memos`)
+
+Internal **service record + fee-tracking** — the firm's guarantee that no professional work is completed without a recorded fee to collect. Deliberately **not** an accounting/tax invoice (that is Billing, §5.3, which carries bank details, a payment QR and a reconciled payments subtable); a Service Memo is one lightweight row with one Fee and a single `amount_received`. Sidebar main tab, seeded from the firm's `Work Performed.xlsx` (a field-spec/dropdown sheet, not data). Architecturally a *lighter Billing* — same client autocomplete, TableEngine list, PDF-Lib generation, AuditLog, self-registration.
+- **Four selectable firms** (`SERVICE_MEMO_FIRMS` in config.js): Shailesh & Associates, Dallakoti & Company, Ratnanagar Offset Screen Print, Ratnanagar Tax Consultancy. SA/DC reference `REP_FIRMS` for full PDF letterhead; the two Ratnanagar sister concerns carry their own name + memo prefix, address/PAN blank until filled in config (PDF prints "—"). This is the ONE source for both the firm dropdown and the PDF letterhead — a new firm needs **no migration**.
+- **Memo number** assigned by an AFTER INSERT trigger (`set_service_memo_number`, mirrors `set_invoice_number`): the app sends `memo_prefix` from config (`SM-SA`/`SM-DC`/`SM-ROSP`/`SM-RTC`) and the trigger builds `prefix || '-' || lpad(id,5,'0')` → `SM-SA-00001`. Re-fetch after insert (memo_number isn't in the INSERT RETURNING — same gotcha as invoices).
+- **Nature of Task** is a category → sub-category tree (`SERVICE_MEMO_TASKS`, seeded from the Excel with typos fixed and "OCR" relabeled "Company Registrar (OCR)"); every category ends in "Others" → a free-text `nature_other` box appears. Easily extended in config.
+- **Payment**: single `amount_received`; `payment_status` (`pending`/`partially_paid`/`paid`) is auto-derived from received-vs-total in the drawer but stays editable; **`balance_due` is derived in JS, never stored** (same discipline as billing overdue). Status badge/label via `WorkflowEngine.createStatusFlow` (`badgeHtml`/`meta` only — persistence happens in the whole-record upsert).
+- **Dashboard** (in-panel): Total Pending Amount, Total Collected, Pending/Paid memo counts, Recent Memos + Pending Collections lists — **computed client-side** from the fetched rows (small volume), so no stats RPC (unlike billing).
+- **PDF** via PDF-Lib (pattern of `billingBuildInvoicePdf`), re-skinned as a formal **SERVICE MEMO** stamped **"Internal service record — not a tax invoice."**
+- Fiscal year format: **dash** (`2081-82`), default from `NepaliLocale.todayBs`. Filters: firm, category, FY, status, date range + fuzzy search. `client_id` is a **nullable** FK (typed-only clients still save; name/PAN/address always snapshotted). Migration: `db/2026-07-21_service_memos.sql`.
+
 ---
 
 ## 6. Database (Supabase Postgres)
 
 Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-14** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (11)
+### 6.1 Tables (12)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -241,12 +252,14 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `invoices` | `invoice_number` (unique, trigger-assigned), `client_id`/`firm_key` FKs, `status` CHECK (`draft`/`sent`/`partially_paid`/`paid`/`void`), amounts numeric, `tax_rate` default 0.13. |
 | `invoice_items` | Line items: `description`, `quantity`, `rate`, `amount`, `sort_order`. |
 | `invoice_payments` | `amount > 0` CHECK, `method` CHECK (`cash`/`bank_transfer`/`qr`/`cheque`/`other`). |
+| `service_memos` | Internal service records + fee tracking (§5.13). One row per memo (no line-item/payments subtable). `memo_number` (trigger-assigned `SM-{firm}-{id}`), `memo_prefix` (NOT NULL, from config), `firm_key`, `client_id` (**nullable** FK → clients, on delete set null), client name/pan/address snapshots, `nature_category`/`nature_subcategory`/`nature_other`, `description`, `fiscal_year`, `professional_fee`/`vat_amount`/`total_amount` numeric, `payment_status` CHECK (`pending`/`partially_paid`/`paid`), `amount_received`, `payment_date`, `remarks`. Member-CRUD RLS. `set_service_memo_number` AFTER INSERT trigger + shared `set_updated_at`. Added by `db/2026-07-21_service_memos.sql`. |
 | `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`/`slm`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (Income-Tax: per-pool inputs + closing WDV; **SLM: per-asset line array** + carry-forward snapshots → next year's Opening), `addition_details` jsonb (Income-Tax only; `[]` for SLM), `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. `slm` added by `db/2026-07-21_slm_scheme.sql`. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
 
 - `sync_invoice_payment_totals()` — recomputes `invoices.amount_paid`/`status` from `invoice_payments` on every insert/update/delete.
 - `set_invoice_number` — AFTER INSERT, assigns `{SA|DC}-{id padded}`; re-fetch the row after insert.
+- `set_service_memo_number` — AFTER INSERT on `service_memos`, assigns `{memo_prefix}-{id padded}` (prefix sent from JS config); re-fetch after insert (§5.13).
 
 ### 6.3 Data conventions
 
@@ -265,7 +278,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules` added its own policies in `db/2026-07-17_depreciation_schedules.sql`). The permission model:
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules` and `service_memos` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql` and `db/2026-07-21_service_memos.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
@@ -343,6 +356,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `bm-` | BM/AGM Minutes | | `billing-` | Billing |
 | `dep-` | Depreciation | | `spb-` | Sales & Purchase Book |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
+| `cl-` | Confirmation Letters | | `sm-` | Service Memo |
 
 ### 10.3 Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern (Notes and Auditor Change already mirror it — copy it for new document builders).
