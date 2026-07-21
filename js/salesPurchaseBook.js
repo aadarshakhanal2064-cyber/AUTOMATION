@@ -24,8 +24,7 @@
 //    automatically; everything else becomes a per-name-checkbox review list
 //    the user approves per file. Nothing merges silently.
 // ════════════════════════════════════════════
-// No buttonId — launched from the topbar "Accounting" dropdown, not a sidebar button.
-ModuleRegistry.register({ id: 'salesPurchaseBook', group: 'main', buttonId: null, panelId: 'tab-salesPurchaseBook-panel' });
+ModuleRegistry.register({ id: 'salesPurchaseBook', group: 'main', buttonId: 'nav-salesPurchaseBook', panelId: 'tab-salesPurchaseBook-panel' });
 
 // A month "reconciles" only within this band. The IRD-filed figures are whole
 // rupees produced by TRUNCATION, not rounding (reference file: book VAT

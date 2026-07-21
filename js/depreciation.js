@@ -29,8 +29,7 @@
 //  closing WDV. Saving is MANUAL (Save button) — generating Excel never
 //  writes, so testing is safe. Backed by `depreciation_schedules` (§6).
 // ════════════════════════════════════════════
-// No buttonId — launched from the topbar "Accounting" dropdown, not a sidebar button.
-ModuleRegistry.register({ id: 'depreciation', group: 'main', buttonId: null, panelId: 'tab-depreciation-panel' });
+ModuleRegistry.register({ id: 'depreciation', group: 'main', buttonId: 'nav-depreciation', panelId: 'tab-depreciation-panel' });
 
 // Special Industries get 1/3 additional depreciation on Pools A–D — the rate
 // is the normal rate × 4/3. Kept as a factor (not four magic decimals) so the
