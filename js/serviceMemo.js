@@ -75,15 +75,10 @@ async function smRefresh() {
 function smRenderStats() {
   const grid = document.getElementById('sm-stat-grid');
   if (!grid) return;
-  let pendingAmt = 0, paidAmt = 0;
-  smMemos.forEach(m => {
-    paidAmt += Number(m.amount_received || 0);
-    const bal = smBalance(m);
-    if (bal > 0.005) pendingAmt += bal;
-  });
+  let paidAmt = 0;
+  smMemos.forEach(m => { paidAmt += Number(m.amount_received || 0); });
   const cards = [
-    { label: 'Total Pending Amount', value: smMoney(pendingAmt) },
-    { label: 'Total Collected',      value: smMoney(paidAmt) },
+    { label: 'Total Collected', value: smMoney(paidAmt) },
   ];
   grid.innerHTML = cards.map(c => `
     <div class="stat-card">
@@ -244,13 +239,13 @@ function smRenderTotals() {
   smDeriveStatus();
 }
 // Payment status is fully derived from amount received vs total — no manual
-// override control in the drawer (removed per user feedback); the live badge
-// and Balance Due readout are just a reflection of this, updated on every edit.
+// control or visible label in the drawer at all (removed per user feedback);
+// it's computed here purely so smSaveMemo has a valid value to persist. The
+// Status badge still shows in the main list table, just not during entry.
 function smDeriveStatus() {
   const total = smComputeTotals().total;
   const recv = parseFloat(document.getElementById('sm-amount-received').value) || 0;
   const status = (recv >= total && total > 0) ? 'paid' : recv > 0 ? 'partially_paid' : 'pending';
-  document.getElementById('sm-payment-status-badge').innerHTML = smStatusFlow.badgeHtml(status);
   const balance = Math.max(total - recv, 0);
   const balEl = document.getElementById('sm-balance-due');
   balEl.textContent = smNum(balance);
