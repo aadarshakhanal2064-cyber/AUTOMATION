@@ -77,6 +77,22 @@ const PJX_IRD_ROWS = [
 ];
 const PJX_DEP_COLS = ['Opening', 'Additional', 'Sales', 'Total', 'Dep Rate %', 'Depreciation', 'Balance Amount'];
 
+// Organization-specific terminology (master BS F-column rules): a report
+// never shows "Director/Partner/Proprietor" together — only the term for
+// the client's own organization type.
+function pjxTerms(orgType) {
+  const t = orgType === 'partnership' ? { capital: 'Registered Capital', person: 'Partner' }
+    : orgType === 'proprietorship' ? { capital: 'Registered Capital', person: 'Proprietor' }
+    : { capital: 'Paid-up Share Capital', person: 'Director' };
+  return {
+    ...t,
+    capRow: `a. ${t.capital}`,
+    addlRow: `b. ${t.person} Additional Capital`,
+    lendRow: `4. ${t.person} Lending`,
+    dDirRow: `4. Increase/(decrease) in ${t.person}`,
+  };
+}
+
 function pjxCol(i) {           // 1 → A, 2 → B …
   let s = '';
   while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - 1 - m) / 26; }
@@ -98,6 +114,9 @@ async function pjDownloadExcel() {
     const N = Y.length;
     const company = pjEl('pj-company').value || pjModel.company.name;
     const address = pjModel.company.address;
+    const T = pjxTerms((pjEl('pj-org-type') || {}).value);
+    const bsL = { ...PJX_BS_L, cap: T.capRow, addl: T.addlRow, director: T.lendRow };
+    const cfL = { ...PJX_CF_L, dDir: T.dDirRow };
 
     // Column of year y on Pl/CF (labels in A): B, C, …  On BS/IRD-style
     // sheets (labels in B): C, D, …
@@ -202,7 +221,7 @@ async function pjDownloadExcel() {
     pl.getCell(R.div, 1).value = PJX_PL_L.div;
     pl.getCell(R.transfer, 1).value = PJX_PL_L.transfer;
     pl.getCell(R.sig, 1).value = 'Accountant';
-    pl.getCell(R.sig, 1 + N).value = 'Director';
+    pl.getCell(R.sig, 1 + N).value = T.person;
 
     Y.forEach(yr => {
       const c = plCol(yr.year), p = yr.pl, y = yr.year;
@@ -249,12 +268,12 @@ async function pjDownloadExcel() {
       totalSrc: 17, usesLabel: 18, faLabel: 19, wdv: 20, depRow: 21, faTotal: 22, caLabel: 23,
       cash: 24, debtors: 25, stock: 26, caTotal: 27, clLabel: 28, creditors: 29, provTax: 30,
       expPay: 31, tds: 32, stl: 33, clTotal: 34, nca: 36, totalUses: 39, check: 42, sig: 46 };
-    Object.entries(PJX_BS_L).forEach(([k, label]) => {
+    Object.entries(bsL).forEach(([k, label]) => {
       const cell = bs.getCell(BR[k], 2); cell.value = label;
       if (/Label$|^totalSrc$|^totalUses$|^faTotal$|^caTotal$|^clTotal$|^nca$/.test(k)) cell.font = { bold: true };
     });
     bs.getCell(BR.sig, 2).value = 'Accountant';
-    bs.getCell(BR.sig, 2 + N).value = 'Director';
+    bs.getCell(BR.sig, 2 + N).value = T.person;
     Y.forEach(yr => {
       const c = bsCol(yr.year), y = yr.year, b = yr.bs;
       const set = (row, v, bold) => {
@@ -302,7 +321,7 @@ async function pjDownloadExcel() {
     const CR = { aLabel: 7, npbit: 8, dep: 9, tax: 10, opSub: 12, dCA: 15, dCL: 16, wcSub: 17,
       netOp: 19, bLabel: 21, capex: 22, liqNC: 23, netInv: 24, cLabel: 26, issue: 27, div: 28,
       intPaid: 29, dDir: 30, dLoans: 31, netFin: 32, netChange: 34, openCash: 35, closeCash: 36, check: 38 };
-    Object.entries(PJX_CF_L).forEach(([k, label]) => {
+    Object.entries(cfL).forEach(([k, label]) => {
       const cell = cf.getCell(CR[k], 2); cell.value = label;
       if (/Label$|^net|^opSub$|^netChange$|^closeCash$/.test(k)) cell.font = { bold: true };
     });
@@ -392,15 +411,17 @@ async function pjDownloadExcel() {
       Y.forEach(yr => { const c = nca.getCell(r, 4 + yr.year); c.value = fv(yr.year); c.numFmt = PJX_NUMFMT; });
     });
     const ratioRows = [
-      ['Debtor Turover ratio (days)', 'always Less than 90 days', y => ({ formula: `+BS!${bsCol(y)}${BR.debtors}/Pl!${plCol(y)}${R.sales}*365`, result: Y[y - 1].ratios.debtorDays })],
+      ['Debtor Turover ratio (days)', 'between 30 and 90 days', y => ({ formula: `+BS!${bsCol(y)}${BR.debtors}/Pl!${plCol(y)}${R.sales}*365`, result: Y[y - 1].ratios.debtorDays })],
       ['Current Ratio', 'always More than 1.5', y => ({ formula: `+BS!${bsCol(y)}${BR.caTotal}/BS!${bsCol(y)}${BR.clTotal}`, result: Y[y - 1].ratios.currentRatio })],
       ['Debt Equity ratio', 'always Less than 2.33', y => ({ formula: `+(BS!${bsCol(y)}${BR.lt}+BS!${bsCol(y)}${BR.pwc}+BS!${bsCol(y)}${BR.stl})/(BS!${bsCol(y)}${BR.cap}+BS!${bsCol(y)}${BR.reserve}+BS!${bsCol(y)}${BR.addl})`, result: Y[y - 1].ratios.debtEquity })],
+      ['Gross Profit Margin', 'increasing trend (rule 6)', y => ({ formula: `+Pl!${plCol(y)}${R.gp}/Pl!${plCol(y)}${R.sales}`, result: Y[y - 1].pl.grossProfit / Y[y - 1].pl.sales }), '0.00%'],
+      ['Net Profit Margin', 'increasing trend (rule 7)', y => ({ formula: `+Pl!${plCol(y)}${R.pat}/Pl!${plCol(y)}${R.sales}`, result: Y[y - 1].pl.pat / Y[y - 1].pl.sales }), '0.00%'],
     ];
-    ratioRows.forEach(([label, note, fv], i) => {
+    ratioRows.forEach(([label, note, fv, fmt], i) => {
       const r = 17 + i * 3;
       nca.getCell(r, 2).value = label; nca.getCell(r, 2).font = { bold: true };
       nca.getCell(r, 4).value = note;
-      Y.forEach(yr => { const c = nca.getCell(r, 4 + yr.year); c.value = fv(yr.year); c.numFmt = '0.00'; });
+      Y.forEach(yr => { const c = nca.getCell(r, 4 + yr.year); c.value = fv(yr.year); c.numFmt = fmt || '0.00'; });
     });
 
     const buf = await wbOut.xlsx.writeBuffer();
@@ -415,12 +436,15 @@ async function pjDownloadExcel() {
 }
 
 // ── PDF ────────────────────────────────────────────────────────────
-//  A4 landscape, one statement per section, mirroring the Excel sheets
-//  row-for-row via the shared PJX_* label consts above. Rendered as a real
-//  table: navy header band, vertical separators between the year columns,
-//  light row grid, tinted total rows, double-ruled grand totals, dotted
-//  signature footer. Column widths and font sizes scale with the year count
-//  so 3–10-year projections all lay out cleanly on the same geometry.
+//  Bank-submission report: cover page, then one statement per page in the
+//  order BS · P&L · CF · Dep · IRD · Ratio Analysis, mirroring the Excel
+//  sheets through the shared PJX_* label consts. Each statement is built as
+//  a row list first, pruned of all-zero lines (business exceptions kept),
+//  then auto-scaled so it always fits its own page — only the Depreciation
+//  schedule may span pages (whole year-blocks, never split). Terminology
+//  (Director/Partner/Proprietor, Paid-up vs Registered Capital) follows the
+//  organization type; an optional Audited/Provisional comparison column can
+//  lead the BS and P&L. Signature footer carries the auto B.S. date + place.
 
 const PJX_PDF = {
   W: 842, H: 595, mX: 36, mB: 40,
@@ -443,49 +467,116 @@ async function pjDownloadPdf() {
     const doc = await PDFLib.PDFDocument.create();
     const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     const bold = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+    const times = await doc.embedFont(PDFLib.StandardFonts.TimesRoman);
+    const timesB = await doc.embedFont(PDFLib.StandardFonts.TimesRomanBold);
     const C = {};
     Object.entries(PJX_PDF).forEach(([k, val]) => { if (Array.isArray(val)) C[k] = PDFLib.rgb(val[0], val[1], val[2]); });
     const { W, H, mX, mB } = PJX_PDF;
-    const company = pjEl('pj-company').value || pjModel.company.name;
-    const address = pjModel.company.address;
+    const m = pjModel;
+    const company = pjEl('pj-company').value || m.company.name;
+    const address = m.company.address;
+    const T = pjxTerms((pjEl('pj-org-type') || {}).value);
+    const incAud = !!(pjEl('pj-include-audited') || {}).checked;
     const Y = pjResult.years;
+    const N = Y.length;
     const amt = v => (v == null || isNaN(v) || Math.round(v) === 0) ? '–'
       : (v < 0 ? `(${Math.abs(Math.round(v)).toLocaleString('en-IN')})` : Math.round(v).toLocaleString('en-IN'));
 
-    // Row style presets — every statement uses the same five looks.
+    // Report date (B.S., auto) + place derived from the client address
+    const tb = (typeof NepaliLocale !== 'undefined' && NepaliLocale.todayBs()) || null;
+    const p2 = n => String(n).padStart(2, '0');
+    const bsDate = tb ? `${tb.year}/${p2(tb.month)}/${p2(tb.day)}` : '';
+    const place = (address || '').split(',').map(s => s.trim())
+      .filter(s => s && !/nepal/i.test(s)).pop() || 'Chitwan';
+
+    // ── Cover page ──
+    {
+      const pg = doc.addPage([W, H]);
+      const cx = W / 2;
+      pg.drawRectangle({ x: 24, y: 24, width: W - 48, height: H - 48, borderWidth: 1.6, borderColor: C.navy });
+      pg.drawRectangle({ x: 30, y: 30, width: W - 60, height: H - 60, borderWidth: 0.6, borderColor: C.gridDark });
+      const ctr = (t, y, size, f, color) => { const tw = f.widthOfTextAtSize(t, size); pg.drawText(t, { x: cx - tw / 2, y, size, font: f, color }); };
+      ctr('PROJECTED FINANCIAL REPORT', 468, 30, timesB, C.navy);
+      pg.drawLine({ start: { x: cx - 150, y: 455 }, end: { x: cx + 150, y: 455 }, thickness: 1.1, color: C.navy });
+      ctr('OF', 430, 11, times, C.muted);
+      ctr(company.toUpperCase(), 396, 20, timesB, C.black);
+      if (address) ctr(address, 374, 11, font, C.muted);
+      // rising-bars motif — a subtle nod to the projection itself
+      const bh = [16, 25, 35, 46, 58], bw = 15, gap = 12;
+      let bx = cx - (bh.length * bw + (bh.length - 1) * gap) / 2;
+      bh.forEach((h, i) => {
+        pg.drawRectangle({ x: bx, y: 246, width: bw, height: h, color: i === bh.length - 1 ? C.navy : C.grandFill });
+        bx += bw + gap;
+      });
+      pg.drawLine({ start: { x: cx - 90, y: 244 }, end: { x: cx + 90, y: 244 }, thickness: 0.8, color: C.gridDark });
+      const fyText = N === 1 ? `For the Fiscal Year ${pjFyLabel(1)}`
+        : `For the Fiscal Years ${pjFyLabel(1)} to ${pjFyLabel(N)}`;
+      ctr(fyText, 196, 13.5, bold, C.black);
+      ctr(`(${N}-Year Financial Projection)`, 177, 10.5, font, C.muted);
+      if (bsDate) ctr(`Date of Report : ${bsDate} B.S.`, 84, 10.5, font, C.black);
+    }
+
+    // ── Row builders ──
     const S = {
-      sec:   { bold: true, labelColor: C.navy, pre: 3 },              // section heading
-      item:  { indent: true, grid: true },                            // detail line
-      plain: { grid: true },                                          // un-indented line
-      tot:   { bold: true, fill: C.totalFill, top: true },            // sub-total band
-      grand: { bold: true, fill: C.grandFill, top: true, dbl: true, gap: 3 }, // grand total
+      sec:   { bold: true, labelColor: C.navy, pre: 3 },
+      item:  { indent: true, grid: true },
+      plain: { grid: true },
+      tot:   { bold: true, fill: C.totalFill, top: true },
+      grand: { bold: true, fill: C.grandFill, top: true, dbl: true, gap: 3 },
+    };
+    const v = f => Y.map(f);
+    const withAud = (aud, arr) => incAud ? [aud, ...arr] : arr;
+    const yearCols = h1 => Y.map(yr => ({ h1: h1(yr.year), h2: `Year ${yr.year}` }));
+    const audCol = { h1: `F.Y. ${pjFyLabel(0)}`, h2: 'Audited/Prov.' };
+    // Zero-pruning: a detail row whose every numeric cell rounds to 0 is
+    // dropped unless flagged `keep` (business exceptions). Heads/totals stay.
+    const zeroRow = vals => (vals || []).every(x => x == null || x === '' || (typeof x === 'number' && Math.round(x) === 0));
+    const prune = rows => rows.filter(r => !r.zeroable || r.keep || !zeroRow(r.vals));
+    // After pruning, re-letter/renumber ordinal prefixes so removed rows never
+    // leave gaps (a., b., c. … / 1., 2., 3. …). Top-level heads (Sources/Uses,
+    // A./B./C.) reset the number run; numbered rows reset the letter run.
+    const renumber = rows => {
+      let num = 0, letter = 0;
+      rows.forEach(r => {
+        const l = r.label || '';
+        if (/^(sources|uses) of funds/i.test(l) || /^[A-C]\.\s/.test(l)) { num = 0; letter = 0; return; }
+        if (/^\d+\.\s/.test(l)) { num++; letter = 0; r.label = l.replace(/^\d+\./, `${num}.`); return; }
+        if (/^[a-z]\.\s/.test(l)) { letter++; r.label = l.replace(/^[a-z]\./, `${String.fromCharCode(96 + letter)}.`); }
+      });
+      return rows;
     };
 
-    // One statement = one table. cols: [{h1, h2?}] numeric column headers.
-    const mkSheet = (title, cols, o = {}) => {
+    // ── One statement = one auto-fitted table ──
+    const drawSheet = ({ title, cols, rows, sig, multiPage, labelW: lwOpt }) => {
       const usable = W - 2 * mX;
       const nC = cols.length;
-      const labelW = o.labelW || Math.max(180, Math.min(270, usable - nC * 112));
+      const labelW = lwOpt || Math.max(180, Math.min(270, usable - nC * 112));
       const colW = Math.min(112, (usable - labelW) / nC);
       const tableW = labelW + colW * nC;
       const x0 = (W - tableW) / 2;
-      const nfs = colW >= 95 ? 9 : colW >= 78 ? 8.4 : colW >= 62 ? 7.8 : colW >= 52 ? 7.1 : colW >= 45 ? 6.6 : 6.1;
-      const lfs = Math.min(9.4, nfs + 0.6);
-      const rowH = Math.max(12, nfs * 1.52);
+      let nfs = colW >= 95 ? 9 : colW >= 78 ? 8.4 : colW >= 62 ? 7.8 : colW >= 52 ? 7.1 : colW >= 45 ? 6.6 : 6.1;
       const twoLine = cols.some(c => c.h2);
       const bandH = twoLine ? 27 : 17;
-      const sigSpace = o.sig ? 50 : 14;
+      const sigSpace = sig ? 68 : 14;
+      const headerH = 63 + (address ? 12 : 0) + bandH;
+      const avail = H - headerH - mB - sigSpace;
+      let rowH = Math.max(12, nfs * 1.52);
+      if (!multiPage) {                      // scale to always fit one page
+        const extras = rows.reduce((s, r) => s + (r.st.pre || 0) + (r.st.gap || 0), 0);
+        const fit = (avail - extras) / Math.max(1, rows.length);
+        if (fit < rowH) { rowH = Math.max(9.2, fit); nfs = Math.min(nfs, Math.max(5.9, rowH / 1.45)); }
+      }
+      const lfs = Math.min(9.4, nfs + 0.6);
       let page = null, yTop = 0, bandTop = 0, banners = [];
 
       const closeGrid = () => {
         if (!page) return;
-        // vertical separators, drawn in segments that skip banner rows
         const stops = [...banners].sort((a, b) => b.top - a.top);
         for (let i = 0; i <= nC; i++) {
           const x = x0 + labelW + colW * i;
           let from = bandTop - bandH;
           stops.forEach(bn => {
-            if (bn.top < from) { page.drawLine({ start: { x, y: from }, end: { x, y: bn.top }, thickness: 0.5, color: C.gridLight }); }
+            if (bn.top < from) page.drawLine({ start: { x, y: from }, end: { x, y: bn.top }, thickness: 0.5, color: C.gridLight });
             from = Math.min(from, bn.bot);
           });
           if (from > yTop) page.drawLine({ start: { x, y: from }, end: { x, y: yTop }, thickness: 0.5, color: C.gridLight });
@@ -516,181 +607,229 @@ async function pjDownloadPdf() {
         });
         yTop = bandTop - bandH;
       };
-      // keep-together: start a fresh page unless `need` points of rows fit
-      const ensure = need => { if (!page || yTop - need < mB + sigSpace) openPage(!!page); };
-      const row = (label, vals, st = {}) => {
-        if (st.pre && page && yTop < bandTop - bandH) yTop -= st.pre;
-        ensure(rowH);
+      const drawRow = r => {
+        const st = r.st;
+        if (st.pre && yTop < bandTop - bandH) yTop -= st.pre;
+        if (!page || yTop - rowH < mB + sigSpace) openPage(!!page);
         const f = st.bold ? bold : font;
         if (st.fill) page.drawRectangle({ x: x0, y: yTop - rowH, width: tableW, height: rowH, color: st.fill });
         if (st.top) page.drawLine({ start: { x: x0, y: yTop }, end: { x: x0 + tableW, y: yTop }, thickness: 0.6, color: C.gridDark });
         const bl = yTop - rowH + (rowH - nfs) * 0.5 + 1;
-        if (st.span) {                       // centered banner across the table (Dep year titles)
-          banners.push({ top: yTop, bot: yTop - rowH });   // grid verticals skip this row
-          const tw = bold.widthOfTextAtSize(label, lfs);
-          page.drawText(label, { x: x0 + (tableW - tw) / 2, y: bl, size: lfs, font: bold, color: C.navy });
-        } else if (label) {
-          let ls = lfs;                      // shrink-to-fit, never truncate
+        if (st.span) {
+          banners.push({ top: yTop, bot: yTop - rowH });
+          const tw = bold.widthOfTextAtSize(r.label, lfs);
+          page.drawText(r.label, { x: x0 + (tableW - tw) / 2, y: bl, size: lfs, font: bold, color: C.navy });
+        } else if (r.label) {
+          let ls = lfs;
           const maxW = labelW - 10 - (st.indent ? 10 : 0);
-          while (ls > 5.4 && f.widthOfTextAtSize(label, ls) > maxW) ls -= 0.2;
-          page.drawText(label, { x: x0 + 5 + (st.indent ? 10 : 0), y: bl, size: ls, font: f, color: st.labelColor || C.black });
+          while (ls > 5.4 && f.widthOfTextAtSize(r.label, ls) > maxW) ls -= 0.2;
+          page.drawText(r.label, { x: x0 + 5 + (st.indent ? 10 : 0), y: bl, size: ls, font: f, color: st.labelColor || C.black });
         }
-        (vals || []).forEach((v, i) => {
-          if (v == null || v === '') return;
-          const isO = typeof v === 'object';
-          const t = typeof v === 'number' ? amt(v) : (isO ? v.t : v);
+        (r.vals || []).forEach((x, i) => {
+          if (x == null || x === '') return;
+          const isO = typeof x === 'object';
+          const t = typeof x === 'number' ? amt(x) : (isO ? x.t : x);
           const cw = f.widthOfTextAtSize(t, nfs);
-          page.drawText(t, { x: x0 + labelW + colW * (i + 1) - 6 - cw, y: bl, size: nfs, font: f, color: (isO && v.color) || C.black });
+          page.drawText(t, { x: x0 + labelW + colW * (i + 1) - 6 - cw, y: bl, size: nfs, font: f, color: (isO && x.color) || C.black });
         });
         if (st.grid) page.drawLine({ start: { x: x0, y: yTop - rowH }, end: { x: x0 + tableW, y: yTop - rowH }, thickness: 0.4, color: C.gridLight });
         if (st.dbl) [1, 2.6].forEach(off =>
           page.drawLine({ start: { x: x0 + labelW, y: yTop - rowH + off }, end: { x: x0 + tableW, y: yTop - rowH + off }, thickness: 0.5, color: C.navy }));
         yTop -= rowH + (st.gap || 0);
       };
-      const sig = () => {
-        const sy = mB + 6;
+      const sigBlock = () => {
         const dash = { thickness: 0.7, color: C.black, dashArray: [2, 2] };
-        page.drawLine({ start: { x: x0, y: sy + 12 }, end: { x: x0 + 130, y: sy + 12 }, ...dash });
-        page.drawText('Accountant', { x: x0, y: sy, size: 9, font, color: C.black });
-        page.drawLine({ start: { x: x0 + tableW - 130, y: sy + 12 }, end: { x: x0 + tableW, y: sy + 12 }, ...dash });
-        const dw = font.widthOfTextAtSize('Director', 9);
-        page.drawText('Director', { x: x0 + tableW - dw, y: sy, size: 9, font, color: C.black });
+        const lineY = mB + 42, roleY = mB + 30, dateY = mB + 14, placeY = mB + 2;
+        page.drawLine({ start: { x: x0, y: lineY }, end: { x: x0 + 140, y: lineY }, ...dash });
+        page.drawText('Accountant', { x: x0, y: roleY, size: 9, font, color: C.black });
+        page.drawText(`Date : ${bsDate} B.S.`, { x: x0, y: dateY, size: 8.5, font, color: C.black });
+        page.drawText(`Place : ${place}`, { x: x0, y: placeY, size: 8.5, font, color: C.black });
+        page.drawLine({ start: { x: x0 + tableW - 140, y: lineY }, end: { x: x0 + tableW, y: lineY }, ...dash });
+        const dw = font.widthOfTextAtSize(T.person, 9);
+        page.drawText(T.person, { x: x0 + tableW - dw, y: roleY, size: 9, font, color: C.black });
       };
-      const finish = () => { closeGrid(); if (o.sig) sig(); };
+
       openPage(false);
-      return { row, finish, ensure, rowH: () => rowH };
+      rows.forEach((r, i) => {
+        if (multiPage && r.group && yTop < bandTop - bandH) {
+          let gh = rowH + (r.st.pre || 0);          // keep the whole block together
+          for (let j = i + 1; j < rows.length && !rows[j].group; j++) gh += rowH + (rows[j].st.pre || 0) + (rows[j].st.gap || 0);
+          if (yTop - gh < mB + sigSpace) openPage(true);
+        }
+        drawRow(r);
+      });
+      closeGrid();
+      if (sig) sigBlock();
     };
 
-    const yearCols = h1 => Y.map(yr => ({ h1: h1(yr.year), h2: `Year ${yr.year}` }));
-    const v = f => Y.map(f);
+    // ── Audited/Provisional figures for the comparison column ──
+    const termSum = m.loans.term.reduce((s, l) => s + l.amount, 0);
+    const audAdminLine = i => i === 0 ? m.salary : ((m.otherExpenses[i - 1] || {}).amount ?? null);
+    const audAdminTotal = m.salary + m.otherExpenses.reduce((s, e) => s + e.amount, 0);
+    const audGP = m.revenue.operations - m.materials.total;
+    const audNCA = m.currentAssetsTotal - m.currentLiabilitiesTotal;
 
-    // ── Projected Profit & Loss (mirrors Excel Pl row-for-row) ──
-    let sh = mkSheet('Projected Profit & Loss A/C', yearCols(y => pjFyDot(y)), { sig: true });
-    sh.row(PJX_PL_L.sales, v(x => x.pl.sales), { bold: true, grid: true });
-    sh.row(PJX_PL_L.cogsHead, [], S.sec);
-    sh.row(PJX_PL_L.opening, v(x => x.pl.openingStock), S.item);
-    sh.row(PJX_PL_L.purchase, v(x => x.pl.purchases), S.item);
-    sh.row(PJX_PL_L.direct, v(x => x.pl.directCost), S.item);
-    sh.row(PJX_PL_L.closing, v(x => -x.pl.closingStock), S.item);
-    sh.row(PJX_PL_L.cogsTotal, v(x => x.pl.cogs), S.tot);
-    sh.row(PJX_PL_L.gp, v(x => x.pl.grossProfit), S.grand);
-    sh.row(PJX_PL_L.adminHead, [], S.sec);
-    Y[0].pl.adminLines.forEach((_, i) => sh.row(Y[0].pl.adminLines[i].name, v(x => x.pl.adminLines[i].amount), S.item));
-    sh.row(PJX_PL_L.adminTotal, v(x => x.pl.adminTotal), S.tot);
-    sh.row(PJX_PL_L.pbid, v(x => x.pl.grossProfit - x.pl.adminTotal), S.tot);
-    sh.row(PJX_PL_L.intST, v(x => x.pl.interestST), S.plain);
-    sh.row(PJX_PL_L.intLT, v(x => x.pl.interestLT), S.plain);
-    sh.row(PJX_PL_L.dep, v(x => x.pl.dep), S.plain);
-    sh.row(PJX_PL_L.pbt, v(x => x.pl.pbt), S.grand);
-    sh.row(PJX_PL_L.tax, v(x => x.pl.tax), S.plain);
-    sh.row(PJX_PL_L.pat, v(x => x.pl.pat), S.tot);
-    sh.row(PJX_PL_L.upto, v(x => x.pl.retainedOpening), S.plain);
-    sh.row(PJX_PL_L.div, v(x => x.pl.dividend), S.plain);
-    sh.row(PJX_PL_L.transfer, v(x => x.pl.retainedClosing), S.grand);
-    sh.finish();
-
-    // ── Projected Balance Sheet (mirrors Excel BS row-for-row) ──
-    sh = mkSheet('Projected Balance Sheet', yearCols(y => pjAsAt(y)), { sig: true });
-    sh.row(PJX_BS_L.srcLabel, [], S.sec);
-    sh.row(PJX_BS_L.capLabel, [], S.sec);
-    sh.row(PJX_BS_L.cap, v(x => x.bs.shareCapital), S.item);
-    sh.row(PJX_BS_L.addl, v(x => x.bs.additionalCapital), S.item);
-    sh.row(PJX_BS_L.reserve, v(x => x.bs.reserves), S.item);
-    sh.row(PJX_BS_L.lt, v(x => x.bs.longTermLoan), S.plain);
-    sh.row(PJX_BS_L.pwc, v(x => x.bs.permanentWC), S.plain);
-    sh.row(PJX_BS_L.director, v(x => x.bs.directorLending), S.plain);
-    sh.row(PJX_BS_L.totalSrc, v(x => x.bs.totalSources), S.grand);
-    sh.row(PJX_BS_L.usesLabel, [], S.sec);
-    sh.row(PJX_BS_L.faLabel, [], S.sec);
-    sh.row(PJX_BS_L.wdv, v(x => x.dep.total), S.item);
-    sh.row(PJX_BS_L.depRow, v(x => x.dep.dep), S.item);
-    sh.row(PJX_BS_L.faTotal, v(x => x.bs.fixedAssetsNet), S.tot);
-    sh.row(PJX_BS_L.caLabel, [], S.sec);
-    sh.row(PJX_BS_L.cash, v(x => x.bs.cash), S.item);
-    sh.row(PJX_BS_L.debtors, v(x => x.bs.debtors), S.item);
-    sh.row(PJX_BS_L.stock, v(x => x.bs.closingStock), S.item);
-    sh.row(PJX_BS_L.caTotal, v(x => x.bs.totalCurrentAssets), S.tot);
-    sh.row(PJX_BS_L.clLabel, [], S.sec);
-    sh.row(PJX_BS_L.creditors, v(x => x.bs.creditors), S.item);
-    sh.row(PJX_BS_L.provTax, v(x => x.bs.provisionTax), S.item);
-    sh.row(PJX_BS_L.expPay, v(x => x.bs.expPayable), S.item);
-    sh.row(PJX_BS_L.tds, v(x => x.bs.tdsPayable), S.item);
-    sh.row(PJX_BS_L.stl, v(x => x.bs.shortTermLoan), S.item);
-    sh.row(PJX_BS_L.clTotal, v(x => x.bs.totalCurrentLiabilities), S.tot);
-    sh.row(PJX_BS_L.nca, v(x => x.bs.netCurrentAssets), S.tot);
-    sh.row(PJX_BS_L.totalUses, v(x => x.bs.totalUses), S.grand);
-    sh.finish();
-
-    // ── Projected Cash Flow (mirrors Excel CF row-for-row) ──
-    sh = mkSheet('Projected Cash Flow Statements', yearCols(y => pjFyDot(y)), { sig: true });
-    sh.row(PJX_CF_L.aLabel, [], S.sec);
-    sh.row(PJX_CF_L.npbit, v(x => x.cf.pbtPlusInterest), S.item);
-    sh.row(PJX_CF_L.dep, v(x => x.cf.depreciation), S.item);
-    sh.row(PJX_CF_L.tax, v(x => x.cf.incomeTax), S.item);
-    sh.row(PJX_CF_L.opSub, v(x => x.cf.pbtPlusInterest + x.cf.depreciation + x.cf.incomeTax), S.tot);
-    sh.row(PJX_CF_L.dCA, v(x => x.cf.deltaCurrentAssets), S.item);
-    sh.row(PJX_CF_L.dCL, v(x => x.cf.deltaCurrentLiabilities), S.item);
-    sh.row(PJX_CF_L.wcSub, v(x => x.cf.deltaCurrentAssets + x.cf.deltaCurrentLiabilities), S.tot);
-    sh.row(PJX_CF_L.netOp, v(x => x.cf.operating), S.grand);
-    sh.row(PJX_CF_L.bLabel, [], S.sec);
-    sh.row(PJX_CF_L.capex, v(x => x.cf.capex), S.item);
-    sh.row(PJX_CF_L.liqNC, v(x => x.cf.liquidatedNC), S.item);
-    sh.row(PJX_CF_L.netInv, v(x => x.cf.investing), S.grand);
-    sh.row(PJX_CF_L.cLabel, [], S.sec);
-    sh.row(PJX_CF_L.issue, v(x => x.cf.capitalIssued), S.item);
-    sh.row(PJX_CF_L.div, v(x => x.cf.dividend), S.item);
-    sh.row(PJX_CF_L.intPaid, v(x => x.cf.interestPaid), S.item);
-    sh.row(PJX_CF_L.dDir, v(x => x.cf.deltaDirector), S.item);
-    sh.row(PJX_CF_L.dLoans, v(x => x.cf.deltaLoans), S.item);
-    sh.row(PJX_CF_L.netFin, v(x => x.cf.financing), S.grand);
-    sh.row(PJX_CF_L.netChange, v(x => x.cf.netChange), S.tot);
-    sh.row(PJX_CF_L.openCash, v(x => x.cf.openingCash), S.plain);
-    sh.row(PJX_CF_L.closeCash, v(x => x.cf.closingCash), S.grand);
-    sh.finish();
-
-    // ── Depreciation — one block per year, all 7 pools (Excel Dep layout) ──
-    sh = mkSheet('Depreciation Details', PJX_DEP_COLS.map(h => ({ h1: h })), { sig: true, labelW: 200 });
-    Y.forEach(yr => {
-      sh.ensure(sh.rowH() * 10.5);           // keep each year's block together
-      sh.row(`Depreciation Details for the fiscal year ${pjFyDot(yr.year)}`, [], { span: true, pre: 6 });
-      yr.dep.rows.forEach(r => sh.row(r.name,
-        [r.opening, r.addition, r.disposal, r.total, `${+(r.rate * 100).toFixed(2)}%`, r.dep, r.closing], S.item));
-      sh.row('Total', [yr.dep.opening, yr.dep.addition, yr.dep.disposal, yr.dep.total, '', yr.dep.dep, yr.dep.closing], S.tot);
+    // ── Page 2: Projected Balance Sheet ──
+    drawSheet({
+      title: 'Projected Balance Sheet', sig: true,
+      cols: withAud(audCol, yearCols(y => pjAsAt(y))),
+      rows: renumber(prune([
+        { label: PJX_BS_L.srcLabel, vals: [], st: S.sec },
+        { label: PJX_BS_L.capLabel, vals: [], st: S.sec },
+        { label: T.capRow, vals: withAud(m.shareCapital, v(x => x.bs.shareCapital)), st: S.item },
+        { label: T.addlRow, vals: withAud(null, v(x => x.bs.additionalCapital)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.reserve, vals: withAud(m.reserves, v(x => x.bs.reserves)), st: S.item },
+        { label: PJX_BS_L.lt, vals: withAud(termSum, v(x => x.bs.longTermLoan)), st: S.plain, zeroable: true },
+        { label: PJX_BS_L.pwc, vals: withAud(null, v(x => x.bs.permanentWC)), st: S.plain, zeroable: true },
+        { label: T.lendRow, vals: withAud(m.loans.directorLoan, v(x => x.bs.directorLending)), st: S.plain, zeroable: true },
+        { label: PJX_BS_L.totalSrc, vals: withAud(m.shareCapital + m.reserves + termSum + m.loans.directorLoan, v(x => x.bs.totalSources)), st: S.grand },
+        { label: PJX_BS_L.usesLabel, vals: [], st: S.sec },
+        { label: PJX_BS_L.faLabel, vals: [], st: S.sec },
+        { label: PJX_BS_L.wdv, vals: withAud(null, v(x => x.dep.total)), st: S.item, zeroable: true, keep: true },
+        { label: PJX_BS_L.depRow, vals: withAud(null, v(x => x.dep.dep)), st: S.item, zeroable: true, keep: true },
+        { label: PJX_BS_L.faTotal, vals: withAud(m.ppeTotal, v(x => x.bs.fixedAssetsNet)), st: S.tot },
+        { label: PJX_BS_L.caLabel, vals: [], st: S.sec },
+        { label: PJX_BS_L.cash, vals: withAud(m.cash, v(x => x.bs.cash)), st: S.item },
+        { label: PJX_BS_L.debtors, vals: withAud(m.debtors, v(x => x.bs.debtors)), st: S.item },
+        { label: PJX_BS_L.stock, vals: withAud(m.inventory.closing, v(x => x.bs.closingStock)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.caTotal, vals: withAud(m.currentAssetsTotal, v(x => x.bs.totalCurrentAssets)), st: S.tot },
+        { label: PJX_BS_L.clLabel, vals: [], st: S.sec },
+        { label: PJX_BS_L.creditors, vals: withAud(m.creditors, v(x => x.bs.creditors)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.provTax, vals: withAud(m.tax, v(x => x.bs.provisionTax)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.expPay, vals: withAud(null, v(x => x.bs.expPayable)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.tds, vals: withAud(null, v(x => x.bs.tdsPayable)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.stl, vals: withAud(m.loans.overdraft, v(x => x.bs.shortTermLoan)), st: S.item, zeroable: true },
+        { label: PJX_BS_L.clTotal, vals: withAud(m.currentLiabilitiesTotal, v(x => x.bs.totalCurrentLiabilities)), st: S.tot },
+        { label: PJX_BS_L.nca, vals: withAud(audNCA, v(x => x.bs.netCurrentAssets)), st: S.tot },
+        { label: PJX_BS_L.totalUses, vals: withAud(m.ppeTotal + audNCA, v(x => x.bs.totalUses)), st: S.grand },
+      ])),
     });
-    sh.finish();
 
-    // ── IRD summary — year 1 vs audited (English labels; standard PDF
-    //    fonts can't render the master's Devanagari) ──
-    sh = mkSheet('IRD Summary', [
-      { h1: `F.Y. ${pjFyLabel(0)}`, h2: 'Audited/Provisional' },
-      { h1: `F.Y. ${pjFyLabel(1)}`, h2: 'Projected' },
-    ], { labelW: 420 });
+    // ── Page 3: Projected Profit & Loss ──
+    drawSheet({
+      title: 'Projected Profit & Loss A/C', sig: true,
+      cols: withAud(audCol, yearCols(y => pjFyDot(y))),
+      rows: prune([
+        { label: PJX_PL_L.sales, vals: withAud(m.revenue.operations, v(x => x.pl.sales)), st: { bold: true, grid: true } },
+        { label: PJX_PL_L.cogsHead, vals: [], st: S.sec },
+        { label: PJX_PL_L.opening, vals: withAud(m.materials.opening, v(x => x.pl.openingStock)), st: S.item, zeroable: true },
+        { label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), st: S.item, zeroable: true },
+        { label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), st: S.item, zeroable: true },
+        { label: PJX_PL_L.closing, vals: withAud(-m.materials.closing, v(x => -x.pl.closingStock)), st: S.item, zeroable: true },
+        { label: PJX_PL_L.cogsTotal, vals: withAud(m.materials.total, v(x => x.pl.cogs)), st: S.tot },
+        { label: PJX_PL_L.gp, vals: withAud(audGP, v(x => x.pl.grossProfit)), st: S.grand },
+        { label: PJX_PL_L.adminHead, vals: [], st: S.sec },
+        ...Y[0].pl.adminLines.map((l, i) => (
+          { label: l.name, vals: withAud(audAdminLine(i), v(x => x.pl.adminLines[i].amount)), st: S.item, zeroable: true }
+        )),
+        { label: PJX_PL_L.adminTotal, vals: withAud(audAdminTotal, v(x => x.pl.adminTotal)), st: S.tot },
+        { label: PJX_PL_L.pbid, vals: withAud(audGP - audAdminTotal, v(x => x.pl.grossProfit - x.pl.adminTotal)), st: S.tot },
+        { label: PJX_PL_L.intST, vals: withAud(m.financeCost, v(x => x.pl.interestST)), st: S.plain, zeroable: true },
+        { label: PJX_PL_L.intLT, vals: withAud(null, v(x => x.pl.interestLT)), st: S.plain, zeroable: true },
+        { label: PJX_PL_L.dep, vals: withAud(null, v(x => x.pl.dep)), st: S.plain, zeroable: true, keep: true },
+        { label: PJX_PL_L.pbt, vals: withAud(m.profitBeforeTax, v(x => x.pl.pbt)), st: S.grand },
+        { label: PJX_PL_L.tax, vals: withAud(m.tax, v(x => x.pl.tax)), st: S.plain, zeroable: true },
+        { label: PJX_PL_L.pat, vals: withAud(m.profitBeforeTax - m.tax, v(x => x.pl.pat)), st: S.tot },
+        { label: PJX_PL_L.upto, vals: withAud(null, v(x => x.pl.retainedOpening)), st: S.plain, zeroable: true },
+        { label: PJX_PL_L.div, vals: withAud(null, v(x => x.pl.dividend)), st: S.plain, zeroable: true, keep: true },
+        { label: PJX_PL_L.transfer, vals: withAud(m.reserves, v(x => x.pl.retainedClosing)), st: S.grand },
+      ]),
+    });
+
+    // ── Page 4: Projected Cash Flow (projection-only — audited deltas
+    //    don't exist for a single audited year) ──
+    drawSheet({
+      title: 'Projected Cash Flow Statements', sig: true,
+      cols: yearCols(y => pjFyDot(y)),
+      rows: renumber(prune([
+        { label: PJX_CF_L.aLabel, vals: [], st: S.sec },
+        { label: PJX_CF_L.npbit, vals: v(x => x.cf.pbtPlusInterest), st: S.item },
+        { label: PJX_CF_L.dep, vals: v(x => x.cf.depreciation), st: S.item, zeroable: true, keep: true },
+        { label: PJX_CF_L.tax, vals: v(x => x.cf.incomeTax), st: S.item },
+        { label: PJX_CF_L.opSub, vals: v(x => x.cf.pbtPlusInterest + x.cf.depreciation + x.cf.incomeTax), st: S.tot },
+        { label: PJX_CF_L.dCA, vals: v(x => x.cf.deltaCurrentAssets), st: S.item },
+        { label: PJX_CF_L.dCL, vals: v(x => x.cf.deltaCurrentLiabilities), st: S.item },
+        { label: PJX_CF_L.wcSub, vals: v(x => x.cf.deltaCurrentAssets + x.cf.deltaCurrentLiabilities), st: S.tot },
+        { label: PJX_CF_L.netOp, vals: v(x => x.cf.operating), st: S.grand },
+        { label: PJX_CF_L.bLabel, vals: [], st: S.sec },
+        { label: PJX_CF_L.capex, vals: v(x => x.cf.capex), st: S.item, zeroable: true },
+        { label: PJX_CF_L.liqNC, vals: v(x => x.cf.liquidatedNC), st: S.item, zeroable: true },
+        { label: PJX_CF_L.netInv, vals: v(x => x.cf.investing), st: S.grand },
+        { label: PJX_CF_L.cLabel, vals: [], st: S.sec },
+        { label: PJX_CF_L.issue, vals: v(x => x.cf.capitalIssued), st: S.item, zeroable: true },
+        { label: PJX_CF_L.div, vals: v(x => x.cf.dividend), st: S.item, zeroable: true },
+        { label: PJX_CF_L.intPaid, vals: v(x => x.cf.interestPaid), st: S.item, zeroable: true },
+        { label: T.dDirRow, vals: v(x => x.cf.deltaDirector), st: S.item, zeroable: true },
+        { label: PJX_CF_L.dLoans, vals: v(x => x.cf.deltaLoans), st: S.item, zeroable: true },
+        { label: PJX_CF_L.netFin, vals: v(x => x.cf.financing), st: S.grand },
+        { label: PJX_CF_L.netChange, vals: v(x => x.cf.netChange), st: S.tot },
+        { label: PJX_CF_L.openCash, vals: v(x => x.cf.openingCash), st: S.plain },
+        { label: PJX_CF_L.closeCash, vals: v(x => x.cf.closingCash), st: S.grand },
+      ])),
+    });
+
+    // ── Page 5+: Depreciation — only asset classes that carry any value
+    //    across the projection appear; each year-block stays together ──
+    const depActive = Y[0].dep.rows.map((_, i) => Y.some(yr => {
+      const r = yr.dep.rows[i];
+      return Math.abs(r.opening) + Math.abs(r.addition) + Math.abs(r.disposal) + Math.abs(r.total) + Math.abs(r.closing) > 0.005;
+    }));
+    const depRows = [];
+    Y.forEach(yr => {
+      depRows.push({ label: `Depreciation Details for the fiscal year ${pjFyDot(yr.year)}`, vals: [], st: { span: true, pre: 6 }, group: true });
+      yr.dep.rows.forEach((r, i) => {
+        if (!depActive[i]) return;
+        depRows.push({ label: r.name, vals: [r.opening, r.addition, r.disposal, r.total, `${+(r.rate * 100).toFixed(2)}%`, r.dep, r.closing], st: S.item });
+      });
+      depRows.push({ label: 'Total', vals: [yr.dep.opening, yr.dep.addition, yr.dep.disposal, yr.dep.total, '', yr.dep.dep, yr.dep.closing], st: S.tot });
+    });
+    drawSheet({
+      title: 'Depreciation Schedule', sig: true, multiPage: true, labelW: 200,
+      cols: PJX_DEP_COLS.map(h => ({ h1: h })),
+      rows: depRows,
+    });
+
+    // ── Page 6: IRD summary (English labels; standard PDF fonts can't
+    //    render the master's Devanagari) ──
     const ird = pjResult.ird;
-    PJX_IRD_ROWS.forEach((r, i) =>
-      sh.row(`${i + 1}.  ${r.en}`, [ird.audited[r.key], ird.projected[r.key]], S.plain));
-    sh.finish();
+    drawSheet({
+      title: 'IRD Summary', labelW: 420,
+      cols: [
+        { h1: `F.Y. ${pjFyLabel(0)}`, h2: 'Audited/Provisional' },
+        { h1: `F.Y. ${pjFyLabel(1)}`, h2: 'Projected' },
+      ],
+      rows: PJX_IRD_ROWS.map((r, i) => (
+        { label: `${i + 1}.  ${r.en}`, vals: [ird.audited[r.key], ird.projected[r.key]], st: S.plain }
+      )),
+    });
 
-    // ── NCA working & ratio analysis (Excel NCA sheet, with pass/fail colour) ──
-    sh = mkSheet('Net Current Assets Working & Ratio Analysis', yearCols(y => pjFyDot(y)));
-    sh.row('A.  Stock', v(x => x.bs.closingStock), S.item);
-    sh.row('B.  Debtor', v(x => x.bs.debtors), S.item);
-    sh.row('C = A+B   Total', v(x => x.bs.closingStock + x.bs.debtors), S.tot);
-    sh.row('D.  Current Liabilities except Short Term Loan', v(x => x.bs.totalCurrentLiabilities - x.bs.shortTermLoan), S.item);
-    sh.row('E = C-D   Net Current Assets', v(x => x.ratios.nca), S.tot);
-    sh.row('F = 70% × E', v(x => x.ratios.nca70), S.item);
-    sh.row('Short Term Loan /OD/CC', v(x => x.bs.shortTermLoan), S.item);
-    sh.row('Permanent WC', v(x => x.bs.permanentWC), S.item);
-    sh.row('G.  Total Loan', v(x => x.bs.shortTermLoan + x.bs.permanentWC), S.tot);
-    sh.row('H = F-G   Difference (always positive)',
-      v(x => ({ t: amt(x.ratios.ncaHeadroom), color: x.ratios.ncaHeadroom >= 0 ? C.pass : C.fail })), S.grand);
-    sh.row('Ratios', [], S.sec);
-    sh.row('Debtor Turnover (days) — always less than 90',
-      v(x => ({ t: x.ratios.debtorDays.toFixed(0), color: x.ratios.debtorDays <= 90 ? C.pass : C.fail })), S.plain);
-    sh.row('Current Ratio — always more than 1.5',
-      v(x => ({ t: x.ratios.currentRatio.toFixed(2), color: x.ratios.currentRatio >= 1.5 ? C.pass : C.fail })), S.plain);
-    sh.row('Debt-Equity Ratio — always less than 2.33',
-      v(x => ({ t: x.ratios.debtEquity.toFixed(2), color: x.ratios.debtEquity <= 2.33 ? C.pass : C.fail })), S.plain);
-    sh.finish();
+    // ── Page 7: NCA working & Ratio Analysis ──
+    const pct = x => `${(x * 100).toFixed(2)}%`;
+    drawSheet({
+      title: 'Net Current Assets Working & Ratio Analysis',
+      cols: yearCols(y => pjFyDot(y)),
+      rows: [
+        { label: 'A.  Stock', vals: v(x => x.bs.closingStock), st: S.item },
+        { label: 'B.  Debtor', vals: v(x => x.bs.debtors), st: S.item },
+        { label: 'C = A+B   Total', vals: v(x => x.bs.closingStock + x.bs.debtors), st: S.tot },
+        { label: 'D.  Current Liabilities except Short Term Loan', vals: v(x => x.bs.totalCurrentLiabilities - x.bs.shortTermLoan), st: S.item },
+        { label: 'E = C-D   Net Current Assets', vals: v(x => x.ratios.nca), st: S.tot },
+        { label: 'F = 70% × E', vals: v(x => x.ratios.nca70), st: S.item },
+        { label: 'Short Term Loan /OD/CC', vals: v(x => x.bs.shortTermLoan), st: S.item },
+        { label: 'Permanent WC', vals: v(x => x.bs.permanentWC), st: S.item },
+        { label: 'G.  Total Loan', vals: v(x => x.bs.shortTermLoan + x.bs.permanentWC), st: S.tot },
+        { label: 'H = F-G   Difference (always positive)', vals: v(x => ({ t: amt(x.ratios.ncaHeadroom), color: x.ratios.ncaHeadroom >= 0 ? C.pass : C.fail })), st: S.grand },
+        { label: 'Ratio Analysis', vals: [], st: S.sec },
+        { label: 'Debtor Turnover (days) — between 30 and 90 days', vals: v(x => {
+          const d = Math.round(x.ratios.debtorDays);
+          return { t: x.ratios.debtorDays.toFixed(0), color: d >= 30 && d <= 90 ? C.pass : C.fail };
+        }), st: S.plain },
+        { label: 'Current Ratio — always more than 1.5', vals: v(x => ({ t: x.ratios.currentRatio.toFixed(2), color: x.ratios.currentRatio >= 1.5 ? C.pass : C.fail })), st: S.plain },
+        { label: 'Debt-Equity Ratio — always less than 2.33', vals: v(x => ({ t: x.ratios.debtEquity.toFixed(2), color: x.ratios.debtEquity <= 2.33 ? C.pass : C.fail })), st: S.plain },
+        { label: 'Gross Profit Margin', vals: v(x => pct(x.pl.grossProfit / x.pl.sales)), st: S.plain },
+        { label: 'Net Profit Margin', vals: v(x => pct(x.pl.pat / x.pl.sales)), st: S.plain },
+      ],
+    });
 
     const bytes = await doc.save();
     const fname = `Projection Report ${company} ${pjFyLabel(1)}.pdf`;

@@ -399,6 +399,8 @@ const ProjectionEngine = (() => {
   // the bank-facing constraints every projected year must satisfy.
   const LIMITS = {
     maxDebtorDays: 90,     // rule 5/8: debtor turnover
+    minDebtorDays: 30,     // user rule (2026-07-22): a collection cycle under 30
+                           // days reads as fabricated to a bank — flag it
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
     ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive")
@@ -786,6 +788,9 @@ const ProjectionEngine = (() => {
       if (yr.pl.grossProfit < 0) push('error', y, 'grossprofit', `Year ${y}: Gross profit is negative.`);
       if (yr.ratios.debtorDays > LIMITS.maxDebtorDays + 0.5) {
         push('warn', y, 'days', `Year ${y}: Debtor turnover ${yr.ratios.debtorDays.toFixed(0)} days exceeds ${LIMITS.maxDebtorDays} (rule 5).`);
+      }
+      if (yr.ratios.debtorDays < LIMITS.minDebtorDays - 0.5) {
+        push('warn', y, 'days', `Year ${y}: Debtor turnover ${yr.ratios.debtorDays.toFixed(0)} days is below ${LIMITS.minDebtorDays} — raise Sundry Debtors (reduce cash/creditors or stock) so the collection cycle stays believable.`);
       }
       if (yr.ratios.currentRatio < LIMITS.minCurrentRatio - 0.005) {
         push('warn', y, 'current', `Year ${y}: Current ratio ${yr.ratios.currentRatio.toFixed(2)} is below ${LIMITS.minCurrentRatio} (rule 4).`);
