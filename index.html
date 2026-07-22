@@ -1779,6 +1779,13 @@ function cropLoginLogoIcon(img) {
             </div>
             <div class="form-group"><label>Company Name</label><input type="text" id="pj-company" /></div>
             <div class="form-group"><label>PAN</label><input type="text" id="pj-pan" /></div>
+            <div class="form-group"><label>Organization Type</label>
+              <select id="pj-org-type" onchange="pjOrgTypeChanged()">
+                <option value="private">Private Limited Company</option>
+                <option value="partnership">Partnership Firm</option>
+                <option value="proprietorship">Proprietorship</option>
+              </select>
+            </div>
             <div class="form-group"><label>Entity Type (tax rule)</label>
               <select id="pj-tax-profile">
                 <option value="corporate">Pvt. Ltd. / Partnership — 25% flat</option>
@@ -1791,6 +1798,12 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>Base Fiscal Year</label><input type="text" id="pj-base-fy" placeholder="e.g. 2082-83" /></div>
             <div class="form-group"><label>Sales Growth — Year 1 (%)</label><input type="number" id="pj-growth1" value="10" step="0.5" /></div>
             <div class="form-group"><label>Sales Growth — Later Years (%)</label><input type="number" id="pj-growth-rest" value="5" step="0.5" /></div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; margin:0;">
+                <input type="checkbox" id="pj-include-audited" style="width:auto;" />
+                Include Audited/Provisional column (PDF)
+              </label>
+            </div>
           </div>
         </div>
 
@@ -2596,9 +2609,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
 <script src="js/confirmationLetters.js?v=202607211200"></script>
 <script src="js/bankBook.js?v=202607220900"></script>
-<script src="js/projectionEngine.js?v=202607221800"></script>
-<script src="js/projection.js?v=202607221800"></script>
-<script src="js/projectionExport.js?v=202607222040"></script>
+<script src="js/projectionEngine.js?v=202607222230"></script>
+<script src="js/projection.js?v=202607222230"></script>
+<script src="js/projectionExport.js?v=202607222230"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>
