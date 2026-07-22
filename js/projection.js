@@ -64,15 +64,7 @@ function pjSelectClient(c) {
   pjEl('pj-company').value = c.name;
   pjEl('pj-pan').value = c.pan || '';
   const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(c.entity_type || '').toLowerCase().trim()];
-  pjEl('pj-org-type').value = profile === 'partnership' ? 'partnership'
-    : profile === 'proprietorship' ? 'proprietorship' : 'private';
-  pjOrgTypeChanged();
-}
-
-// Organization type drives both the report terminology (Director/Partner/
-// Proprietor, Paid-up vs Registered Capital) and the rule-9 tax profile.
-function pjOrgTypeChanged() {
-  pjEl('pj-tax-profile').value = pjEl('pj-org-type').value === 'proprietorship' ? 'progressive' : 'corporate';
+  pjEl('pj-tax-profile').value = profile === 'proprietorship' ? 'progressive' : 'corporate';
 }
 
 // ── Step 1: Upload & Detect ──
@@ -186,9 +178,7 @@ function pjCollectAsm(keepOverrides) {
     disposals[p.key] = parseFloat((pjEl('pj-dis-' + p.key) || {}).value) || 0;
   });
   return {
-    years: Math.min(10, Math.max(1, parseInt(pjEl('pj-years').value, 10) || 3)),
-    orgType: pjEl('pj-org-type').value,
-    includeAudited: pjEl('pj-include-audited').checked,
+    years: parseInt(pjEl('pj-years').value, 10),
     growthY1Pct: parseFloat(pjEl('pj-growth1').value) || 0,
     growthRestPct: parseFloat(pjEl('pj-growth-rest').value) || 0,
     stLoans: pjCollectLoans('st'),
@@ -256,7 +246,7 @@ function pjRenderRatioStrip() {
     const r = yr.ratios;
     return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border-light);">
       <strong style="font-size:12.5px; width:90px;">F.Y. ${escHtml(pjFyLabel(yr.year))}</strong>
-      ${chip(r.debtorDays >= L.minDebtorDays - 0.5 && r.debtorDays <= L.maxDebtorDays + 0.5, 'Debtor days', r.debtorDays.toFixed(0) + ' (' + L.minDebtorDays + '–' + L.maxDebtorDays + ')')}
+      ${chip(r.debtorDays <= L.maxDebtorDays + 0.5, 'Debtor days', r.debtorDays.toFixed(0) + ' / ' + L.maxDebtorDays)}
       ${chip(r.currentRatio >= L.minCurrentRatio - 0.005, 'Current ratio', r.currentRatio.toFixed(2) + ' ≥ ' + L.minCurrentRatio)}
       ${chip(r.debtEquity <= L.maxDebtEquity + 0.005, 'Debt-equity', r.debtEquity.toFixed(2) + ' ≤ ' + L.maxDebtEquity)}
       ${chip(r.ncaHeadroom >= -0.5, '70% NCA headroom', pjAmt(r.ncaHeadroom))}
