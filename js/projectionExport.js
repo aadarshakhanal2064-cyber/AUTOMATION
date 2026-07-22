@@ -115,6 +115,7 @@ async function pjDownloadExcel() {
     const company = pjEl('pj-company').value || pjModel.company.name;
     const address = pjModel.company.address;
     const T = pjxTerms((pjEl('pj-org-type') || {}).value);
+    const stmtType = (pjEl('pj-statement-type') || {}).value === 'provisional' ? 'Provisional' : 'Audited';
     const bsL = { ...PJX_BS_L, cap: T.capRow, addl: T.addlRow, director: T.lendRow };
     const cfL = { ...PJX_CF_L, dDir: T.dDirRow };
 
@@ -360,7 +361,7 @@ async function pjDownloadExcel() {
     ird.getCell('A1').value = company; ird.mergeCells('A1:D1');
     ird.getCell('A2').value = address; ird.mergeCells('A2:D2');
     [1, 2].forEach(r => { ird.getCell(r, 1).font = { bold: r === 1 }; ird.getCell(r, 1).alignment = { horizontal: 'center' }; });
-    const irdHead = ['क्र.सं.', 'विवरण', `आ.व. ${pjFyLabel(0)} (Audited/Provisional)`, `आ.व. ${pjFyLabel(1)} (Projected)`];
+    const irdHead = ['क्र.सं.', 'विवरण', `आ.व. ${pjFyLabel(0)} (${stmtType})`, `आ.व. ${pjFyLabel(1)} (Projected)`];
     irdHead.forEach((h, i) => { const c = ird.getCell(4, i + 1); c.value = h; c.font = { bold: true }; pjxBorder(c); });
     const irdFormula = {
       grossIncome: `+Pl!${plCol(1)}${R.gp}`,
@@ -477,6 +478,9 @@ async function pjDownloadPdf() {
     const address = m.company.address;
     const T = pjxTerms((pjEl('pj-org-type') || {}).value);
     const incAud = !!(pjEl('pj-include-audited') || {}).checked;
+    // Statement type — the report names the single uploaded statement
+    // (Audited OR Provisional), never both.
+    const stmtType = (pjEl('pj-statement-type') || {}).value === 'provisional' ? 'Provisional' : 'Audited';
     const Y = pjResult.years;
     const N = Y.length;
     const amt = v => (v == null || isNaN(v) || Math.round(v) === 0) ? '–'
@@ -501,14 +505,13 @@ async function pjDownloadPdf() {
       ctr('OF', 430, 11, times, C.muted);
       ctr(company.toUpperCase(), 396, 20, timesB, C.black);
       if (address) ctr(address, 374, 11, font, C.muted);
-      // rising-bars motif — a subtle nod to the projection itself
-      const bh = [16, 25, 35, 46, 58], bw = 15, gap = 12;
-      let bx = cx - (bh.length * bw + (bh.length - 1) * gap) / 2;
-      bh.forEach((h, i) => {
-        pg.drawRectangle({ x: bx, y: 246, width: bw, height: h, color: i === bh.length - 1 ? C.navy : C.grandFill });
-        bx += bw + gap;
+      // Three vertical lines of different heights at the middle (inspired by
+      // the firm's audit-report cover), the centre tallest.
+      const baseY = 250, heights = [58, 84, 58], gap = 22;
+      const centres = [cx - gap, cx, cx + gap];
+      centres.forEach((x, i) => {
+        pg.drawLine({ start: { x, y: baseY }, end: { x, y: baseY + heights[i] }, thickness: 1.4, color: C.navy });
       });
-      pg.drawLine({ start: { x: cx - 90, y: 244 }, end: { x: cx + 90, y: 244 }, thickness: 0.8, color: C.gridDark });
       const fyText = N === 1 ? `For the Fiscal Year ${pjFyLabel(1)}`
         : `For the Fiscal Years ${pjFyLabel(1)} to ${pjFyLabel(N)}`;
       ctr(fyText, 196, 13.5, bold, C.black);
@@ -527,7 +530,7 @@ async function pjDownloadPdf() {
     const v = f => Y.map(f);
     const withAud = (aud, arr) => incAud ? [aud, ...arr] : arr;
     const yearCols = h1 => Y.map(yr => ({ h1: h1(yr.year), h2: `Year ${yr.year}` }));
-    const audCol = { h1: `F.Y. ${pjFyLabel(0)}`, h2: 'Audited/Prov.' };
+    const audCol = { h1: `F.Y. ${pjFyLabel(0)}`, h2: stmtType };
     // Zero-pruning: a detail row whose every numeric cell rounds to 0 is
     // dropped unless flagged `keep` (business exceptions). Heads/totals stay.
     const zeroRow = vals => (vals || []).every(x => x == null || x === '' || (typeof x === 'number' && Math.round(x) === 0));
@@ -795,7 +798,7 @@ async function pjDownloadPdf() {
     drawSheet({
       title: 'IRD Summary', labelW: 420,
       cols: [
-        { h1: `F.Y. ${pjFyLabel(0)}`, h2: 'Audited/Provisional' },
+        { h1: `F.Y. ${pjFyLabel(0)}`, h2: stmtType },
         { h1: `F.Y. ${pjFyLabel(1)}`, h2: 'Projected' },
       ],
       rows: PJX_IRD_ROWS.map((r, i) => (

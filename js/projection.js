@@ -84,6 +84,11 @@ async function pjHandleFile(input) {
   try {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
+    // Auto-detect Audited vs Provisional from the uploaded filename so the
+    // report labels the single correct statement type (never both). User can
+    // still override via the selector.
+    if (/provision/i.test(file.name)) pjEl('pj-statement-type').value = 'provisional';
+    else if (/audit/i.test(file.name)) pjEl('pj-statement-type').value = 'audited';
     const { model, issues } = ProjectionEngine.parseStatement(wb, XLSX);
     pjModel = model;
     pjParseIssues = issues;

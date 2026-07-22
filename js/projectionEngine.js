@@ -400,7 +400,8 @@ const ProjectionEngine = (() => {
   const LIMITS = {
     maxDebtorDays: 90,     // rule 5/8: debtor turnover
     minDebtorDays: 30,     // user rule (2026-07-22): a collection cycle under 30
-                           // days reads as fabricated to a bank — flag it
+                           // days reads as fabricated to a bank — flag + auto-lift
+    minCashReserve: 100000, // floor lever won't drain cash below this reserve
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
     ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive")
@@ -600,11 +601,14 @@ const ProjectionEngine = (() => {
       let addlCap = ov.additionalCapital != null ? num(ov.additionalCapital) : (prev ? prev.bs.additionalCapital : 0);
       let dividend = ov.dividend != null ? num(ov.dividend) : 0;
       let stockShift = 0;
+      let cashCut = 0;               // floor lever: value moved out of cash into debtors
       let dividendApplied = ov.dividend != null, stockApplied = ov.closingStock != null;
+      let cashFloorApplied = ov.cash != null;
       const levers = [];
 
       let state = null;
       for (let iter = 0; iter < 15; iter++) {
+        const cashEff = Math.max(0, cash - cashCut);
         const closingStock = ov.closingStock != null ? num(ov.closingStock) : baseClosingStock + stockShift;
         const gp = pbt + adminTotal + interestST + intLT + dep.dep;
         const cogs = sales - gp;
@@ -615,8 +619,8 @@ const ProjectionEngine = (() => {
         const cl = creditors + provTax + expPayable + tdsPayable + stlTotal;
         const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC;
         const faNet = dep.closing;
-        const debtors = sources - faNet - cash - closingStock + cl;
-        const ca = cash + debtors + closingStock;
+        const debtors = sources - faNet - cashEff - closingStock + cl;
+        const ca = cashEff + debtors + closingStock;
         const debt = closingLT + closingPWC + stlTotal;
         const equity = input.shareCapital + addlCap + retainedClosing;
         const days = sales > 0 ? debtors / sales * 365 : 0;
@@ -627,7 +631,7 @@ const ProjectionEngine = (() => {
         const ncaHeadroom = nca70 - (stlTotal + closingPWC);   // must stay positive
 
         state = { closingStock, gp, cogs, directCost, purchases, retainedClosing, provTax, cl, sources, faNet,
-                  debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
+                  cash: cashEff, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
 
         if (!autoSolve) break;
 
@@ -668,6 +672,19 @@ const ProjectionEngine = (() => {
             continue;
           }
         }
+
+        // Floor (user rule 2026-07-22): debtor turnover below 30 days reads as
+        // fabricated to a bank. Debtors is the balancing figure, so lift it by
+        // moving value out of cash (no P&L impact, keeps Sources=Uses), bounded
+        // by a minimum cash reserve. Applied once; converges.
+        if (days < LIMITS.minDebtorDays - 0.01 && !cashFloorApplied) {
+          cashFloorApplied = true;
+          const target = sales * LIMITS.minDebtorDays / 365;
+          const shortfall = target - debtors;
+          const room = Math.max(0, cashEff - LIMITS.minCashReserve);
+          const cut = Math.min(shortfall, room);
+          if (cut > 0.5) { cashCut += cut; levers.push({ rule: 8, action: 'cash', amount: -cut }); continue; }
+        }
         break;
       }
 
@@ -682,7 +699,7 @@ const ProjectionEngine = (() => {
         longTermLoan: closingLT, permanentWC: closingPWC, directorLending: 0,
         totalSources: state.sources,
         fixedAssetsGross: dep.total, depreciation: dep.dep, fixedAssetsNet: state.faNet,
-        cash, debtors: state.debtors, closingStock: state.closingStock,
+        cash: state.cash, debtors: state.debtors, closingStock: state.closingStock,
         totalCurrentAssets: state.ca,
         creditors, provisionTax: state.provTax, expPayable, tdsPayable, shortTermLoan: stlTotal,
         totalCurrentLiabilities: state.cl,
