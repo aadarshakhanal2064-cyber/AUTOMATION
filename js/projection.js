@@ -306,9 +306,14 @@ function pjRenderOverrides() {
 
 function pjRenderLevers() {
   const applied = [];
+  const describe = (l) => {
+    if (l.action === 'additionalCapital') return 'injected Additional Capital';
+    if (l.action === 'dividend') return 'declared Dividend/Withdrawal';
+    return (l.amount < 0 ? 'reduced' : 'raised') + ' Closing Stock';   // closingStock
+  };
+  const ruleLabel = (r) => (r === 'a' || r === 'b') ? `debtor-floor step (${r})` : `rule ${r}`;
   pjResult.years.forEach(yr => yr.levers.forEach(l => applied.push(
-    `F.Y. ${pjFyLabel(yr.year)} — rule ${l.rule}: ${l.action === 'additionalCapital' ? 'injected Additional Capital'
-      : l.action === 'dividend' ? 'declared Dividend/Withdrawal' : 'raised Closing Stock'} of Rs ${pjAmt(l.amount)}`)));
+    `F.Y. ${pjFyLabel(yr.year)} — ${ruleLabel(l.rule)}: ${describe(l)} of Rs ${pjAmt(Math.abs(l.amount))}`)));
   pjEl('pj-levers').innerHTML = applied.length
     ? `<div style="font-size:12.5px; color:var(--text-muted);"><strong>Auto-solver decisions:</strong><ul style="margin:6px 0 0 18px;">${applied.map(a => `<li>${escHtml(a)}</li>`).join('')}</ul></div>`
     : '<div style="font-size:12.5px; color:var(--text-muted);">No rule adjustments were needed — the projection satisfies every constraint as computed.</div>';

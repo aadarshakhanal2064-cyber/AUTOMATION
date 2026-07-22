@@ -399,9 +399,9 @@ const ProjectionEngine = (() => {
   // the bank-facing constraints every projected year must satisfy.
   const LIMITS = {
     maxDebtorDays: 90,     // rule 5/8: debtor turnover
-    minDebtorDays: 30,     // user rule (2026-07-22): a collection cycle under 30
+    minDebtorDays: 30,     // CA rule (2026-07-22): a collection cycle under 30
                            // days reads as fabricated to a bank — flag + auto-lift
-    minCashReserve: 100000, // floor lever won't drain cash below this reserve
+    minNca: 100000,        // <30-day step (a) won't push Net Current Assets below this
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
     ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive")
@@ -601,14 +601,12 @@ const ProjectionEngine = (() => {
       let addlCap = ov.additionalCapital != null ? num(ov.additionalCapital) : (prev ? prev.bs.additionalCapital : 0);
       let dividend = ov.dividend != null ? num(ov.dividend) : 0;
       let stockShift = 0;
-      let cashCut = 0;               // floor lever: value moved out of cash into debtors
       let dividendApplied = ov.dividend != null, stockApplied = ov.closingStock != null;
-      let cashFloorApplied = ov.cash != null;
+      let stockFloorHit = ov.closingStock != null;   // <30-day step (a) exhausted?
       const levers = [];
 
       let state = null;
       for (let iter = 0; iter < 15; iter++) {
-        const cashEff = Math.max(0, cash - cashCut);
         const closingStock = ov.closingStock != null ? num(ov.closingStock) : baseClosingStock + stockShift;
         const gp = pbt + adminTotal + interestST + intLT + dep.dep;
         const cogs = sales - gp;
@@ -619,8 +617,8 @@ const ProjectionEngine = (() => {
         const cl = creditors + provTax + expPayable + tdsPayable + stlTotal;
         const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC;
         const faNet = dep.closing;
-        const debtors = sources - faNet - cashEff - closingStock + cl;
-        const ca = cashEff + debtors + closingStock;
+        const debtors = sources - faNet - cash - closingStock + cl;
+        const ca = cash + debtors + closingStock;
         const debt = closingLT + closingPWC + stlTotal;
         const equity = input.shareCapital + addlCap + retainedClosing;
         const days = sales > 0 ? debtors / sales * 365 : 0;
@@ -631,7 +629,7 @@ const ProjectionEngine = (() => {
         const ncaHeadroom = nca70 - (stlTotal + closingPWC);   // must stay positive
 
         state = { closingStock, gp, cogs, directCost, purchases, retainedClosing, provTax, cl, sources, faNet,
-                  cash: cashEff, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
+                  cash, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
 
         if (!autoSolve) break;
 
@@ -673,17 +671,40 @@ const ProjectionEngine = (() => {
           }
         }
 
-        // Floor (user rule 2026-07-22): debtor turnover below 30 days reads as
-        // fabricated to a bank. Debtors is the balancing figure, so lift it by
-        // moving value out of cash (no P&L impact, keeps Sources=Uses), bounded
-        // by a minimum cash reserve. Applied once; converges.
-        if (days < LIMITS.minDebtorDays - 0.01 && !cashFloorApplied) {
-          cashFloorApplied = true;
-          const target = sales * LIMITS.minDebtorDays / 365;
-          const shortfall = target - debtors;
-          const room = Math.max(0, cashEff - LIMITS.minCashReserve);
-          const cut = Math.min(shortfall, room);
-          if (cut > 0.5) { cashCut += cut; levers.push({ rule: 8, action: 'cash', amount: -cut }); continue; }
+        // Floor (CA rule 2026-07-22): debtor turnover below 30 days reads as
+        // fabricated to a bank → lift debtors (the balancing figure) to ≥30
+        // days, in two ordered steps:
+        //   (a) FIRST decrease closing stock (profit held → purchases re-plugs
+        //       → debtors rises rupee-for-rupee), bounded so closing stock and
+        //       purchases stay ≥ 0 and NCA stays ≥ 1 lakh.
+        //   (b) only if (a) can't reach 30 days, raise debtors the rest of the
+        //       way by injecting Director/Partner/Proprietor additional capital
+        //       (rounded up to '000).
+        if (days > 0 && days < LIMITS.minDebtorDays - 0.01) {
+          const targetDebtors = sales * LIMITS.minDebtorDays / 365;
+          const shortfall = targetDebtors - debtors;             // > 0
+          // (a) closing-stock reduction. Under profit-held the NCA working
+          //     total is invariant to a stock↔debtors shift, so the rule's
+          //     "keep NCA ≥ 1 lakh" is a go/no-go guard (skip (a) if NCA is
+          //     already under the floor — capital in (b) then lifts it). The
+          //     amount is bounded by keeping closing stock and purchases
+          //     (= cogs − opening − direct + closing) ≥ 0.
+          if (!stockFloorHit) {
+            if (nca >= LIMITS.minNca) {
+              const stockFloor = Math.max(0, openingStock + directCost - cogs);
+              const room = Math.max(0, closingStock - stockFloor);
+              const dec = Math.min(shortfall, room);
+              if (dec > 0.5) { stockShift -= dec; levers.push({ rule: 'a', action: 'closingStock', amount: -dec }); continue; }
+            }
+            stockFloorHit = true;
+          }
+          // (b) additional capital to cover the remaining shortfall.
+          if (ov.additionalCapital == null) {
+            const add = round1000Up(shortfall);
+            addlCap += add;
+            levers.push({ rule: 'b', action: 'additionalCapital', amount: add });
+            continue;
+          }
         }
         break;
       }
