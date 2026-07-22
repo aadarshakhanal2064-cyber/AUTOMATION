@@ -19,7 +19,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 5. **Never break existing features** — regression-check before calling anything done.
 6. **Don't "fix" the deliberate decisions in §16.**
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (14 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (15 tables, §6).
 
 ---
 
@@ -128,7 +128,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 
 ## 5. Feature Modules
 
-Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Service Memo, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters, Depreciation, Bank Book — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
+Main navigation tabs (sidebar): Dashboard, VAT Compliance, Billing, Service Memo, Send Document, Audit Report, Notes to Accounts, Clients, Send Logs — plus two **topbar dropdowns** (Xero-style menus, shared open/close mechanic in `tabs.js` `toggleTopbarMenu`): **Company Registrar** (its own `regd` sub-module group) and **Accounting** (Sales & Purchase Book, Confirmation Letters, Depreciation, Bank Book, Projection Report — ordinary `main`-group tabs with `buttonId: null`, launched via `openAcctModule`).
 
 ### 5.1 Dashboard (`js/dashboard.js`)
 Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
@@ -241,13 +241,26 @@ Receipts & payments ledger for the firm's **own** bank accounts — internal boo
 - **Reports** (per account, B.S. `From→To`): **Receipt register**, **Payment register**, and a running **Statement** (opening balance for the range = account opening + net of everything before `From`, then running balance per row, closing at the end). B.S. dates ordered/compared via `NepaliLocale.bsOrdinal` (2080–2090 table). On-screen HTML table + **PDF** (PDF-Lib, A4 landscape, page-breaking) + **Excel** (ExcelJS, merged header/borders/accounting format `#,##0.00;(#,##0.00);"–"`, live SUM/opening/closing).
 - **No stored balances or numbers**: running balances derived at read time (billing-overdue discipline); no memo-number trigger (transactions carry no external number). Fiscal year: **dash** (`2083-84`), derived from `txn_date`. RLS member-CRUD on both tables. Migration: `db/2026-07-22_bank_book.sql`.
 
+### 5.15 Projection Report (`js/projection.js` + `js/projectionEngine.js` + `js/projectionExport.js`, `pj-` prefix, table `projection_reports`)
+
+Bank-ready multi-year **financial projection** generated from an uploaded audited/provisional statement workbook — the automation of the firm's hand-built projection Excel. Accounting-dropdown tab. Three files by concern: `projectionEngine.js` (pure calculation core — **DOM-free, loads in Node** via a `module.exports` guard, which is how it's verified against the real sample files), `projection.js` (UI/orchestration), `projectionExport.js` (ExcelJS + PDF-Lib outputs). The reverse-engineered master spec is `overall important format that will be use in the app and ui and rules.xlsx` (user's Downloads, not committed); reference samples live in `assets/templates/Pashupati*`.
+
+- **Three-step stepper**: Upload & Detect → Assumptions → Review & Export. The parser reads the firm's standard NFRS workbook (SFP/SOI/Sch-PL/Sch-BS/3.1 PPE) by **Note anchors (3.1–3.17) + label regex**, detecting each sheet's current-year value column from its "Particulars" header row — the template uses a *different* column per sheet (SFP→F, Sch-PL→D, Sch-BS→H), so never hardcode one.
+- **The projection is a constraint solver, not a growth multiplier.** Deterministic parts: Sales × growth E/F (year-1 % / later-years %), **target-PBT anchor** (PBT grows at the sales rate — master `Pl!B45`), every admin line ×1.05/yr, 7-pool WDV depreciation (Land 0, Building 5, Plant 15, Office 25, Vehicles 20, Software 15, Leasehold 7%), EMI schedules for LT/PWC loans, rule-9 tax (Pvt Ltd/Partnership 25% flat; Proprietorship progressive slabs 0/10/20/27/29%). **Sundry Debtors is ALWAYS the balancing figure** (Sources−FA−cash−stock+CL) and is never user-editable; **Purchases balance the P&L** to hit the profit target.
+- **The 10 master rules** (from the spec's NCA sheet) drive auto-levers, bounded-iteration: rule 1 yr-1 closing stock = max(STL÷0.7×1.15, opening×1.15); rules 2/3/4 + a debtors≥0 floor → **Additional Capital** (round ↑'000); rule 5 debtor-days>90 → **Dividend** (round ↓'000, < PAT) then **stock-shift** (excess moved into closing stock, purchases re-balance, profit held). Constraints: debtor turnover <90 days, current ratio >1.5, debt-equity <2.33, 70%·NCA ≥ WC loans, Sources=Uses (every year, exact).
+- **Review panel**: per-year ratio pass/fail chips, the five levers (cash/creditors/closing stock/additional capital/dividend) editable with **live re-solve** (debtors re-balances); export + save blocked while any validation *error* remains (warnings allowed).
+- **Deliberately excluded from the projection** (matches the CA's real delivered sample): non-operating income and SOI expense rows outside notes 3.12–3.15 (e.g. Incentive) — the PBT anchor absorbs them via purchases. **Seeded, not random**: the master asks for "unique" cash (5–9 lakh) and creditors (2–8 lakh) figures; a deterministic RNG seeded from PAN+company+FY makes re-runs reproducible.
+- **Master-workbook bugs deliberately corrected** (don't "fix back"): year-3 Dep block re-adding prior closing as an addition, CF operating total omitting the ΔCA row, BS year-1 WDV referencing the net instead of gross total, and the non-cumulative retained-earnings column.
+- **Excel export** reproduces the master layout (Dep blocks stacked 12 rows apart — `total row = 13+12·(y−1)`, load-bearing: Pl/BS reference those addresses) with live formulas + cached results; **PDF** via PDF-Lib (English labels only — standard fonts can't render Devanagari). Engine constants (`LIMITS`, `TAX_SLABS`, `DEP_POOLS`) live **in projectionEngine.js**, not config.js, so the engine stays Node-loadable with a single source.
+- Fiscal year: **dash** in UI (`2083-84`), **dot full** in sheet columns (`2083.2084`), `YYYY.03.31` as-at headers — per the §9.5 rule.
+
 ---
 
 ## 6. Database (Supabase Postgres)
 
 Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-14** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (14)
+### 6.1 Tables (15)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -265,6 +278,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`/`slm`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (Income-Tax: per-pool inputs + closing WDV; **SLM: per-asset line array** + carry-forward snapshots → next year's Opening), `addition_details` jsonb (Income-Tax only; `[]` for SLM), `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. `slm` added by `db/2026-07-21_slm_scheme.sql`. |
 | `bank_accounts` | Bank Book master (§5.14). `account_name` (holder), `bank_name`, `account_number` (text), `opening_balance` numeric, `opening_date` (B.S. text), `is_active` (soft-deactivate), `sort_order`. User-managed CRUD; holder/bank list is data, not config. Member-CRUD RLS. `db/2026-07-22_bank_book.sql`. |
 | `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`expenses`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK, Fee Receipt link), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migration. |
+| `projection_reports` | Saved Projection Report workings (§5.15). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year_base` (dash), `years` (1–10 CHECK), `inputs` jsonb (parsed statement model + assumptions — everything needed to re-run the engine exactly), `computed` jsonb (full engine output: statements/ratios/levers per year), `created_by`. Member-CRUD RLS. `db/2026-07-22_projection_reports.sql`. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
 
@@ -289,7 +303,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos` and the Bank Book pair `bank_accounts`/`bank_transactions` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql` and `db/2026-07-22_bank_book.sql`). The permission model:
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions` and `projection_reports` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql` and `db/2026-07-22_projection_reports.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
@@ -368,7 +382,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `dep-` | Depreciation | | `spb-` | Sales & Purchase Book |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
 | `cl-` | Confirmation Letters | | `sm-` | Service Memo |
-| `bb-` | Bank Book | | | |
+| `bb-` | Bank Book | | `pj-` | Projection Report |
 
 ### 10.3 Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern (Notes and Auditor Change already mirror it — copy it for new document builders).
@@ -415,7 +429,7 @@ The established working pattern — **investigate with real evidence → impleme
 
 Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 
-- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 14 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
+- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 15 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers. Google Drive filenames are untrusted — escape them in any HTML context (`sendDocument.js`).
 - **Email raw-MIME construction is sanitized** — `Integrations.sendRawEmailWithBlob` CRLF-strips every header value and RFC 2047-encodes Subject/filename. Don't reintroduce raw interpolation into header lines.
 - **Drive `q` strings are escaped** via `escDriveQuery` in `integrations.js` — keep using it for any name interpolated into a Drive query.
