@@ -102,6 +102,7 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openAcctModule('confirmationLetters')">Confirmation Letters</button>
         <button class="topbar-dropdown-item" onclick="openAcctModule('depreciation')">Depreciation</button>
         <button class="topbar-dropdown-item" onclick="openAcctModule('bankBook')">Bank Book</button>
+        <button class="topbar-dropdown-item" onclick="openAcctModule('projection')">Projection Report</button>
       </div>
     </div>
   </div>
@@ -1737,6 +1738,136 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: PROJECTION REPORT (Accounting dropdown) ── -->
+    <div id="tab-projection-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Accounting</span><span>›</span><span class="current">Projection Report</span></div>
+          <h2 class="page-title">Projection Report</h2>
+          <p class="page-subtitle">Upload an audited / provisional financial statement and generate a bank-ready multi-year projection — Balance Sheet, P&amp;L, Cash Flow, Depreciation, IRD &amp; ratio analysis.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="pj-step-upload" class="rep-view-btn active" onclick="pjShowSection('upload')">1 · Upload</button>
+            <button id="pj-step-assumptions" class="rep-view-btn" onclick="pjShowSection('assumptions')">2 · Assumptions</button>
+            <button id="pj-step-review" class="rep-view-btn" onclick="pjShowSection('review')">3 · Review &amp; Export</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pj-status-area"></div>
+
+      <!-- Step 1: Upload & Detect -->
+      <div id="pj-section-upload">
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Audited / Provisional Financial Statement</div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload the firm's standard statement workbook (SFP · SOI · Sch-PL · Sch-BS · 3.1 PPE). Every figure the projection needs is extracted automatically.</p>
+          <input type="file" id="pj-file" accept=".xlsx,.xls,.ods" onchange="pjHandleFile(this)" />
+          <div id="pj-detect-summary" style="margin-top:16px;"></div>
+        </div>
+      </div>
+
+      <!-- Step 2: Assumptions -->
+      <div id="pj-section-assumptions" style="display:none;">
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Client &amp; Basics</div></div>
+          <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+            <div class="form-group" style="position:relative;">
+              <label>Client (search directory)</label>
+              <input type="text" id="pj-client-search" placeholder="Name or PAN…" autocomplete="off" />
+              <div class="autocomplete-list" id="pj-client-autocomplete"></div>
+            </div>
+            <div class="form-group"><label>Company Name</label><input type="text" id="pj-company" /></div>
+            <div class="form-group"><label>PAN</label><input type="text" id="pj-pan" /></div>
+            <div class="form-group"><label>Entity Type (tax rule)</label>
+              <select id="pj-tax-profile">
+                <option value="corporate">Pvt. Ltd. / Partnership — 25% flat</option>
+                <option value="progressive">Proprietorship — progressive slabs</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Projection Years</label>
+              <select id="pj-years"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
+            </div>
+            <div class="form-group"><label>Base Fiscal Year</label><input type="text" id="pj-base-fy" placeholder="e.g. 2082-83" /></div>
+            <div class="form-group"><label>Sales Growth — Year 1 (%)</label><input type="number" id="pj-growth1" value="10" step="0.5" /></div>
+            <div class="form-group"><label>Sales Growth — Later Years (%)</label><input type="number" id="pj-growth-rest" value="5" step="0.5" /></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Loans</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Short-term (OD/CC) stays constant on the balance sheet; Long-term and Permanent WC amortize on an EMI schedule.</p>
+          <div style="display:grid; grid-template-columns:1fr; gap:16px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Short Term Loan / OD / CC</strong>
+                <button class="btn btn-outline btn-sm" onclick="pjAddLoanRow('st')">+ Add</button>
+              </div>
+              <div id="pj-loans-st"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Long Term Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="pjAddLoanRow('lt')">+ Add</button>
+              </div>
+              <div id="pj-loans-lt"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Permanent Working Capital Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="pjAddLoanRow('pwc')">+ Add</button>
+              </div>
+              <div id="pj-loans-pwc"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Fixed Asset Additions / Disposals (Year 1)</div></div>
+          <div class="table-wrap"><table class="client-table" id="pj-additions-table">
+            <thead><tr><th>Asset Pool</th><th>Rate</th><th>Opening (from statement)</th><th>Addition</th><th>Disposal</th></tr></thead>
+            <tbody id="pj-additions-body"></tbody>
+          </table></div>
+          <div class="action-row" style="margin-top:16px;">
+            <button class="btn btn-primary" onclick="pjCalculate()">Calculate Projection →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Review & Export -->
+      <div id="pj-section-review" style="display:none;">
+        <div id="pj-validation" style="margin-bottom:16px;"></div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Ratio Health</div></div>
+          <div id="pj-ratio-strip"></div>
+        </div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Balancing Figures (editable — recalculates live)</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Auto-solved under the firm's rules. Adjust any figure — Sundry Debtors always re-balances so Sources = Uses. Clear a box to return it to automatic.</p>
+          <div id="pj-overrides"></div>
+          <div id="pj-levers" style="margin-top:12px;"></div>
+        </div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Projected Statements</div>
+            <div class="rep-view-toggle">
+              <button id="pj-view-pl" class="rep-view-btn active" onclick="pjShowStatement('pl')">P&amp;L</button>
+              <button id="pj-view-bs" class="rep-view-btn" onclick="pjShowStatement('bs')">Balance Sheet</button>
+              <button id="pj-view-cf" class="rep-view-btn" onclick="pjShowStatement('cf')">Cash Flow</button>
+              <button id="pj-view-dep" class="rep-view-btn" onclick="pjShowStatement('dep')">Depreciation</button>
+              <button id="pj-view-ird" class="rep-view-btn" onclick="pjShowStatement('ird')">IRD</button>
+            </div>
+          </div>
+          <div id="pj-statement-wrap" class="table-wrap"></div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" id="pj-save-btn" onclick="pjSave()" disabled>Save to Database</button>
+          <button class="btn btn-outline" id="pj-excel-btn" onclick="pjDownloadExcel()" disabled>Download Excel</button>
+          <button class="btn btn-outline" id="pj-pdf-btn" onclick="pjDownloadPdf()" disabled>Download PDF</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── TAB: CLIENTS ── -->
     <div id="tab-clients-panel" class="tab-panel">
       <div class="page-header">
@@ -2447,7 +2578,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/workflowEngine.js?v=202607141030"></script>
 <script src="js/core/auditLog.js?v=202607141030"></script>
 <script src="js/core/integrations.js?v=202607162100"></script>
-<script src="js/tabs.js?v=202607220900"></script>
+<script src="js/tabs.js?v=202607221800"></script>
 <script src="js/dashboard.js?v=202607141030"></script>
 <script src="js/registrar.js?v=202607141030"></script>
 <script src="js/clients.js?v=202607141030"></script>
@@ -2465,6 +2596,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
 <script src="js/confirmationLetters.js?v=202607211200"></script>
 <script src="js/bankBook.js?v=202607220900"></script>
+<script src="js/projectionEngine.js?v=202607221800"></script>
+<script src="js/projection.js?v=202607221800"></script>
+<script src="js/projectionExport.js?v=202607221800"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>
