@@ -468,7 +468,16 @@ const ProjectionEngine = (() => {
 
   const round1000Up   = (v) => Math.ceil(v / 1000) * 1000;
   const round1000Down = (v) => Math.floor(v / 1000) * 1000;
+  const round1000     = (v) => Math.round(v / 1000) * 1000;
   const round10       = (v) => Math.round(v / 10) * 10;
+
+  // Rent & Audit Fee follow a stepped schedule (CA rule 2026-07-23) instead of
+  // the 5%/yr admin growth: the audited/provisional base is rounded to '000 and
+  // held flat, then stepped up 15% (re-rounded to '000) every 3rd projection
+  // year — so years 1-2 sit at the base, years 3-5 at base×1.15, years 6-8 at
+  // base×1.15², and so on (bumps land on years 3, 6, 9…).
+  const STEP_FEE_RE = /\brent\b|audit fee/i;
+  const steppedFee = (base, year) => round1000(round1000(base) * Math.pow(1.15, Math.floor(year / 3)));
 
   // 7-pool WDV depreciation, N years. Additions/disposals apply in year 1
   // only (the master UI collects one Addition (O) and Sales (P) per pool).
@@ -568,9 +577,14 @@ const ProjectionEngine = (() => {
       const pbt = Math.round((y === 1 ? pbtBase : prev.pl.pbt) * growth);
 
       const factor = Math.pow(LIMITS.expenseGrowth, y);
-      const adminLines = adminBase.map(l => ({ name: l.name, amount: Math.round(l.base * factor) }));
+      // Rent & Audit Fee use the stepped '000 schedule; every other admin line
+      // grows 5%/yr as before.
+      const adminLines = adminBase.map(l => ({
+        name: l.name,
+        amount: STEP_FEE_RE.test(l.name) ? steppedFee(l.base, y) : Math.round(l.base * factor),
+      }));
       const adminTotal = adminLines.reduce((s, l) => s + l.amount, 0);
-      const auditFee = Math.round(auditFeeBase * factor);
+      const auditFee = steppedFee(auditFeeBase, y);
       const salaryProj = adminLines[0].amount;
 
       const intLT = sumAt(ltScheds, y, s => s.interest) + sumAt(pwcScheds, y, s => s.interest);
