@@ -525,7 +525,7 @@ async function pjDownloadPdf() {
       item:  { indent: true, grid: true },
       plain: { grid: true },
       tot:   { bold: true, fill: C.totalFill, top: true },
-      grand: { bold: true, fill: C.grandFill, top: true, dbl: true, gap: 3 },
+      grand: { bold: true, fill: C.grandFill, top: true, dbl: true, gap: 4.5 },
     };
     const v = f => Y.map(f);
     const withAud = (aud, arr) => incAud ? [aud, ...arr] : arr;
@@ -636,8 +636,11 @@ async function pjDownloadPdf() {
           page.drawText(t, { x: x0 + labelW + colW * (i + 1) - 6 - cw, y: bl, size: nfs, font: f, color: (isO && x.color) || C.black });
         });
         if (st.grid) page.drawLine({ start: { x: x0, y: yTop - rowH }, end: { x: x0 + tableW, y: yTop - rowH }, thickness: 0.4, color: C.gridLight });
-        if (st.dbl) [1, 2.6].forEach(off =>
-          page.drawLine({ start: { x: x0 + labelW, y: yTop - rowH + off }, end: { x: x0 + tableW, y: yTop - rowH + off }, thickness: 0.5, color: C.navy }));
+        // Double rule sits BELOW the row's bottom edge (in the gap) so it can
+        // never cross the figures — on auto-compressed pages the old in-row
+        // offset landed on the digits and hid the grand-total amount.
+        if (st.dbl) [1.2, 2.7].forEach(off =>
+          page.drawLine({ start: { x: x0 + labelW, y: yTop - rowH - off }, end: { x: x0 + tableW, y: yTop - rowH - off }, thickness: 0.5, color: C.navy }));
         yTop -= rowH + (st.gap || 0);
       };
       const sigBlock = () => {
