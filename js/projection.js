@@ -237,9 +237,14 @@ function pjRenderReview() {
   pjRenderOverrides();
   pjRenderLevers();
   pjRenderStatement();
+  // Exports stay available even when validation flags something — a flagged
+  // projection still needs to leave the app so it can be corrected in Excel
+  // (the workbook carries a Validation sheet listing every finding). Only
+  // saving to the database is gated, so bad figures never become a record.
   const hasErrors = pjIssues.some(i => i.level === 'error');
-  pjEl('pj-excel-btn').disabled = hasErrors;
-  pjEl('pj-pdf-btn').disabled = hasErrors;
+  pjEl('pj-preview-btn').disabled = false;
+  pjEl('pj-excel-btn').disabled = false;
+  pjEl('pj-pdf-btn').disabled = false;
   pjEl('pj-save-btn').disabled = hasErrors;
 }
 

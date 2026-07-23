@@ -1881,10 +1881,12 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="action-row">
           <button class="btn btn-primary" id="pj-save-btn" onclick="pjSave()" disabled>Save to Database</button>
+          <button class="btn btn-outline" id="pj-preview-btn" onclick="pjPreviewPdf()" disabled>Preview PDF</button>
           <button class="btn btn-outline" id="pj-excel-btn" onclick="pjDownloadExcel()" disabled>Download Excel</button>
           <button class="btn btn-outline" id="pj-pdf-btn" onclick="pjDownloadPdf()" disabled>Download PDF</button>
         </div>
       </div>
+
     </div>
 
     <!-- ── TAB: CLIENTS ── -->
@@ -2074,6 +2076,21 @@ function cropLoginLogoIcon(img) {
 
   </div><!-- /app-section -->
 </main>
+
+<!-- Projection Report — PDF preview (body level, like every other modal) -->
+  <div id="pj-preview-modal" class="modal-overlay">
+    <div class="modal" style="max-width:min(1100px, 94vw); height:92vh; max-height:92vh; display:flex; flex-direction:column; overflow:hidden;">
+      <div class="modal-header">
+        <h3>Projection Report — PDF preview</h3>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="pjDownloadPdf()">Download PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="pjClosePreview()">Close</button>
+        </div>
+      </div>
+      <iframe id="pj-preview-frame" title="Projection Report preview" style="flex:1; width:100%; border:0;"></iframe>
+    </div>
+  </div>
+
 
 <!-- SETUP MODAL -->
 <div class="modal-overlay" id="setup-modal">
@@ -2616,8 +2633,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/confirmationLetters.js?v=202607211200"></script>
 <script src="js/bankBook.js?v=202607220900"></script>
 <script src="js/projectionEngine.js?v=202607230130"></script>
-<script src="js/projection.js?v=202607230015"></script>
-<script src="js/projectionExport.js?v=202607222359"></script>
+<script src="js/projection.js?v=202607230300"></script>
+<script src="js/projectionExport.js?v=202607230300"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>
