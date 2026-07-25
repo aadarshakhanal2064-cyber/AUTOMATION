@@ -605,7 +605,11 @@ function pjxAmt(v) {
 //  the Depreciation schedule may span pages (whole year-blocks, never split).
 
 const PJX_PDF = {
-  W: 842, H: 595, mX: 36, mB: 40,
+  // A4 PORTRAIT. Width is the scarce dimension here, so column sizing is
+  // content-aware (see drawSheet): the number font is fitted to the widest
+  // figure actually printed, which keeps every column aligned and legible
+  // from a 1-year report up to 10 years plus the Audited/Provisional column.
+  W: 595, H: 842, mX: 34, mB: 42,
   navy:      [0.043, 0.122, 0.239],
   muted:     [0.392, 0.455, 0.545],
   black:     [0.1, 0.12, 0.16],
@@ -637,19 +641,26 @@ async function pjBuildPdfBytes() {
     const cx = W / 2;
     pg.drawRectangle({ x: 24, y: 24, width: W - 48, height: H - 48, borderWidth: 1.6, borderColor: C.navy });
     pg.drawRectangle({ x: 30, y: 30, width: W - 60, height: H - 60, borderWidth: 0.6, borderColor: C.gridDark });
-    const ctr = (t, y, size, f, color) => { const tw = f.widthOfTextAtSize(t, size); pg.drawText(t, { x: cx - tw / 2, y, size, font: f, color }); };
-    ctr('PROJECTED FINANCIAL REPORT', 468, 30, timesB, C.navy);
-    pg.drawLine({ start: { x: cx - 150, y: 455 }, end: { x: cx + 150, y: 455 }, thickness: 1.1, color: C.navy });
-    ctr('OF', 430, 11, times, C.muted);
-    ctr(company.toUpperCase(), 396, 20, timesB, C.black);
-    if (address) ctr(address, 374, 11, font, C.muted);
+    // Centred, and shrunk to fit the page width so a long company name can
+    // never run into the frame.
+    const maxW = W - 110;
+    const ctr = (t, y, size, f, color) => {
+      let s = size;
+      while (s > 6 && f.widthOfTextAtSize(t, s) > maxW) s -= 0.4;
+      pg.drawText(t, { x: cx - f.widthOfTextAtSize(t, s) / 2, y, size: s, font: f, color });
+    };
+    ctr('PROJECTED FINANCIAL REPORT', 648, 26, timesB, C.navy);
+    pg.drawLine({ start: { x: cx - 130, y: 634 }, end: { x: cx + 130, y: 634 }, thickness: 1.1, color: C.navy });
+    ctr('OF', 604, 11, times, C.muted);
+    ctr(company.toUpperCase(), 566, 19, timesB, C.black);
+    if (address) ctr(address, 544, 10.5, font, C.muted);
     // Three vertical rules of differing heights, centre tallest.
-    const baseY = 250, heights = [58, 84, 58], gap = 22;
+    const baseY = 372, heights = [62, 92, 62], gap = 24;
     [cx - gap, cx, cx + gap].forEach((x, i) =>
       pg.drawLine({ start: { x, y: baseY }, end: { x, y: baseY + heights[i] }, thickness: 1.4, color: C.navy }));
-    ctr(fyText, 196, 13.5, bold, C.black);
-    ctr(`(${N}-Year Financial Projection)`, 177, 10.5, font, C.muted);
-    if (bsDate) ctr(`Date of Report : ${bsDate} B.S.`, 84, 10.5, font, C.black);
+    ctr(fyText, 296, 13, bold, C.black);
+    ctr(`(${N}-Year Financial Projection)`, 276, 10.5, font, C.muted);
+    if (bsDate) ctr(`Date of Report : ${bsDate} B.S.`, 96, 10.5, font, C.black);
   }
 
   const S = {
@@ -664,11 +675,28 @@ async function pjBuildPdfBytes() {
   const drawSheet = ({ title, cols, rows, sig, multiPage, labelW: lwOpt }) => {
     const usable = W - 2 * mX;
     const nC = cols.length;
-    const labelW = lwOpt || Math.max(180, Math.min(270, usable - nC * 112));
-    const colW = Math.min(112, (usable - labelW) / nC);
+    // Portrait is width-constrained: reserve a workable minimum per year
+    // column first (tighter the more years there are), give the rest to the
+    // label column, then never let a column exceed a comfortable maximum.
+    const minCol = nC >= 10 ? 40 : nC >= 8 ? 45 : nC >= 6 ? 52 : nC >= 4 ? 62 : 74;
+    const labelCap = Math.max(96, usable - nC * minCol);
+    let labelW = Math.min(lwOpt || Math.max(150, Math.min(230, usable - nC * 86)), labelCap);
+    let colW = (usable - labelW) / nC;
+    if (colW > 104) { colW = 104; labelW = usable - colW * nC; }   // don't over-widen
     const tableW = labelW + colW * nC;
     const x0 = (W - tableW) / 2;
-    let nfs = colW >= 95 ? 9 : colW >= 78 ? 8.4 : colW >= 62 ? 7.8 : colW >= 52 ? 7.1 : colW >= 45 ? 6.6 : 6.1;
+    // Fit the number font to the widest figure this table actually prints
+    // (headers included), so columns stay aligned and nothing ever collides.
+    let widest1pt = 0;
+    cols.forEach(cl => {
+      widest1pt = Math.max(widest1pt, bold.widthOfTextAtSize(cl.h1, 1));
+      if (cl.h2) widest1pt = Math.max(widest1pt, font.widthOfTextAtSize(cl.h2, 1));
+    });
+    rows.forEach(r => (r.vals || []).forEach(x => {
+      const t = pjxCellText(x);
+      if (t) widest1pt = Math.max(widest1pt, bold.widthOfTextAtSize(t, 1));
+    }));
+    let nfs = Math.max(5.1, Math.min(9, (colW - 7) / Math.max(widest1pt, 0.001)));
     const twoLine = cols.some(c => c.h2);
     const bandH = twoLine ? 27 : 17;
     const sigSpace = sig ? 68 : 14;
@@ -676,12 +704,24 @@ async function pjBuildPdfBytes() {
     const avail = H - headerH - mB - sigSpace;
     const stOf = r => Object.assign({}, S[r.kind] || S.plain, r.bold ? { bold: true } : null);
     let rowH = Math.max(12, nfs * 1.52);
-    if (!multiPage) {
+    {
       const extras = rows.reduce((s, r) => { const st = stOf(r); return s + (st.pre || 0) + (st.gap || 0); }, 0);
       const fit = (avail - extras) / Math.max(1, rows.length);
-      if (fit < rowH) { rowH = Math.max(9.2, fit); nfs = Math.min(nfs, Math.max(5.9, rowH / 1.45)); }
+      if (fit < rowH) {
+        // Doesn't fit: single-page statements compress, the Depreciation
+        // schedule instead paginates at its natural row height.
+        if (!multiPage) { rowH = Math.max(9.2, fit); nfs = Math.min(nfs, Math.max(5.9, rowH / 1.45)); }
+      } else {
+        // Portrait leaves real headroom on short statements. Let the rows
+        // breathe into it (bounded) so the table sits as a balanced block
+        // instead of bunching at the top over a page of white space.
+        rowH = Math.min(fit * 0.92, rowH * 1.55, 21);
+      }
     }
-    const lfs = Math.min(9.4, nfs + 0.6);
+    // Row labels get their own size: the label column is far roomier than a
+    // year column, so labels stay readable even when the figures shrink.
+    // (Each label additionally shrinks to fit its own width when drawn.)
+    const lfs = Math.min(9.2, Math.max(6.8, nfs + 1.4));
     let page = null, yTop = 0, bandTop = 0, banners = [];
 
     const closeGrid = () => {
@@ -756,11 +796,12 @@ async function pjBuildPdfBytes() {
     const sigBlock = () => {
       const dash = { thickness: 0.7, color: C.black, dashArray: [2, 2] };
       const lineY = mB + 42, roleY = mB + 30, dateY = mB + 14, placeY = mB + 2;
-      page.drawLine({ start: { x: x0, y: lineY }, end: { x: x0 + 140, y: lineY }, ...dash });
+      const sigW = Math.min(140, tableW * 0.3);
+      page.drawLine({ start: { x: x0, y: lineY }, end: { x: x0 + sigW, y: lineY }, ...dash });
       page.drawText('Accountant', { x: x0, y: roleY, size: 9, font, color: C.black });
       page.drawText(`Date : ${bsDate} B.S.`, { x: x0, y: dateY, size: 8.5, font, color: C.black });
       page.drawText(`Place : ${place}`, { x: x0, y: placeY, size: 8.5, font, color: C.black });
-      page.drawLine({ start: { x: x0 + tableW - 140, y: lineY }, end: { x: x0 + tableW, y: lineY }, ...dash });
+      page.drawLine({ start: { x: x0 + tableW - sigW, y: lineY }, end: { x: x0 + tableW, y: lineY }, ...dash });
       const dw = font.widthOfTextAtSize(T.person, 9);
       page.drawText(T.person, { x: x0 + tableW - dw, y: roleY, size: 9, font, color: C.black });
     };
