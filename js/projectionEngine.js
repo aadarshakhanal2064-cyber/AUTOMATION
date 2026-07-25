@@ -405,6 +405,11 @@ const ProjectionEngine = (() => {
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
     ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive")
+    profitGrowth: 1.05,    // CA rule (2026-07-25): Gross Profit AND Net Profit must each
+                           // rise ≥5%/yr — purchases is the balancing figure that forces it
+    creditorRuleFloor: 1000000,  // rule 3: applies when provisional payable exceeds 10 lakh
+    creditorLoPct: 0.75,   // …then projected creditors = provisional × [0.75, 0.80],
+    creditorHiPct: 0.80,   //    seeded per client (unique, reproducible)
     expenseGrowth: 1.05,   // every admin line grows 5%/yr (master Pl "×1.05")
     stockBuffer: 1.15,     // rule 1: yr-1 closing stock ≥ max(STL/0.7×1.15, opening×1.15)
     stockGrowth: 1.05,     // yr-2+ closing stock = opening × 1.05
@@ -479,6 +484,23 @@ const ProjectionEngine = (() => {
   const STEP_FEE_RE = /\brent\b|audit fee/i;
   const steppedFee = (base, year) => round1000(round1000(base) * Math.pow(1.15, Math.floor(year / 3)));
 
+  // Gross Profit needed to land a target Net-Profit-after-tax, given the
+  // year's fixed deductions (admin + interest + depreciation).
+  //   PBT = GP − deductions ;  NP = PBT − taxFor(PBT, profile)
+  // NP rises monotonically with GP, but the proprietorship slabs make it
+  // piecewise, so invert numerically rather than algebraically. Bisection on a
+  // bracket grown from the flat-rate estimate; deterministic and quick.
+  function gpForTargetNp(targetNp, deductions, profile) {
+    const npAt = (gp) => { const pbt = gp - deductions; return pbt - taxFor(pbt, profile); };
+    let lo = deductions, hi = deductions + Math.max(1000, targetNp * 2 + 1000);
+    for (let i = 0; i < 60 && npAt(hi) < targetNp; i++) hi = deductions + (hi - deductions) * 2;
+    for (let i = 0; i < 80; i++) {
+      const mid = (lo + hi) / 2;
+      if (npAt(mid) < targetNp) lo = mid; else hi = mid;
+    }
+    return hi;
+  }
+
   // 7-pool WDV depreciation, N years. Additions/disposals apply in year 1
   // only (the master UI collects one Addition (O) and Sales (P) per pool).
   // Note: the master's own year-3 block wrongly re-adds the prior closing
@@ -537,15 +559,22 @@ const ProjectionEngine = (() => {
     const autoSolve = asm.autoSolve !== false;
     const overrides = asm.overrides || {};
 
+    // Term, Permanent-WC and Hire-Purchase loans all amortize on an EMI
+    // schedule; only short-term OD/CC carries a flat rate on a constant
+    // balance (CA rule 2026-07-25).
     const stLoans  = (asm.stLoans || []).filter(l => num(l.amount) > 0);
     const ltLoans  = (asm.ltLoans || []).filter(l => num(l.amount) > 0);
     const pwcLoans = (asm.pwcLoans || []).filter(l => num(l.amount) > 0);
+    const hpLoans  = (asm.hpLoans || []).filter(l => num(l.amount) > 0);
 
     const stlTotal    = stLoans.reduce((s, l) => s + num(l.amount), 0);
     const interestST  = stLoans.reduce((s, l) => s + num(l.amount) * num(l.ratePct) / 100, 0);
     const ltScheds    = ltLoans.map(l => emiSchedule(num(l.amount), num(l.ratePct), num(l.years) || 1, N));
     const pwcScheds   = pwcLoans.map(l => emiSchedule(num(l.amount), num(l.ratePct), num(l.years) || 1, N));
+    const hpScheds    = hpLoans.map(l => emiSchedule(num(l.amount), num(l.ratePct), num(l.years) || 1, N));
     const sumAt       = (scheds, y, f) => scheds.reduce((s, sc) => s + f(sc[y - 1]), 0);
+    // Rule 1 debt service: the year's Term + Permanent-WC principal repayment.
+    const principalAt = (y) => sumAt(ltScheds, y, s => s.principal) + sumAt(pwcScheds, y, s => s.principal);
 
     const depYears = projectDepreciation(input.ppe, asm.additions, asm.disposals, N);
 
@@ -558,12 +587,23 @@ const ProjectionEngine = (() => {
     const auditFeeBase = input.auditFee;
 
     const salesBase = input.revenue.operations;
-    const pbtBase = input.profitBeforeTax;
     const directRatio = salesBase > 0 ? input.materials.directCost / salesBase : 0;
+    // Bottom-up baselines (CA method): year 1 grows the PROVISIONAL Gross
+    // Margin and Net-Profit-after-tax, not the old PBT-anchor.
+    const gpBase = input.revenue.operations - input.materials.total;
+    const npBase = input.profitBeforeTax - input.tax;
 
     const rng = seededRng(asm.seedKey || 'projection');
     const seedCash = Math.round(500000 + rng() * 400000);
-    const seedCred = Math.round(200000 + rng() * 600000);
+    // Rule 3 (CA, 2026-07-25): when the provisional/audited trade payable
+    // exceeds 10 lakh the projected Sundry Creditor must sit at 75–80% of it —
+    // a seeded fraction, so it is unique per client yet reproducible on re-run
+    // (and may legitimately repeat for the same client + FY). Smaller payables
+    // keep the original 2–8 lakh seeded figure.
+    const bigCreditor = input.creditors > LIMITS.creditorRuleFloor;
+    const seedCred = bigCreditor
+      ? Math.round(input.creditors * (LIMITS.creditorLoPct + rng() * (LIMITS.creditorHiPct - LIMITS.creditorLoPct)))
+      : Math.round(200000 + rng() * 600000);
     // avoid suspiciously round seeded figures
     const deRound = (v) => (v % 1000 === 0 ? v + 137 : v);
 
@@ -574,7 +614,6 @@ const ProjectionEngine = (() => {
       const ov = overrides[y] || {};
       const growth = y === 1 ? g1 : gR;
       const sales = Math.round((y === 1 ? salesBase : prev.pl.sales) * growth);
-      const pbt = Math.round((y === 1 ? pbtBase : prev.pl.pbt) * growth);
 
       const factor = Math.pow(LIMITS.expenseGrowth, y);
       // Rent & Audit Fee use the stepped '000 schedule; every other admin line
@@ -587,8 +626,9 @@ const ProjectionEngine = (() => {
       const auditFee = steppedFee(auditFeeBase, y);
       const salaryProj = adminLines[0].amount;
 
-      const intLT = sumAt(ltScheds, y, s => s.interest) + sumAt(pwcScheds, y, s => s.interest);
-      const closingLT = sumAt(ltScheds, y, s => s.closing);
+      const intLT = sumAt(ltScheds, y, s => s.interest) + sumAt(pwcScheds, y, s => s.interest)
+                  + sumAt(hpScheds, y, s => s.interest);
+      const closingLT = sumAt(ltScheds, y, s => s.closing) + sumAt(hpScheds, y, s => s.closing);
       const closingPWC = sumAt(pwcScheds, y, s => s.closing);
       const dep = depYears[y - 1];
 
@@ -597,13 +637,37 @@ const ProjectionEngine = (() => {
         ? Math.max(stlTotal / LIMITS.ncaFactor * LIMITS.stockBuffer, openingStock * LIMITS.stockBuffer)
         : openingStock * LIMITS.stockGrowth;
 
+      // ── Bottom-up profit (CA rule 2026-07-25) ──
+      // Gross Profit and Net Profit must EACH rise ≥5% on the prior year
+      // (provisional figures for year 1). Deductions are already fixed above,
+      // so solve the GP that satisfies both, then let purchases balance COGS
+      // to hit it. Profit is an output of the plug — never an anchor.
+      const deductions = adminTotal + interestST + intLT + dep.dep;
+      const prevGP = y === 1 ? gpBase : prev.pl.grossProfit;
+      const prevNP = y === 1 ? npBase : prev.pl.pat;
+      // Rule 1: PAT must also exceed the year's Term + Permanent-WC principal
+      // repayment, else the projection can't service its debt. Solved through
+      // the same GP target (a 5% cushion keeps it strictly greater).
+      const debtService = principalAt(y);
+      const gpTarget = Math.round(Math.max(
+        prevGP * LIMITS.profitGrowth,
+        gpForTargetNp(prevNP * LIMITS.profitGrowth, deductions, asm.taxProfile),
+        debtService > 0 ? gpForTargetNp(debtService * LIMITS.profitGrowth, deductions, asm.taxProfile) : 0,
+      ));
+      const pbt = gpTarget - deductions;
       const tax = Math.round(taxFor(pbt, asm.taxProfile));
       const pat = pbt - tax;
       const retainedOpening = y === 1 ? input.reserves : prev.pl.retainedClosing;
 
       const cash = ov.cash != null ? num(ov.cash)
         : (y === 1 ? deRound(seedCash) : round10(prev.bs.cash * LIMITS.cashGrowth));
-      const baseCreditors = y === 1 ? deRound(seedCred) : Math.round(prev.bs.creditors * LIMITS.creditorDecay);
+      // Rule 3 keeps EVERY projected year inside the 75–80% band of the
+      // provisional payable (a 10%/yr decay would fall out of it); only the
+      // small-payable case keeps the original decay.
+      const baseCreditors = bigCreditor
+        ? (y === 1 ? seedCred
+                   : Math.round(input.creditors * (LIMITS.creditorLoPct + rng() * (LIMITS.creditorHiPct - LIMITS.creditorLoPct))))
+        : (y === 1 ? deRound(seedCred) : Math.round(prev.bs.creditors * LIMITS.creditorDecay));
       const creditors = ov.creditors != null ? num(ov.creditors) : baseCreditors;
 
       const expPayable = Math.round(auditFee + salaryProj / 12);
@@ -622,7 +686,7 @@ const ProjectionEngine = (() => {
       let state = null;
       for (let iter = 0; iter < 15; iter++) {
         const closingStock = ov.closingStock != null ? num(ov.closingStock) : baseClosingStock + stockShift;
-        const gp = pbt + adminTotal + interestST + intLT + dep.dep;
+        const gp = gpTarget;              // bottom-up target; purchases plugs COGS to it
         const cogs = sales - gp;
         const directCost = Math.round(directRatio * sales);
         const purchases = cogs - openingStock - directCost + closingStock;
@@ -754,9 +818,26 @@ const ProjectionEngine = (() => {
       const prevCAxc   = y === 1 ? input.currentAssetsTotal - input.cash : prev.bs.debtors + prev.bs.closingStock;
       const prevCL     = y === 1 ? input.currentLiabilitiesTotal : prev.bs.totalCurrentLiabilities;
       const prevCap    = y === 1 ? input.shareCapital : prev.bs.shareCapital + prev.bs.additionalCapital;
-      const prevLoans  = y === 1 ? input.loans.term.reduce((s, l) => s + l.amount, 0) : prev.bs.longTermLoan + prev.bs.permanentWC;
-      const prevDir    = y === 1 ? input.loans.directorLoan : prev.bs.directorLending;
       const prevCash   = y === 1 ? input.cash : prev.bs.cash;
+      // Year-1 opening debt is DERIVED from the audited balance-sheet identity
+      //   cash + FA + (CA−cash) − CL − equity = interest-bearing debt outside CL
+      // rather than summed from the Note 3.8 detail rows. Real statements
+      // classify those loans inconsistently — on two of the four test files the
+      // whole term loan sits inside Current Liabilities, so summing the note
+      // double-counted it and blew the year-1 cash-flow tie by exactly that
+      // amount. Deriving it keeps CF closing == BS cash true by construction
+      // for any client, however messy the note.
+      let prevLoans, prevDir;
+      if (y === 1) {
+        const prevFA = input.ppeTotal + input.investmentsNC + input.otherReceivablesNC;
+        const prevEquity = input.shareCapital + input.reserves;
+        const prevDebtAll = prevCash + prevFA + prevCAxc - prevCL - prevEquity;
+        prevDir = Math.max(0, Math.min(input.loans.directorLoan, prevDebtAll));
+        prevLoans = prevDebtAll - prevDir;
+      } else {
+        prevLoans = prev.bs.longTermLoan + prev.bs.permanentWC;
+        prevDir = prev.bs.directorLending;
+      }
       const additions  = dep.addition;
       const cf = {
         pbtPlusInterest: pbt + interestST + intLT,
@@ -816,7 +897,7 @@ const ProjectionEngine = (() => {
       } : null,
     };
 
-    return { years, ird, meta: { N, stlTotal, interestST, ltScheds, pwcScheds, seedCash, seedCred } };
+    return { years, ird, meta: { N, stlTotal, interestST, ltScheds, pwcScheds, hpScheds, principalAt, seedCash, seedCred, bigCreditor } };
   }
 
   // ───────────────────────── validation ─────────────────────────
@@ -853,9 +934,18 @@ const ProjectionEngine = (() => {
       if (yr.ratios.ncaHeadroom < -0.5) {
         push('warn', y, 'nca', `Year ${y}: 70% of Net Current Assets is below total working-capital loans (rule 2) by ${fmt(-yr.ratios.ncaHeadroom)}.`);
       }
+      // Rule 1 (CA, 2026-07-25): profit after tax must cover the year's term +
+      // permanent-WC loan repayment, or the projection can't service its debt.
+      const debtService = (result.meta && result.meta.principalAt ? result.meta.principalAt(y) : 0);
+      if (debtService > 0 && yr.pl.pat <= debtService) {
+        push('warn', y, 'debtservice', `Year ${y}: Net profit after tax (${fmt(yr.pl.pat)}) does not exceed the Term + Permanent-WC repayment (${fmt(debtService)}) — the projection cannot service its debt (rule 1).`);
+      }
       if (i > 0) {
-        if (yr.pl.grossProfit <= result.years[i - 1].pl.grossProfit) push('warn', y, 'gptrend', `Year ${y}: Gross profit is not increasing (rule 6).`);
-        if (yr.pl.pbt <= result.years[i - 1].pl.pbt) push('warn', y, 'pbttrend', `Year ${y}: Net profit before tax is not increasing (rule 7).`);
+        const prevYr = result.years[i - 1];
+        const gpFloor = prevYr.pl.grossProfit * LIMITS.profitGrowth;
+        const npFloor = prevYr.pl.pat * LIMITS.profitGrowth;
+        if (yr.pl.grossProfit < gpFloor - 1) push('warn', y, 'gptrend', `Year ${y}: Gross profit ${fmt(yr.pl.grossProfit)} is below the required +5% on last year (${fmt(gpFloor)}) — rule 6.`);
+        if (yr.pl.pat < npFloor - 1) push('warn', y, 'nptrend', `Year ${y}: Net profit after tax ${fmt(yr.pl.pat)} is below the required +5% on last year (${fmt(npFloor)}) — rule 7.`);
       }
     });
     return issues;
