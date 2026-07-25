@@ -167,14 +167,15 @@ function pjxBuildReport() {
 
   // ── Balance Sheet ──
   sections.push({
-    key: 'BS', title: 'Projected Balance Sheet', sheet: 'Balance Sheet', sig: true, aud: incAud,
+    key: 'BS', title: 'Projected Balance Sheet', sheet: 'Balance Sheet', sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
     cols: withAud(audCol, yearCols(y => pjAsAt(y))),
     rows: renumber(prune([
       { k: 'srcLabel', label: PJX_BS_L.srcLabel, vals: [], kind: 'sec' },
       { k: 'capLabel', label: PJX_BS_L.capLabel, vals: [], kind: 'sec' },
       { k: 'cap', label: T.capRow, vals: withAud(m.shareCapital, v(x => x.bs.shareCapital)), kind: 'item' },
       { k: 'addl', label: T.addlRow, vals: withAud(null, v(x => x.bs.additionalCapital)), kind: 'item', zeroable: true },
-      { k: 'reserve', label: PJX_BS_L.reserve, vals: withAud(m.reserves, v(x => x.bs.reserves)), kind: 'item' },
+      { k: 'reserve', label: PJX_BS_L.reserve, vals: withAud(m.reserves, v(x => x.bs.reserves)), kind: 'item',
+        xexpr: (R, c, X) => X('PL', 'transfer') },
       { k: 'lt', label: PJX_BS_L.lt, vals: withAud(termSum, v(x => x.bs.longTermLoan)), kind: 'plain', zeroable: true },
       { k: 'pwc', label: PJX_BS_L.pwc, vals: withAud(null, v(x => x.bs.permanentWC)), kind: 'plain', zeroable: true },
       { k: 'lend', label: T.lendRow, vals: withAud(m.loans.directorLoan, v(x => x.bs.directorLending)), kind: 'plain', zeroable: true },
@@ -190,12 +191,14 @@ function pjxBuildReport() {
       { k: 'caLabel', label: PJX_BS_L.caLabel, vals: [], kind: 'sec' },
       { k: 'cash', label: PJX_BS_L.cash, vals: withAud(m.cash, v(x => x.bs.cash)), kind: 'item' },
       { k: 'debtors', label: PJX_BS_L.debtors, vals: withAud(m.debtors, v(x => x.bs.debtors)), kind: 'item' },
-      { k: 'stock', label: PJX_BS_L.stock, vals: withAud(m.inventory.closing, v(x => x.bs.closingStock)), kind: 'item', zeroable: true },
+      { k: 'stock', label: PJX_BS_L.stock, vals: withAud(m.inventory.closing, v(x => x.bs.closingStock)), kind: 'item', zeroable: true,
+        xexpr: (R, c, X) => { const t = X('PL', 'closing'); return t ? `-${t}` : null; } },
       { k: 'caTotal', label: PJX_BS_L.caTotal, vals: withAud(m.currentAssetsTotal, v(x => x.bs.totalCurrentAssets)), kind: 'tot',
         xsum: ['cash', 'debtors', 'stock'] },
       { k: 'clLabel', label: PJX_BS_L.clLabel, vals: [], kind: 'sec' },
       { k: 'creditors', label: PJX_BS_L.creditors, vals: withAud(m.creditors, v(x => x.bs.creditors)), kind: 'item', zeroable: true },
-      { k: 'provTax', label: PJX_BS_L.provTax, vals: withAud(m.tax, v(x => x.bs.provisionTax)), kind: 'item', zeroable: true },
+      { k: 'provTax', label: PJX_BS_L.provTax, vals: withAud(m.tax, v(x => x.bs.provisionTax)), kind: 'item', zeroable: true,
+        xexpr: (R, c, X) => X('PL', 'tax') },
       { k: 'expPay', label: PJX_BS_L.expPay, vals: withAud(null, v(x => x.bs.expPayable)), kind: 'item', zeroable: true },
       { k: 'tds', label: PJX_BS_L.tds, vals: withAud(null, v(x => x.bs.tdsPayable)), kind: 'item', zeroable: true },
       { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.overdraft, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
@@ -210,7 +213,7 @@ function pjxBuildReport() {
 
   // ── Profit & Loss ──
   sections.push({
-    key: 'PL', title: 'Projected Profit & Loss A/C', sheet: 'Profit & Loss', sig: true, aud: incAud,
+    key: 'PL', title: 'Projected Profit & Loss A/C', sheet: 'Profit & Loss', sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
     cols: withAud(audCol, yearCols(y => pjFyDot(y))),
     rows: prune([
       { k: 'sales', label: PJX_PL_L.sales, vals: withAud(m.revenue.operations, v(x => x.pl.sales)), kind: 'plain', bold: true },
@@ -252,9 +255,15 @@ function pjxBuildReport() {
     cols: yearCols(y => pjFyDot(y)),
     rows: renumber(prune([
       { k: 'aLabel', label: PJX_CF_L.aLabel, vals: [], kind: 'sec' },
-      { k: 'npbit', label: PJX_CF_L.npbit, vals: v(x => x.cf.pbtPlusInterest), kind: 'item' },
-      { k: 'cfdep', label: PJX_CF_L.dep, vals: v(x => x.cf.depreciation), kind: 'item', zeroable: true, keep: true },
-      { k: 'cftax', label: PJX_CF_L.tax, vals: v(x => x.cf.incomeTax), kind: 'item' },
+      { k: 'npbit', label: PJX_CF_L.npbit, vals: v(x => x.cf.pbtPlusInterest), kind: 'item',
+        xexpr: (R, c, X) => {
+          const pbt = X('PL', 'pbt'), a = X('PL', 'intST'), b = X('PL', 'intLT');
+          return pbt ? [pbt, a, b].filter(Boolean).join('+') : null;
+        } },
+      { k: 'cfdep', label: PJX_CF_L.dep, vals: v(x => x.cf.depreciation), kind: 'item', zeroable: true, keep: true,
+        xexpr: (R, c, X) => X('PL', 'dep') },
+      { k: 'cftax', label: PJX_CF_L.tax, vals: v(x => x.cf.incomeTax), kind: 'item',
+        xexpr: (R, c, X) => { const t = X('PL', 'tax'); return t ? `-${t}` : null; } },
       { k: 'opSub', label: PJX_CF_L.opSub, vals: v(x => x.cf.pbtPlusInterest + x.cf.depreciation + x.cf.incomeTax), kind: 'tot',
         xsum: ['npbit', 'cfdep', 'cftax'] },
       { k: 'dCA', label: PJX_CF_L.dCA, vals: v(x => x.cf.deltaCurrentAssets), kind: 'item' },
@@ -305,7 +314,7 @@ function pjxBuildReport() {
       xsum: keys, xskip: [4] });   // skip the rate column when summing
   });
   sections.push({
-    key: 'DEP', title: 'Depreciation Schedule', sheet: 'Depreciation', sig: true, multiPage: true, labelW: 200,
+    key: 'DEP', title: 'Depreciation Schedule', sheet: 'Depreciation', sig: true, multiPage: true, labelW: 200, noYearCols: true,
     cols: PJX_DEP_COLS.map(h => ({ h1: h })),
     rows: depRows,
   });
@@ -313,10 +322,28 @@ function pjxBuildReport() {
   // ── IRD summary (English labels — standard PDF fonts can't render Devanagari) ──
   const ird = pjResult.ird;
   sections.push({
-    key: 'IRD', title: 'IRD Summary', sheet: 'IRD', labelW: 420,
+    key: 'IRD', title: 'IRD Summary', sheet: 'IRD', labelW: 420, audOffset: 1,
     cols: [{ h1: `F.Y. ${pjFyLabel(0)}`, h2: stmtType }, { h1: `F.Y. ${pjFyLabel(1)}`, h2: 'Projected' }],
+    // Every projected IRD figure is pulled straight from the statement sheet
+    // it comes from, so the source of each number is visible in the workbook.
     rows: PJX_IRD_ROWS.map((r, i) => (
-      { k: 'ird' + i, label: `${i + 1}.  ${r.en}`, vals: [ird.audited[r.key], ird.projected[r.key]], kind: 'plain' }
+      { k: 'ird' + i, label: `${i + 1}.  ${r.en}`, vals: [ird.audited[r.key], ird.projected[r.key]], kind: 'plain',
+        xexpr: (R, c, X) => {
+          const link = {
+            grossIncome: () => X('PL', 'gp'),
+            pbt: () => X('PL', 'pbt'),
+            tax: () => X('PL', 'tax'),
+            paidUpCapital: () => { const a = X('BS', 'cap'), b = X('BS', 'addl'); return a && b ? `${a}+${b}` : a; },
+            reserves: () => X('BS', 'reserve'),
+            bankLoan: () => { const p = X('BS', 'pwc'), d = X('BS', 'lend'), s = X('BS', 'stl');
+              return [p, d, s].filter(Boolean).join('+') || null; },
+            currentLiabilities: () => X('BS', 'clTotal'),
+            provision: () => X('PL', 'tax'),
+            currentAssets: () => X('BS', 'caTotal'),
+            fixedAssets: () => X('BS', 'faTotal'),
+          }[r.key];
+          return link ? link() : null;
+        } }
     )),
   });
 
@@ -327,16 +354,21 @@ function pjxBuildReport() {
     key: 'NCA', title: 'Net Current Assets Working & Ratio Analysis', sheet: 'Ratio Analysis',
     cols: yearCols(y => pjFyDot(y)),
     rows: [
-      { k: 'nStock', label: 'A.  Stock', vals: v(x => x.bs.closingStock), kind: 'item' },
-      { k: 'nDebt', label: 'B.  Debtor', vals: v(x => x.bs.debtors), kind: 'item' },
+      { k: 'nStock', label: 'A.  Stock', vals: v(x => x.bs.closingStock), kind: 'item',
+        xexpr: (R, c, X) => X('BS', 'stock') },
+      { k: 'nDebt', label: 'B.  Debtor', vals: v(x => x.bs.debtors), kind: 'item',
+        xexpr: (R, c, X) => X('BS', 'debtors') },
       { k: 'nTot', label: 'C = A+B   Total', vals: v(x => x.bs.closingStock + x.bs.debtors), kind: 'tot', xsum: ['nStock', 'nDebt'] },
-      { k: 'nCL', label: 'D.  Current Liabilities except Short Term Loan', vals: v(x => x.bs.totalCurrentLiabilities - x.bs.shortTermLoan), kind: 'item' },
+      { k: 'nCL', label: 'D.  Current Liabilities except Short Term Loan', vals: v(x => x.bs.totalCurrentLiabilities - x.bs.shortTermLoan), kind: 'item',
+        xexpr: (R, c, X) => { const t = X('BS', 'clTotal'), s = X('BS', 'stl'); return t ? (s ? `${t}-${s}` : t) : null; } },
       { k: 'nNCA', label: 'E = C-D   Net Current Assets', vals: v(x => x.ratios.nca), kind: 'tot',
         xexpr: (R, c) => `${c}${R.nTot}-${c}${R.nCL}` },
       { k: 'n70', label: 'F = 70% × E', vals: v(x => x.ratios.nca70), kind: 'item',
         xexpr: (R, c) => `${c}${R.nNCA}*0.7` },
-      { k: 'nSTL', label: 'Short Term Loan /OD/CC', vals: v(x => x.bs.shortTermLoan), kind: 'item' },
-      { k: 'nPWC', label: 'Permanent WC', vals: v(x => x.bs.permanentWC), kind: 'item' },
+      { k: 'nSTL', label: 'Short Term Loan /OD/CC', vals: v(x => x.bs.shortTermLoan), kind: 'item',
+        xexpr: (R, c, X) => X('BS', 'stl') },
+      { k: 'nPWC', label: 'Permanent WC', vals: v(x => x.bs.permanentWC), kind: 'item',
+        xexpr: (R, c, X) => X('BS', 'pwc') },
       { k: 'nLoan', label: 'G.  Total Loan', vals: v(x => x.bs.shortTermLoan + x.bs.permanentWC), kind: 'tot', xsum: ['nSTL', 'nPWC'] },
       { k: 'nDiff', label: 'H = F-G   Difference (always positive)', kind: 'grand',
         vals: v(x => ({ t: null, n: x.ratios.ncaHeadroom, tone: tone(x.ratios.ncaHeadroom >= 0) })),
@@ -349,6 +381,15 @@ function pjxBuildReport() {
         vals: v(x => ({ t: x.ratios.currentRatio.toFixed(2), n: x.ratios.currentRatio, fmt: '0.00', tone: tone(x.ratios.currentRatio >= L.minCurrentRatio) })) },
       { k: 'rDE', label: `Debt-Equity Ratio — always less than ${L.maxDebtEquity}`, kind: 'plain',
         vals: v(x => ({ t: x.ratios.debtEquity.toFixed(2), n: x.ratios.debtEquity, fmt: '0.00', tone: tone(x.ratios.debtEquity <= L.maxDebtEquity) })) },
+      // Interest Coverage Ratio — the CA's own projected files carry it
+      // ((PAT + interest) / interest); a bank reads it as debt-service comfort.
+      { k: 'rICR', label: 'Interest Coverage Ratio', kind: 'plain',
+        vals: v(x => {
+          const int = x.pl.interestST + x.pl.interestLT;
+          if (!(int > 0)) return { t: '–', n: null };
+          const r = (x.pl.pat + int) / int;
+          return { t: r.toFixed(2), n: r, fmt: '0.00' };
+        }) },
       { k: 'rGPM', label: 'Gross Profit Margin', kind: 'plain',
         vals: v(x => ({ t: `${(x.pl.grossProfit / x.pl.sales * 100).toFixed(2)}%`, n: x.pl.grossProfit / x.pl.sales, fmt: '0.00%' })) },
       { k: 'rNPM', label: 'Net Profit Margin', kind: 'plain',
@@ -660,6 +701,39 @@ async function pjDownloadExcel() {
       }
     }
 
+    // ── Cross-sheet registry ────────────────────────────────────────
+    // Pass 1 fixes every section's row numbers BEFORE any formula is written,
+    // so a cell on one sheet can reference a row on another and still resolve
+    // after zero-row pruning. Year N sits in a different column per sheet (the
+    // Audited/Provisional lead column shifts BS and P&L), so references map by
+    // YEAR, never by raw column letter.
+    const reg = {};
+    sections.forEach(sec => {
+      const twoLine = sec.cols.some(c => c.h2);
+      const first = (twoLine ? 6 : 5) + 1;
+      const rows = {};
+      sec.rows.forEach((r, i) => { if (r.k) rows[r.k] = first + i; });
+      reg[sec.key] = { sheet: sec.sheet, audOffset: sec.audOffset || 0, noYearCols: !!sec.noYearCols, rows };
+    });
+    // X(sectionKey, rowKey [, colIdx]) → "'Sheet'!C12" for the SAME year, or an
+    // explicit column index when the target sheet isn't year-columned (Dep).
+    const mkX = (sec, ci) => (secKey, rowKey, colIdx) => {
+      const t = reg[secKey];
+      if (!t) return null;
+      const rowNo = t.rows[rowKey];
+      if (!rowNo) return null;
+      let idx;
+      if (colIdx != null) idx = colIdx;
+      else {
+        if (t.noYearCols) return null;
+        const yearIdx = ci - (sec.audOffset || 0);
+        if (yearIdx < 0) return null;
+        idx = (t.audOffset || 0) + yearIdx;
+      }
+      if (idx < 0 || idx >= t.sheetCols) { /* bounds unknown here; allow */ }
+      return `'${t.sheet}'!${pjxCol(2 + idx)}${rowNo}`;
+    };
+
     // ── One worksheet per section ──
     sections.forEach(sec => {
       const ws = wb.addWorksheet(sec.sheet);
@@ -701,10 +775,9 @@ async function pjDownloadExcel() {
         }
       });
 
-      // rows — first pass assigns row numbers so formulas can resolve keys
+      // row numbers come from the pass-1 registry (same layout maths)
       const first = bandRows[bandRows.length - 1] + 1;
-      const R = {};
-      sec.rows.forEach((r, i) => { if (r.k) R[r.k] = first + i; });
+      const R = reg[sec.key].rows;
 
       sec.rows.forEach((r, i) => {
         const rowNo = first + i;
@@ -736,7 +809,7 @@ async function pjDownloadExcel() {
                 const terms = r.xsum.filter(k => R[k]).map(k => `${c}${R[k]}`);
                 if (terms.length) formula = terms.join('+');
               } else if (r.xexpr) {
-                try { formula = r.xexpr(R, c); } catch (e) { formula = null; }
+                try { formula = r.xexpr(R, c, mkX(sec, ci)); } catch (e) { formula = null; }
               }
             }
             const raw = isNum ? x : (obj && obj.n != null ? obj.n : null);

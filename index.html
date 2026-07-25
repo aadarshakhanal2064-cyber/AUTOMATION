@@ -1815,7 +1815,7 @@ function cropLoginLogoIcon(img) {
 
         <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Loans</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Short-term (OD/CC) stays constant on the balance sheet; Long-term and Permanent WC amortize on an EMI schedule.</p>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Short-term (OD/CC) carries a flat rate on a constant balance; Long-term, Permanent WC and Hire Purchase amortize on an EMI schedule.</p>
           <div style="display:grid; grid-template-columns:1fr; gap:16px;">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -1837,6 +1837,13 @@ function cropLoginLogoIcon(img) {
                 <button class="btn btn-outline btn-sm" onclick="pjAddLoanRow('pwc')">+ Add</button>
               </div>
               <div id="pj-loans-pwc"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Hire Purchase (HP) Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="pjAddLoanRow('hp')">+ Add</button>
+              </div>
+              <div id="pj-loans-hp"></div>
             </div>
           </div>
         </div>
@@ -2632,9 +2639,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
 <script src="js/confirmationLetters.js?v=202607211200"></script>
 <script src="js/bankBook.js?v=202607220900"></script>
-<script src="js/projectionEngine.js?v=202607230130"></script>
-<script src="js/projection.js?v=202607230300"></script>
-<script src="js/projectionExport.js?v=202607230300"></script>
+<script src="js/projectionEngine.js?v=202607251200"></script>
+<script src="js/projection.js?v=202607251200"></script>
+<script src="js/projectionExport.js?v=202607251200"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>

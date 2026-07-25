@@ -199,6 +199,7 @@ function pjCollectAsm(keepOverrides) {
     stLoans: pjCollectLoans('st'),
     ltLoans: pjCollectLoans('lt'),
     pwcLoans: pjCollectLoans('pwc'),
+    hpLoans: pjCollectLoans('hp'),
     additions, disposals,
     taxProfile: pjEl('pj-tax-profile').value,
     seedKey: `${pjEl('pj-pan').value}|${pjEl('pj-company').value}|${pjFyLabel(1)}`,
