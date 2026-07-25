@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607252330">
+<link rel="stylesheet" href="css/styles.css?v=202607252340">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2084,15 +2084,21 @@ function cropLoginLogoIcon(img) {
 
 <!-- Projection Report — PDF preview (body level, like every other modal) -->
   <div id="pj-preview-modal" class="modal-overlay">
-    <div class="modal" style="max-width:min(820px, 94vw); height:92vh; max-height:92vh; display:flex; flex-direction:column; overflow:hidden;">
-      <div class="modal-header">
-        <h3>Projection Report — PDF preview</h3>
-        <div style="display:flex; gap:8px;">
+    <div class="modal pj-viewer">
+      <div class="modal-header pj-viewer-head">
+        <div class="pj-viewer-title">
+          <h3>Projection Report</h3>
+          <div class="pj-viewer-meta" id="pj-preview-meta"></div>
+        </div>
+        <div class="pj-viewer-actions">
           <button class="btn btn-primary btn-sm" onclick="pjDownloadPdf()">Download PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="pjDownloadExcel()">Download Excel</button>
           <button class="btn btn-outline btn-sm" onclick="pjClosePreview()">Close</button>
         </div>
       </div>
-      <iframe id="pj-preview-frame" title="Projection Report preview" style="flex:1; width:100%; border:0;"></iframe>
+      <div class="pj-viewer-stage">
+        <iframe id="pj-preview-frame" title="Projection Report preview"></iframe>
+      </div>
     </div>
   </div>
 
@@ -2639,7 +2645,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/bankBook.js?v=202607252330"></script>
 <script src="js/projectionEngine.js?v=202607251930"></script>
 <script src="js/projection.js?v=202607251200"></script>
-<script src="js/projectionExport.js?v=202607252115"></script>
+<script src="js/projectionExport.js?v=202607252340"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>

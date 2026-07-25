@@ -126,6 +126,7 @@ function pjxBuildReport() {
   const address = m.company.address;
   const T = pjxTerms((pjEl('pj-org-type') || {}).value);
   const incAud = !!(pjEl('pj-include-audited') || {}).checked;
+  const pan = ((pjEl('pj-pan') || {}).value || '').trim();
   // The report names the single uploaded statement (Audited OR Provisional).
   const stmtType = (pjEl('pj-statement-type') || {}).value === 'provisional' ? 'Provisional' : 'Audited';
 
@@ -220,9 +221,7 @@ function pjxBuildReport() {
       { k: 'faTotal', label: PJX_BS_L.faTotal, vals: withAud(m.ppeTotal, v(x => x.bs.fixedAssetsNet)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.wdv}-${c}${R.depRow}` },
       { k: 'caLabel', label: PJX_BS_L.caLabel, vals: [], kind: 'sec' },
-      { k: 'cash', label: PJX_BS_L.cash, vals: withAud(m.cash, v(x => x.bs.cash)), kind: 'item',
-        xf: ({ R, p, yi }) => (yi > 0 && p)
-          ? growF(`${p}${R.cash}`, LIM.cashGrowth || 1.10, Y[yi - 1].bs.cash, Y[yi].bs.cash, -1) : null },
+      { k: 'cash', label: PJX_BS_L.cash, vals: withAud(m.cash, v(x => x.bs.cash)), kind: 'item' },
       // Sundry Debtors is ALWAYS the balancing figure (Sources must equal
       // Uses) — the formula shows exactly that, rather than a typed number.
       { k: 'debtors', label: PJX_BS_L.debtors, vals: withAud(m.debtors, v(x => x.bs.debtors)), kind: 'item',
@@ -245,7 +244,7 @@ function pjxBuildReport() {
       { k: 'expPay', label: PJX_BS_L.expPay, vals: withAud(null, v(x => x.bs.expPayable)), kind: 'item', zeroable: true,
         xf: ({ X, yi }) => {
           if (yi < 0 || admAuditIdx < 0) return null;
-          const a = X('PL', 'adm' + admAuditIdx), s = X('PL', 'adm0');
+          const a = X('ADM', 'adm' + admAuditIdx), s = X('ADM', 'adm0');
           if (!a || !s) return null;
           const audit = Y[yi].pl.adminLines[admAuditIdx].amount, sal = Y[yi].pl.adminLines[0].amount;
           if (Math.abs(Math.round(audit + sal / 12) - Y[yi].bs.expPayable) > 0.5) return null;
@@ -254,7 +253,7 @@ function pjxBuildReport() {
       { k: 'tds', label: PJX_BS_L.tds, vals: withAud(null, v(x => x.bs.tdsPayable)), kind: 'item', zeroable: true,
         xf: ({ X, yi }) => {
           if (yi < 0 || admAuditIdx < 0) return null;
-          const a = X('PL', 'adm' + admAuditIdx), s = X('PL', 'adm0');
+          const a = X('ADM', 'adm' + admAuditIdx), s = X('ADM', 'adm0');
           if (!a || !s) return null;
           const audit = Y[yi].pl.adminLines[admAuditIdx].amount, sal = Y[yi].pl.adminLines[0].amount;
           if (Math.abs(Math.round(sal * 0.01 + audit * 0.015) - Y[yi].bs.tdsPayable) > 0.5) return null;
@@ -276,32 +275,18 @@ function pjxBuildReport() {
     cols: withAud(audCol, yearCols(y => pjFyDot(y))),
     rows: prune([
       // Sales — the growth rate the user entered is visible in the formula.
-      { k: 'sales', label: PJX_PL_L.sales, vals: withAud(m.revenue.operations, v(x => x.pl.sales)), kind: 'plain', bold: true,
-        xf: ({ R, p, yi, prevIsAud }) => (yi < 0 || !p || (yi === 0 && !prevIsAud)) ? null
-          : growF(`${p}${R.sales}`, growthFor(yi + 1),
-                  prevOf(yi, x => x.pl.sales, m.revenue.operations), Y[yi].pl.sales) },
+      // Input rows (Sales, Goods Purchase, Direct Cost, admin lines, cash)
+      // deliberately carry NO formula — they are the figures the projection is
+      // built from, so the sheet stays clean; only derived lines show workings.
+      { k: 'sales', label: PJX_PL_L.sales, vals: withAud(m.revenue.operations, v(x => x.pl.sales)), kind: 'plain', bold: true },
       { k: 'cogsHead', label: PJX_PL_L.cogsHead, vals: [], kind: 'sec' },
       // Opening stock is last year's closing stock (stored negative there).
       { k: 'opening', label: PJX_PL_L.opening, vals: withAud(m.materials.opening, v(x => x.pl.openingStock)), kind: 'item', zeroable: true,
         xf: ({ R, p, yi }) => (yi > 0 && p && R.closing) ? `-${p}${R.closing}` : null },
       // Purchases is the BALANCING figure — it plugs Cost of Sales to land on
       // the Gross-Profit target, so the sheet shows it derived, never typed.
-      { k: 'purchase', label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), kind: 'item', zeroable: true,
-        xf: ({ R, c, yi }) => {
-          if (yi < 0 || !R.cogsTotal) return null;
-          let f = `${c}${R.cogsTotal}`;
-          ['opening', 'direct', 'closing'].forEach(k => { if (R[k]) f += `-${c}${R[k]}`; });
-          return f;
-        } },
-      { k: 'direct', label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), kind: 'item', zeroable: true,
-        xf: ({ R, c, yi }) => {
-          if (yi < 0 || !R.sales) return null;
-          const ratio = m.revenue.operations > 0 ? m.materials.directCost / m.revenue.operations : 0;
-          if (!(ratio > 0)) return null;
-          const sales = Y[yi].pl.sales;
-          if (Math.abs(Math.round(sales * ratio) - Y[yi].pl.directCost) > 0.5) return null;
-          return `ROUND(${c}${R.sales}*${Math.round(ratio * 1e8) / 1e8},0)`;
-        } },
+      { k: 'purchase', label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), kind: 'item', zeroable: true },
+      { k: 'direct', label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), kind: 'item', zeroable: true },
       // Closing stock normally grows 5% on the opening figure; when a rule
       // moved it (rule 1 / the debtor-days lever) it stays the solved figure.
       { k: 'closing', label: PJX_PL_L.closing, vals: withAud(-m.materials.closing, v(x => -x.pl.closingStock)), kind: 'item', zeroable: true,
@@ -312,33 +297,17 @@ function pjxBuildReport() {
           if (Math.abs(Math.round(prevClose * g) - cur) > 0.5) return null;
           return `-ROUND(-${p}${R.closing}*${g},0)`;
         } },
-      // Cost of Sales = Sales − Gross Profit (GP is the driver, see below).
+      // Cost of Sales = Opening + Purchases + Direct Cost − Closing Stock
+      // (the closing row is stored negative, so a plain sum is that formula).
       { k: 'cogsTotal', label: PJX_PL_L.cogsTotal, vals: withAud(m.materials.total, v(x => x.pl.cogs)), kind: 'tot',
-        xf: ({ R, c, yi }) => (yi >= 0 && R.sales && R.gp) ? `${c}${R.sales}-${c}${R.gp}` : null },
-      // Gross Profit is the TARGET the solver drives to (≥5% up each year), so
-      // it carries the growth formula and everything above derives from it.
+        xsum: ['opening', 'purchase', 'direct', 'closing'] },
+      // Gross Profit = Sales − Cost of Sales.
       { k: 'gp', label: PJX_PL_L.gp, vals: withAud(audGP, v(x => x.pl.grossProfit)), kind: 'grand',
-        xf: ({ R, p, yi, prevIsAud }) => (yi < 0 || !p || (yi === 0 && !prevIsAud)) ? null
-          : growF(`${p}${R.gp}`, LIM.profitGrowth || 1.05,
-                  prevOf(yi, x => x.pl.grossProfit, audGP), Y[yi].pl.grossProfit) },
-      { k: 'adminHead', label: PJX_PL_L.adminHead, vals: [], kind: 'sec' },
-      // Every admin line shows its own growth: ×1.05, or the stepped Rent /
-      // Audit-Fee schedule (held flat, then ×1.15 rounded to '000).
-      ...Y[0].pl.adminLines.map((l, i) => (
-        { k: 'adm' + i, label: l.name, vals: withAud(audAdminLine(i), v(x => x.pl.adminLines[i].amount)), kind: 'item', zeroable: true,
-          xf: ({ R, p, yi, prevIsAud }) => {
-            if (yi < 0 || !p || (yi === 0 && !prevIsAud)) return null;
-            const cell = `${p}${R['adm' + i]}`;
-            const cur = Y[yi].pl.adminLines[i].amount;
-            const prev = prevOf(yi, x => x.pl.adminLines[i].amount, audAdminLine(i));
-            if (prev == null) return null;
-            return sameF(cell, prev, cur)                       // stepped: flat year
-              || growF(cell, EXP_G, prev, cur)                  // ordinary ×1.05
-              || growF(cell, 1.15, prev, cur, -3);              // stepped: bump year
-          } }
-      )),
+        xexpr: (R, c) => (R.sales && R.cogsTotal) ? `${c}${R.sales}-${c}${R.cogsTotal}` : null },
+      // The detail sits on its own page (Schedule 1); the P&L carries only the
+      // total, fetched from that schedule.
       { k: 'adminTotal', label: PJX_PL_L.adminTotal, vals: withAud(audAdminTotal, v(x => x.pl.adminTotal)), kind: 'tot',
-        xsum: Y[0].pl.adminLines.map((_, i) => 'adm' + i) },
+        xexpr: (R, c, X) => X('ADM', 'admTotal') },
       { k: 'pbid', label: PJX_PL_L.pbid, vals: withAud(audGP - audAdminTotal, v(x => x.pl.grossProfit - x.pl.adminTotal)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.gp}-${c}${R.adminTotal}` },
       // OD/short-term interest = the OD balance on the Balance Sheet × its rate.
@@ -374,6 +343,25 @@ function pjxBuildReport() {
       { k: 'div', label: PJX_PL_L.div, vals: withAud(null, v(x => x.pl.dividend)), kind: 'plain', zeroable: true, keep: true },
       { k: 'transfer', label: PJX_PL_L.transfer, vals: withAud(m.reserves, v(x => x.pl.retainedClosing)), kind: 'grand',
         xexpr: (R, c) => `${c}${R.pat}` + (R.upto ? `+${c}${R.upto}` : '') + (R.div ? `-${c}${R.div}` : '') },
+    ]),
+  });
+
+  // ── Schedule 1 — Administrative Expenses ──
+  //  Broken out onto its own page directly after the P&L: the statement was
+  //  carrying ~20 expense lines inline, which crowded it. Each line shows its
+  //  own growth (×1.05, or the stepped Rent / Audit-Fee schedule), and the
+  //  P&L's single Administrative Expenses line pulls this sheet's total.
+  //  (Excel tab names are capped at 31 chars, hence the shorter `sheet`.)
+  sections.push({
+    key: 'ADM', title: 'Schedule 1 – Administrative Expenses', sheet: 'Schedule 1 - Admin Expenses',
+    sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
+    cols: withAud(audCol, yearCols(y => pjFyDot(y))),
+    rows: prune([
+      ...Y[0].pl.adminLines.map((l, i) => (
+        { k: 'adm' + i, label: l.name, vals: withAud(audAdminLine(i), v(x => x.pl.adminLines[i].amount)), kind: 'item', zeroable: true }
+      )),
+      { k: 'admTotal', label: 'Total Administrative Expenses', vals: withAud(audAdminTotal, v(x => x.pl.adminTotal)), kind: 'grand',
+        xsum: Y[0].pl.adminLines.map((_, i) => 'adm' + i) },
     ]),
   });
 
@@ -583,7 +571,7 @@ function pjxBuildReport() {
   const fyText = N === 1 ? `For the Fiscal Year ${pjFyLabel(1)}`
     : `For the Fiscal Years ${pjFyLabel(1)} to ${pjFyLabel(N)}`;
 
-  return { meta: { company, address, T, incAud, stmtType, bsDate, place, N, fyText }, sections };
+  return { meta: { company, address, pan, T, incAud, stmtType, bsDate, place, N, fyText }, sections };
 }
 
 // Display text for a cell value (shared by both writers).
@@ -633,7 +621,7 @@ async function pjBuildPdfBytes() {
   const { W, H, mX, mB } = PJX_PDF;
 
   const { meta, sections } = pjxBuildReport();
-  const { company, address, T, bsDate, place, N, fyText } = meta;
+  const { company, address, pan, T, bsDate, place, N, fyText } = meta;
 
   // ── Cover page ──
   {
@@ -654,6 +642,7 @@ async function pjBuildPdfBytes() {
     ctr('OF', 604, 11, times, C.muted);
     ctr(company.toUpperCase(), 566, 19, timesB, C.black);
     if (address) ctr(address, 544, 10.5, font, C.muted);
+    if (pan) ctr(`PAN : ${pan}`, address ? 526 : 542, 10.5, font, C.black);
     // Three vertical rules of differing heights, centre tallest.
     const baseY = 372, heights = [62, 92, 62], gap = 24;
     [cx - gap, cx, cx + gap].forEach((x, i) =>
@@ -853,6 +842,14 @@ async function pjPreviewPdf() {
     if (pjPreviewUrl) URL.revokeObjectURL(pjPreviewUrl);
     pjPreviewUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     pjEl('pj-preview-frame').src = pjPreviewUrl;
+    // Document meta under the title, like the Generate Report preview header.
+    const meta = pjEl('pj-preview-meta');
+    if (meta) {
+      const n = pjResult.years.length;
+      const company = pjEl('pj-company').value || pjModel.company.name;
+      const span = n === 1 ? pjFyLabel(1) : `${pjFyLabel(1)} – ${pjFyLabel(n)}`;
+      meta.textContent = `${company} · F.Y. ${span} · ${n}-year projection`;
+    }
     pjEl('pj-preview-modal').classList.add('open');
     pjStatus('Preview ready.', 'success');
   } catch (e) {
