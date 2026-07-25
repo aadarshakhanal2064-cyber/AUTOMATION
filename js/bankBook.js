@@ -84,7 +84,7 @@ function bbAccountBalance(accountId) {
   return bal;
 }
 
-// ── Entry point (called by openAcctModule) ──
+// ── Entry point (called by openModule) ──
 function bbInit() {
   if (!bbInitDone) {
     SearchEngine.attachAutocomplete(

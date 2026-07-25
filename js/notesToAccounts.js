@@ -13,7 +13,8 @@
 
 function $nta(id){ return document.getElementById(id); }
 
-ModuleRegistry.register({ id: 'notesToAccounts', group: 'main', buttonId: 'nav-notesToAccounts', panelId: 'tab-notesToAccounts-panel' });
+// No buttonId — launched from the topbar "Automation Hub" menu, not a sidebar button.
+ModuleRegistry.register({ id: 'notesToAccounts', group: 'main', buttonId: null, panelId: 'tab-notesToAccounts-panel' });
 
 // Reuses the SAME clientsList already loaded from Supabase (loadClients()),
 // so client search here matches the Clients/Report tabs exactly.

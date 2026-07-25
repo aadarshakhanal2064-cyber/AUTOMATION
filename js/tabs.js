@@ -21,9 +21,9 @@ function switchTab(tab) {
 
 // ════════════════════════════════════════════
 //  TOPBAR DROPDOWN MENUS — one shared open/close mechanic (Xero-style:
-//  choose a module from the menu, then it opens directly). Two menus use
-//  it: Company Registrar ('regd') and Accounting ('acct'). Opening one
-//  closes the other.
+//  choose a module from the menu, then it opens directly). Three menus use
+//  it: Company Registrar ('regd'), Financial Management ('fin') and
+//  Automation Hub ('auto'). Opening one closes the others.
 // ════════════════════════════════════════════
 function toggleTopbarMenu(event, key) {
   event.stopPropagation();
@@ -57,13 +57,22 @@ function openRegdModule(sub, label) {
   closeTopbarMenus();
 }
 
-// ── Accounting — Sales & Purchase Book and Confirmation Letters are
-//  ordinary 'main'-group tabs (each a full panel of its own), just launched
-//  from the topbar menu instead of sidebar buttons. ──
-const ACCT_INITS = { salesPurchaseBook: () => spbInit(), confirmationLetters: () => clInit(), depreciation: () => depInit(), bankBook: () => bbInit(), projection: () => pjInit() };
+// ── Financial Management / Automation Hub — every entry is an ordinary
+//  'main'-group tab (a full panel of its own), just launched from a topbar
+//  menu instead of a sidebar button. The map holds only the modules that
+//  need an init/refresh call on open; a tab that's absent simply switches. ──
+const MODULE_INITS = {
+  serviceMemo:         () => loadServiceMemo(),
+  billing:             () => loadBilling(),
+  bankBook:            () => bbInit(),
+  projection:          () => pjInit(),
+  depreciation:        () => depInit(),
+  confirmationLetters: () => clInit(),
+  salesPurchaseBook:   () => spbInit(),
+};
 
-function openAcctModule(tab) {
+function openModule(tab) {
   switchTab(tab);
-  if (ACCT_INITS[tab]) ACCT_INITS[tab]();
+  if (MODULE_INITS[tab]) MODULE_INITS[tab]();
   closeTopbarMenus();
 }

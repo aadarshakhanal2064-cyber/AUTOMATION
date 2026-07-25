@@ -92,11 +92,17 @@ body {
   background: none; border-top: none; border-right: none; border-bottom: none;
   font-family: 'Inter', sans-serif; cursor: pointer; border-radius: 0 var(--radius) var(--radius) 0;
   transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
 }
 #topbar .app-tag:hover { background: var(--bg-app); color: var(--brand-navy); }
 #topbar .app-tag svg { color: var(--brand-navy); flex-shrink: 0; }
 #topbar .app-tag .app-tag-chevron { color: var(--text-faint); margin-left: -2px; transition: transform 0.15s; }
 #topbar .app-tag.menu-open .app-tag-chevron { transform: rotate(180deg); }
+/* Three menus (Company Registrar · Financial Management · Automation Hub) plus
+   the firm wordmark stop fitting on narrow laptops — drop the wordmark first
+   (the SA mark still identifies the firm) rather than truncating the menus,
+   which are the navigation. */
+@media (max-width: 1180px) { #topbar .topbar-logo .tb-text { display: none; } }
 
 .topbar-dropdown-menu {
   display: none;

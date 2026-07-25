@@ -9,7 +9,8 @@
 //  triggers keep invoices.amount_paid/status in sync with invoice_payments,
 //  so "amount due" can never drift between the two tables.
 // ════════════════════════════════════════════
-ModuleRegistry.register({ id: 'billing', group: 'main', buttonId: 'nav-billing', panelId: 'tab-billing-panel' });
+// No buttonId — launched from the topbar "Financial Management" menu, not a sidebar button.
+ModuleRegistry.register({ id: 'billing', group: 'main', buttonId: null, panelId: 'tab-billing-panel' });
 
 const BILLING_STATUSES = {
   draft:          { label: 'Draft',           icon: '📝', badgeClass: 'badge-neutral' },

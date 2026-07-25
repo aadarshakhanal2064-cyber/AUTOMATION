@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607211600">
+<link rel="stylesheet" href="css/styles.css?v=202607252330">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -71,7 +71,7 @@ function cropLoginLogoIcon(img) {
     </button>
     <div class="topbar-logo">
       <span class="tb-sa">SA</span>
-      <div>
+      <div class="tb-text">
         <div class="tb-name">Shailesh &amp; Associates</div>
         <div class="tb-sub">Chartered Accountants</div>
       </div>
@@ -92,17 +92,31 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
     <div class="app-tag-dropdown">
-      <button class="app-tag" id="topbar-acct-trigger" onclick="toggleTopbarMenu(event, 'acct')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
-        Accounting
+      <button class="app-tag" id="topbar-fin-trigger" onclick="toggleTopbarMenu(event, 'fin')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+        Financial Management
         <svg class="app-tag-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </button>
-      <div class="topbar-dropdown-menu" id="topbar-acct-menu">
-        <button class="topbar-dropdown-item" onclick="openAcctModule('salesPurchaseBook')">Sales &amp; Purchase Book</button>
-        <button class="topbar-dropdown-item" onclick="openAcctModule('confirmationLetters')">Confirmation Letters</button>
-        <button class="topbar-dropdown-item" onclick="openAcctModule('depreciation')">Depreciation</button>
-        <button class="topbar-dropdown-item" onclick="openAcctModule('bankBook')">Bank Book</button>
-        <button class="topbar-dropdown-item" onclick="openAcctModule('projection')">Projection Report</button>
+      <div class="topbar-dropdown-menu" id="topbar-fin-menu">
+        <button class="topbar-dropdown-item" onclick="openModule('serviceMemo')">Service Memo</button>
+        <button class="topbar-dropdown-item" onclick="openModule('billing')">Billing</button>
+        <button class="topbar-dropdown-item" onclick="moduleComingSoon('Party Ledger')">Party Ledger</button>
+        <button class="topbar-dropdown-item" onclick="openModule('bankBook')">Bank Entry</button>
+      </div>
+    </div>
+    <div class="app-tag-dropdown">
+      <button class="app-tag" id="topbar-auto-trigger" onclick="toggleTopbarMenu(event, 'auto')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        Automation Hub
+        <svg class="app-tag-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+      <div class="topbar-dropdown-menu" id="topbar-auto-menu">
+        <button class="topbar-dropdown-item" onclick="openModule('projection')">Projection Report</button>
+        <button class="topbar-dropdown-item" onclick="openModule('depreciation')">Depreciation</button>
+        <button class="topbar-dropdown-item" onclick="openModule('confirmationLetters')">Confirmation</button>
+        <button class="topbar-dropdown-item" onclick="openModule('report')">Generate Report</button>
+        <button class="topbar-dropdown-item" onclick="openModule('notesToAccounts')">Notes to Accounts</button>
+        <button class="topbar-dropdown-item" onclick="openModule('salesPurchaseBook')">Autobooks</button>
       </div>
     </div>
   </div>
@@ -132,25 +146,9 @@ function cropLoginLogoIcon(img) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
       VAT Compliance
     </button>
-    <button class="nav-item" onclick="switchTab('billing'); loadBilling();" id="nav-billing">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-      Billing
-    </button>
-    <button class="nav-item" onclick="switchTab('serviceMemo'); loadServiceMemo();" id="nav-serviceMemo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
-      Service Memo
-    </button>
     <button class="nav-item active" onclick="switchTab('send')" id="nav-send">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
       Send Document
-    </button>
-    <button class="nav-item" onclick="switchTab('report')" id="nav-report">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-      Generate Report
-    </button>
-    <button class="nav-item" onclick="switchTab('notesToAccounts')" id="nav-notesToAccounts">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-      Notes to Accounts
     </button>
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -360,7 +358,7 @@ function cropLoginLogoIcon(img) {
     <div id="tab-billing-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Billing</span></div>
+          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">Billing</span></div>
           <h2 class="page-title">Billing</h2>
           <p class="page-subtitle">Track amounts due, record payments, and send invoices.</p>
         </div>
@@ -407,7 +405,7 @@ function cropLoginLogoIcon(img) {
     <div id="tab-serviceMemo-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Service Memo</span></div>
+          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">Service Memo</span></div>
           <h2 class="page-title">Service Memo</h2>
           <p class="page-subtitle">Record work performed and the fee to collect — an internal service record, not a tax invoice.</p>
         </div>
@@ -519,7 +517,7 @@ function cropLoginLogoIcon(img) {
     <div id="tab-report-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Generate Report</span><span>›</span><span class="current">Audit Report Builder</span></div>
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span>Generate Report</span><span>›</span><span class="current">Audit Report Builder</span></div>
           <h2 class="page-title">Audit Report Builder</h2>
           <p class="page-subtitle">Configure your audit report details and generate professional reports.</p>
         </div>
@@ -656,7 +654,7 @@ function cropLoginLogoIcon(img) {
     <div id="tab-notesToAccounts-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Notes to Accounts</span><span>›</span><span class="current">Significant Accounting Policies &amp; Notes</span></div>
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span>Notes to Accounts</span><span>›</span><span class="current">Significant Accounting Policies &amp; Notes</span></div>
           <h2 class="page-title">Notes to Accounts</h2>
           <p class="page-subtitle">Generate the Significant Accounting Policies and Notes to Financial Statements.</p>
         </div>
@@ -815,7 +813,7 @@ function cropLoginLogoIcon(img) {
                 <label>Remarks</label>
                 <textarea id="st-remarks" placeholder="Optional notes…"></textarea>
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Share Transfer')">⚙️ Generate Documents</button>
+              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Share Transfer')">⚙️ Generate Documents</button>
             </div>
             <div style="background:#f8fafc; padding:24px;">
               <div class="regd-preview-placeholder">
@@ -862,7 +860,7 @@ function cropLoginLogoIcon(img) {
                 <label>Remarks</label>
                 <textarea id="ic-remarks" placeholder="Optional notes…"></textarea>
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Increase Capital')">⚙️ Generate Documents</button>
+              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Increase Capital')">⚙️ Generate Documents</button>
             </div>
             <div style="background:#f8fafc; padding:24px;">
               <div class="regd-preview-placeholder">
@@ -908,7 +906,7 @@ function cropLoginLogoIcon(img) {
                 <label>Registration Date (B.S.)</label>
                 <input type="text" id="cr-regDate" placeholder="e.g. 2082/06/04" />
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('Company Registration')">⚙️ Generate Documents</button>
+              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Company Registration')">⚙️ Generate Documents</button>
             </div>
             <div style="background:#f8fafc; padding:24px;">
               <div class="regd-preview-placeholder">
@@ -1075,7 +1073,7 @@ function cropLoginLogoIcon(img) {
                 <label>Requested By</label>
                 <input type="text" id="pr-requestedBy" placeholder="e.g. Client / Authorized Rep." />
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="regdComingSoon('PIN Reset')">⚙️ Generate Documents</button>
+              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('PIN Reset')">⚙️ Generate Documents</button>
             </div>
             <div style="background:#f8fafc; padding:24px;">
               <div class="regd-preview-placeholder">
@@ -1248,7 +1246,7 @@ function cropLoginLogoIcon(img) {
     <div id="tab-depreciation-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Depreciation</span></div>
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">Depreciation</span></div>
           <h2 class="page-title">Depreciation Schedule</h2>
           <p class="page-subtitle" id="dep-page-subtitle">Depreciation as per Income Tax — pool depreciation (reducing balance). Enter each pool's opening value, additions and disposals; totals calculate automatically.</p>
         </div>
@@ -1455,12 +1453,12 @@ function cropLoginLogoIcon(img) {
       </div><!-- /dep-slm-ui -->
     </div>
 
-    <!-- ── TAB: SALES & PURCHASE BOOK ── -->
+    <!-- ── TAB: AUTOBOOKS (Sales & Purchase Book) ── -->
     <div id="tab-salesPurchaseBook-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Sales &amp; Purchase</span></div>
-          <h2 class="page-title">Sales &amp; Purchase Book</h2>
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">Autobooks</span></div>
+          <h2 class="page-title">Autobooks</h2>
           <p class="page-subtitle">Upload the raw Sales and Purchase sheets — party summaries, details and the monthly VAT-return reconciliation generate automatically as a complete workbook.</p>
         </div>
         <div class="page-header-actions">
@@ -1556,9 +1554,9 @@ function cropLoginLogoIcon(img) {
     <div id="tab-confirmationLetters-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Confirmation Letters</span></div>
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">Confirmation</span></div>
           <h2 class="page-title">Confirmation Letters</h2>
-          <p class="page-subtitle">Upload a generated Sales &amp; Purchase Book workbook — every party whose Taxable Sales or Purchase crosses the threshold is listed for review, then bulk-generated as confirmation letters.</p>
+          <p class="page-subtitle">Upload a generated Autobooks workbook — every party whose Taxable Sales or Purchase crosses the threshold is listed for review, then bulk-generated as confirmation letters.</p>
         </div>
       </div>
 
@@ -1606,10 +1604,10 @@ function cropLoginLogoIcon(img) {
         <input type="file" id="cl-workbook-upload" accept=".xlsx" style="display:none;" onchange="clHandleUpload(this)" />
         <button class="btn btn-outline" onclick="document.getElementById('cl-workbook-upload').click()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-          Upload Sales &amp; Purchase Book workbook
+          Upload Autobooks workbook
         </button>
         <p style="font-size:12.5px; color:var(--text-muted); margin-top:12px;">
-          Reads the "Sales Details" and "Purchase Details" sheets from a workbook already generated by the Sales &amp; Purchase Book module.
+          Reads the "Sales Details" and "Purchase Details" sheets from a workbook already generated by the Autobooks module.
         </p>
       </div>
 
@@ -1655,12 +1653,12 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
-    <!-- ── TAB: BANK BOOK ── -->
+    <!-- ── TAB: BANK ENTRY (Bank Book) ── -->
     <div id="tab-bankBook-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Accounting</span><span>›</span><span class="current">Bank Book</span></div>
-          <h2 class="page-title">Bank Book</h2>
+          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">Bank Entry</span></div>
+          <h2 class="page-title">Bank Entry</h2>
           <p class="page-subtitle">Record receipts &amp; payments across the firm's own bank accounts and generate per-account registers and statements.</p>
         </div>
         <div class="page-header-actions">
@@ -1738,11 +1736,11 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
-    <!-- ── TAB: PROJECTION REPORT (Accounting dropdown) ── -->
+    <!-- ── TAB: PROJECTION REPORT (Automation Hub dropdown) ── -->
     <div id="tab-projection-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Accounting</span><span>›</span><span class="current">Projection Report</span></div>
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">Projection Report</span></div>
           <h2 class="page-title">Projection Report</h2>
           <p class="page-subtitle">Upload an audited / provisional financial statement and generate a bank-ready multi-year projection — Balance Sheet, P&amp;L, Cash Flow, Depreciation, IRD &amp; ratio analysis.</p>
         </div>
@@ -2612,7 +2610,7 @@ function cropLoginLogoIcon(img) {
 
 <script src="js/config.js?v=202607220900"></script>
 <script src="js/utils.js?v=202607141030"></script>
-<script src="js/core/moduleRegistry.js?v=202607141030"></script>
+<script src="js/core/moduleRegistry.js?v=202607252330"></script>
 <script src="js/core/statusBox.js?v=202607141030"></script>
 <script src="js/core/nepaliLocale.js?v=202607211600"></script>
 <script src="js/core/documentEngine.js?v=202607141030"></script>
@@ -2621,24 +2619,24 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/workflowEngine.js?v=202607141030"></script>
 <script src="js/core/auditLog.js?v=202607141030"></script>
 <script src="js/core/integrations.js?v=202607162100"></script>
-<script src="js/tabs.js?v=202607221800"></script>
+<script src="js/tabs.js?v=202607252330"></script>
 <script src="js/dashboard.js?v=202607141030"></script>
-<script src="js/registrar.js?v=202607141030"></script>
+<script src="js/registrar.js?v=202607252330"></script>
 <script src="js/clients.js?v=202607141030"></script>
 <script src="js/logs.js?v=202607141030"></script>
 <script src="js/vatCompliance.js?v=202607141030"></script>
-<script src="js/billing.js?v=202607162100"></script>
-<script src="js/serviceMemo.js?v=202607212230"></script>
+<script src="js/billing.js?v=202607252330"></script>
+<script src="js/serviceMemo.js?v=202607252330"></script>
 <script src="js/sendDocument.js?v=202607162100"></script>
 <script src="js/report.js?v=202607141030"></script>
-<script src="js/notesToAccounts.js?v=202607141030"></script>
-<script src="js/depreciation.js?v=202607211600"></script>
+<script src="js/notesToAccounts.js?v=202607252330"></script>
+<script src="js/depreciation.js?v=202607252330"></script>
 <script src="js/depreciationSlm.js?v=202607211600"></script>
 <script src="js/bmAgmMinutes.js?v=202607170100"></script>
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
-<script src="js/confirmationLetters.js?v=202607211200"></script>
-<script src="js/bankBook.js?v=202607220900"></script>
+<script src="js/confirmationLetters.js?v=202607252330"></script>
+<script src="js/bankBook.js?v=202607252330"></script>
 <script src="js/projectionEngine.js?v=202607251930"></script>
 <script src="js/projection.js?v=202607251200"></script>
 <script src="js/projectionExport.js?v=202607252115"></script>

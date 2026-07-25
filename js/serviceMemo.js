@@ -8,7 +8,8 @@
 //  and a single amount_received for collection tracking. Modeled on billing.js
 //  but simpler — no line-item or payments subtable.
 // ════════════════════════════════════════════
-ModuleRegistry.register({ id: 'serviceMemo', group: 'main', buttonId: 'nav-serviceMemo', panelId: 'tab-serviceMemo-panel' });
+// No buttonId — launched from the topbar "Financial Management" menu, not a sidebar button.
+ModuleRegistry.register({ id: 'serviceMemo', group: 'main', buttonId: null, panelId: 'tab-serviceMemo-panel' });
 
 // Payment status has no visible badge anywhere in the module UI (removed per
 // user feedback — dashboard tiles, drawer, list table and Recent Memos all
