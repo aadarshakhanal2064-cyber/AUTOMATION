@@ -615,12 +615,16 @@ const ProjectionEngine = (() => {
       const growth = y === 1 ? g1 : gR;
       const sales = Math.round((y === 1 ? salesBase : prev.pl.sales) * growth);
 
-      const factor = Math.pow(LIMITS.expenseGrowth, y);
       // Rent & Audit Fee use the stepped '000 schedule; every other admin line
-      // grows 5%/yr as before.
-      const adminLines = adminBase.map(l => ({
+      // grows 5%/yr COMPOUNDED OFF THE PRIOR YEAR's rounded figure — matching
+      // the firm's own projected workbooks, whose cells read
+      // `=ROUND(<prior year cell>*1.05,0)`. (Computing base×1.05^y instead
+      // drifts a rupee or two from that, which would leave the exported Excel
+      // unable to carry the year-on-year growth formula.)
+      const adminLines = adminBase.map((l, i) => ({
         name: l.name,
-        amount: STEP_FEE_RE.test(l.name) ? steppedFee(l.base, y) : Math.round(l.base * factor),
+        amount: STEP_FEE_RE.test(l.name) ? steppedFee(l.base, y)
+          : Math.round((y === 1 ? l.base : prev.pl.adminLines[i].amount) * LIMITS.expenseGrowth),
       }));
       const adminTotal = adminLines.reduce((s, l) => s + l.amount, 0);
       const auditFee = steppedFee(auditFeeBase, y);

@@ -156,6 +156,34 @@ function pjxBuildReport() {
     return rows;
   };
 
+  // ── Detail-row formula helpers ─────────────────────────────────────
+  // The engine rounds at every step, so a formula that drifted by even a
+  // rupee would make the workbook disagree with its own cached figure. Every
+  // helper below therefore RE-COMPUTES what the formula would evaluate to and
+  // emits it only on an exact match, falling back to a plain value otherwise.
+  // That way a formula in the sheet is always the true derivation.
+  const asm = (pjResult && pjResult.asm) || {};
+  const LIM = (typeof ProjectionEngine !== 'undefined' && ProjectionEngine.LIMITS) || {};
+  const EXP_G = LIM.expenseGrowth || 1.05;
+  const growthFor = y => 1 + (y === 1 ? num0(asm.growthY1Pct) : num0(asm.growthRestPct)) / 100;
+  function num0(x) { const n = parseFloat(x); return isFinite(n) ? n : 0; }
+  // `ROUND(prev*factor, digits)` — digits 0 = rupee, −1 = ten, −3 = thousand.
+  const growF = (prevCell, factor, prevVal, curVal, digits = 0) => {
+    if (!prevCell || prevVal == null || curVal == null || !isFinite(factor)) return null;
+    const unit = Math.pow(10, -digits);
+    const expect = Math.round(prevVal * factor / unit) * unit;
+    if (Math.abs(expect - curVal) > 0.5) return null;
+    const f = Math.round(factor * 1e6) / 1e6;                 // tidy 1.0500000000000003
+    return `ROUND(${prevCell}*${f},${digits})`;
+  };
+  // Plain carry-forward: this year's figure is literally last year's cell.
+  const sameF = (prevCell, prevVal, curVal) =>
+    (prevCell && prevVal != null && curVal != null && Math.abs(prevVal - curVal) < 0.5) ? `${prevCell}` : null;
+  // Prior-year value of a P&L/BS field, or the provisional base for year 1.
+  const prevOf = (yi, pick, base) => yi > 0 ? pick(Y[yi - 1]) : base;
+  // Salary is always admin line 0; the audit-fee line drives both payables.
+  const admAuditIdx = Y[0].pl.adminLines.findIndex(l => /audit fee/i.test(l.name));
+
   // Audited/Provisional comparison figures
   const termSum = m.loans.term.reduce((s, l) => s + l.amount, 0);
   const audAdminLine = i => i === 0 ? m.salary : ((m.otherExpenses[i - 1] || {}).amount ?? null);
@@ -184,23 +212,54 @@ function pjxBuildReport() {
         xsum: ['cap', 'addl', 'reserve', 'lt', 'pwc', 'lend'] },
       { k: 'usesLabel', label: PJX_BS_L.usesLabel, vals: [], kind: 'sec' },
       { k: 'faLabel', label: PJX_BS_L.faLabel, vals: [], kind: 'sec' },
-      { k: 'wdv', label: PJX_BS_L.wdv, vals: withAud(null, v(x => x.dep.total)), kind: 'item', zeroable: true, keep: true },
-      { k: 'depRow', label: PJX_BS_L.depRow, vals: withAud(null, v(x => x.dep.dep)), kind: 'item', zeroable: true, keep: true },
+      // Both fetched from the Depreciation schedule's total row for that year.
+      { k: 'wdv', label: PJX_BS_L.wdv, vals: withAud(null, v(x => x.dep.total)), kind: 'item', zeroable: true, keep: true,
+        xf: ({ X, yi }) => yi < 0 ? null : X('DEP', 'dt' + (yi + 1), 3) },
+      { k: 'depRow', label: PJX_BS_L.depRow, vals: withAud(null, v(x => x.dep.dep)), kind: 'item', zeroable: true, keep: true,
+        xf: ({ X, yi }) => yi < 0 ? null : X('DEP', 'dt' + (yi + 1), 5) },
       { k: 'faTotal', label: PJX_BS_L.faTotal, vals: withAud(m.ppeTotal, v(x => x.bs.fixedAssetsNet)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.wdv}-${c}${R.depRow}` },
       { k: 'caLabel', label: PJX_BS_L.caLabel, vals: [], kind: 'sec' },
-      { k: 'cash', label: PJX_BS_L.cash, vals: withAud(m.cash, v(x => x.bs.cash)), kind: 'item' },
-      { k: 'debtors', label: PJX_BS_L.debtors, vals: withAud(m.debtors, v(x => x.bs.debtors)), kind: 'item' },
+      { k: 'cash', label: PJX_BS_L.cash, vals: withAud(m.cash, v(x => x.bs.cash)), kind: 'item',
+        xf: ({ R, p, yi }) => (yi > 0 && p)
+          ? growF(`${p}${R.cash}`, LIM.cashGrowth || 1.10, Y[yi - 1].bs.cash, Y[yi].bs.cash, -1) : null },
+      // Sundry Debtors is ALWAYS the balancing figure (Sources must equal
+      // Uses) — the formula shows exactly that, rather than a typed number.
+      { k: 'debtors', label: PJX_BS_L.debtors, vals: withAud(m.debtors, v(x => x.bs.debtors)), kind: 'item',
+        xf: ({ R, c, yi }) => (yi >= 0 && R.totalSrc && R.faTotal && R.clTotal)
+          ? `${c}${R.totalSrc}-${c}${R.faTotal}` + (R.cash ? `-${c}${R.cash}` : '') +
+            (R.stock ? `-${c}${R.stock}` : '') + `+${c}${R.clTotal}`
+          : null },
       { k: 'stock', label: PJX_BS_L.stock, vals: withAud(m.inventory.closing, v(x => x.bs.closingStock)), kind: 'item', zeroable: true,
         xexpr: (R, c, X) => { const t = X('PL', 'closing'); return t ? `-${t}` : null; } },
       { k: 'caTotal', label: PJX_BS_L.caTotal, vals: withAud(m.currentAssetsTotal, v(x => x.bs.totalCurrentAssets)), kind: 'tot',
         xsum: ['cash', 'debtors', 'stock'] },
       { k: 'clLabel', label: PJX_BS_L.clLabel, vals: [], kind: 'sec' },
-      { k: 'creditors', label: PJX_BS_L.creditors, vals: withAud(m.creditors, v(x => x.bs.creditors)), kind: 'item', zeroable: true },
+      { k: 'creditors', label: PJX_BS_L.creditors, vals: withAud(m.creditors, v(x => x.bs.creditors)), kind: 'item', zeroable: true,
+        xf: ({ R, p, yi }) => (yi > 0 && p)
+          ? growF(`${p}${R.creditors}`, LIM.creditorDecay || 0.90, Y[yi - 1].bs.creditors, Y[yi].bs.creditors) : null },
       { k: 'provTax', label: PJX_BS_L.provTax, vals: withAud(m.tax, v(x => x.bs.provisionTax)), kind: 'item', zeroable: true,
         xexpr: (R, c, X) => X('PL', 'tax') },
-      { k: 'expPay', label: PJX_BS_L.expPay, vals: withAud(null, v(x => x.bs.expPayable)), kind: 'item', zeroable: true },
-      { k: 'tds', label: PJX_BS_L.tds, vals: withAud(null, v(x => x.bs.tdsPayable)), kind: 'item', zeroable: true },
+      // Both payables are rules over the P&L: expenses payable = audit fee +
+      // one month's salary; TDS = 1% of salary + 1.5% of audit fee.
+      { k: 'expPay', label: PJX_BS_L.expPay, vals: withAud(null, v(x => x.bs.expPayable)), kind: 'item', zeroable: true,
+        xf: ({ X, yi }) => {
+          if (yi < 0 || admAuditIdx < 0) return null;
+          const a = X('PL', 'adm' + admAuditIdx), s = X('PL', 'adm0');
+          if (!a || !s) return null;
+          const audit = Y[yi].pl.adminLines[admAuditIdx].amount, sal = Y[yi].pl.adminLines[0].amount;
+          if (Math.abs(Math.round(audit + sal / 12) - Y[yi].bs.expPayable) > 0.5) return null;
+          return `ROUND(${a}+${s}/12,0)`;
+        } },
+      { k: 'tds', label: PJX_BS_L.tds, vals: withAud(null, v(x => x.bs.tdsPayable)), kind: 'item', zeroable: true,
+        xf: ({ X, yi }) => {
+          if (yi < 0 || admAuditIdx < 0) return null;
+          const a = X('PL', 'adm' + admAuditIdx), s = X('PL', 'adm0');
+          if (!a || !s) return null;
+          const audit = Y[yi].pl.adminLines[admAuditIdx].amount, sal = Y[yi].pl.adminLines[0].amount;
+          if (Math.abs(Math.round(sal * 0.01 + audit * 0.015) - Y[yi].bs.tdsPayable) > 0.5) return null;
+          return `ROUND(${s}*0.01+${a}*0.015,0)`;
+        } },
       { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.overdraft, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
       { k: 'clTotal', label: PJX_BS_L.clTotal, vals: withAud(m.currentLiabilitiesTotal, v(x => x.bs.totalCurrentLiabilities)), kind: 'tot',
         xsum: ['creditors', 'provTax', 'expPay', 'tds', 'stl'] },
@@ -216,33 +275,102 @@ function pjxBuildReport() {
     key: 'PL', title: 'Projected Profit & Loss A/C', sheet: 'Profit & Loss', sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
     cols: withAud(audCol, yearCols(y => pjFyDot(y))),
     rows: prune([
-      { k: 'sales', label: PJX_PL_L.sales, vals: withAud(m.revenue.operations, v(x => x.pl.sales)), kind: 'plain', bold: true },
+      // Sales — the growth rate the user entered is visible in the formula.
+      { k: 'sales', label: PJX_PL_L.sales, vals: withAud(m.revenue.operations, v(x => x.pl.sales)), kind: 'plain', bold: true,
+        xf: ({ R, p, yi, prevIsAud }) => (yi < 0 || !p || (yi === 0 && !prevIsAud)) ? null
+          : growF(`${p}${R.sales}`, growthFor(yi + 1),
+                  prevOf(yi, x => x.pl.sales, m.revenue.operations), Y[yi].pl.sales) },
       { k: 'cogsHead', label: PJX_PL_L.cogsHead, vals: [], kind: 'sec' },
-      { k: 'opening', label: PJX_PL_L.opening, vals: withAud(m.materials.opening, v(x => x.pl.openingStock)), kind: 'item', zeroable: true },
-      { k: 'purchase', label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), kind: 'item', zeroable: true },
-      { k: 'direct', label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), kind: 'item', zeroable: true },
-      { k: 'closing', label: PJX_PL_L.closing, vals: withAud(-m.materials.closing, v(x => -x.pl.closingStock)), kind: 'item', zeroable: true },
+      // Opening stock is last year's closing stock (stored negative there).
+      { k: 'opening', label: PJX_PL_L.opening, vals: withAud(m.materials.opening, v(x => x.pl.openingStock)), kind: 'item', zeroable: true,
+        xf: ({ R, p, yi }) => (yi > 0 && p && R.closing) ? `-${p}${R.closing}` : null },
+      // Purchases is the BALANCING figure — it plugs Cost of Sales to land on
+      // the Gross-Profit target, so the sheet shows it derived, never typed.
+      { k: 'purchase', label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), kind: 'item', zeroable: true,
+        xf: ({ R, c, yi }) => {
+          if (yi < 0 || !R.cogsTotal) return null;
+          let f = `${c}${R.cogsTotal}`;
+          ['opening', 'direct', 'closing'].forEach(k => { if (R[k]) f += `-${c}${R[k]}`; });
+          return f;
+        } },
+      { k: 'direct', label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), kind: 'item', zeroable: true,
+        xf: ({ R, c, yi }) => {
+          if (yi < 0 || !R.sales) return null;
+          const ratio = m.revenue.operations > 0 ? m.materials.directCost / m.revenue.operations : 0;
+          if (!(ratio > 0)) return null;
+          const sales = Y[yi].pl.sales;
+          if (Math.abs(Math.round(sales * ratio) - Y[yi].pl.directCost) > 0.5) return null;
+          return `ROUND(${c}${R.sales}*${Math.round(ratio * 1e8) / 1e8},0)`;
+        } },
+      // Closing stock normally grows 5% on the opening figure; when a rule
+      // moved it (rule 1 / the debtor-days lever) it stays the solved figure.
+      { k: 'closing', label: PJX_PL_L.closing, vals: withAud(-m.materials.closing, v(x => -x.pl.closingStock)), kind: 'item', zeroable: true,
+        xf: ({ R, p, yi }) => {
+          if (yi < 1 || !p || !R.closing) return null;
+          const prevClose = Y[yi - 1].pl.closingStock, cur = Y[yi].pl.closingStock;
+          const g = LIM.stockGrowth || 1.05;
+          if (Math.abs(Math.round(prevClose * g) - cur) > 0.5) return null;
+          return `-ROUND(-${p}${R.closing}*${g},0)`;
+        } },
+      // Cost of Sales = Sales − Gross Profit (GP is the driver, see below).
       { k: 'cogsTotal', label: PJX_PL_L.cogsTotal, vals: withAud(m.materials.total, v(x => x.pl.cogs)), kind: 'tot',
-        xsum: ['opening', 'purchase', 'direct', 'closing'] },
+        xf: ({ R, c, yi }) => (yi >= 0 && R.sales && R.gp) ? `${c}${R.sales}-${c}${R.gp}` : null },
+      // Gross Profit is the TARGET the solver drives to (≥5% up each year), so
+      // it carries the growth formula and everything above derives from it.
       { k: 'gp', label: PJX_PL_L.gp, vals: withAud(audGP, v(x => x.pl.grossProfit)), kind: 'grand',
-        xexpr: (R, c) => `${c}${R.sales}-${c}${R.cogsTotal}` },
+        xf: ({ R, p, yi, prevIsAud }) => (yi < 0 || !p || (yi === 0 && !prevIsAud)) ? null
+          : growF(`${p}${R.gp}`, LIM.profitGrowth || 1.05,
+                  prevOf(yi, x => x.pl.grossProfit, audGP), Y[yi].pl.grossProfit) },
       { k: 'adminHead', label: PJX_PL_L.adminHead, vals: [], kind: 'sec' },
+      // Every admin line shows its own growth: ×1.05, or the stepped Rent /
+      // Audit-Fee schedule (held flat, then ×1.15 rounded to '000).
       ...Y[0].pl.adminLines.map((l, i) => (
-        { k: 'adm' + i, label: l.name, vals: withAud(audAdminLine(i), v(x => x.pl.adminLines[i].amount)), kind: 'item', zeroable: true }
+        { k: 'adm' + i, label: l.name, vals: withAud(audAdminLine(i), v(x => x.pl.adminLines[i].amount)), kind: 'item', zeroable: true,
+          xf: ({ R, p, yi, prevIsAud }) => {
+            if (yi < 0 || !p || (yi === 0 && !prevIsAud)) return null;
+            const cell = `${p}${R['adm' + i]}`;
+            const cur = Y[yi].pl.adminLines[i].amount;
+            const prev = prevOf(yi, x => x.pl.adminLines[i].amount, audAdminLine(i));
+            if (prev == null) return null;
+            return sameF(cell, prev, cur)                       // stepped: flat year
+              || growF(cell, EXP_G, prev, cur)                  // ordinary ×1.05
+              || growF(cell, 1.15, prev, cur, -3);              // stepped: bump year
+          } }
       )),
       { k: 'adminTotal', label: PJX_PL_L.adminTotal, vals: withAud(audAdminTotal, v(x => x.pl.adminTotal)), kind: 'tot',
         xsum: Y[0].pl.adminLines.map((_, i) => 'adm' + i) },
       { k: 'pbid', label: PJX_PL_L.pbid, vals: withAud(audGP - audAdminTotal, v(x => x.pl.grossProfit - x.pl.adminTotal)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.gp}-${c}${R.adminTotal}` },
-      { k: 'intST', label: PJX_PL_L.intST, vals: withAud(m.financeCost, v(x => x.pl.interestST)), kind: 'plain', zeroable: true },
+      // OD/short-term interest = the OD balance on the Balance Sheet × its rate.
+      { k: 'intST', label: PJX_PL_L.intST, vals: withAud(m.financeCost, v(x => x.pl.interestST)), kind: 'plain', zeroable: true,
+        xf: ({ X, yi }) => {
+          const st = asm.stLoans || [];
+          if (yi < 0 || st.length !== 1) return null;
+          const rate = num0(st[0].ratePct) / 100, bal = num0(st[0].amount);
+          const t = X('BS', 'stl');
+          if (!t || !(rate > 0) || Math.abs(bal * rate - Y[yi].pl.interestST) > 0.5) return null;
+          return `${t}*${Math.round(rate * 1e6) / 1e6}`;
+        } },
       { k: 'intLT', label: PJX_PL_L.intLT, vals: withAud(null, v(x => x.pl.interestLT)), kind: 'plain', zeroable: true },
-      { k: 'dep', label: PJX_PL_L.dep, vals: withAud(null, v(x => x.pl.dep)), kind: 'plain', zeroable: true, keep: true },
+      // Depreciation is fetched from the Depreciation schedule's total row.
+      { k: 'dep', label: PJX_PL_L.dep, vals: withAud(null, v(x => x.pl.dep)), kind: 'plain', zeroable: true, keep: true,
+        xf: ({ X, yi }) => yi < 0 ? null : X('DEP', 'dt' + (yi + 1), 5) },
       { k: 'pbt', label: PJX_PL_L.pbt, vals: withAud(m.profitBeforeTax, v(x => x.pl.pbt)), kind: 'grand',
         xexpr: (R, c) => `${c}${R.pbid}-` + ['intST', 'intLT', 'dep'].filter(k => R[k]).map(k => `${c}${R[k]}`).join('-') },
-      { k: 'tax', label: PJX_PL_L.tax, vals: withAud(m.tax, v(x => x.pl.tax)), kind: 'plain', zeroable: true },
+      // Flat-rate entities show the rate in the formula; proprietorship slabs
+      // aren't a single multiplier, so those stay as the computed figure.
+      { k: 'tax', label: PJX_PL_L.tax, vals: withAud(m.tax, v(x => x.pl.tax)), kind: 'plain', zeroable: true,
+        xf: ({ R, c, yi }) => {
+          if (yi < 0 || !R.pbt || asm.taxProfile === 'progressive') return null;
+          const pbt = Y[yi].pl.pbt;
+          if (Math.abs(Math.round(pbt * 0.25) - Y[yi].pl.tax) > 0.5) return null;
+          return `ROUND(${c}${R.pbt}*0.25,0)`;
+        } },
       { k: 'pat', label: PJX_PL_L.pat, vals: withAud(m.profitBeforeTax - m.tax, v(x => x.pl.pat)), kind: 'tot',
         xexpr: (R, c) => R.tax ? `${c}${R.pbt}-${c}${R.tax}` : `${c}${R.pbt}` },
-      { k: 'upto', label: PJX_PL_L.upto, vals: withAud(null, v(x => x.pl.retainedOpening)), kind: 'plain', zeroable: true },
+      // Opening retained earnings = last year's "Transferred to Balance Sheet".
+      { k: 'upto', label: PJX_PL_L.upto, vals: withAud(null, v(x => x.pl.retainedOpening)), kind: 'plain', zeroable: true,
+        xf: ({ R, p, yi }) => (yi > 0 && p && R.transfer) ? `${p}${R.transfer}` : null },
       { k: 'div', label: PJX_PL_L.div, vals: withAud(null, v(x => x.pl.dividend)), kind: 'plain', zeroable: true, keep: true },
       { k: 'transfer', label: PJX_PL_L.transfer, vals: withAud(m.reserves, v(x => x.pl.retainedClosing)), kind: 'grand',
         xexpr: (R, c) => `${c}${R.pat}` + (R.upto ? `+${c}${R.upto}` : '') + (R.div ? `-${c}${R.div}` : '') },
@@ -266,8 +394,28 @@ function pjxBuildReport() {
         xexpr: (R, c, X) => { const t = X('PL', 'tax'); return t ? `-${t}` : null; } },
       { k: 'opSub', label: PJX_CF_L.opSub, vals: v(x => x.cf.pbtPlusInterest + x.cf.depreciation + x.cf.incomeTax), kind: 'tot',
         xsum: ['npbit', 'cfdep', 'cftax'] },
-      { k: 'dCA', label: PJX_CF_L.dCA, vals: v(x => x.cf.deltaCurrentAssets), kind: 'item' },
-      { k: 'dCL', label: PJX_CF_L.dCL, vals: v(x => x.cf.deltaCurrentLiabilities), kind: 'item' },
+      // Working-capital movements read straight off the Balance Sheet — this
+      // year's figures against last year's.
+      { k: 'dCA', label: PJX_CF_L.dCA, vals: v(x => x.cf.deltaCurrentAssets), kind: 'item',
+        xf: ({ X, Xp, yi }) => {
+          if (yi < 1) return null;
+          const d = X('BS', 'debtors'), s = X('BS', 'stock');
+          const pd = Xp('BS', 'debtors'), ps = Xp('BS', 'stock');
+          if (!d || !pd) return null;
+          const cur = Y[yi].bs.debtors + Y[yi].bs.closingStock;
+          const prv = Y[yi - 1].bs.debtors + Y[yi - 1].bs.closingStock;
+          if (Math.abs((prv - cur) - Y[yi].cf.deltaCurrentAssets) > 0.5) return null;
+          return `(${pd}${ps ? `+${ps}` : ''})-(${d}${s ? `+${s}` : ''})`;
+        } },
+      { k: 'dCL', label: PJX_CF_L.dCL, vals: v(x => x.cf.deltaCurrentLiabilities), kind: 'item',
+        xf: ({ X, Xp, yi }) => {
+          if (yi < 1) return null;
+          const t = X('BS', 'clTotal'), pt = Xp('BS', 'clTotal');
+          if (!t || !pt) return null;
+          const d = Y[yi].bs.totalCurrentLiabilities - Y[yi - 1].bs.totalCurrentLiabilities;
+          if (Math.abs(d - Y[yi].cf.deltaCurrentLiabilities) > 0.5) return null;
+          return `${t}-${pt}`;
+        } },
       { k: 'wcSub', label: PJX_CF_L.wcSub, vals: v(x => x.cf.deltaCurrentAssets + x.cf.deltaCurrentLiabilities), kind: 'tot',
         xsum: ['dCA', 'dCL'] },
       { k: 'netOp', label: PJX_CF_L.netOp, vals: v(x => x.cf.operating), kind: 'grand',
@@ -279,14 +427,21 @@ function pjxBuildReport() {
       { k: 'cLabel', label: PJX_CF_L.cLabel, vals: [], kind: 'sec' },
       { k: 'issue', label: PJX_CF_L.issue, vals: v(x => x.cf.capitalIssued), kind: 'item', zeroable: true },
       { k: 'cfdiv', label: PJX_CF_L.div, vals: v(x => x.cf.dividend), kind: 'item', zeroable: true },
-      { k: 'intPaid', label: PJX_CF_L.intPaid, vals: v(x => x.cf.interestPaid), kind: 'item', zeroable: true },
+      { k: 'intPaid', label: PJX_CF_L.intPaid, vals: v(x => x.cf.interestPaid), kind: 'item', zeroable: true,
+        xf: ({ X, yi }) => {
+          if (yi < 0) return null;
+          const a = X('PL', 'intST'), b = X('PL', 'intLT');
+          return a ? `-${a}${b ? `-${b}` : ''}` : (b ? `-${b}` : null);
+        } },
       { k: 'dDir', label: T.dDirRow, vals: v(x => x.cf.deltaDirector), kind: 'item', zeroable: true },
       { k: 'dLoans', label: PJX_CF_L.dLoans, vals: v(x => x.cf.deltaLoans), kind: 'item', zeroable: true },
       { k: 'netFin', label: PJX_CF_L.netFin, vals: v(x => x.cf.financing), kind: 'grand',
         xsum: ['issue', 'cfdiv', 'intPaid', 'dDir', 'dLoans'] },
       { k: 'netChange', label: PJX_CF_L.netChange, vals: v(x => x.cf.netChange), kind: 'tot',
         xexpr: (R, c) => `${c}${R.netOp}+${c}${R.netInv}+${c}${R.netFin}` },
-      { k: 'openCash', label: PJX_CF_L.openCash, vals: v(x => x.cf.openingCash), kind: 'plain' },
+      // Opening cash is last year's closing cash.
+      { k: 'openCash', label: PJX_CF_L.openCash, vals: v(x => x.cf.openingCash), kind: 'plain',
+        xf: ({ R, p, yi }) => (yi > 0 && p && R.closeCash) ? `${p}${R.closeCash}` : null },
       { k: 'closeCash', label: PJX_CF_L.closeCash, vals: v(x => x.cf.closingCash), kind: 'grand',
         xexpr: (R, c) => `${c}${R.netChange}+${c}${R.openCash}` },
     ])),
@@ -305,9 +460,20 @@ function pjxBuildReport() {
       if (!depActive[i]) return;
       const k = `d${yr.year}_${i}`;
       keys.push(k);
+      // Columns: B Opening · C Additional · D Sales · E Total · F Rate ·
+      // G Depreciation · H Balance. The whole block is live arithmetic, and
+      // each year's Opening is last year's Balance for the same pool.
+      const prevKey = `d${yr.year - 1}_${i}`;
       depRows.push({ k, label: r.name, kind: 'item',
         vals: [r.opening, r.addition, r.disposal, r.total,
-               { t: `${+(r.rate * 100).toFixed(2)}%`, n: r.rate, fmt: '0.00%' }, r.dep, r.closing] });
+               { t: `${+(r.rate * 100).toFixed(2)}%`, n: r.rate, fmt: '0.00%' }, r.dep, r.closing],
+        xf: ({ R, rn, ci }) => {
+          if (ci === 0) return (yr.year > 1 && R[prevKey]) ? `H${R[prevKey]}` : null;
+          if (ci === 3) return `B${rn}+C${rn}-D${rn}`;          // Total
+          if (ci === 5) return `E${rn}*F${rn}`;                  // Depreciation
+          if (ci === 6) return `E${rn}-G${rn}`;                  // Balance
+          return null;
+        } });
     });
     depRows.push({ k: `dt${yr.year}`, label: 'Total', kind: 'tot',
       vals: [yr.dep.opening, yr.dep.addition, yr.dep.disposal, yr.dep.total, '', yr.dep.dep, yr.dep.closing],
@@ -376,11 +542,19 @@ function pjxBuildReport() {
       { k: 'ratioHead', label: 'Ratio Analysis', vals: [], kind: 'sec' },
       { k: 'rDays', label: `Debtor Turnover (days) — between ${L.minDebtorDays} and ${L.maxDebtorDays} days`, kind: 'plain',
         vals: v(x => { const d = Math.round(x.ratios.debtorDays);
-          return { t: x.ratios.debtorDays.toFixed(0), n: x.ratios.debtorDays, fmt: '0', tone: tone(d >= L.minDebtorDays && d <= L.maxDebtorDays) }; }) },
+          return { t: x.ratios.debtorDays.toFixed(0), n: x.ratios.debtorDays, fmt: '0', tone: tone(d >= L.minDebtorDays && d <= L.maxDebtorDays) }; }),
+        xf: ({ X, yi }) => { const d = X('BS', 'debtors'), sl = X('PL', 'sales');
+          return (yi >= 0 && d && sl) ? `${d}/${sl}*365` : null; } },
       { k: 'rCur', label: `Current Ratio — always more than ${L.minCurrentRatio}`, kind: 'plain',
-        vals: v(x => ({ t: x.ratios.currentRatio.toFixed(2), n: x.ratios.currentRatio, fmt: '0.00', tone: tone(x.ratios.currentRatio >= L.minCurrentRatio) })) },
+        vals: v(x => ({ t: x.ratios.currentRatio.toFixed(2), n: x.ratios.currentRatio, fmt: '0.00', tone: tone(x.ratios.currentRatio >= L.minCurrentRatio) })),
+        xf: ({ X, yi }) => { const a = X('BS', 'caTotal'), b = X('BS', 'clTotal');
+          return (yi >= 0 && a && b) ? `${a}/${b}` : null; } },
       { k: 'rDE', label: `Debt-Equity Ratio — always less than ${L.maxDebtEquity}`, kind: 'plain',
-        vals: v(x => ({ t: x.ratios.debtEquity.toFixed(2), n: x.ratios.debtEquity, fmt: '0.00', tone: tone(x.ratios.debtEquity <= L.maxDebtEquity) })) },
+        vals: v(x => ({ t: x.ratios.debtEquity.toFixed(2), n: x.ratios.debtEquity, fmt: '0.00', tone: tone(x.ratios.debtEquity <= L.maxDebtEquity) })),
+        xf: ({ X, yi }) => { if (yi < 0) return null;
+          const debt = ['lt', 'pwc', 'stl'].map(k => X('BS', k)).filter(Boolean);
+          const eq = ['cap', 'addl', 'reserve'].map(k => X('BS', k)).filter(Boolean);
+          return (debt.length && eq.length) ? `(${debt.join('+')})/(${eq.join('+')})` : null; } },
       // Interest Coverage Ratio — the CA's own projected files carry it
       // ((PAT + interest) / interest); a bank reads it as debt-service comfort.
       { k: 'rICR', label: 'Interest Coverage Ratio', kind: 'plain',
@@ -389,11 +563,20 @@ function pjxBuildReport() {
           if (!(int > 0)) return { t: '–', n: null };
           const r = (x.pl.pat + int) / int;
           return { t: r.toFixed(2), n: r, fmt: '0.00' };
-        }) },
+        }),
+        xf: ({ X, yi }) => { if (yi < 0) return null;
+          const pat = X('PL', 'pat'), ints = [X('PL', 'intST'), X('PL', 'intLT')].filter(Boolean);
+          if (!pat || !ints.length) return null;
+          const I = ints.join('+');
+          return `(${pat}+${I})/(${I})`; } },
       { k: 'rGPM', label: 'Gross Profit Margin', kind: 'plain',
-        vals: v(x => ({ t: `${(x.pl.grossProfit / x.pl.sales * 100).toFixed(2)}%`, n: x.pl.grossProfit / x.pl.sales, fmt: '0.00%' })) },
+        vals: v(x => ({ t: `${(x.pl.grossProfit / x.pl.sales * 100).toFixed(2)}%`, n: x.pl.grossProfit / x.pl.sales, fmt: '0.00%' })),
+        xf: ({ X, yi }) => { const g = X('PL', 'gp'), sl = X('PL', 'sales');
+          return (yi >= 0 && g && sl) ? `${g}/${sl}` : null; } },
       { k: 'rNPM', label: 'Net Profit Margin', kind: 'plain',
-        vals: v(x => ({ t: `${(x.pl.pat / x.pl.sales * 100).toFixed(2)}%`, n: x.pl.pat / x.pl.sales, fmt: '0.00%' })) },
+        vals: v(x => ({ t: `${(x.pl.pat / x.pl.sales * 100).toFixed(2)}%`, n: x.pl.pat / x.pl.sales, fmt: '0.00%' })),
+        xf: ({ X, yi }) => { const p = X('PL', 'pat'), sl = X('PL', 'sales');
+          return (yi >= 0 && p && sl) ? `${p}/${sl}` : null; } },
     ],
   });
 
@@ -810,6 +993,18 @@ async function pjDownloadExcel() {
                 if (terms.length) formula = terms.join('+');
               } else if (r.xexpr) {
                 try { formula = r.xexpr(R, c, mkX(sec, ci)); } catch (e) { formula = null; }
+              } else if (r.xf) {
+                // Detail-row formula: shows HOW the figure was derived (growth
+                // rate, rule, or the source cell it was fetched from).
+                try {
+                  formula = r.xf({
+                    R, c, ci, X: mkX(sec, ci), rn: rowNo,
+                    Xp: ci > 0 ? mkX(sec, ci - 1) : () => null,   // same row, PRIOR year
+                    p: ci > 0 ? colLetter(ci - 1) : null,
+                    yi: ci - (sec.audOffset || 0),        // 0-based year; <0 = audited col
+                    prevIsAud: !!sec.aud && ci - 1 === 0,
+                  }) || null;
+                } catch (e) { formula = null; }
               }
             }
             const raw = isNum ? x : (obj && obj.n != null ? obj.n : null);
