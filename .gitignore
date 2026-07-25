@@ -7,3 +7,14 @@ Thumbs.db
 
 # Word lock files (created automatically while a .docx is open)
 ~$*.docx
+
+# Real client financial statements used as local test data (Projection Report,
+# Sales & Purchase Book, Depreciation…). This repo is PUBLIC — client data must
+# never be committed. The app's own tokenized templates are .docx and stay
+# tracked; every client sample is a workbook or a generated report, so ignoring
+# those two types here also covers any new sample dropped in later.
+assets/templates/*.xlsx
+assets/templates/*.xls
+assets/templates/*.ods
+assets/templates/*.csv
+assets/templates/*.pdf
