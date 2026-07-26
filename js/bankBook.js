@@ -33,11 +33,14 @@ let bbFilters = { account: '', type: '', particular: '', fy: '', from: '', to: '
 
 // ── Small helpers ──
 function bbUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
-function bbAmt(n) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function bbAmt(n) { return fmtAmount(n); }
 function bbStatus(html, type) { showStatus(html, type, 'bb-status-area'); }
 function bbAccountById(id) { return bbAccounts.find(a => a.id === id) || null; }
 function bbAccountLabel(acc) { return acc ? `${acc.account_name} — ${acc.bank_name}` : '—'; }
 function bbAccountLabelById(id) { return bbAccountLabel(bbAccountById(id)); }
+function bbFirmName(key) { const f = window.SERVICE_MEMO_FIRMS[key]; return f ? f.name : (key || '—'); }
+// Does this particular's counterparty come from the client directory?
+function bbIsClientParticular(p) { return window.BANK_CLIENT_PARTICULARS.includes(p); }
 
 // All particular types (both registers), for label lookups regardless of type.
 function bbParticularLabel(key) {
@@ -51,21 +54,13 @@ function bbTxnCounterparty(t) {
   return t.counterparty_name || '—';
 }
 
-// B.S. date → ordinal for range compare / ordering (null if unparseable/out of
-// the 2080–2090 table). B.S. dates are stored as text 'YYYY.MM.DD'.
-function bbDateOrd(str) {
-  const p = NepaliLocale.bsPartsNum(str);
-  return p ? NepaliLocale.bsOrdinal(p) : null;
-}
-function bbValidBsDate(str) { return NepaliLocale.bsPartsNum(str) != null; }
-function bbFyFromDate(str) {
-  const p = NepaliLocale.bsPartsNum(str);
-  return p ? NepaliLocale.bsFiscal(p).fy.replace('/', '-') : null;
-}
-function bbTodayBsStr() {
-  const bs = NepaliLocale.todayBs();
-  return bs ? `${bs.year}.${String(bs.month).padStart(2, '0')}.${String(bs.day).padStart(2, '0')}` : '';
-}
+// B.S. date-string handling now lives in NepaliLocale (Party Ledger and Final
+// Account need the same four); these stay as local aliases so the call sites
+// below read the same as they always did.
+const bbDateOrd = NepaliLocale.bsDateOrd;
+const bbValidBsDate = NepaliLocale.isValidBsDate;
+const bbFyFromDate = NepaliLocale.bsFyDash;
+const bbTodayBsStr = NepaliLocale.todayBsStr;
 
 // The two legs of a transfer share transfer_group_id; loaded from bbTxns.
 function bbTransferSiblings(groupId) {
@@ -110,6 +105,7 @@ async function bbRefresh() {
       sbFetchAll(() => window.sb.from('bank_transactions').select('*').order('txn_date').order('id')),
     ]);
     bbPopulateAccountSelects();
+    bbPopulateExpenseNames();
     bbRenderAccounts();
     bbRenderTxns();
     document.getElementById('bb-status-area').innerHTML = '';
@@ -144,6 +140,30 @@ function bbPopulateAccountSelects() {
   fill('bb-txn-counter-account', 'Select account…', active);
   fill('bb-report-account', null, active);
   fill('bb-filter-account', 'All accounts', bbAccounts);
+
+  // Firm selects (account drawer + accounts filter) come from config, not data.
+  const firmOpts = Object.values(window.SERVICE_MEMO_FIRMS)
+    .map(f => `<option value="${escHtml(f.key)}">${escHtml(f.name)}</option>`).join('');
+  const drawerFirm = document.getElementById('bb-account-firm');
+  if (drawerFirm) drawerFirm.innerHTML = '<option value="">Select firm…</option>' + firmOpts;
+  const filterFirm = document.getElementById('bb-filter-account-firm');
+  if (filterFirm) {
+    const prev = filterFirm.value;
+    filterFirm.innerHTML = '<option value="">All firms</option>' + firmOpts;
+    filterFirm.value = prev;
+  }
+}
+
+// Expense names already used, for the entry drawer's datalist. Free text is
+// still allowed — this just stops the Expenses Ledger fragmenting because the
+// same expense was typed three slightly different ways.
+function bbPopulateExpenseNames() {
+  const dl = document.getElementById('bb-expense-names');
+  if (!dl) return;
+  const names = [...new Set(bbTxns
+    .filter(t => t.particular === 'expenses' && t.counterparty_name)
+    .map(t => t.counterparty_name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  dl.innerHTML = names.map(n => `<option value="${escHtml(n)}"></option>`).join('');
 }
 
 // ════════════════════════════════════════════
@@ -153,11 +173,16 @@ function bbRenderAccounts() {
   const wrap = document.getElementById('bb-accounts-table-wrap');
   if (!wrap) return;
   if (bbAccountsTable) { bbAccountsTable.destroy(); bbAccountsTable = null; }
-  if (!bbAccounts.length) {
-    wrap.innerHTML = '<div class="log-empty">No bank accounts yet. Click <strong>Add Account</strong> to create one.</div>';
+  const firmFilter = (document.getElementById('bb-filter-account-firm') || {}).value || '';
+  const rows = bbAccounts
+    .filter(a => !firmFilter || a.firm_key === firmFilter)
+    .map(a => ({ ...a, _balance: bbAccountBalance(a.id) }));
+  if (!rows.length) {
+    wrap.innerHTML = bbAccounts.length
+      ? '<div class="log-empty">No accounts for this firm.</div>'
+      : '<div class="log-empty">No bank accounts yet. Click <strong>Add Account</strong> to create one.</div>';
     return;
   }
-  const rows = bbAccounts.map(a => ({ ...a, _balance: bbAccountBalance(a.id) }));
   wrap.innerHTML = '';
   bbAccountsTable = TableEngine.createTable(wrap, {
     data: rows,
@@ -165,6 +190,7 @@ function bbRenderAccounts() {
     pagination: true,
     paginationSize: 25,
     columns: [
+      { title: 'Firm', field: 'firm_key', width: 170, formatter: c => escHtml(c.getValue() ? bbFirmName(c.getValue()) : '—') },
       { title: 'Account Name', field: 'account_name', minWidth: 190, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Bank', field: 'bank_name', minWidth: 150, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'A/C No.', field: 'account_number', width: 140, formatter: c => escHtml(c.getValue() || '—') },
@@ -194,6 +220,7 @@ function bbOpenAccount(existing) {
   bbEditingAccountId = existing ? existing.id : null;
   document.getElementById('bb-account-drawer-title').textContent = existing ? 'Edit Account' : 'Add Account';
   document.getElementById('bb-account-delete-btn').style.display = existing ? '' : 'none';
+  document.getElementById('bb-account-firm').value = existing ? (existing.firm_key || '') : '';
   document.getElementById('bb-account-name').value = existing ? (existing.account_name || '') : '';
   document.getElementById('bb-account-bank').value = existing ? (existing.bank_name || '') : '';
   document.getElementById('bb-account-number').value = existing ? (existing.account_number || '') : '';
@@ -209,12 +236,17 @@ async function bbSaveAccount() {
   const name = document.getElementById('bb-account-name').value.trim();
   const bank = document.getElementById('bb-account-bank').value.trim();
   const errEl = 'bb-account-drawer-status';
+  const firmKey = document.getElementById('bb-account-firm').value;
+  // Required: Final Account's per-firm Bank Balance can't place an unassigned
+  // account, so it would silently vanish from the Balance Sheet.
+  if (!firmKey) { showStatus('Select the firm this account belongs to.', 'info', errEl); return; }
   if (!name) { showStatus('Enter the account name (holder).', 'info', errEl); return; }
   if (!bank) { showStatus('Enter the bank name.', 'info', errEl); return; }
   const openDate = document.getElementById('bb-account-opening-date').value.trim();
   if (openDate && !bbValidBsDate(openDate)) { showStatus('Opening date must be a valid B.S. date (YYYY.MM.DD).', 'info', errEl); return; }
 
   const payload = {
+    firm_key: firmKey,
     account_name: name,
     bank_name: bank,
     account_number: document.getElementById('bb-account-number').value.trim() || null,
@@ -393,7 +425,7 @@ function bbOpenTxn(mode, existing) {
   document.getElementById('bb-txn-amount').value = existing ? existing.amount : '';
   document.getElementById('bb-txn-particular').value = existing ? existing.particular : (types[0] && types[0].key);
   document.getElementById('bb-txn-party').value = (existing && existing.particular !== 'inter_bank_transfer') ? (existing.counterparty_name || '') : '';
-  document.getElementById('bb-txn-client-search').value = (existing && existing.particular === 'fee_receipt') ? (existing.counterparty_name || '') : '';
+  document.getElementById('bb-txn-client-search').value = (existing && bbIsClientParticular(existing.particular)) ? (existing.counterparty_name || '') : '';
   document.getElementById('bb-txn-description').value = existing ? (existing.description || '') : '';
 
   if (existing && existing.client_id) {
@@ -412,13 +444,17 @@ function bbOnParticularChange() {
   const types = bbTxnMode === 'receipt' ? window.BANK_RECEIPT_TYPES : window.BANK_PAYMENT_TYPES;
   const def = types.find(t => t.key === particular);
   const isTransfer = particular === 'inter_bank_transfer';
-  const isFee = particular === 'fee_receipt';
+  const isClient = bbIsClientParticular(particular);
 
   document.getElementById('bb-txn-transfer-group').style.display = isTransfer ? '' : 'none';
-  document.getElementById('bb-txn-client-group').style.display = isFee ? '' : 'none';
-  document.getElementById('bb-txn-party-group').style.display = (!isTransfer && !isFee) ? '' : 'none';
+  document.getElementById('bb-txn-client-group').style.display = isClient ? '' : 'none';
+  document.getElementById('bb-txn-party-group').style.display = (!isTransfer && !isClient) ? '' : 'none';
   const partyLabel = document.getElementById('bb-txn-party-label');
   if (partyLabel && def) partyLabel.textContent = def.party;
+  const clientLabel = document.getElementById('bb-txn-client-label');
+  if (clientLabel && def) clientLabel.textContent = def.party + ' (search by name or PAN)';
+  // Only the free-text Expenses field offers the used-names datalist.
+  document.getElementById('bb-txn-party').setAttribute('list', particular === 'expenses' ? 'bb-expense-names' : '');
 
   // For a transfer, the source-account field is labelled "From" account.
   document.getElementById('bb-txn-account-label').textContent = isTransfer
@@ -439,9 +475,10 @@ async function bbSaveTxn() {
 
   if (particular === 'inter_bank_transfer') { bbSaveTransfer(accountId, date, amount); return; }
 
-  // Counterparty: Fee Receipt links a directory client; others are free text.
+  // Counterparty: the client particulars (Fee Receipt / For Tax / Tax Payment)
+  // link a directory client; others are free text.
   let counterpartyName, clientId = null;
-  if (particular === 'fee_receipt') {
+  if (bbIsClientParticular(particular)) {
     counterpartyName = document.getElementById('bb-txn-client-search').value.trim();
     if (!counterpartyName) { bbDrawerErr('Enter or select the client.'); return; }
     if (bbSelectedClient && bbSelectedClient.name === counterpartyName) clientId = bbSelectedClient.id;

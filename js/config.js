@@ -83,12 +83,22 @@ window.REGD_AUDIT_FIRMS = Object.values(window.REP_FIRMS).map(f => ({
 //     signatory); resolved via `ref`.
 //   · rosp/rtc carry their own name; address/PAN are left blank for the firm to
 //     fill in here later (the PDF prints "—" until then).
+//   · `other` is the sheet's "other--Specify" row: the name is typed per memo
+//     (service_memos.firm_other) rather than configured. `typed: true` is what
+//     the UI keys the extra input off, so adding another typed firm needs no
+//     code change.
 window.SERVICE_MEMO_FIRMS = {
   shailesh:  { key: 'shailesh',  name: window.REP_FIRMS.shailesh.name,  prefix: 'SM-SA',   ref: 'shailesh' },
   dallakoti: { key: 'dallakoti', name: window.REP_FIRMS.dallakoti.name, prefix: 'SM-DC',   ref: 'dallakoti' },
   rosp:      { key: 'rosp',      name: 'Ratnanagar Offset Screen Print', prefix: 'SM-ROSP', address: '', pan: '', phone: '', email: '' },
   rtc:       { key: 'rtc',       name: 'Ratnanagar Tax Consultancy',     prefix: 'SM-RTC',  address: '', pan: '', phone: '', email: '' },
+  other:     { key: 'other',     name: 'Other — specify',                prefix: 'SM-OT',   typed: true, address: '', pan: '', phone: '', email: '' },
 };
+
+// The two audit firms are the only ones the Final Account statements are drawn
+// for (the workbook's Balance Sheet has exactly these two columns) — the sister
+// concerns and "other" can still raise memos and hold bank accounts.
+window.FINAL_ACCOUNT_FIRM_KEYS = ['shailesh', 'dallakoti'];
 
 // Nature-of-task category → sub-category tree, seeded from the firm's "Work
 // Performed" sheet (typos fixed: "Business", "Income Tax Filing"; "OCR"
@@ -114,14 +124,21 @@ window.SERVICE_MEMO_TASKS = [
 // out + receipt in) sharing a transfer_group_id — see bankBook.js.
 window.BANK_RECEIPT_TYPES = [
   { key: 'fee_receipt',         label: 'Fee Receipt',         party: 'Name of Client' },
+  { key: 'for_tax',             label: 'For Tax',             party: 'Name of Client' },
   { key: 'sapati',              label: 'Sapati',              party: 'Name of Person' },
   { key: 'inter_bank_transfer', label: 'Inter-bank Transfer', party: 'From / To Account' },
 ];
 window.BANK_PAYMENT_TYPES = [
-  { key: 'expenses',            label: 'Expenses',            party: 'Nature of Expense' },
+  { key: 'expenses',            label: 'Expenses',            party: 'Name of Expenses' },
+  { key: 'tax_payment',         label: 'Tax Payment',         party: 'Name of Client' },
   { key: 'sapati',              label: 'Sapati',              party: 'Name of Person' },
   { key: 'inter_bank_transfer', label: 'Inter-bank Transfer', party: 'From / To Account' },
 ];
+
+// Particulars whose counterparty is a directory client (autocomplete + a real
+// client_id link) rather than free text. All three land in the Party Ledger:
+// fee_receipt/for_tax reduce what the client owes, tax_payment increases it.
+window.BANK_CLIENT_PARTICULARS = ['fee_receipt', 'for_tax', 'tax_payment'];
 
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
