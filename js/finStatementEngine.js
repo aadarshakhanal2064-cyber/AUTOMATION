@@ -843,6 +843,11 @@ const FinStatementEngine = (() => {
           soce: TITLES.soce[basis], socf: TITLES.socf[basis],
         },
         allowedReturnTypes: allowed,
+        serviceIndustry: !!input.serviceIndustry,
+        // B.S. date wording ("As at 32nd Ashadh 2082 (16th July 2025)") is
+        // built by the UI through NepaliLocale and passed straight through, so
+        // the engine stays free of calendar concerns.
+        ...(input.labels || {}),
       },
       income: {
         revenueOps: A, revenueOther, interestIncome, otherIncome, totalIncome,
@@ -877,6 +882,11 @@ const FinStatementEngine = (() => {
         netIncrease, openingCash, closingCash,
       },
       levers: { cash, dividend, directorLoan, auditFee, rent, expensesPayable, purchases },
+      // Carried through for the export layer: the comparative column comes
+      // straight off the prior-year model, and Sch-BS 3.8 shows the loan inputs
+      // broken out as Term / PWC / HP rather than only as their total.
+      priorYear: py,
+      rawFigures: { A, B, C, E1, E2, F, G, H, I, J, K, L, M, N },
       proofs,
       issues,
     };
