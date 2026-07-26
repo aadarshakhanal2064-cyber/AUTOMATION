@@ -4,22 +4,18 @@
 //  professional work is completed without a recorded fee to collect. This is
 //  deliberately NOT an accounting/tax invoice (that is Billing, js/billing.js,
 //  which carries bank details, a payment QR and a reconciled payments table).
-//  A memo is one lightweight row: who did what work for which client, the fee,
-//  and a single amount_received for collection tracking. Modeled on billing.js
-//  but simpler — no line-item or payments subtable.
+//  A memo is one lightweight row: who did what work for which client, and the
+//  fee. Modeled on billing.js but simpler — no line-item or payments subtable.
+//
+//  A memo records the work and the fee, NOT the collection. Money actually
+//  received is entered once, as a Bank Entry "Fee Receipt", and the two sides
+//  are netted per client by the Party Ledger (js/partyLedger.js). The memo used
+//  to carry its own amount_received/payment_date/payment_status; those were
+//  removed with the 2026-07-26 migration so there is exactly one place a
+//  payment can be recorded and the two can never disagree.
 // ════════════════════════════════════════════
 // No buttonId — launched from the topbar "Financial Management" menu, not a sidebar button.
 ModuleRegistry.register({ id: 'serviceMemo', group: 'main', buttonId: null, panelId: 'tab-serviceMemo-panel' });
-
-// Payment status has no visible badge anywhere in the module UI (removed per
-// user feedback — dashboard tiles, drawer, list table and Recent Memos all
-// show no status indicator). It's still computed (smDeriveStatus) and saved,
-// and this map is the one source for the PDF's printed "Payment Status" line.
-const SM_PAYMENT_STATUSES = {
-  pending:        { label: 'Pending' },
-  partially_paid: { label: 'Partially Paid' },
-  paid:           { label: 'Paid' },
-};
 
 const SM_FILTERS_EMPTY = { firm: '', category: '', fy: '', from: '', to: '' };
 
@@ -32,14 +28,20 @@ let smInitDone = false;
 let smFilters = { ...SM_FILTERS_EMPTY };
 
 function smUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
-function smMoney(n) { return 'Rs. ' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function smNum(n) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function smBalance(m) { return Number(m.total_amount || 0) - Number(m.amount_received || 0); }
+function smMoney(n) { return 'Rs. ' + fmtAmount(n); }
+function smNum(n) { return fmtAmount(n); }
 function smNatureText(m) {
   const sub = (m.nature_subcategory === 'Others' || m.nature_category === 'Others') && m.nature_other
     ? m.nature_other
     : m.nature_subcategory;
   return sub ? `${m.nature_category} — ${sub}` : (m.nature_category || '—');
+}
+// Display name of the memo's firm — the typed one for the "other--Specify"
+// option, otherwise the configured name.
+function smFirmName(m) {
+  const f = window.SERVICE_MEMO_FIRMS[m.firm_key];
+  if (f && f.typed) return m.firm_other || f.name;
+  return (f && f.name) || m.firm_key || '—';
 }
 function smStatusMsg(html, type) { showStatus(html, type, 'sm-status-area'); }
 
@@ -63,29 +65,12 @@ async function smRefresh() {
   try {
     smMemos = await sbFetchAll(() => window.sb.from('service_memos')
       .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false }));
-    smRenderStats();
     smRenderRecent();
     smRenderTable();
     document.getElementById('sm-status-area').innerHTML = '';
   } catch (e) {
     smStatusMsg('❌ Failed to load service memos: ' + escHtml(e.message || String(e)), 'error');
   }
-}
-
-// ── Dashboard (computed client-side — memo volume is small) ──
-function smRenderStats() {
-  const grid = document.getElementById('sm-stat-grid');
-  if (!grid) return;
-  let paidAmt = 0;
-  smMemos.forEach(m => { paidAmt += Number(m.amount_received || 0); });
-  const cards = [
-    { label: 'Total Collected', value: smMoney(paidAmt) },
-  ];
-  grid.innerHTML = cards.map(c => `
-    <div class="stat-card">
-      <div class="stat-num" style="font-size:20px;">${c.value}</div>
-      <div class="stat-label">${c.label}</div>
-    </div>`).join('');
 }
 
 function smRenderRecent() {
@@ -123,15 +108,11 @@ function smRenderTable() {
       { title: 'Memo #', field: 'memo_number', width: 130, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Date', field: 'memo_date', width: 110 },
       { title: 'Client', field: 'client_name', minWidth: 170, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'Firm', field: 'firm_key', width: 90, formatter: c => escHtml((window.SERVICE_MEMO_FIRMS[c.getValue()] || {}).name || c.getValue() || '—') },
+      { title: 'Firm', field: 'firm_key', width: 110, formatter: c => escHtml(smFirmName(c.getRow().getData())) },
       { title: 'Nature', field: 'nature_category', minWidth: 180, formatter: c => escHtml(smNatureText(c.getRow().getData())) },
       { title: 'F.Y.', field: 'fiscal_year', width: 90, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Fee', field: 'professional_fee', width: 110, hozAlign: 'right', formatter: c => smNum(c.getValue()) },
       { title: 'Total', field: 'total_amount', width: 110, hozAlign: 'right', formatter: c => smNum(c.getValue()) },
-      { title: 'Received', field: 'amount_received', width: 110, hozAlign: 'right', formatter: c => smNum(c.getValue()) },
-      { title: 'Balance', field: 'total_amount', width: 110, hozAlign: 'right', formatter: c => {
-          const bal = smBalance(c.getRow().getData());
-          return bal > 0.005 ? `<span style="font-weight:600; color:var(--red);">${smNum(bal)}</span>` : '—';
-        } },
       { title: 'Actions', field: 'id', headerSort: false, minWidth: 210, formatter: () => smRowActions(),
         cellClick: (e, cell) => {
           const btn = e.target.closest('[data-action]');
@@ -235,21 +216,13 @@ function smRenderTotals() {
   const t = smComputeTotals();
   document.getElementById('sm-total-vat').textContent = smNum(t.vat);
   document.getElementById('sm-total-amount').textContent = smNum(t.total);
-  smDeriveStatus();
 }
-// Payment status is fully derived from amount received vs total — no manual
-// control or visible label in the drawer at all (removed per user feedback);
-// it's computed here purely so smSaveMemo has a valid value to persist. The
-// Status badge still shows in the main list table, just not during entry.
-function smDeriveStatus() {
-  const total = smComputeTotals().total;
-  const recv = parseFloat(document.getElementById('sm-amount-received').value) || 0;
-  const status = (recv >= total && total > 0) ? 'paid' : recv > 0 ? 'partially_paid' : 'pending';
-  const balance = Math.max(total - recv, 0);
-  const balEl = document.getElementById('sm-balance-due');
-  balEl.textContent = smNum(balance);
-  balEl.style.color = balance > 0.005 ? 'var(--red)' : 'var(--green-dk)';
-  return status;
+
+// The "other--Specify" firm types its name per memo; every other firm is
+// configured. Mirrors the nature-of-task "Others" show/hide.
+function smOnFirmChange() {
+  const f = window.SERVICE_MEMO_FIRMS[document.getElementById('sm-firm-key').value];
+  document.getElementById('sm-firm-other-group').style.display = (f && f.typed) ? '' : 'none';
 }
 
 function smOpenCreate(existing) {
@@ -263,6 +236,8 @@ function smOpenCreate(existing) {
   smPopulateCategorySelect();
 
   document.getElementById('sm-firm-key').value = existing ? existing.firm_key : 'shailesh';
+  document.getElementById('sm-firm-other').value = existing ? (existing.firm_other || '') : '';
+  smOnFirmChange();
   document.getElementById('sm-memo-date').value = existing ? existing.memo_date : new Date().toISOString().slice(0, 10);
   document.getElementById('sm-client-search').value = existing ? (existing.client_name || '') : '';
   document.getElementById('sm-client-pan').value = existing ? (existing.client_pan || '') : '';
@@ -275,8 +250,6 @@ function smOpenCreate(existing) {
   document.getElementById('sm-description').value = existing ? (existing.description || '') : '';
   document.getElementById('sm-fee').value = existing ? existing.professional_fee : '';
   document.getElementById('sm-apply-vat').checked = existing ? !!existing.apply_vat : false;
-  document.getElementById('sm-amount-received').value = existing ? (Number(existing.amount_received) || '') : '';
-  document.getElementById('sm-payment-date').value = existing ? (existing.payment_date || '') : '';
   document.getElementById('sm-remarks').value = existing ? (existing.remarks || '') : '';
 
   const bs = NepaliLocale.todayBs();
@@ -310,11 +283,12 @@ async function smSaveMemo() {
   const firmKey = document.getElementById('sm-firm-key').value;
   const firm = window.SERVICE_MEMO_FIRMS[firmKey];
   if (!firm) { smDrawerErr('Select a firm.'); return; }
+  const firmOther = document.getElementById('sm-firm-other').value.trim();
+  if (firm.typed && !firmOther) { smDrawerErr('Enter the firm name.'); return; }
   const category = document.getElementById('sm-nature-category').value;
   if (!category) { smDrawerErr('Select the nature of task.'); return; }
 
   const t = smComputeTotals();
-  const recv = parseFloat(document.getElementById('sm-amount-received').value) || 0;
   // Keep client_id only while the name still matches the picked client — a
   // hand-edited name becomes a typed-only (nullable) client.
   const clientId = (smSelectedClient && smSelectedClient.name === clientName) ? smSelectedClient.id : null;
@@ -322,6 +296,7 @@ async function smSaveMemo() {
   const payload = {
     memo_prefix: firm.prefix,
     firm_key: firmKey,
+    firm_other: firm.typed ? firmOther : null,
     memo_date: document.getElementById('sm-memo-date').value || new Date().toISOString().slice(0, 10),
     client_id: clientId,
     client_name: clientName,
@@ -336,9 +311,6 @@ async function smSaveMemo() {
     apply_vat: document.getElementById('sm-apply-vat').checked,
     vat_amount: t.vat,
     total_amount: t.total,
-    payment_status: smDeriveStatus(),
-    amount_received: recv,
-    payment_date: document.getElementById('sm-payment-date').value || null,
     remarks: document.getElementById('sm-remarks').value.trim() || null,
     updated_by: smUserEmail(),
   };
@@ -374,11 +346,11 @@ async function smDeleteMemo(row) {
 }
 
 // ── PDF (formal Service Memo — reuses the PDF-Lib approach of billing.js) ──
-function smFirmIdentity(firmKey) {
-  const f = window.SERVICE_MEMO_FIRMS[firmKey] || window.SERVICE_MEMO_FIRMS.shailesh;
+function smFirmIdentity(memo) {
+  const f = window.SERVICE_MEMO_FIRMS[memo.firm_key] || window.SERVICE_MEMO_FIRMS.shailesh;
   const base = f.ref ? window.REP_FIRMS[f.ref] : null;
   return {
-    name: f.name,
+    name: smFirmName(memo),
     title: base ? base.title : '',
     address: (base ? base.address : f.address) || '',
     phone: (base ? base.phone : f.phone) || '',
@@ -403,7 +375,7 @@ function smWrapText(font, size, text, maxWidth) {
 }
 
 async function smBuildMemoPdf(memo) {
-  const firm = smFirmIdentity(memo.firm_key);
+  const firm = smFirmIdentity(memo);
   const doc = await PDFLib.PDFDocument.create();
   let page = doc.addPage([595, 842]);
   const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
@@ -460,14 +432,6 @@ async function smBuildMemoPdf(memo) {
   page.drawLine({ start: { x: marginL, y: y + 3 }, end: { x: marginR, y: y + 3 }, thickness: 1, color: line }); y -= 3;
   draw('Total', marginL, 12, bold, navy); drawRight(smNum(memo.total_amount), marginR, 12, bold, navy); y -= 24;
 
-  // Payment status
-  draw('Payment Status', marginL, 9.5, bold, muted); y -= 15;
-  const st = SM_PAYMENT_STATUSES[memo.payment_status] || { label: memo.payment_status };
-  draw(st.label, marginL, 11, bold, black);
-  drawRight(`Received: ${smNum(memo.amount_received)}`, 400, 10, font, black);
-  drawRight(`Balance: ${smNum(smBalance(memo))}`, marginR, 10, bold, smBalance(memo) > 0.005 ? PDFLib.rgb(0.8, 0.1, 0.1) : black);
-  y -= 14;
-  if (memo.payment_date) { draw(`Payment Date: ${memo.payment_date}`, marginL, 9.5, font, muted); y -= 14; }
   if (memo.remarks) {
     y -= 4; draw('Remarks', marginL, 9.5, bold, muted); y -= 12;
     smWrapText(font, 9, memo.remarks, marginR - marginL).forEach(ln => { draw(ln, marginL, 9, font, black); y -= 11; });
