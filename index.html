@@ -100,8 +100,9 @@ function cropLoginLogoIcon(img) {
       <div class="topbar-dropdown-menu" id="topbar-fin-menu">
         <button class="topbar-dropdown-item" onclick="openModule('serviceMemo')">Service Memo</button>
         <button class="topbar-dropdown-item" onclick="openModule('billing')">Billing</button>
-        <button class="topbar-dropdown-item" onclick="moduleComingSoon('Party Ledger')">Party Ledger</button>
+        <button class="topbar-dropdown-item" onclick="openModule('partyLedger')">Party Ledger</button>
         <button class="topbar-dropdown-item" onclick="openModule('bankBook')">Bank Entry</button>
+        <button class="topbar-dropdown-item" onclick="openModule('finalAccount')">Final Account</button>
       </div>
     </div>
     <div class="app-tag-dropdown">
@@ -416,8 +417,6 @@ function cropLoginLogoIcon(img) {
           </button>
         </div>
       </div>
-
-      <div class="stat-grid compact" id="sm-stat-grid"></div>
 
       <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
         <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Memos</h3>
@@ -1653,6 +1652,103 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: FINAL ACCOUNT ── -->
+    <div id="tab-finalAccount-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">Final Account</span></div>
+          <h2 class="page-title">Final Account</h2>
+          <p class="page-subtitle">The firm's own Income Statement and Balance Sheet, assembled from Service Memo, Bank Entry and the Party Ledger.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="fa-tab-income" class="rep-view-btn active" onclick="faShowView('income')">Income Statement</button>
+            <button id="fa-tab-balance" class="rep-view-btn" onclick="faShowView('balance')">Balance Sheet</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="fa-status-area"></div>
+
+      <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+        <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+          <div class="form-group" style="margin:0;"><label>Name of Firm</label><select id="fa-firm" onchange="faGenerate()"></select></div>
+          <div class="form-group" style="margin:0;"><label>From Date (B.S.)</label><input type="text" id="fa-from" placeholder="2083.04.01" onchange="faGenerate()" /></div>
+          <div class="form-group" style="margin:0;"><label>To Date (B.S.)</label><input type="text" id="fa-to" placeholder="2083.12.30" onchange="faGenerate()" /></div>
+        </div>
+        <p style="font-size:12.5px; color:var(--text-muted); margin:12px 0 0;">The firm selector drives the Income Statement. The Balance Sheet is always drawn for both audit firms side by side.</p>
+        <div class="action-row" style="justify-content:flex-end;">
+          <button class="btn btn-outline" id="fa-pdf-btn" onclick="faExport('pdf')" disabled>Export as PDF</button>
+          <button class="btn btn-outline" id="fa-excel-btn" onclick="faExport('excel')" disabled>Export as Excel</button>
+          <button class="btn btn-outline" id="fa-print-btn" onclick="faPrint()" disabled>Print</button>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div id="fa-report-output"><div class="log-empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: PARTY LEDGER ── -->
+    <div id="tab-partyLedger-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">Party Ledger</span></div>
+          <h2 class="page-title">Party Ledger</h2>
+          <p class="page-subtitle">Nets Service Memo fees against Bank Entry receipts, per client — plus the firm's expenses ledger.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="pl-tab-ledger" class="rep-view-btn active" onclick="plShowView('ledger')">Party Ledger</button>
+            <button id="pl-tab-partyList" class="rep-view-btn" onclick="plShowView('partyList')">Party List</button>
+            <button id="pl-tab-expLedger" class="rep-view-btn" onclick="plShowView('expLedger')">Expenses Ledger</button>
+            <button id="pl-tab-expList" class="rep-view-btn" onclick="plShowView('expList')">Expenses Name List</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pl-status-area"></div>
+
+      <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+        <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+          <div class="form-group" style="margin:0;"><label>Firm</label><select id="pl-firm" onchange="plOnContextChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Date From (B.S.)</label><input type="text" id="pl-from" placeholder="2083.04.01" onchange="plOnContextChange()" /></div>
+          <div class="form-group" style="margin:0;"><label>Date To (B.S.)</label><input type="text" id="pl-to" placeholder="2083.12.30" onchange="plOnContextChange()" /></div>
+        </div>
+
+        <div id="pl-client-controls" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+          <div class="form-grid" style="grid-template-columns:2fr 1fr 1fr 1fr auto; gap:14px; align-items:flex-end;">
+            <div class="form-group" style="margin:0;">
+              <label>Name of Client</label>
+              <input type="text" id="pl-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
+              <div class="autocomplete-list" id="pl-client-autocomplete" style="display:none;"></div>
+            </div>
+            <div class="form-group" style="margin:0;"><label>PAN</label><input type="text" id="pl-client-pan" placeholder="Auto-filled" /></div>
+            <div class="form-group" style="margin:0;"><label>Opening Balance</label><input type="number" id="pl-opening" step="0.01" placeholder="0.00" /></div>
+            <div class="form-group" style="margin:0;"><label>As on (B.S.)</label><input type="text" id="pl-opening-date" placeholder="2083.04.01" /></div>
+            <button class="btn btn-outline" onclick="plSaveOpening()">Save</button>
+          </div>
+        </div>
+
+        <div id="pl-expense-controls" style="display:none; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+          <div class="form-group" style="margin:0; max-width:420px;">
+            <label>Expenses Name</label>
+            <input type="text" id="pl-expense-name" list="pl-expense-names" placeholder="e.g. Office Rent" autocomplete="off" onchange="plGenerate()" oninput="plGenerate()" />
+            <datalist id="pl-expense-names"></datalist>
+          </div>
+        </div>
+
+        <div class="action-row" style="justify-content:flex-end;">
+          <button class="btn btn-outline" id="pl-pdf-btn" onclick="plExport('pdf')" disabled>Save as PDF</button>
+          <button class="btn btn-outline" id="pl-excel-btn" onclick="plExport('excel')" disabled>Save as Excel</button>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div id="pl-report-output"><div class="log-empty">Choose a client to see their ledger.</div></div>
+      </div>
+    </div>
+
     <!-- ── TAB: BANK ENTRY (Bank Book) ── -->
     <div id="tab-bankBook-panel" class="tab-panel">
       <div class="page-header">
@@ -1677,10 +1773,16 @@ function cropLoginLogoIcon(img) {
         <div class="table-wrap" style="padding:24px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
             <h3 style="margin:0; font-size:15px; color:var(--brand-navy);">Bank Accounts</h3>
+            <div style="display:flex; align-items:flex-end; gap:10px;">
+              <div class="form-group" style="margin:0; min-width:200px;">
+                <label>Firm</label>
+                <select id="bb-filter-account-firm" onchange="bbRenderAccounts()"></select>
+              </div>
             <button class="btn btn-primary btn-sm" onclick="bbOpenAccount()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               Add Account
             </button>
+            </div>
           </div>
           <div id="bb-accounts-table-wrap"><div class="log-empty">Loading…</div></div>
         </div>
@@ -1704,7 +1806,7 @@ function cropLoginLogoIcon(img) {
           <div class="form-grid" style="grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:16px;">
             <div class="form-group" style="margin:0;"><label>Account</label><select id="bb-filter-account" onchange="bbOnTxnFilterChange()"></select></div>
             <div class="form-group" style="margin:0;"><label>Type</label><select id="bb-filter-type" onchange="bbOnTxnFilterChange()"><option value="">All</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div>
-            <div class="form-group" style="margin:0;"><label>Particular</label><select id="bb-filter-particular" onchange="bbOnTxnFilterChange()"><option value="">All</option><option value="fee_receipt">Fee Receipt</option><option value="expenses">Expenses</option><option value="sapati">Sapati</option><option value="inter_bank_transfer">Inter-bank Transfer</option></select></div>
+            <div class="form-group" style="margin:0;"><label>Particular</label><select id="bb-filter-particular" onchange="bbOnTxnFilterChange()"><option value="">All</option><option value="fee_receipt">Fee Receipt</option><option value="for_tax">For Tax</option><option value="expenses">Expenses</option><option value="tax_payment">Tax Payment</option><option value="sapati">Sapati</option><option value="inter_bank_transfer">Inter-bank Transfer</option></select></div>
             <div class="form-group" style="margin:0;"><label>F.Y.</label><input type="text" id="bb-filter-fy" placeholder="e.g. 2083-84" oninput="bbOnTxnFilterChange()" /></div>
             <div class="form-group" style="margin:0;"><label>From (B.S.)</label><input type="text" id="bb-filter-from" placeholder="2083.04.01" oninput="bbOnTxnFilterChange()" /></div>
             <div class="form-group" style="margin:0;"><label>To (B.S.)</label><input type="text" id="bb-filter-to" placeholder="2083.06.30" oninput="bbOnTxnFilterChange()" /></div>
@@ -2159,16 +2261,21 @@ function cropLoginLogoIcon(img) {
       <div class="form-grid" style="grid-template-columns:1fr 1fr;">
         <div class="form-group">
           <label>Firm</label>
-          <select id="sm-firm-key">
+          <select id="sm-firm-key" onchange="smOnFirmChange()">
             <option value="shailesh">Shailesh &amp; Associates</option>
             <option value="dallakoti">Dallakoti &amp; Company</option>
             <option value="rosp">Ratnanagar Offset Screen Print</option>
             <option value="rtc">Ratnanagar Tax Consultancy</option>
+            <option value="other">Other — specify</option>
           </select>
         </div>
         <div class="form-group">
           <label>Date</label>
           <input type="date" id="sm-memo-date" />
+        </div>
+        <div class="form-group full" id="sm-firm-other-group" style="display:none;">
+          <label>Firm Name (Other)</label>
+          <input type="text" id="sm-firm-other" placeholder="Type the firm name" />
         </div>
         <div class="form-group full" id="sm-client-group">
           <label>Client (search by name or PAN)</label>
@@ -2197,7 +2304,7 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="form-group">
           <label>Financial Year</label>
-          <input type="text" id="sm-fiscal-year" placeholder="e.g. 2081-82" />
+          <input type="text" id="sm-fiscal-year" placeholder="e.g. 2081-82 — or 2080-81/2081-82" />
         </div>
       </div>
 
@@ -2219,26 +2326,13 @@ function cropLoginLogoIcon(img) {
         <div style="display:flex; justify-content:space-between; font-size:16px; font-weight:700; color:var(--brand-navy); border-top:1px solid var(--border); padding-top:8px;"><span>Total</span><span id="sm-total-amount">0.00</span></div>
       </div>
 
-      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:16px;">
-        <h4 style="margin:0 0 14px; font-size:13.5px; color:var(--brand-navy);">Payment Tracking</h4>
-        <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px;">
-          <div class="form-group" style="margin:0;">
-            <label>Amount Received</label>
-            <input type="number" id="sm-amount-received" min="0" step="0.01" placeholder="0.00" oninput="smDeriveStatus()" />
-          </div>
-          <div class="form-group" style="margin:0;">
-            <label>Payment Date</label>
-            <input type="date" id="sm-payment-date" />
-          </div>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:600; margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">
-          <span>Balance Due</span><span id="sm-balance-due">0.00</span>
-        </div>
-        <div class="form-group full" style="margin-top:12px; margin-bottom:0;">
-          <label>Remarks</label>
-          <input type="text" id="sm-remarks" placeholder="Optional" />
-        </div>
+      <div class="form-group full" style="margin-top:16px;">
+        <label>Remarks</label>
+        <input type="text" id="sm-remarks" placeholder="Optional" />
       </div>
+      <p style="font-size:12.5px; color:var(--text-muted); margin:6px 0 0;">
+        Payment against this memo is recorded in <strong>Bank Entry</strong> as a Fee Receipt, and netted per client by the <strong>Party Ledger</strong>.
+      </p>
 
       <div class="action-row" style="justify-content:space-between;">
         <button class="btn btn-danger" id="sm-delete-btn" style="display:none;" onclick="smDeleteFromDrawer()">Delete Memo</button>
@@ -2261,6 +2355,10 @@ function cropLoginLogoIcon(img) {
     </div>
     <div class="modal-body">
       <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full">
+          <label>Firm</label>
+          <select id="bb-account-firm"></select>
+        </div>
         <div class="form-group full">
           <label>Account Name (holder)</label>
           <input type="text" id="bb-account-name" placeholder="e.g. Shailesh &amp; Associates" />
@@ -2323,13 +2421,16 @@ function cropLoginLogoIcon(img) {
           <select id="bb-txn-particular" onchange="bbOnParticularChange()"></select>
         </div>
         <div class="form-group full" id="bb-txn-client-group" style="display:none;">
-          <label>Name of Client</label>
+          <label id="bb-txn-client-label">Name of Client (search by name or PAN)</label>
           <input type="text" id="bb-txn-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
           <div class="autocomplete-list" id="bb-txn-client-autocomplete" style="display:none;"></div>
         </div>
         <div class="form-group full" id="bb-txn-party-group" style="display:none;">
           <label id="bb-txn-party-label">Name of Person</label>
-          <input type="text" id="bb-txn-party" placeholder="Type a name" />
+          <input type="text" id="bb-txn-party" placeholder="Type a name" autocomplete="off" />
+          <!-- Populated with expense names already used (bbPopulateExpenseNames), so
+               the Expenses Ledger doesn't fragment on near-duplicate spellings. -->
+          <datalist id="bb-expense-names"></datalist>
         </div>
         <div class="form-group full" id="bb-txn-transfer-group" style="display:none;">
           <label>Other Account (the counterpart)</label>
@@ -2614,25 +2715,26 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202607220900"></script>
-<script src="js/utils.js?v=202607141030"></script>
+<script src="js/config.js?v=202607261200"></script>
+<script src="js/utils.js?v=202607261200"></script>
 <script src="js/core/moduleRegistry.js?v=202607252330"></script>
 <script src="js/core/statusBox.js?v=202607141030"></script>
-<script src="js/core/nepaliLocale.js?v=202607211600"></script>
+<script src="js/core/nepaliLocale.js?v=202607261200"></script>
 <script src="js/core/documentEngine.js?v=202607141030"></script>
 <script src="js/core/searchEngine.js?v=202607141030"></script>
 <script src="js/core/tableEngine.js?v=202607141030"></script>
 <script src="js/core/workflowEngine.js?v=202607141030"></script>
 <script src="js/core/auditLog.js?v=202607141030"></script>
 <script src="js/core/integrations.js?v=202607162100"></script>
-<script src="js/tabs.js?v=202607252330"></script>
+<script src="js/core/reportExport.js?v=202607261200"></script>
+<script src="js/tabs.js?v=202607261200"></script>
 <script src="js/dashboard.js?v=202607141030"></script>
-<script src="js/registrar.js?v=202607252330"></script>
+<script src="js/registrar.js?v=202607261200"></script>
 <script src="js/clients.js?v=202607141030"></script>
 <script src="js/logs.js?v=202607141030"></script>
 <script src="js/vatCompliance.js?v=202607141030"></script>
 <script src="js/billing.js?v=202607252330"></script>
-<script src="js/serviceMemo.js?v=202607252330"></script>
+<script src="js/serviceMemo.js?v=202607261200"></script>
 <script src="js/sendDocument.js?v=202607162100"></script>
 <script src="js/report.js?v=202607141030"></script>
 <script src="js/notesToAccounts.js?v=202607252330"></script>
@@ -2642,7 +2744,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/auditorChange.js?v=202607141030"></script>
 <script src="js/salesPurchaseBook.js?v=202607191730"></script>
 <script src="js/confirmationLetters.js?v=202607252330"></script>
-<script src="js/bankBook.js?v=202607252330"></script>
+<script src="js/bankBook.js?v=202607261200"></script>
+<script src="js/partyLedger.js?v=202607261200"></script>
+<script src="js/finalAccount.js?v=202607261200"></script>
 <script src="js/projectionEngine.js?v=202607251930"></script>
 <script src="js/projection.js?v=202607251200"></script>
 <script src="js/projectionExport.js?v=202607252340"></script>

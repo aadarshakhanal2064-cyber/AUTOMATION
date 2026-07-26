@@ -19,7 +19,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 5. **Never break existing features** — regression-check before calling anything done.
 6. **Don't "fix" the deliberate decisions in §16.**
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 9 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (15 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 10 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (16 tables, §6).
 
 ---
 
@@ -39,11 +39,15 @@ State is `window.*` globals (`window.clientsList`, `window.currentUser`, …) �
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (9 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (10 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, logs, vatCompliance,
   billing, sendDocument, report, notesToAccounts, depreciation,
-  bmAgmMinutes, auditorChange, salesPurchaseBook) → auth.js (LAST — triggers the boot sequence)
+  bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
+  partyLedger, finalAccount) → auth.js (LAST — triggers the boot sequence)
 ```
+
+`finalAccount.js` must load **after** `partyLedger.js` — it reads that module's
+state and calls its `plBuildParties`/`plReceivablesFor`/`plExpenseTotalsFor`.
 
 ### 2.3 CDN dependencies
 
@@ -97,7 +101,7 @@ AUTOMATION AI APP/
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64, stringSimilarity
 │   ├── tabs.js              # Tab switching driven by ModuleRegistry; Company Registrar topbar dropdown
 │   ├── auth.js              # Boot sequence, Google sign-in/out, app_users authorization
-│   ├── core/                # 9 reusable engines — see §4
+│   ├── core/                # 10 reusable engines — see §4
 │   └── <feature>.js         # One file per feature module — see §5
 ├── CLAUDE.md                # This file
 ├── README.md                # OUTDATED — superseded by this file (§18)
@@ -121,6 +125,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 | WorkflowEngine | `workflowEngine.js` | `attachFormWatcher`, `createDebouncedRefresh` (staleness-guarded live preview), `createAutosave` (localStorage draft), `updateCompletionIndicator`, `createZoomControl`, `createStatusFlow` (one `transition()` choke point per status-tracked module — badge, persistence, and audit entry can never disagree). |
 | AuditLog | `auditLog.js` | `record(eventType, detail)`, `recent`, `countSince` → Supabase `audit_log`. Every call is try/catch-wrapped and never throws — a logging failure must not break the feature. |
 | Integrations | `integrations.js` | `driveGet`, `findFolderByName`, `listAllFilesInFolder`, `downloadDriveFile`, `sendEmailWithAttachment`. All Drive calls append `supportsAllDrives=true&includeItemsFromAllDrives=true` (Shared Drive visibility). |
+| ReportExport | `reportExport.js` | `toHtml` / `toPdf` / `toExcel` / `download(model, kind, filename, meta)` over one tabular model (`{title, subtitleLines, columns, rows, landscape, note}`; row styles `section`/`subtle`/`total`/`grand`). Added 2026-07-26 for Party Ledger's 4 views + Final Account's 2 statements — six consumers that would otherwise each have copied the drawing code already sitting twice in `bankBook.js`. It knows nothing about ledgers or firms: callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** — PDF-Lib's standard fonts are WinAnsi and *throw* on any character they can't encode (a true minus `−`, a curly quote, Devanagari), so every string is folded to ASCII/Latin-1 on the way into the PDF. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§10.2). No edits to `tabs.js`.
 
@@ -134,7 +139,7 @@ Navigation is split between a short sidebar and three **topbar dropdowns** (Xero
 |---|---|
 | **Sidebar** (`main` group, `nav-*` buttons) | Dashboard, VAT Compliance, Send Document, Clients, Send Logs |
 | **Company Registrar** (topbar) | Its own `regd` sub-module group — Share Transfer, Increase Capital, Company Registration, Auditor Change, PIN Reset, BM/AGM Minutes |
-| **Financial Management** (topbar, key `fin`) | Service Memo, Billing, **Party Ledger** (announced but not built — `moduleComingSoon()`), Bank Entry |
+| **Financial Management** (topbar, key `fin`) | Service Memo, Billing, Party Ledger, Bank Entry, Final Account |
 | **Automation Hub** (topbar, key `auto`) | Projection Report, Depreciation, Confirmation, Generate Report, Notes to Accounts, Autobooks |
 
 Everything in the last two menus is an ordinary `main`-group tab registered with `buttonId: null` and launched via **`openModule(tab)`** in `tabs.js` — one launcher for both menus, with `MODULE_INITS` holding only the modules that need an init/refresh call on open (a tab absent from the map simply switches).
@@ -225,7 +230,7 @@ Audit trail of sent documents from `send_logs`. Staff see only their own sends; 
 
 **b) Auditor Change (`js/auditorChange.js`, `ac-` prefix — shares the prefix with Add Client, §10.2)** — two documents from one shared form: Board Resolution + registrar notification letter (`auditor-change-*.docx` templates). Same DocumentEngine architecture as BM/AGM, same UI pattern as the Report Builder (Edit/Preview, per-document preview tabs); B.S. date validation on blur; known-firm quick-fill picker (`attachFirmPicker` over `REGD_AUDIT_FIRMS`). No autosave/inline-edit yet (deliberate trim).
 
-**c) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `moduleComingSoon()` in `js/registrar.js` (shared with Party Ledger). Real remaining product surface.
+**c) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `moduleComingSoon()` in `js/registrar.js`. Real remaining product surface. (Party Ledger used to share this stub; it became a real module on 2026-07-26 — §5.16.)
 
 > **Removed module — VAT Return OCR** (removed 2026-07-14 by user decision; the firm won't use it). It read scanned IRD VAT Return PDFs via digit-only OCR and filled the firm's Excel workbook. The removal took with it `js/vatReturn.js`, four engines whose only consumer it was (`ocrEngine`, `pdfEngine`, `visionEngine`, `validationEngine`), `DocumentEngine.workbookToBlob`, the `pdfjs-dist`/`tesseract.js`/`exceljs` CDN tags, and `assets/templates/vat-detail.xlsx`. (`exceljs` was re-added shortly after for the Depreciation module — §5.8 — but the four engines and the OCR/PDF CDN libraries stay gone.) All of it is recoverable from git history (last commit containing it: `ad0e9f2`); its engineering record lives in `HANDOFF_VAT.md` / `HANDOFF_2026-07-05.md`. Historical `audit_log` rows with `module: 'vatReturn'` remain valid; `vat_filings.status` keeps `ocr_processing` as a manual status.
 
@@ -243,25 +248,27 @@ Bulk-generates "Confirmation of Account Balance & Transaction" letters — one p
 
 ### 5.13 Service Memo (`js/serviceMemo.js`, `sm-` prefix, table `service_memos`)
 
-Internal **service record + fee-tracking** — the firm's guarantee that no professional work is completed without a recorded fee to collect. Deliberately **not** an accounting/tax invoice (that is Billing, §5.3, which carries bank details, a payment QR and a reconciled payments subtable); a Service Memo is one lightweight row with one Fee and a single `amount_received`. Financial Management tab, seeded from the firm's `Work Performed.xlsx` (a field-spec/dropdown sheet, not data). Architecturally a *lighter Billing* — same client autocomplete, TableEngine list, PDF-Lib generation, AuditLog, self-registration.
-- **Four selectable firms** (`SERVICE_MEMO_FIRMS` in config.js): Shailesh & Associates, Dallakoti & Company, Ratnanagar Offset Screen Print, Ratnanagar Tax Consultancy. SA/DC reference `REP_FIRMS` for full PDF letterhead; the two Ratnanagar sister concerns carry their own name + memo prefix, address/PAN blank until filled in config (PDF prints "—"). This is the ONE source for both the firm dropdown and the PDF letterhead — a new firm needs **no migration**.
-- **Memo number** assigned by an AFTER INSERT trigger (`set_service_memo_number`, mirrors `set_invoice_number`): the app sends `memo_prefix` from config (`SM-SA`/`SM-DC`/`SM-ROSP`/`SM-RTC`) and the trigger builds `prefix || '-' || lpad(id,5,'0')` → `SM-SA-00001`. Re-fetch after insert (memo_number isn't in the INSERT RETURNING — same gotcha as invoices).
+Internal **service record** — the firm's guarantee that no professional work is completed without a recorded fee to collect. Deliberately **not** an accounting/tax invoice (that is Billing, §5.3, which carries bank details, a payment QR and a reconciled payments subtable); a Service Memo is one lightweight row: who did what work for which client, and the Fee. Financial Management tab, seeded from the firm's `Work Performed.xlsx` (a field-spec/dropdown sheet, not data). Architecturally a *lighter Billing* — same client autocomplete, TableEngine list, PDF-Lib generation, AuditLog, self-registration.
+- **A memo records the work, NOT the collection** (2026-07-26, department-head spec). Its own `payment_status`/`amount_received`/`payment_date` were **dropped** — money received is entered once as a Bank Entry **Fee Receipt** and netted per client by the **Party Ledger** (§5.16). Don't reintroduce payment fields here: two places to record one payment is exactly what this removed. Verified before dropping — 5 memo rows existed, none with a payment.
+- **Five selectable firms** (`SERVICE_MEMO_FIRMS` in config.js): Shailesh & Associates, Dallakoti & Company, Ratnanagar Offset Screen Print, Ratnanagar Tax Consultancy, and **Other — specify** (`typed: true`, name entered per memo into `firm_other`; `smFirmName()` is the one resolver, used by the list, the PDF letterhead and the Party Ledger). SA/DC reference `REP_FIRMS` for full PDF letterhead; the sister concerns carry their own name + memo prefix, address/PAN blank until filled in config (PDF prints "—"). This is the ONE source for both the firm dropdown and the PDF letterhead — a new firm needs **no migration**.
+- **Memo number** assigned by an AFTER INSERT trigger (`set_service_memo_number`, mirrors `set_invoice_number`): the app sends `memo_prefix` from config (`SM-SA`/`SM-DC`/`SM-ROSP`/`SM-RTC`/`SM-OT`) and the trigger builds `prefix || '-' || lpad(id,5,'0')` → `SM-SA-00001`. Re-fetch after insert (memo_number isn't in the INSERT RETURNING — same gotcha as invoices).
 - **Nature of Task** is a category → sub-category tree (`SERVICE_MEMO_TASKS`, seeded from the Excel with typos fixed and "OCR" relabeled "Company Registrar (OCR)"); every category ends in "Others" → a free-text `nature_other` box appears. Easily extended in config.
-- **Payment**: single `amount_received`; `payment_status` (`pending`/`partially_paid`/`paid`) is auto-derived from received-vs-total in the drawer but stays editable; **`balance_due` is derived in JS, never stored** (same discipline as billing overdue). Status badge/label via `WorkflowEngine.createStatusFlow` (`badgeHtml`/`meta` only — persistence happens in the whole-record upsert).
-- **Dashboard** (in-panel): Total Pending Amount, Total Collected, Pending/Paid memo counts, Recent Memos + Pending Collections lists — **computed client-side** from the fetched rows (small volume), so no stats RPC (unlike billing).
+- **VAT stays per-memo**: the `apply_vat` checkbox drives `vat_amount`/`total_amount`. The Party Ledger prints **that stored figure**, not a blanket 13% (which is what the department head's sheet hardcoded) — so a non-VAT memo never shows the client a VAT charge it was never billed.
+- **In-panel list only** — Recent Memos + the filter/table block. The stat grid went with the payment columns (its one card, "Total Collected", had no source left).
 - **PDF** via PDF-Lib (pattern of `billingBuildInvoicePdf`), re-skinned as a formal **SERVICE MEMO** stamped **"Internal service record — not a tax invoice."**
-- Fiscal year format: **dash** (`2081-82`), default from `NepaliLocale.todayBs`. Filters: firm, category, FY, status, date range + fuzzy search. `client_id` is a **nullable** FK (typed-only clients still save; name/PAN/address always snapshotted). Migration: `db/2026-07-21_service_memos.sql`.
+- Fiscal year: **dash** (`2081-82`), default from `NepaliLocale.todayBs` — free text, so one memo can span several years (`2080-81/2081-82`) as the firm's sheet does. Filters: firm, category, FY, date range + fuzzy search. `client_id` is a **nullable** FK (typed-only clients still save; name/PAN/address always snapshotted). Migrations: `db/2026-07-21_service_memos.sql`, then `db/2026-07-26_financial_suite.sql`.
 
 ### 5.14 Bank Entry (`js/bankBook.js`, `bb-` prefix, tables `bank_accounts` + `bank_transactions`)
 
 > Displayed as **Bank Entry** since 2026-07-25 (Financial Management menu). Everything in code — the file, the `bb-` prefix, the `bankBook` module id, both table names — still says Bank Book.
 
 Receipts & payments ledger for the firm's **own** bank accounts — internal bookkeeping (the firm's cash/bank position), **not** a client-facing document. Launched from the topbar **Financial Management** menu (`buttonId: null`, `bbInit()` in `MODULE_INITS`). Seeded from the CA's `Work Performed.xlsx` sketch. One panel with three sections toggled by a `.rep-view-toggle`: **Accounts**, **Transactions**, **Reports**. Reuses TableEngine, `SearchEngine.attachAutocomplete` (client link on Fee Receipt), NepaliLocale (B.S. dates), PDF-Lib + ExcelJS (exports), AuditLog, self-registration.
-- **Accounts master** (`bank_accounts`, user-managed CRUD — the holder/bank list is **data, not JS config**, unlike `SERVICE_MEMO_FIRMS`): Account Name (holder), Bank Name, Account Number (text, preserves leading zeros), Opening Balance + opening date (B.S., FY start). Sample holders span both firms + two individuals (Devi Prasad Dallakoti, Shailesh Dallakoti). An account **with transactions can't be hard-deleted** (FK `on delete restrict` + a JS guard) — it offers **soft-deactivate** (`is_active=false`) instead, so history survives; zero-transaction accounts delete outright.
-- **Transactions** (`bank_transactions`): one row per receipt/payment. `particular` ∈ `fee_receipt`/`expenses`/`sapati`/`inter_bank_transfer` (config maps `BANK_RECEIPT_TYPES`/`BANK_PAYMENT_TYPES`); the drawer's contextual party field relabels per particular — Fee Receipt → client autocomplete (`client_id` + snapshot), Sapati → person, Expenses → nature, Transfer → counterpart-account select.
+- **Accounts master** (`bank_accounts`, user-managed CRUD — the holder/bank list is **data, not JS config**, unlike `SERVICE_MEMO_FIRMS`): **Firm** (required, `firm_key`), Account Name (holder), Bank Name, Account Number (text, preserves leading zeros), Opening Balance + opening date (B.S., FY start). Sample holders span both firms + two individuals (Devi Prasad Dallakoti, Shailesh Dallakoti). **Firm is required on save** — Final Account splits Bank Balance per firm, so an unassigned account would silently vanish from the Balance Sheet. It is also how every bank row is attributed to a firm: transactions carry no firm of their own, only an account. A cash balance is just an account row (e.g. "Cash in Hand") — no `is_cash` flag. An account **with transactions can't be hard-deleted** (FK `on delete restrict` + a JS guard) — it offers **soft-deactivate** (`is_active=false`) instead, so history survives; zero-transaction accounts delete outright.
+- **Transactions** (`bank_transactions`): one row per receipt/payment. `particular` ∈ receipts `fee_receipt`/**`for_tax`**/`sapati`/`inter_bank_transfer`, payments `expenses`/**`tax_payment`**/`sapati`/`inter_bank_transfer` (config maps `BANK_RECEIPT_TYPES`/`BANK_PAYMENT_TYPES`). The two tax particulars were added 2026-07-26 (the sheet marks both "to be add"): **For Tax** = money taken from a client earmarked for tax, **Tax Payment** = tax the firm paid on a client's behalf. The drawer's contextual party field relabels per particular — the three **client particulars** (`BANK_CLIENT_PARTICULARS` = `fee_receipt`/`for_tax`/`tax_payment`) show the client autocomplete and set `client_id` + snapshot; Sapati → person; Expenses → free-text name backed by a **datalist of expense names already used** (`bbPopulateExpenseNames`, so the Expenses Ledger doesn't fragment on near-duplicate spellings); Transfer → counterpart-account select.
 - **Inter-bank transfer** is entered **once** (From → To) and stored as **TWO paired rows** sharing `transfer_group_id` (a `crypto.randomUUID()`): a `payment` leg on the source (`counterparty_account_id` = dest) and a `receipt` leg on the dest (`counterparty_account_id` = source). **Editing or deleting either leg acts on BOTH** (`bbTransferSiblings`) so they can never desync — the module's key integrity rule.
 - **Reports** (per account, B.S. `From→To`): **Receipt register**, **Payment register**, and a running **Statement** (opening balance for the range = account opening + net of everything before `From`, then running balance per row, closing at the end). B.S. dates ordered/compared via `NepaliLocale.bsOrdinal` (2080–2090 table). On-screen HTML table + **PDF** (PDF-Lib, A4 landscape, page-breaking) + **Excel** (ExcelJS, merged header/borders/accounting format `#,##0.00;(#,##0.00);"–"`, live SUM/opening/closing).
-- **No stored balances or numbers**: running balances derived at read time (billing-overdue discipline); no memo-number trigger (transactions carry no external number). Fiscal year: **dash** (`2083-84`), derived from `txn_date`. RLS member-CRUD on both tables. Migration: `db/2026-07-22_bank_book.sql`.
+- **No stored balances or numbers**: running balances derived at read time (billing-overdue discipline); no memo-number trigger (transactions carry no external number). Fiscal year: **dash** (`2083-84`), derived from `txn_date`. RLS member-CRUD on both tables. Migrations: `db/2026-07-22_bank_book.sql`, then `db/2026-07-26_financial_suite.sql`.
+- **Bank Entry is the only place a payment is recorded.** Fee Receipt / For Tax / Tax Payment all flow into the Party Ledger (§5.16); Expenses and Sapati flow into Final Account (§5.17).
 
 ### 5.15 Projection Report (`js/projection.js` + `js/projectionEngine.js` + `js/projectionExport.js`, `pj-` prefix, table `projection_reports`)
 
@@ -278,11 +285,41 @@ Bank-ready multi-year **financial projection** generated from an uploaded audite
 
 ---
 
+### 5.16 Party Ledger (`js/partyLedger.js`, `pl-` prefix, table `party_opening_balances`)
+
+**The join between Service Memo and Bank Entry.** Neither alone can say what a client owes: the memo records work done, the bank records money moved. Built 2026-07-26 from the department head's `Work Performed.xlsx` (replacing the `moduleComingSoon()` stub). Financial Management tab, `plInit()` in `MODULE_INITS`. Reuses `SearchEngine.attachAutocomplete`, `NepaliLocale`, `AuditLog`, **ReportExport** (§4) and self-registration.
+
+**Four views** behind one `.rep-view-toggle` (the four buttons drawn on the sheet), sharing the **Firm** + **From/To (B.S.)** controls:
+
+| View | Shows |
+|---|---|
+| **Party Ledger** | one client's statement — `Date · Particular · Taxable Amount · VAT · Total · Description`, sectioned Add: Service Provided → Add: Tax Paid on Behalf → Less: Payment, then Net Payable / Opening / **Total Payable** |
+| **Party List** | every party: `Party Name · PAN · Opening · Work Performed · Tax Paid · Payment Received · Balance` + Total |
+| **Expenses Ledger** | one expense name's entries: `Date · Particular (bank account) · Amount · Description` + Total |
+| **Expenses Name List** | `Expenses Name · Amount` grouped, + Total |
+
+- **The sign convention** (from the sheet's Net Payable formula) — `Total Payable = Opening + Service Provided + Tax Payment − Payment`. Services come from `service_memos` (their own stored `vat_amount`, §5.13); Tax Payment from bank payments made on the client's behalf (it *increases* what they owe); Payment from bank receipts `fee_receipt` + `for_tax`.
+- **`plPartyBalance()` is THE balance function** and `plBuildParties(firm, range)` takes its scope as arguments rather than reading the DOM — that is what lets Final Account ask for a different firm/period and still get an identical figure. Party List's Balance column and Final Account's Total Receivables are literally the same call, so the three views can never disagree. Party List deliberately carries **Opening and Tax Paid columns the sheet didn't draw** (user-approved) so each row visibly foots to that Balance.
+- **The date-format bridge**: `service_memos.memo_date` is a Postgres `date` while every bank row and every range bound is B.S. text. `NepaliLocale.adToBs()`/`bsToStr()` (added here) convert memos into B.S. so one ledger can list both. An unparseable row date never excludes the row.
+- **Party matching**: `client_id` when set, otherwise the typed name resolved against `clientsList` (`plPartyKey`) — a typed-only client still collects its own rows instead of scattering.
+- **Only the opening balance is stored** (`party_opening_balances`, upsert on `(client_id, firm_key, fiscal_year)`) — it is the one figure that can't be derived. Saving requires a *selected* directory client. Everything else is computed at read time.
+- Every view exports **PDF + Excel** through `ReportExport`. Fiscal year: **dash** (`2083-84`), derived from the From date.
+
+### 5.17 Final Account (`js/finalAccount.js`, `fa-` prefix, no table)
+
+The firm's own **Income Statement** and **Balance Sheet** for a period. Financial Management tab, `faInit()` in `MODULE_INITS`. **Nothing is entered here and nothing is stored** — it is purely a view over the other three modules, reading through `partyLedger.js`'s loaded state (`faInit` calls `plRefresh()` rather than keeping a second copy of the data).
+
+- **Income Statement** (follows the firm selector): `Income` = service memos grouped as `<Sub-Category>/<Category>`; `Expenses` = bank Expenses payments grouped by name (via `plExpenseTotalsFor`); `Net Income` = the difference. Income uses each memo's **`total_amount` (fee + VAT)**, not the fee alone — the receivable and the bank receipt both include VAT, so anything else breaks the proof below by exactly the VAT.
+- **Balance Sheet** — drawn as the sheet lays it out: **one column per audit firm, side by side** (`FINAL_ACCOUNT_FIRM_KEYS` in config.js), each independent of the Income-Statement selector. Rows: Net Income · Bank Balance (per account, cumulative to the To date) · Total Receivables (per party, `plReceivablesFor`) · Total Sapati · **Net Difference**.
+- **Sapati sign** (the sheet's own note): a sapati **received** shows as (−), a sapati **paid** as (+) — i.e. net owed *to* the firm, per person.
+- **`Net Difference` is the point of the module.** `Net Income − Bank − Receivables − Sapati`, labelled "always zero", green at zero and red otherwise. It proves the four modules agree. It is **shown, never forced**: a party opening balance carried in from an earlier period has no matching income or bank movement inside the period, so it surfaces here as a difference of exactly that amount. Verified: with no carried-in opening the figure is exactly `0.00`; with a 2,500 opening it is exactly `−2,500`. Don't "fix" that by hiding it.
+- Exports **PDF + Excel** via `ReportExport`, plus **Print** (a standalone print window, the sheet's "Save/Print" — which is why the proof row's colours are literal hex, not CSS variables).
+
 ## 6. Database (Supabase Postgres)
 
 Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-14** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (15)
+### 6.1 Tables (16)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -296,10 +333,11 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `invoices` | `invoice_number` (unique, trigger-assigned), `client_id`/`firm_key` FKs, `status` CHECK (`draft`/`sent`/`partially_paid`/`paid`/`void`), amounts numeric, `tax_rate` default 0.13. |
 | `invoice_items` | Line items: `description`, `quantity`, `rate`, `amount`, `sort_order`. |
 | `invoice_payments` | `amount > 0` CHECK, `method` CHECK (`cash`/`bank_transfer`/`qr`/`cheque`/`other`). |
-| `service_memos` | Internal service records + fee tracking (§5.13). One row per memo (no line-item/payments subtable). `memo_number` (trigger-assigned `SM-{firm}-{id}`), `memo_prefix` (NOT NULL, from config), `firm_key`, `client_id` (**nullable** FK → clients, on delete set null), client name/pan/address snapshots, `nature_category`/`nature_subcategory`/`nature_other`, `description`, `fiscal_year`, `professional_fee`/`vat_amount`/`total_amount` numeric, `payment_status` CHECK (`pending`/`partially_paid`/`paid`), `amount_received`, `payment_date`, `remarks`. Member-CRUD RLS. `set_service_memo_number` AFTER INSERT trigger + shared `set_updated_at`. Added by `db/2026-07-21_service_memos.sql`. |
+| `service_memos` | Internal service records (§5.13). One row per memo (no line-item/payments subtable). `memo_number` (trigger-assigned `SM-{firm}-{id}`), `memo_prefix` (NOT NULL, from config), `firm_key`, `firm_other` (typed name for the "other" firm), `client_id` (**nullable** FK → clients, on delete set null), client name/pan/address snapshots, `nature_category`/`nature_subcategory`/`nature_other`, `description`, `fiscal_year`, `professional_fee`/`apply_vat`/`vat_amount`/`total_amount`, `remarks`. **No payment columns** — `payment_status`/`amount_received`/`payment_date` were dropped 2026-07-26; collection lives in `bank_transactions` (§5.13). Member-CRUD RLS. `set_service_memo_number` AFTER INSERT trigger + shared `set_updated_at`. `db/2026-07-21_service_memos.sql`, `db/2026-07-26_financial_suite.sql`. |
 | `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`/`slm`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (Income-Tax: per-pool inputs + closing WDV; **SLM: per-asset line array** + carry-forward snapshots → next year's Opening), `addition_details` jsonb (Income-Tax only; `[]` for SLM), `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. `slm` added by `db/2026-07-21_slm_scheme.sql`. |
-| `bank_accounts` | Bank Book master (§5.14). `account_name` (holder), `bank_name`, `account_number` (text), `opening_balance` numeric, `opening_date` (B.S. text), `is_active` (soft-deactivate), `sort_order`. User-managed CRUD; holder/bank list is data, not config. Member-CRUD RLS. `db/2026-07-22_bank_book.sql`. |
-| `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`expenses`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK, Fee Receipt link), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migration. |
+| `bank_accounts` | Bank Book master (§5.14). `firm_key` (owning firm — drives Final Account's per-firm Bank Balance), `account_name` (holder), `bank_name`, `account_number` (text), `opening_balance` numeric, `opening_date` (B.S. text), `is_active` (soft-deactivate), `sort_order`. User-managed CRUD; holder/bank list is data, not config. Member-CRUD RLS. `db/2026-07-22_bank_book.sql`, `db/2026-07-26_financial_suite.sql`. |
+| `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`for_tax`/`expenses`/`tax_payment`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK — set for all three client particulars), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migrations. |
+| `party_opening_balances` | Per-client opening balance for the Party Ledger (§5.16) — the only figure in that ledger that is stored rather than derived. `client_id` FK (cascade), `firm_key`, `fiscal_year` (dash), `as_on_date` (B.S. text), `opening_amount` numeric, `client_name` snapshot. Unique on `(client_id, firm_key, fiscal_year)`. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_suite.sql`. |
 | `projection_reports` | Saved Projection Report workings (§5.15). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year_base` (dash), `years` (1–10 CHECK), `inputs` jsonb (parsed statement model + assumptions — everything needed to re-run the engine exactly), `computed` jsonb (full engine output: statements/ratios/levers per year), `created_by`. Member-CRUD RLS. `db/2026-07-22_projection_reports.sql`. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
@@ -372,7 +410,9 @@ The document is rendered as styled HTML in a preview root, then exported two way
 Drawn programmatically: firm letterhead, line items, bank details, QR image (or dashed placeholder).
 
 ### 9.4 Excel via ExcelJS (Depreciation, Sales & Purchase Book, Bank Book)
-`js/depreciation.js` builds its workbook programmatically with ExcelJS (no template asset) — merged headers, thin borders, accounting number format (`#,##0.00;(#,##0.00);"–"`), live formulas, and percent/`" yrs"` rate formats. `js/salesPurchaseBook.js` (7-sheet workbook) and `js/bankBook.js` (report exports) do the same with the same conventions. There is no shared Excel engine (the removed VAT Return module had one, `DocumentEngine.workbookToBlob`); each generator owns its layout, copying the styling idiom above. Excel/ODS *import* uses SheetJS (`XLSX.read`, read-only). **Now that there are three ExcelJS generators, extracting a shared workbook→Blob / styling helper is a live cleanup opportunity** (the "generalize after two consumers" rule the engines followed) — deferred, not yet done.
+`js/depreciation.js` builds its workbook programmatically with ExcelJS (no template asset) — merged headers, thin borders, accounting number format (`#,##0.00;(#,##0.00);"–"`), live formulas, and percent/`" yrs"` rate formats. `js/salesPurchaseBook.js` (7-sheet workbook) and `js/bankBook.js` (report exports) do the same with the same conventions. These three own their bespoke layouts. Excel/ODS *import* uses SheetJS (`XLSX.read`, read-only).
+
+**For plain tabular reports, use `ReportExport` (§4) instead of hand-rolling** — Party Ledger and Final Account render all six of their views (HTML + PDF + Excel) through it. The three bespoke generators above were left alone deliberately: their merged/multi-block geometry isn't a simple grid, and migrating five shipped generators belongs in its own change.
 
 ### 9.5 Nepali locale
 All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes through `NepaliLocale`. **Fiscal-year string formats are deliberately inconsistent per module** — normalize at boundaries, never unify without asking:
@@ -405,6 +445,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
 | `cl-` | Confirmation Letters | | `sm-` | Service Memo |
 | `bb-` | Bank Book | | `pj-` | Projection Report |
+| `pl-` | Party Ledger | | `fa-` | Final Account |
 
 ### 10.3 Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern (Notes and Auditor Change already mirror it — copy it for new document builders).
@@ -468,7 +509,7 @@ Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 | BM/AGM template-build tooling never committed | High | Exists only as prose in `HANDOFF.md`. Any template rebuild starts by recreating it. |
 | CSP keeps `'unsafe-inline'` for scripts | Medium | Full fix = refactoring the ~hundreds of inline `onclick=` handlers + blob print windows off inline script; a separate project. escHtml audit is the current mitigation (§14). |
 | No automated tests | Medium | All verification is manual/ad-hoc per §13. |
-| 4 Company Registrar stubs (Share Transfer, Increase Capital, Company Registration, PIN Reset) | Feature gap | UI-only, `moduleComingSoon()`. Party Ledger (Financial Management) is a 5th stub. |
+| 4 Company Registrar stubs (Share Transfer, Increase Capital, Company Registration, PIN Reset) | Feature gap | UI-only, `moduleComingSoon()`. Party Ledger is no longer among them — built 2026-07-26 (§5.16). |
 | `README.md` badly outdated | Low | Superseded by this file (§18). |
 | Section 51 "collected amount" in BM/AGM template is static sample text | Low | Known, deliberate cap during tokenization. |
 
@@ -486,6 +527,9 @@ Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 - **Clients table / import preview show a curated column subset**, not all fields.
 - **Dashboard is not the default landing tab** — Send Document stays default.
 - **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
+- **Service Memo records work, not collection** (2026-07-26) — its payment columns were dropped deliberately. A payment is recorded once, in Bank Entry, and netted by the Party Ledger. Never re-add payment fields to the memo.
+- **Final Account's `Net Difference` is shown, not forced** — a non-zero figure is a real finding (§5.17), not a rendering bug to suppress.
+- **Party List carries Opening + Tax Paid columns the department head's sheet didn't draw** (user-approved) so the Balance foots on screen. Don't trim it back to the sheet's five columns.
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.)
 
 ## 17. AI Assistant Instructions
