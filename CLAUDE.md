@@ -19,7 +19,7 @@ Internal workflow-automation platform for **Shailesh & Associates** (Chartered A
 5. **Never break existing features** — regression-check before calling anything done.
 6. **Don't "fix" the deliberate decisions in §16.**
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 10 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (16 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 12 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
 
 ---
 
@@ -39,12 +39,16 @@ State is `window.*` globals (`window.clientsList`, `window.currentUser`, …) �
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (10 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (12 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, logs, vatCompliance,
   billing, sendDocument, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
-  partyLedger, finalAccount) → auth.js (LAST — triggers the boot sequence)
+  partyLedger, finalAccount, finStatement) → auth.js (LAST — triggers the boot sequence)
 ```
+
+`finStatementEngine.js` must load **before** `finStatement.js` and
+`finStatementExport.js`, and all three after `js/core/workbookReader.js` +
+`engineMath.js` (which `projectionEngine.js` also now depends on).
 
 `finalAccount.js` must load **after** `partyLedger.js` — it reads that module's
 state and calls its `plBuildParties`/`plReceivablesFor`/`plExpenseTotalsFor`.
@@ -101,7 +105,7 @@ AUTOMATION AI APP/
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64, stringSimilarity
 │   ├── tabs.js              # Tab switching driven by ModuleRegistry; Company Registrar topbar dropdown
 │   ├── auth.js              # Boot sequence, Google sign-in/out, app_users authorization
-│   ├── core/                # 10 reusable engines — see §4
+│   ├── core/                # 12 reusable engines — see §4
 │   └── <feature>.js         # One file per feature module — see §5
 ├── CLAUDE.md                # This file
 ├── README.md                # OUTDATED — superseded by this file (§18)
@@ -125,6 +129,8 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 | WorkflowEngine | `workflowEngine.js` | `attachFormWatcher`, `createDebouncedRefresh` (staleness-guarded live preview), `createAutosave` (localStorage draft), `updateCompletionIndicator`, `createZoomControl`, `createStatusFlow` (one `transition()` choke point per status-tracked module — badge, persistence, and audit entry can never disagree). |
 | AuditLog | `auditLog.js` | `record(eventType, detail)`, `recent`, `countSince` → Supabase `audit_log`. Every call is try/catch-wrapped and never throws — a logging failure must not break the feature. |
 | Integrations | `integrations.js` | `driveGet`, `findFolderByName`, `listAllFilesInFolder`, `downloadDriveFile`, `sendEmailWithAttachment`. All Drive calls append `supportsAllDrives=true&includeItemsFromAllDrives=true` (Shared Drive visibility). |
+| WorkbookReader | `workbookReader.js` | `num`, `norm`, `grid(ws, XLSX)`, `findSheet(wb, keys)`, `findRowIdx(g, re, from, labelCol)`, `findHeader(g, from)`, `labelValue(...)`, `noteSection(g, titleRe, endRe?)`. Locating figures inside the firm's hand-maintained NFRS workbooks — extracted from `projectionEngine.js` on 2026-07-26 when Financial Statement needed the same locators. **Everything is label-driven, never positional**: `findHeader` finds the literal `particulars` cell and takes the first non-empty non-`notes` column right of it as `valCol`, the second as `prevCol`, which is why SFP→F, Sch-PL→D and Sch-BS→H all work from one function — **never hardcode a value column**. `noteSection` fences a numbered note at the CLOSER of its own Total row and the next numbered note, because not every note has a Total (Sch-BS 3.2 ends at "Current portion", and a Total-only fence read 3.3 and 3.4 as its own). Node-loadable. |
+| EngineMath | `engineMath.js` | `seededRng(key)`, `round1000Up/Down`, `deRound`. Pure numerics shared by the two financial engines, kept separate from WorkbookReader because parsing and arithmetic are different concerns. `seededRng` is what makes the "unique on each case" figures the firm's sheets ask for (projection's cash and creditors, Financial Statement's cash) **reproducible per client** rather than different on every run. Node-loadable. |
 | ReportExport | `reportExport.js` | `toHtml` / `toPdf` / `toExcel` / `download(model, kind, filename, meta)` over one tabular model (`{title, subtitleLines, columns, rows, landscape, note}`; row styles `section`/`subtle`/`total`/`grand`). Added 2026-07-26 for Party Ledger's 4 views + Final Account's 2 statements — six consumers that would otherwise each have copied the drawing code already sitting twice in `bankBook.js`. It knows nothing about ledgers or firms: callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** — PDF-Lib's standard fonts are WinAnsi and *throw* on any character they can't encode (a true minus `−`, a curly quote, Devanagari), so every string is folded to ASCII/Latin-1 on the way into the PDF. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§10.2). No edits to `tabs.js`.
@@ -140,7 +146,7 @@ Navigation is split between a short sidebar and three **topbar dropdowns** (Xero
 | **Sidebar** (`main` group, `nav-*` buttons) | Dashboard, VAT Compliance, Send Document, Clients, Send Logs |
 | **Company Registrar** (topbar) | Its own `regd` sub-module group — Share Transfer, Increase Capital, Company Registration, Auditor Change, PIN Reset, BM/AGM Minutes |
 | **Financial Management** (topbar, key `fin`) | Service Memo, Billing, Party Ledger, Bank Entry, Final Account |
-| **Automation Hub** (topbar, key `auto`) | Projection Report, Depreciation, Confirmation, Generate Report, Notes to Accounts, Autobooks |
+| **Automation Hub** (topbar, key `auto`) | Financial Statement, Projection Report, Depreciation, Confirmation, Generate Report, Notes to Accounts, Autobooks |
 
 Everything in the last two menus is an ordinary `main`-group tab registered with `buttonId: null` and launched via **`openModule(tab)`** in `tabs.js` — one launcher for both menus, with `MODULE_INITS` holding only the modules that need an init/refresh call on open (a tab absent from the map simply switches).
 
@@ -327,11 +333,30 @@ The firm's own **Income Statement** and **Balance Sheet** for a period. Financia
 - **`Net Difference` is the point of the module.** `Net Income − Bank − Receivables − Sapati`, labelled "always zero", green at zero and red otherwise. It proves the four modules agree. It is **shown, never forced**: a party opening balance carried in from an earlier period has no matching income or bank movement inside the period, so it surfaces here as a difference of exactly that amount. Verified: with no carried-in opening the figure is exactly `0.00`; with a 2,500 opening it is exactly `−2,500`. Don't "fix" that by hiding it.
 - Exports **PDF + Excel** via `ReportExport`, plus **Print** (a standalone print window, the sheet's "Save/Print" — which is why the proof row's colours are literal hex, not CSS variables).
 
+### 5.18 Financial Statement (`js/finStatement.js` + `js/finStatementEngine.js` + `js/finStatementExport.js`, `fs-` prefix, table `financial_statements`)
+
+A client's full NFRS statement set — **COI · SFP · SOI · SOCE · SOCF · 3.1 PPE · Sch-BS · Sch-PL** — built from last year's statement plus fourteen current-year summary figures. Automation Hub tab, `fsInit()` in `MODULE_INITS`. Built 2026-07-26. Three files by concern, mirroring Projection (§5.15): `finStatementEngine.js` (pure calculation core, **DOM-free and Node-loadable** via a `module.exports` guard — which is how the whole solver is verified against real client files), `finStatement.js` (UI/stepper), `finStatementExport.js` (shared model → Excel/preview/print).
+
+**This module is the inverse of Projection Report.** Projection takes an audited statement and projects years forward; this constructs *one* year from summary figures, using the prior year only as the comparative column. Spec: `Work Performed (9).xlsx`, sheet `provisional.Audited` (the department head's written rules — inputs A–N, tax logic per return type, the two naming rules). The output format is the **yellow-tabbed** sheets of the sample workbooks, several of which carry the spec inline: `"Fill (A)"` on Sale of Goods, `"Balance Fig "` on Purchases and Trade Receivables, `"Fill H/I/J/G"` on the loan rows, `"As per SLM Module"` on depreciation, `"Between 2 -9 lakh but unique on Each case"` on cash. `Test 1 for VAT.xlsx` is the **annotated blank template**, not test data — its formulas cache `#VALUE!` because placeholder text sits where numbers belong.
+
+- **Inputs A–N**: `A` Sales · `B` Closing Stock · `C` Profit (=PBT) · `D` Tax *(computed)* · `E1`/`E2` interest on Term-PWC-HP / OD-CC-STL-DL · `F` Capital addition · `G` OD/CC/STL · `H` Term · `I` PWC · `J` HP · `K` Advance Tax · `L` VAT receivable/(payable) · `M` Dep as per SLM · `N` Dep as per Income Tax. **`M`/`N` auto-fill from `depreciation_schedules`** for that `(client_id, fiscal_year)` — `scheme='slm'` for M, `normal`/`special` for N.
+- **Two balancing figures, both named as such in the template.** **Purchases plugs the P&L** so PBT lands exactly on `C`; **Trade Receivables plugs the balance sheet**. Cash is **seeded 2–9 lakh** from PAN+company+FY via `EngineMath.seededRng` — unique per client, reproducible on re-run. If receivables solves negative a **Director/Proprietor loan** is raised (round up to '000) until it clears — Work Performed G31.
+- **The cash flow needs no adjustment to tie.** The template's own SOCF formulas expand algebraically to the balance-sheet delta identity (finance cost and interest income cancel), so with receivables as the plug the closing cash equals the seeded figure by construction. **Income Tax Paid is the prior year's balance-sheet provision**, not its tax expense as the template writes it — the same figure whenever provisions carry current tax only, but it is the provision that actually leaves, and using it is what holds the tie.
+- **Three proof rows, shown and never forced** (the Final Account precedent, §5.17): balance sheet, cash flow, and PBT-vs-`C`. All exactly `0.00` on real data.
+- **Expense growth**: every P&L line grows `ROUND(×1.05, 0)` off the prior year **except Rent and Audit Fee, held flat** (rule 1) — both still editable as levers. The 3.15 line set is whatever the client's own file carries (6–13 lines, differing per client). Verified against real files: **Salary Payable = salary ÷ 12**, TDS on salary 1%, on rent 10%, on audit fee 1.5%, Audit Fee Payable = fee − its TDS.
+- **Tax (COI)**: `TaxableIncome = PBT + M − N`. **Audited returns tax the taxable profit; provisional returns tax the PBT** (Work Performed row 60). D1 presumptive Rs 4,000 municipality / 7,500 metropolitan; D2 presumptive `(Sales−30L)×1%+4,000` up to 50 lakh then `(Sales−50L)×0.8%+24,000` — the two are **continuous at exactly 50 lakh** (both 24,000), which is what proves the first reads off Sales; D3 progressive `[6L@0, 2L@10, 3L@20, rest@30]`; partnerships and companies 25%, or **20% if Special Industry**. D1/D2 exist for **proprietorships only** — the UI offers only the return types the turnover qualifies for. **These slabs are deliberately NOT `projectionEngine.TAX_SLABS`** (`0/10/20/27/29`), which encode a different schedule for a different purpose.
+- **Titles by basis** (rows 65–69): Audited → *Statement of …*; Provisional → *Provisional Statement of …* on SFP/SOI/SOCF but the **Statement of Changes in Equity is never prefixed**.
+- **Entity terminology** flows through `TERMS` — a Pvt Ltd's SOCE row reads "Dividend Paid", a proprietorship's "Drawing", exactly as the sample files differ; likewise Director/Partner/Proprietor on the signature block. "Non Sign" is proprietorship-only.
+- **Outputs**: `fsxBuildReport()` builds one declarative sheet model that the Excel workbook, the on-screen preview and the print document all render, so they cannot drift. The **Excel reproduces the template's geometry cell for cell** (label B, notes D, CY F, PY H on the statements; D/F on Sch-PL; H/J on Sch-BS) — which is what lets the cross-sheet formulas be literally the firm's own wiring, with a pass-1 row registry fixing every row number before any formula is written and references resolving by row **key** and column **index**, never a literal letter. Every formula carries its cached result. **Only the current-year column carries formulas** — the comparative holds the prior year's reported figures, which need not foot from the lines a sheet breaks out. Uploaded sales/purchase details ride along as sheets `p` and `s`; the purchase closing-balance total becomes Trade Payables. **PDF comes from printing the HTML document (§9.2), not PDF-Lib** — the browser owns pagination and can render Devanagari, which PDF-Lib's WinAnsi standard fonts cannot.
+- Fiscal year: **dash** (`2082-83`), defaulting to the year just **closed** via `NepaliLocale.bsFyDash`. Ashadh year-end wording comes from the calendar table (31 or 32 days by year). Migration: `db/2026-07-26_financial_statements.sql`.
+
+**Findings about the firm's own files, reported rather than absorbed** — the parser flags each: 3.1 PPE opening rows read `"Balance as at"` while closing rows read `"Balance at"`; the SFP carries **Investments, Loans and Provisions twice** (non-current then current) so label-only reads drop the second; `Avi Agro`'s note 3.12 comparative column repeats the current year and disagrees with its own SFP inventories by 25,98,270 (**the SFP wins** — it is the statement, the note is its breakdown); and an unbalanced prior-year balance sheet is caught at parse time because it would otherwise surface only as a cash-flow difference of exactly that amount.
+
 ## 6. Database (Supabase Postgres)
 
-Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-14** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
+Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-26** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (16)
+### 6.1 Tables (17)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -350,6 +375,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `bank_accounts` | Bank Book master (§5.14). `firm_key` (owning firm — drives Final Account's per-firm Bank Balance), `account_name` (holder), `bank_name`, `account_number` (text), `opening_balance` numeric, `opening_date` (B.S. text), `is_active` (soft-deactivate), `sort_order`. User-managed CRUD; holder/bank list is data, not config. Member-CRUD RLS. `db/2026-07-22_bank_book.sql`, `db/2026-07-26_financial_suite.sql`. |
 | `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`for_tax`/`expenses`/`tax_payment`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK — set for all three client particulars), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migrations. |
 | `party_opening_balances` | Per-client opening balance for the Party Ledger (§5.16) — the only figure in that ledger that is stored rather than derived. `client_id` FK (cascade), `firm_key`, `fiscal_year` (dash), `as_on_date` (B.S. text), `opening_amount` numeric, `client_name` snapshot. Unique on `(client_id, firm_key, fiscal_year)`. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_suite.sql`. |
+| `financial_statements` | Saved statement workings (§5.18). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year` (dash), `basis` CHECK (`provisional`/`audited`), `return_type` (free text like `clients.it_return_type`), `entity_type`, `inputs` jsonb (figures A–N + levers + PPE movement + the parsed prior year — everything needed to re-run `build()` identically), `computed` jsonb (the solved statements, COI computation, proofs), `created_by`. Unique on `(client_id, fiscal_year, basis)` where client_id is not null — `basis` is part of the key because a client legitimately holds both a provisional and an audited set for one year, and it decides both the titles and what gets taxed. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_statements.sql`. |
 | `projection_reports` | Saved Projection Report workings (§5.15). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year_base` (dash), `years` (1–10 CHECK), `inputs` jsonb (parsed statement model + assumptions — everything needed to re-run the engine exactly), `computed` jsonb (full engine output: statements/ratios/levers per year), `created_by`. Member-CRUD RLS. `db/2026-07-22_projection_reports.sql`. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
@@ -375,7 +401,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions` and `projection_reports` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql` and `db/2026-07-22_projection_reports.sql`). The permission model:
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions`, `projection_reports` and `financial_statements` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql`, `db/2026-07-22_projection_reports.sql` and `db/2026-07-26_financial_statements.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
@@ -424,6 +450,8 @@ Drawn programmatically: firm letterhead, line items, bank details, QR image (or 
 ### 9.4 Excel via ExcelJS (Depreciation, Sales & Purchase Book, Bank Book)
 `js/depreciation.js` builds its workbook programmatically with ExcelJS (no template asset) — merged headers, thin borders, accounting number format (`#,##0.00;(#,##0.00);"–"`), live formulas, and percent/`" yrs"` rate formats. `js/salesPurchaseBook.js` (7-sheet workbook) and `js/bankBook.js` (report exports) do the same with the same conventions. These three own their bespoke layouts. Excel/ODS *import* uses SheetJS (`XLSX.read`, read-only).
 
+`js/finStatementExport.js` builds the 8-sheet NFRS statement workbook (§5.18) reproducing the firm template+s cell geometry so its cross-sheet formulas match the original wiring.
+
 **For plain tabular reports, use `ReportExport` (§4) instead of hand-rolling** — Party Ledger and Final Account render all six of their views (HTML + PDF + Excel) through it. The three bespoke generators above were left alone deliberately: their merged/multi-block geometry isn't a simple grid, and migrating five shipped generators belongs in its own change.
 
 ### 9.5 Nepali locale
@@ -458,6 +486,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `cl-` | Confirmation Letters | | `sm-` | Service Memo |
 | `bb-` | Bank Book | | `pj-` | Projection Report |
 | `pl-` | Party Ledger | | `fa-` | Final Account |
+| `fs-` | Financial Statement | | | |
 
 ### 10.3 Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern (Notes and Auditor Change already mirror it — copy it for new document builders).
@@ -504,7 +533,7 @@ The established working pattern — **investigate with real evidence → impleme
 
 Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 
-- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 15 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
+- **RLS is the server-side enforcement layer** (§6.6) — enabled on all 17 tables, membership-checked. The publishable key alone now grants nothing. Anon and non-member JWTs get zero rows. This is the single most important control; don't disable it.
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers. Google Drive filenames are untrusted — escape them in any HTML context (`sendDocument.js`).
 - **Email raw-MIME construction is sanitized** — `Integrations.sendRawEmailWithBlob` CRLF-strips every header value and RFC 2047-encodes Subject/filename. Don't reintroduce raw interpolation into header lines.
 - **Drive `q` strings are escaped** via `escDriveQuery` in `integrations.js` — keep using it for any name interpolated into a Drive query.
@@ -522,6 +551,7 @@ Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 | CSP keeps `'unsafe-inline'` for scripts | Medium | Full fix = refactoring the ~hundreds of inline `onclick=` handlers + blob print windows off inline script; a separate project. escHtml audit is the current mitigation (§14). |
 | No automated tests | Medium | All verification is manual/ad-hoc per §13. |
 | 4 Company Registrar stubs (Share Transfer, Increase Capital, Company Registration, PIN Reset) | Feature gap | UI-only, `moduleComingSoon()`. Party Ledger is no longer among them — built 2026-07-26 (§5.16). |
+| Financial Statement per-class depreciation is allocated, not per-asset | Low | The 3.1 PPE note needs depreciation per asset class while figure `M` is one total. A helper allocates `M` by opening balance and the engine warns when the class total disagrees with `M`, but reading the per-class split straight from the SLM schedule+s `pools` jsonb would be exact (§5.8). |
 | `README.md` badly outdated | Low | Superseded by this file (§18). |
 | Section 51 "collected amount" in BM/AGM template is static sample text | Low | Known, deliberate cap during tokenization. |
 
@@ -544,6 +574,10 @@ Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 - **Dashboard is not the default landing tab** — Send Document stays default.
 - **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
 - **Service Memo records work, not collection** (2026-07-26) — its payment columns were dropped deliberately. A payment is recorded once, in Bank Entry, and netted by the Party Ledger. Never re-add payment fields to the memo.
+- **Financial Statement's cash is seeded, and Trade Receivables is the plug** (2026-07-26, user decision) — the spec asks for cash "unique on Each case", so it is seeded from client identity to stay reproducible, and receivables absorbs the balance. A negative plug raises a Director/Proprietor loan; it is never fixed by nudging cash.
+- **Financial Statement's three proof rows are shown, not forced** — like Final Account below. A non-zero figure is a finding about the inputs (an unbalanced prior-year file, or a per-class depreciation total that disagrees with figure M), not a rendering bug.
+- **The Statement of Changes in Equity is NEVER titled "Provisional"**, even on a provisional set — the other three statements are. Straight from Work Performed rows 66–69.
+- **Financial Statement's D3 slabs (`0/10/20/30`) are not Projection's `TAX_SLABS` (`0/10/20/27/29`)** — two different schedules for two different purposes. Don't unify them.
 - **Final Account's `Net Difference` is shown, not forced** — a non-zero figure is a real finding (§5.17), not a rendering bug to suppress.
 - **Party List carries Opening + Tax Paid columns the department head's sheet didn't draw** (user-approved) so the Balance foots on screen. Don't trim it back to the sheet's five columns.
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.)
