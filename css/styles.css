@@ -653,6 +653,52 @@ textarea { resize: vertical; min-height: 100px; }
 .vatc-charts { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 18px; margin-bottom: 26px; align-items: start; }
 @media (max-width: 1100px) { .vatc-charts { grid-template-columns: 1fr; } }
 
+/* ── CLIENT PORTFOLIO DASHBOARD (Clients tab) ──
+   Four breakdown panels under the KPI cards. Plain CSS bars rather than a
+   chart library: these are ranked category counts, which a <div> width says
+   as well as a canvas does, and it keeps the panel free of a Chart.js
+   instance to build up and tear down on every reload. */
+.cd-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-bottom: 26px; align-items: start; }
+.cd-panel { padding: 0; }
+.cd-panel .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cd-panel .card-header h3 { font-size: 14px; font-weight: 600; color: var(--text-main); margin: 0; }
+.cd-count { font-size: 12px; color: var(--text-faint); font-weight: 500; white-space: nowrap; }
+.cd-bars, .cd-meters { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 11px; }
+
+.cd-bar-row { display: grid; grid-template-columns: minmax(0, 132px) 1fr auto; gap: 12px; align-items: center; }
+.cd-bar-label { font-size: 12.5px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cd-bar-track { height: 8px; background: var(--bg-page-alt); border-radius: 999px; overflow: hidden; }
+.cd-bar-fill {
+  height: 100%; border-radius: 999px; min-width: 3px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--brand-navy-lt));
+  transition: width 0.35s ease;
+}
+/* "Not set" reads as an absence, not another category in the ranking. */
+.cd-bar-fill.blank { background: var(--border); }
+.cd-bar-val { font-size: 12.5px; font-weight: 600; color: var(--text-main); white-space: nowrap; text-align: right; min-width: 62px; }
+.cd-bar-pct { font-size: 11px; font-weight: 500; color: var(--text-faint); margin-left: 6px; }
+
+.cd-meter-row { display: grid; grid-template-columns: minmax(0, 92px) 1fr 40px; gap: 12px; align-items: center; }
+.cd-meter-label { font-size: 12.5px; color: var(--text-muted); }
+.cd-meter-track { height: 8px; background: var(--bg-page-alt); border-radius: 999px; overflow: hidden; }
+.cd-meter-fill { height: 100%; border-radius: 999px; transition: width 0.35s ease; }
+.cd-meter-fill.good { background: var(--green); }
+.cd-meter-fill.mid  { background: var(--yellow); }
+.cd-meter-fill.low  { background: var(--red); }
+.cd-meter-val { font-size: 12px; font-weight: 600; color: var(--text-main); text-align: right; }
+
+/* Directory filter row */
+.cd-filter {
+  height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--white); color: var(--text-main); font-size: 13px; font-family: inherit;
+  max-width: 190px; cursor: pointer;
+}
+.cd-filter:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(32,84,147,0.10); }
+.cd-filter-summary { font-size: 12.5px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+
+@media (max-width: 1100px) { .cd-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px)  { .cd-bar-row { grid-template-columns: minmax(0, 100px) 1fr auto; } .cd-filter { max-width: 100%; flex: 1; } }
+
 /* ── SPINNER ── */
 .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: currentColor; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 .spinner-navy { border-color: rgba(11,31,61,0.15); border-top-color: var(--brand-navy); }

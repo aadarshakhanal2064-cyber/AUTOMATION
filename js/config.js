@@ -39,7 +39,16 @@ window.IMPORT_FIELDS = [
   { key:'issued_capital',      label:'Issued Capital',      required:false, keywords:['issued capital','issue capital'] },
   { key:'paid_up_capital',     label:'Paid-up Capital',     required:false, keywords:['paid up capital','paid-up capital','paidup capital','paid capital'] },
   { key:'address',         label:'Address',       required:false, keywords:['address','location'] },
+  { key:'district',        label:'District',      required:false, keywords:['district','zilla'] },
+  { key:'country',         label:'Country',       required:false, keywords:['country'] },
+  { key:'it_return_type',  label:'IT Return Type', required:false, keywords:['type of it return','it return','income tax return type','return type'] },
+  { key:'tax_type_d3',     label:'Tax Type (D-3)', required:false, keywords:['tax type for only d3','tax type for d3','tax type'] },
 ];
+
+// The income-tax return types the firm files. D1/D2 is a real single value,
+// not a placeholder: the client master marks a client as "D-1 and D-2 — it can
+// be both", and it is narrowed to one of the two only when that is known.
+window.CLIENT_IT_RETURN_TYPES = ['D1/D2', 'D-01', 'D-02', 'D-03'];
 
 window.importHeaders     = [];   // raw header strings from the file
 window.importDataRows    = [];   // raw row arrays (excludes header row)
@@ -218,6 +227,11 @@ window.CLIENT_ENTITY_TO_REP_PROFILE = {
   'individuals': 'proprietorship',
   'individual': 'proprietorship',
   'proprietorship': 'proprietorship',
+  // The 2026-07-26 client master spells these two out in full. Without these
+  // keys 155 of the 261 reloaded clients would silently fail to auto-fill the
+  // entity profile in Audit Report, Notes to Accounts and Projection Report.
+  'proprietorship firm': 'proprietorship',
+  'partnership firm': 'partnership',
   'firms': 'proprietorship',
   'firm': 'proprietorship',
   'partnership': 'partnership',

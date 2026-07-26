@@ -18,3 +18,9 @@ assets/templates/*.xls
 assets/templates/*.ods
 assets/templates/*.csv
 assets/templates/*.pdf
+
+# Row-level database dumps: pre-migration snapshots and the client master rows
+# themselves. Same reason as above — these are real client names, PANs and
+# addresses. The annotated migrations in db/ stay tracked; only the data does
+# not. See db/2026-07-26_client_master_reload.sql for how the two fit together.
+db/backups/

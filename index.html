@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607252340">
+<link rel="stylesheet" href="css/styles.css?v=202607261500">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2007,6 +2007,8 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
+      <!-- Client portfolio dashboard. Every figure is derived from
+           window.clientsList at render time — nothing here is stored. -->
       <div class="stat-grid" id="client-stat-grid">
         <div class="stat-card">
           <div class="stat-icon blue">
@@ -2014,31 +2016,50 @@ function cropLoginLogoIcon(img) {
           </div>
           <div class="stat-num" id="stat-total-clients">0</div>
           <div class="stat-label">Total Clients</div>
-          <div class="stat-sub">All registered clients</div>
+          <div class="stat-sub" id="stat-total-sub">All registered clients</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          </div>
+          <div class="stat-num" id="stat-d12">0</div>
+          <div class="stat-label">D-1 / D-2 Filers</div>
+          <div class="stat-sub">Income-tax return type</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon amber">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"></path><path d="M12 2v13"></path><polyline points="8 6 12 2 16 6"></polyline></svg>
+          </div>
+          <div class="stat-num" id="stat-d3">0</div>
+          <div class="stat-label">D-3 Filers</div>
+          <div class="stat-sub">Income-tax return type</div>
         </div>
         <div class="stat-card">
           <div class="stat-icon green">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
           </div>
-          <div class="stat-num" id="stat-with-email">0</div>
-          <div class="stat-label">With Email on File</div>
-          <div class="stat-sub">Ready for document sending</div>
+          <div class="stat-num" id="stat-vat-active">0</div>
+          <div class="stat-label">VAT Active</div>
+          <div class="stat-sub">Filing monthly returns</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon amber">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-          </div>
-          <div class="stat-num" id="stat-missing-email">0</div>
-          <div class="stat-label">Missing Email</div>
-          <div class="stat-sub">Not active currently</div>
+      </div>
+
+      <div class="cd-grid">
+        <div class="card cd-panel">
+          <div class="card-header"><h3>Entity Type</h3><span class="cd-count" id="cd-entity-count">0 types</span></div>
+          <div class="cd-bars" id="cd-entity-bars"></div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon purple">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          </div>
-          <div class="stat-num" id="stat-entity-types">0</div>
-          <div class="stat-label">Entity Types</div>
-          <div class="stat-sub">Distinct categories on file</div>
+        <div class="card cd-panel">
+          <div class="card-header"><h3>District</h3><span class="cd-count" id="cd-district-count">0 districts</span></div>
+          <div class="cd-bars" id="cd-district-bars"></div>
+        </div>
+        <div class="card cd-panel">
+          <div class="card-header"><h3>Nature of Business</h3><span class="cd-count" id="cd-nature-count">0 sectors</span></div>
+          <div class="cd-bars" id="cd-nature-bars"></div>
+        </div>
+        <div class="card cd-panel">
+          <div class="card-header"><h3>Record Completeness</h3><span class="cd-count">Fields on file</span></div>
+          <div class="cd-meters" id="cd-completeness"></div>
         </div>
       </div>
 
@@ -2063,13 +2084,22 @@ function cropLoginLogoIcon(img) {
           </div>
           <div class="form-group">
             <label>Entity Type</label>
+            <!-- Values match the 2026-07-26 client master; the legacy spellings
+                 below it are kept so editing an older record does not silently
+                 change its entity type. Both are mapped in
+                 CLIENT_ENTITY_TO_REP_PROFILE. -->
             <select id="ac-entity-type">
               <option value="">— Select —</option>
+              <option>Private Limited Company</option>
+              <option>Public Limited Company</option>
+              <option>Proprietorship Firm</option>
+              <option>Partnership Firm</option>
+              <option>NPOs</option>
+              <option>NGO</option>
+              <option>Cooperatives</option>
               <option>Pvt. Ltd. Company</option>
               <option>Public Ltd. Company</option>
               <option>Firms</option>
-              <option>NPOs</option>
-              <option>Cooperatives</option>
               <option>Individuals</option>
               <option>Other</option>
             </select>
@@ -2110,6 +2140,29 @@ function cropLoginLogoIcon(img) {
             <label>Paid-up Capital</label>
             <input type="text" id="ac-paidup-capital" placeholder="e.g. 25,00,000" />
           </div>
+          <div class="form-group">
+            <label>District</label>
+            <input type="text" id="ac-district" placeholder="e.g. Chitwan" list="ac-district-list" />
+            <datalist id="ac-district-list"></datalist>
+          </div>
+          <div class="form-group">
+            <label>Country</label>
+            <input type="text" id="ac-country" placeholder="Nepal" />
+          </div>
+          <div class="form-group">
+            <label>Type of IT Return</label>
+            <select id="ac-it-return-type">
+              <option value="">— Not set —</option>
+              <option>D1/D2</option>
+              <option>D-01</option>
+              <option>D-02</option>
+              <option>D-03</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tax Type (D-3 only)</label>
+            <input type="text" id="ac-tax-type-d3" placeholder="Optional" />
+          </div>
           <div class="form-group full">
             <label>Address</label>
             <input type="text" id="ac-address" placeholder="Optional" />
@@ -2128,9 +2181,20 @@ function cropLoginLogoIcon(img) {
             <span class="sb-icon">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             </span>
-            <input type="text" class="search-bar" id="client-search-bar" placeholder="Search clients by name, email, PAN, registration number or entity type…" oninput="filterClientTable(this.value)" />
+            <input type="text" class="search-bar" id="client-search-bar" placeholder="Search by name, email, PAN, district, business or entity type…" oninput="applyClientFilters()" />
           </div>
-          <div style="display:flex; gap:12px;">
+          <span class="cd-filter-summary" id="client-filter-summary"></span>
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <select id="client-filter-entity" class="cd-filter" onchange="applyClientFilters()"><option value="">All entity types</option></select>
+            <select id="client-filter-district" class="cd-filter" onchange="applyClientFilters()"><option value="">All districts</option></select>
+            <select id="client-filter-it" class="cd-filter" onchange="applyClientFilters()">
+              <option value="">All IT returns</option>
+              <option value="D1/D2">D1/D2</option>
+              <option value="D-01">D-01</option>
+              <option value="D-02">D-02</option>
+              <option value="D-03">D-03</option>
+              <option value="__none">Not set</option>
+            </select>
             <button class="btn btn-outline" id="import-client-btn" onclick="openImportModal()" style="display:none;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
               Import from Excel
@@ -2717,42 +2781,42 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202607261200"></script>
-<script src="js/utils.js?v=202607261200"></script>
-<script src="js/core/moduleRegistry.js?v=202607252330"></script>
-<script src="js/core/statusBox.js?v=202607141030"></script>
-<script src="js/core/nepaliLocale.js?v=202607261200"></script>
-<script src="js/core/documentEngine.js?v=202607141030"></script>
-<script src="js/core/searchEngine.js?v=202607141030"></script>
-<script src="js/core/tableEngine.js?v=202607141030"></script>
-<script src="js/core/workflowEngine.js?v=202607141030"></script>
-<script src="js/core/auditLog.js?v=202607141030"></script>
-<script src="js/core/integrations.js?v=202607162100"></script>
-<script src="js/core/reportExport.js?v=202607261200"></script>
-<script src="js/tabs.js?v=202607261200"></script>
-<script src="js/dashboard.js?v=202607141030"></script>
-<script src="js/registrar.js?v=202607261200"></script>
-<script src="js/clients.js?v=202607141030"></script>
-<script src="js/logs.js?v=202607141030"></script>
-<script src="js/vatCompliance.js?v=202607141030"></script>
-<script src="js/billing.js?v=202607252330"></script>
-<script src="js/serviceMemo.js?v=202607261200"></script>
-<script src="js/sendDocument.js?v=202607162100"></script>
-<script src="js/report.js?v=202607141030"></script>
-<script src="js/notesToAccounts.js?v=202607252330"></script>
-<script src="js/depreciation.js?v=202607252330"></script>
-<script src="js/depreciationSlm.js?v=202607211600"></script>
-<script src="js/bmAgmMinutes.js?v=202607170100"></script>
-<script src="js/auditorChange.js?v=202607141030"></script>
-<script src="js/salesPurchaseBook.js?v=202607191730"></script>
-<script src="js/confirmationLetters.js?v=202607252330"></script>
-<script src="js/bankBook.js?v=202607261200"></script>
-<script src="js/partyLedger.js?v=202607261200"></script>
-<script src="js/finalAccount.js?v=202607261200"></script>
-<script src="js/projectionEngine.js?v=202607251930"></script>
-<script src="js/projection.js?v=202607260130"></script>
-<script src="js/projectionExport.js?v=202607260130"></script>
-<script src="js/auth.js?v=202607162100"></script>
+<script src="js/config.js?v=202607261500"></script>
+<script src="js/utils.js?v=202607261500"></script>
+<script src="js/core/moduleRegistry.js?v=202607261500"></script>
+<script src="js/core/statusBox.js?v=202607261500"></script>
+<script src="js/core/nepaliLocale.js?v=202607261500"></script>
+<script src="js/core/documentEngine.js?v=202607261500"></script>
+<script src="js/core/searchEngine.js?v=202607261500"></script>
+<script src="js/core/tableEngine.js?v=202607261500"></script>
+<script src="js/core/workflowEngine.js?v=202607261500"></script>
+<script src="js/core/auditLog.js?v=202607261500"></script>
+<script src="js/core/integrations.js?v=202607261500"></script>
+<script src="js/core/reportExport.js?v=202607261500"></script>
+<script src="js/tabs.js?v=202607261500"></script>
+<script src="js/dashboard.js?v=202607261500"></script>
+<script src="js/registrar.js?v=202607261500"></script>
+<script src="js/clients.js?v=202607261500"></script>
+<script src="js/logs.js?v=202607261500"></script>
+<script src="js/vatCompliance.js?v=202607261500"></script>
+<script src="js/billing.js?v=202607261500"></script>
+<script src="js/serviceMemo.js?v=202607261500"></script>
+<script src="js/sendDocument.js?v=202607261500"></script>
+<script src="js/report.js?v=202607261500"></script>
+<script src="js/notesToAccounts.js?v=202607261500"></script>
+<script src="js/depreciation.js?v=202607261500"></script>
+<script src="js/depreciationSlm.js?v=202607261500"></script>
+<script src="js/bmAgmMinutes.js?v=202607261500"></script>
+<script src="js/auditorChange.js?v=202607261500"></script>
+<script src="js/salesPurchaseBook.js?v=202607261500"></script>
+<script src="js/confirmationLetters.js?v=202607261500"></script>
+<script src="js/bankBook.js?v=202607261500"></script>
+<script src="js/partyLedger.js?v=202607261500"></script>
+<script src="js/finalAccount.js?v=202607261500"></script>
+<script src="js/projectionEngine.js?v=202607261500"></script>
+<script src="js/projection.js?v=202607261500"></script>
+<script src="js/projectionExport.js?v=202607261500"></script>
+<script src="js/auth.js?v=202607261500"></script>
 
 </body>
 </html>

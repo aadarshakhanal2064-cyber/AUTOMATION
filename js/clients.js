@@ -33,21 +33,178 @@ async function loadClients() {
   }
 
   window.clientsList = data || [];
-  renderClientsTable(window.clientsList);
+  populateClientFilters(window.clientsList);
+  applyClientFilters();
   renderClientStats(window.clientsList);
 }
 
-function renderClientStats(list) {
-  const total       = list.length;
-  const withEmail   = list.filter(c => c.email).length;
-  const missingEmail= total - withEmail;
-  const entityTypes = new Set(list.filter(c => c.entity_type).map(c => c.entity_type.trim().toLowerCase())).size;
+// ════════════════════════════════════════════
+//  CLIENT PORTFOLIO DASHBOARD
+// ════════════════════════════════════════════
+// Every figure is derived from window.clientsList on render — the directory is
+// the single source, so the dashboard can never disagree with the table below
+// it. Deliberately reports the WHOLE portfolio, not the filtered view: these
+// are the firm's headline numbers, and having them move as you type in the
+// search box would make them useless.
 
+const CD_MAX_BARS = 6;   // longest tail worth drawing; the rest roll into "Other"
+// Blanks are bucketed under one visible label rather than dropped: the 45
+// Devanagari records and the 8 kept clients carry no district or IT return,
+// and a chart that quietly omitted them would not add up to the client count.
+const CD_BLANK = 'Not set';
+
+function cdGroup(list, pick) {
+  const counts = new Map();
+  list.forEach(c => {
+    const raw = pick(c);
+    const key = (raw === null || raw === undefined || String(raw).trim() === '')
+      ? CD_BLANK : String(raw).trim();
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  // Blanks sort last regardless of size — they are an absence, not a category.
+  return [...counts.entries()].sort((a, b) =>
+    (a[0] === CD_BLANK) - (b[0] === CD_BLANK) || b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function cdRenderBars(elId, countId, groups, noun) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  // The blank bucket is not one of the categories, so it must not be counted
+  // as one — "7 types" when six are real would be wrong.
+  const real = groups.filter(([name]) => name !== CD_BLANK).length;
+  const label = document.getElementById(countId);
+  if (label) label.textContent = `${real} ${noun}${real === 1 ? '' : 's'}`;
+
+  if (!groups.length) { el.innerHTML = '<div class="log-empty">No data yet.</div>'; return; }
+
+  // "Not set" is held out of the ranking and always drawn as its own last bar.
+  // Letting it fall into "Other" would bury the count of records still missing
+  // the field, which is the one number this panel is most useful for.
+  const blank = groups.find(([name]) => name === CD_BLANK);
+  const ranked = groups.filter(([name]) => name !== CD_BLANK);
+  const slots = CD_MAX_BARS - (blank ? 1 : 0);
+
+  let shown = ranked;
+  if (ranked.length > slots) {
+    const rest = ranked.slice(slots - 1).reduce((s, g) => s + g[1], 0);
+    shown = ranked.slice(0, slots - 1).concat([[`Other (${ranked.length - slots + 1})`, rest]]);
+  }
+  if (blank) shown = shown.concat([blank]);
+
+  const top = Math.max(...shown.map(g => g[1]), 1);
+  const total = groups.reduce((s, g) => s + g[1], 0) || 1;
+
+  el.innerHTML = shown.map(([name, n]) => `
+    <div class="cd-bar-row">
+      <div class="cd-bar-label" title="${escHtml(name)}">${escHtml(name)}</div>
+      <div class="cd-bar-track"><div class="cd-bar-fill${name === CD_BLANK ? ' blank' : ''}" style="width:${(n / top * 100).toFixed(1)}%"></div></div>
+      <div class="cd-bar-val">${n}<span class="cd-bar-pct">${Math.round(n / total * 100)}%</span></div>
+    </div>`).join('');
+}
+
+function cdRenderCompleteness(list) {
+  const el = document.getElementById('cd-completeness');
+  if (!el) return;
+  const total = list.length || 1;
+  // The fields other modules actually need before they can do their job.
+  const fields = [
+    ['PAN',           c => c.pan],
+    ['Address',       c => c.address],
+    ['Entity Type',   c => c.entity_type],
+    ['District',      c => c.district],
+    ['IT Return',     c => c.it_return_type],
+    ['Email',         c => c.email],
+    ['Phone',         c => c.phone],
+  ];
+  el.innerHTML = fields.map(([label, pick]) => {
+    const n = list.filter(c => { const v = pick(c); return v !== null && v !== undefined && String(v).trim() !== ''; }).length;
+    const pct = Math.round(n / total * 100);
+    const tone = pct >= 90 ? 'good' : pct >= 50 ? 'mid' : 'low';
+    return `
+      <div class="cd-meter-row">
+        <div class="cd-meter-label">${escHtml(label)}</div>
+        <div class="cd-meter-track"><div class="cd-meter-fill ${tone}" style="width:${pct}%"></div></div>
+        <div class="cd-meter-val">${pct}%</div>
+      </div>`;
+  }).join('');
+}
+
+function renderClientStats(list) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set('stat-total-clients', total);
-  set('stat-with-email', withEmail);
-  set('stat-missing-email', missingEmail);
-  set('stat-entity-types', entityTypes);
+  const isD3  = c => String(c.it_return_type || '') === 'D-03';
+  // D1/D2 is one value, but a client narrowed to D-01 or D-02 still belongs
+  // in this count — it is the same filing family.
+  const isD12 = c => /^D(1\/D2|-01|-02)$/.test(String(c.it_return_type || ''));
+
+  set('stat-total-clients', list.length);
+  set('stat-d12',        list.filter(isD12).length);
+  set('stat-d3',         list.filter(isD3).length);
+  set('stat-vat-active', list.filter(c => c.vat_status === 'active').length);
+
+  const unset = list.filter(c => !c.it_return_type).length;
+  set('stat-total-sub', unset ? `${unset} without an IT return type` : 'All classified');
+
+  cdRenderBars('cd-entity-bars',   'cd-entity-count',   cdGroup(list, c => c.entity_type),     'type');
+  cdRenderBars('cd-district-bars', 'cd-district-count', cdGroup(list, c => c.district),        'district');
+  cdRenderBars('cd-nature-bars',   'cd-nature-count',   cdGroup(list, c => c.business_nature), 'sector');
+  cdRenderCompleteness(list);
+}
+
+// ── Filters ──────────────────────────────────
+// The search box and the three dropdowns are one predicate, so they compose
+// instead of each overwriting the other's result.
+function populateClientFilters(list) {
+  const fill = (id, groups) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const keep = el.value;
+    const first = el.options[0];
+    el.innerHTML = '';
+    el.appendChild(first);
+    groups.filter(([name]) => name !== CD_BLANK).forEach(([name, n]) => {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = `${name} (${n})`;
+      el.appendChild(o);
+    });
+    el.value = keep;                       // survive a reload mid-filter
+    if (el.value !== keep) el.value = '';  // unless that option is now gone
+  };
+  fill('client-filter-entity',   cdGroup(list, c => c.entity_type));
+  fill('client-filter-district', cdGroup(list, c => c.district));
+
+  const dl = document.getElementById('ac-district-list');
+  if (dl) {
+    dl.innerHTML = cdGroup(list, c => c.district)
+      .filter(([name]) => name !== CD_BLANK)
+      .map(([name]) => `<option value="${escHtml(name)}"></option>`).join('');
+  }
+}
+
+function applyClientFilters() {
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const q        = val('client-search-bar').trim().toLowerCase();
+  const entity   = val('client-filter-entity');
+  const district = val('client-filter-district');
+  const itType   = val('client-filter-it');
+
+  const filtered = (window.clientsList || []).filter(c => {
+    if (entity   && (c.entity_type || '') !== entity)   return false;
+    if (district && (c.district || '')    !== district) return false;
+    if (itType === '__none') { if (c.it_return_type) return false; }
+    else if (itType && (c.it_return_type || '') !== itType) return false;
+    if (!q) return true;
+    return [c.name, c.email, c.pan, c.registration_number, c.entity_type,
+            c.district, c.business_nature, c.it_return_type]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+
+  renderClientsTable(filtered);
+  const el = document.getElementById('client-filter-summary');
+  if (el) {
+    const n = filtered.length, total = (window.clientsList || []).length;
+    el.textContent = n === total ? `${total} clients` : `${n} of ${total} clients`;
+  }
 }
 
 function clientInitials(name) {
@@ -84,8 +241,14 @@ function renderClientsTable(list) {
           const v = cell.getValue();
           return v ? `<span class="entity-badge">${escHtml(v)}</span>` : '—';
         } },
-      { title: 'Email', field: 'email', minWidth: 180, formatter: cell => escHtml(cell.getValue() || '—') },
-      { title: 'PAN', field: 'pan', minWidth: 120, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'PAN', field: 'pan', minWidth: 110, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'District', field: 'district', minWidth: 110, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'IT Return', field: 'it_return_type', minWidth: 110, formatter: cell => {
+          const v = cell.getValue();
+          if (!v) return '<span style="color:var(--text-faint);">—</span>';
+          return `<span class="log-badge ${v === 'D-03' ? 'badge-yellow' : 'badge-sent'}">${escHtml(v)}</span>`;
+        } },
+      { title: 'Email', field: 'email', minWidth: 170, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'VAT', field: 'vat_status', minWidth: 110, formatter: cell => {
           const v = cell.getValue();
           return v === 'active' ? '<span class="log-badge badge-sent">Active</span>'
@@ -107,17 +270,10 @@ function renderClientsTable(list) {
   });
 }
 
-function filterClientTable(val) {
-  const v = val.toLowerCase();
-  const filtered = window.clientsList.filter(c =>
-    c.name.toLowerCase().includes(v) ||
-    (c.email || '').toLowerCase().includes(v) ||
-    (c.pan || '').toLowerCase().includes(v) ||
-    (c.registration_number || '').toLowerCase().includes(v) ||
-    (c.entity_type || '').toLowerCase().includes(v)
-  );
-  renderClientsTable(filtered);
-}
+// Superseded by applyClientFilters(), which folds the search box and the three
+// dropdowns into one predicate. Kept as a thin alias because it was the public
+// name for this behaviour.
+function filterClientTable() { applyClientFilters(); }
 
 // ════════════════════════════════════════════
 //  SUPABASE: ADD / EDIT / DELETE CLIENTS
@@ -138,8 +294,10 @@ function cancelAddClient() {
 }
 
 function clearClientForm() {
-  ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-registration-number','ac-chairman-name','ac-shareholder-name','ac-authorized-capital','ac-issued-capital','ac-paidup-capital','ac-address'].forEach(id => document.getElementById(id).value = '');
+  ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-registration-number','ac-chairman-name','ac-shareholder-name','ac-authorized-capital','ac-issued-capital','ac-paidup-capital','ac-address','ac-district','ac-it-return-type','ac-tax-type-d3'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ac-vat-status').value = 'not_registered';
+  // Every client on file is Nepal-based; typing it 300 times is not a feature.
+  document.getElementById('ac-country').value = 'Nepal';
   document.getElementById('client-form-status').innerHTML = '';
 }
 
@@ -167,6 +325,10 @@ async function saveClient() {
     issued_capital:      document.getElementById('ac-issued-capital').value.trim() || null,
     paid_up_capital:     document.getElementById('ac-paidup-capital').value.trim() || null,
     address:       document.getElementById('ac-address').value.trim() || null,
+    district:      document.getElementById('ac-district').value.trim() || null,
+    country:       document.getElementById('ac-country').value.trim() || null,
+    it_return_type: document.getElementById('ac-it-return-type').value.trim() || null,
+    tax_type_d3:   document.getElementById('ac-tax-type-d3').value.trim() || null,
   };
 
   let error;
@@ -204,6 +366,10 @@ function editClient(id) {
   document.getElementById('ac-issued-capital').value      = c.issued_capital || '';
   document.getElementById('ac-paidup-capital').value      = c.paid_up_capital || '';
   document.getElementById('ac-address').value     = c.address || '';
+  document.getElementById('ac-district').value    = c.district || '';
+  document.getElementById('ac-country').value     = c.country || 'Nepal';
+  document.getElementById('ac-it-return-type').value = c.it_return_type || '';
+  document.getElementById('ac-tax-type-d3').value = c.tax_type_d3 || '';
   document.getElementById('add-client-title').textContent = 'Edit Client';
   document.getElementById('add-client-form').classList.add('open');
   document.getElementById('add-client-form').scrollIntoView({ behavior: 'smooth' });
@@ -457,6 +623,10 @@ async function confirmImport() {
         issued_capital:      r.issued_capital || null,
         paid_up_capital:     r.paid_up_capital || null,
         address:         r.address || null,
+        district:        r.district || null,
+        country:         r.country || null,
+        it_return_type:  r.it_return_type || null,
+        tax_type_d3:     r.tax_type_d3 || null,
       },
     }));
 

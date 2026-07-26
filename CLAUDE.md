@@ -188,6 +188,18 @@ Significant Accounting Policies & Notes generator. Mirrors report.js 1:1 (same E
 ### 5.7 Clients Directory (`js/clients.js`)
 CRUD + search over `clients` (Tabulator via TableEngine), plus the Excel/CSV/ODS import wizard: header auto-mapping by keyword (`IMPORT_FIELDS` in config.js), duplicate/invalid preview, **backfill-on-duplicate** (re-importing fills blank fields on existing clients, never overwrites non-blank), and nameless-rows-after-a-company-row attach as extra shareholders (`client_shareholders`). Statutory fields (registration number, chairman, shareholder, three capitals) are deliberately not table columns but are editable per client.
 
+**Client portfolio dashboard** (added 2026-07-26 with the master reload below): four KPI cards — Total Clients, **D-1/D-2 filers**, **D-3 filers**, VAT Active — over four breakdown panels (Entity Type, District, Nature of Business, Record Completeness). Everything is derived from `window.clientsList` at render time; nothing is stored, so the dashboard can never disagree with the table under it. Deliberately reports the **whole portfolio, not the filtered view** — these are the firm's headline numbers and having them move while you type in the search box would make them useless.
+- Plain CSS bars (`.cd-bar-*`), not Chart.js: these are ranked category counts, which a div width states as well as a canvas, and it avoids building/tearing down a chart instance on every reload. The doughnut on the Dashboard tab stays Chart.js.
+- **`CD_BLANK` ("Not set") is held out of the ranking and always drawn as its own last bar**, greyed. The 45 Devanagari records and the 8 kept clients carry no district or IT return type; letting them fall into the "Other (n)" rollup buried the very number the panel is most useful for. Every chart therefore sums to exactly the client count. Blanks are also excluded from the "N types/districts" caption and from the filter dropdowns.
+- **Search + the three dropdowns (entity / district / IT return) are one predicate** (`applyClientFilters`), so they compose instead of each overwriting the other's result. `filterClientTable()` survives as a thin alias. The `__none` option on the IT-return filter finds unclassified clients.
+
+**Client master reload (2026-07-26)** — `db/2026-07-26_client_master_reload.sql`, from the firm's `Client_Data_For_App_1_Cleaned.xlsx`. The directory had drifted to 451 rows: 261 hand-entered originals (ids 1–262), 45 Nepali-language records (263–307), 8 later additions (314–324), and a **partial re-import of that same workbook (325–461) that duplicated 137 originals by PAN**.
+- The migration **updates the originals in place, matched on PAN, and deletes only the 137 duplicates**. That direction is load-bearing: the originals carry 41 rows of real work across nine referencing tables, three of those FKs are `ON DELETE RESTRICT` and three `ON DELETE CASCADE`, so deleting them would either be blocked or silently destroy saved workings. Result 451 → **314** clients with zero work rows lost and zero FKs re-pointed.
+- **The Devanagari records (263–307) are never merged away**, even though 37 share a PAN with an English row — they are the Nepali twin that BM/AGM Minutes and its 55 `client_shareholders` rows read. Compare PANs with `NepaliLocale.toEnglishDigits` (or SQL `translate`) before concluding anything about duplication here.
+- **`it_return_type` came only from a cell fill.** Columns "Tax Type for only D3" and "Type of IT return" are blank on all 261 rows; the workbook's yellow highlighting is the sole carrier and it is not row-consistent (197 rows are partially filled). Per the user: any yellow cell ⇒ `D1/D2` (deliberately one value — "it can be both"), no fill at all ⇒ `D-03`. That is 233/28. Free text, not a CHECK, so the firm can narrow to `D-01`/`D-02` per client without a migration.
+- **The client rows themselves are gitignored** — this repo is public, and the workbook is real names/PANs/addresses. `db/2026-07-26_client_master_reload.sql` carries the annotation, DDL, guards and update/delete logic; its step 2 (the 261-row INSERT) lives in `db/backups/2026-07-26_client_master_rows.sql`, and the full pre-reload snapshot of all 451 rows in `db/backups/2026-07-26_clients_pre_reload.sql`. `db/backups/` is ignored wholesale. Re-running the migration means running the DDL, then the row file, then the rest — the header explains it. If those local files are lost, the old rows are **not** recoverable from the repo.
+- **The workbook's `Proprietorship Firm` / `Partnership Firm` spellings were added to `CLIENT_ENTITY_TO_REP_PROFILE`** in the same change. Without them 155 of the 261 reloaded clients would silently stop auto-filling the entity profile in Audit Report, Notes to Accounts and Projection Report. The legacy `Firms`/`Pvt. Ltd. Company` keys stay — older records still carry them.
+
 ### 5.8 Depreciation (`js/depreciation.js` + `js/depreciationSlm.js`, `dep-` prefix)
 Two **methods** in one panel, chosen by a top-level toggle (`depSetMethod`, reusing `.rep-view-toggle`): **As per Income Tax** (this file) and **As per Accounting Standard (SLM)** (`depreciationSlm.js`, `dep-slm-` sub-namespace). The Client / PAN / Fiscal-Year selectors, Save/Delete buttons, `dep-status` and the carry-forward banner are **shared**; the header Import/Generate buttons and `depReloadForContext`/`depSave`/`depDelete`/`depImportExcel`/`depGenerateExcel` branch on `depMethod` and delegate to the `depSlm*` engine when SLM is active.
 
@@ -324,7 +336,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | Table | Purpose / key columns |
 |---|---|
 | `app_users` | Authorization list. `email` (unique), `role` (`admin`/`staff`, default staff). Checked after Google sign-in; not in the list = Access Denied. |
-| `clients` | Directory (~309 rows). `name`, `email`, `pan`, `phone`, `address`, `entity_type` (free text), `business_nature`, `registration_number`, `chairman_name`, `shareholder_name`, `authorized_capital`/`issued_capital`/`paid_up_capital` (**text, not numeric** — preserves `"25,00,000"` formatting), `vat_status` (`active`/`inactive`/`not_registered`, CHECK-constrained). |
+| `clients` | Directory (**314 rows** since the 2026-07-26 master reload — 261 workbook + 45 Devanagari + 8 kept; §5.7). `name`, `email`, `pan`, `phone`, `address`, `entity_type` (free text), `business_nature`, `registration_number`, `chairman_name`, `shareholder_name`, `authorized_capital`/`issued_capital`/`paid_up_capital` (**text, not numeric** — preserves `"25,00,000"` formatting), `vat_status` (`active`/`inactive`/`not_registered`, CHECK-constrained), plus `district`, `country`, `it_return_type` (`D1/D2`/`D-01`/`D-02`/`D-03`, free text by design) and `tax_type_d3` — added by `db/2026-07-26_client_master_reload.sql`. **PANs may be Devanagari** on the 45 Nepali records, so normalize before comparing (§6.3). |
 | `client_shareholders` | Extra shareholders beyond `clients.shareholder_name`. `client_id` (FK, cascade delete), `name`, `sort_order`. |
 | `send_logs` | Send Document audit trail. Client name/email snapshotted (not FK'd — immutable trail). `status` `sent`/`error`/`pending`. |
 | `audit_log` | App-wide event log (AuditLog engine). `event_type`, `module`, `status`, `user_email`, `client_name`, `record_ref` (bigint), `detail` (jsonb). Feeds the Dashboard. History starts 2026-07-08 (table created after the engine). |
@@ -355,7 +367,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 
 ### 6.4 Query rules
 
-Supabase/PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at ~309 and growing.
+Supabase/PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 314 and growing.
 
 ### 6.5 Migration workflow
 
@@ -525,6 +537,10 @@ Hardened 2026-07-16 (see §6.6, and the `db/` migration). Current posture:
 - **VAT "Filed" status is always manual.**
 - **VAT clients are a hand-picked subset** — never bulk-activate.
 - **Clients table / import preview show a curated column subset**, not all fields.
+- **The 45 Devanagari client records are kept alongside their English twins** (2026-07-26) — 37 share a PAN, but they are what BM/AGM Minutes and `client_shareholders` read. Never de-duplicate the directory on PAN alone.
+- **The 8 clients absent from the client master were kept** (2026-07-26, user decision) — 5 carry live VAT filings, service memos or bank transactions.
+- **`it_return_type` is free text, not CHECK-constrained**, and `D1/D2` is a real single value meaning "either" — not a placeholder to be split.
+- **The Clients dashboard reports the whole portfolio, not the filtered table**, and always draws its "Not set" bucket (§5.7).
 - **Dashboard is not the default landing tab** — Send Document stays default.
 - **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
 - **Service Memo records work, not collection** (2026-07-26) — its payment columns were dropped deliberately. A payment is recorded once, in Bank Entry, and netted by the Party Ledger. Never re-add payment fields to the memo.
