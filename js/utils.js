@@ -20,6 +20,13 @@ async function sbFetchAll(buildQuery, pageSize = 1000) {
   }
 }
 
+// Money for display: "1,234.50", always two decimals. Was written identically
+// as bbAmt (bankBook) and smNum (serviceMemo); Party Ledger and Final Account
+// made it four copies, so it lives here now.
+function fmtAmount(n) {
+  return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // ════════════════════════════════════════════
 //  FIRM PICKER — a click/focus-to-open list of a small FIXED set of items
 //  (e.g. the firm's own known audit firms), reusing the same

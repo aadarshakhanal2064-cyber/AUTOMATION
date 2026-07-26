@@ -132,6 +132,42 @@ window.NepaliLocale = (function () {
     return (d == null || d < 0) ? 365 : d;
   }
 
+  // Gregorian -> B.S. Service Memo stores memo_date as a real Postgres `date`
+  // while every ledger range is B.S., so the two have to meet somewhere; this
+  // is that conversion. Accepts a Date or an ISO 'YYYY-MM-DD' string (parsed at
+  // UTC midnight so the +5:45 shift inside todayBs lands on the same day).
+  // Returns { year, month, day } or null outside the tabulated range.
+  function adToBs(d) {
+    const dt = (d instanceof Date) ? d : new Date(String(d || '').slice(0, 10) + 'T00:00:00Z');
+    return isNaN(dt.getTime()) ? null : todayBs(dt);
+  }
+  // { year, month, day } -> the app's stored text form 'YYYY.MM.DD'.
+  function bsToStr(bs) {
+    return bs ? `${bs.year}.${String(bs.month).padStart(2, '0')}.${String(bs.day).padStart(2, '0')}` : '';
+  }
+
+  // ── B.S. date-string helpers for report date ranges ──
+  // Extracted from bankBook.js (bbDateOrd / bbValidBsDate / bbFyFromDate /
+  // bbTodayBsStr) once Party Ledger and Final Account needed the same four —
+  // every module that filters records by a B.S. From/To range does this
+  // identically, so the parsing lives here rather than in each of them.
+  // All take/return the app's stored B.S. text form, 'YYYY.MM.DD'.
+
+  // Day index for range compare / ordering; null if unparseable or outside the
+  // 2080–2090 table, which callers must tolerate rather than treat as "before".
+  function bsDateOrd(str) {
+    const p = bsPartsNum(str);
+    return p ? bsOrdinal(p) : null;
+  }
+  function isValidBsDate(str) { return bsPartsNum(str) != null; }
+  // Fiscal year of a B.S. date in the dash format Bank Book / Service Memo use.
+  function bsFyDash(str) {
+    const p = bsPartsNum(str);
+    return p ? bsFiscal(p).fy.replace('/', '-') : null;
+  }
+  // Today as 'YYYY.MM.DD', or '' once the calendar table runs out.
+  function todayBsStr() { return bsToStr(todayBs()); }
+
   // "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
   function fiscalParts(fyValue) {
     const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
@@ -142,5 +178,6 @@ window.NepaliLocale = (function () {
   }
 
   return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
-           bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy };
+           bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy,
+           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, adToBs, bsToStr };
 })();
