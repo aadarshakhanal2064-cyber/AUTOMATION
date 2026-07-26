@@ -68,6 +68,7 @@ const MODULE_INITS = {
   partyLedger:         () => plInit(),
   finalAccount:        () => faInit(),
   projection:          () => pjInit(),
+  finStatement:        () => fsInit(),
   depreciation:        () => depInit(),
   confirmationLetters: () => clInit(),
   salesPurchaseBook:   () => spbInit(),

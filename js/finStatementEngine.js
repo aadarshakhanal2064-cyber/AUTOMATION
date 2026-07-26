@@ -490,6 +490,18 @@ const FinStatementEngine = (() => {
     }
     if (!py.equity.shareCapital) py.equity.shareCapital = py.sfp.shareCapital;
 
+    // The prior-year balance sheet must itself balance. The cash-flow statement
+    // ties this year's balance sheet to last year's, so an out-of-balance
+    // comparative surfaces later as a cash-flow difference of exactly that
+    // amount — far from where the problem actually is. Catch it here instead.
+    const pyAssets = r2(num(py.sfp.ppe) + num(py.sfp.investmentsNC) + num(py.sfp.otherReceivablesNC)
+      + num(py.sfp.investmentsC) + num(py.sfp.inventories) + num(py.sfp.receivables) + num(py.sfp.cash));
+    const pyEquityLiab = r2(num(py.sfp.shareCapital) + num(py.sfp.reserves) + num(py.sfp.loansNC)
+      + num(py.sfp.provisionsNC) + num(py.sfp.loansC) + num(py.sfp.payables) + num(py.sfp.provisionsC));
+    if (Math.abs(pyAssets - pyEquityLiab) > 1) {
+      warn(`The prior-year balance sheet does not balance: assets ${r2(pyAssets)} against equity and liabilities ${r2(pyEquityLiab)}, a difference of ${r2(pyAssets - pyEquityLiab)}. This will show up as a cash-flow difference of the same amount.`);
+    }
+
     return { py, issues };
   }
 

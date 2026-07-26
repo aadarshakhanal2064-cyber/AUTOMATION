@@ -112,6 +112,7 @@ function cropLoginLogoIcon(img) {
         <svg class="app-tag-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </button>
       <div class="topbar-dropdown-menu" id="topbar-auto-menu">
+        <button class="topbar-dropdown-item" onclick="openModule('finStatement')">Financial Statement</button>
         <button class="topbar-dropdown-item" onclick="openModule('projection')">Projection Report</button>
         <button class="topbar-dropdown-item" onclick="openModule('depreciation')">Depreciation</button>
         <button class="topbar-dropdown-item" onclick="openModule('confirmationLetters')">Confirmation</button>
@@ -1997,6 +1998,187 @@ function cropLoginLogoIcon(img) {
 
     </div>
 
+    <!-- ── TAB: FINANCIAL STATEMENT ── -->
+    <div id="tab-finStatement-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">Financial Statement</span></div>
+          <h2 class="page-title">Financial Statement</h2>
+          <p class="page-subtitle">Build a client's full NFRS statement set — Financial Position, Income, Changes in Equity, Cash Flows, the 3.1 PPE note and both schedules — from last year's statement plus this year's summary figures.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="fs-step-setup" class="rep-view-btn active" onclick="fsShowSection('setup')">1 · Setup &amp; Upload</button>
+            <button id="fs-step-figures" class="rep-view-btn" onclick="fsShowSection('figures')">2 · Figures</button>
+            <button id="fs-step-review" class="rep-view-btn" onclick="fsShowSection('review')">3 · Review &amp; Export</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="fs-status-area"></div>
+
+      <!-- Step 1: Setup & Upload -->
+      <div id="fs-section-setup">
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Client &amp; Basis</div></div>
+          <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+            <div class="form-group" style="position:relative;">
+              <label>Client (search directory)</label>
+              <input type="text" id="fs-client-search" placeholder="Name or PAN…" autocomplete="off" />
+              <div class="autocomplete-list" id="fs-client-autocomplete"></div>
+            </div>
+            <div class="form-group"><label>Company Name</label><input type="text" id="fs-company" /></div>
+            <div class="form-group"><label>PAN</label><input type="text" id="fs-pan" /></div>
+            <div class="form-group" style="grid-column:span 2;"><label>Address</label><input type="text" id="fs-address" /></div>
+            <div class="form-group"><label>Fiscal Year</label><select id="fs-fy"></select></div>
+            <div class="form-group">
+              <label>Basis</label>
+              <select id="fs-basis" onchange="fsOnBasisChange()">
+                <option value="provisional">Provisional</option>
+                <option value="audited">Audited</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Entity Type</label>
+              <select id="fs-entity" onchange="fsOnEntityChange()">
+                <option value="private">Private Limited</option>
+                <option value="public">Public Limited</option>
+                <option value="partnership">Partnership Firm</option>
+                <option value="proprietorship">Proprietorship Firm</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Type of Return</label>
+              <select id="fs-return-type" onchange="fsRecalcDebounced()"></select>
+            </div>
+            <div class="form-group" id="fs-localbody-group" style="display:none;">
+              <label>Local Body (D1 rate)</label>
+              <select id="fs-localbody" onchange="fsRecalcDebounced()">
+                <option value="municipality">Municipality — Rs. 4,000</option>
+                <option value="metropolitan">Metropolitan City — Rs. 7,500</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Name of Auditor</label>
+              <select id="fs-auditor" onchange="fsOnAuditorChange()">
+                <option value="SA">Shailesh &amp; Associates</option>
+                <option value="DC">Dallakoti &amp; Company</option>
+                <option value="other">Other — specify</option>
+                <option value="nonsign">Non Sign (proprietorship only)</option>
+              </select>
+            </div>
+            <div class="form-group" id="fs-auditor-other-group" style="display:none;">
+              <label>Auditor Name</label>
+              <input type="text" id="fs-auditor-other" oninput="fsRecalcDebounced()" />
+            </div>
+            <div class="form-group">
+              <label>Options</label>
+              <label style="font-weight:400;font-size:13px;display:block;margin-top:4px;">
+                <input type="checkbox" id="fs-special" onchange="fsRecalcDebounced()" /> Special Industry (20% tax)
+              </label>
+              <label style="font-weight:400;font-size:13px;display:block;">
+                <input type="checkbox" id="fs-service" onchange="fsRecalcDebounced()" /> Service industry (revenue as services)
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Prior-Year Financial Statement</div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload last year's statement workbook (SFP · SOI · SOCE · 3.1 PPE · Sch-BS · Sch-PL). Its current-year column becomes this year's comparative column, and its expense lines become the growth base.</p>
+          <input type="file" id="fs-py-file" accept=".xlsx,.xls,.ods" onchange="fsHandlePyFile(this)" />
+          <div id="fs-py-summary" style="margin-top:16px;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Sales &amp; Purchase Detail <span style="font-weight:400;color:var(--text-muted);">(optional)</span></div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Party-wise detail sheets. The purchase file's closing-balance total becomes Trade Payables in note 3.9; both are carried into the workbook as sheets <code>p</code> and <code>s</code>.</p>
+          <div class="form-grid" style="grid-template-columns:repeat(2, 1fr); gap:14px;">
+            <div class="form-group">
+              <label>Sales Detail</label>
+              <input type="file" id="fs-sales-file" accept=".xlsx,.xls,.ods,.csv" onchange="fsHandleDetailFile(this,'sales')" />
+            </div>
+            <div class="form-group">
+              <label>Purchase Detail</label>
+              <input type="file" id="fs-purchase-file" accept=".xlsx,.xls,.ods,.csv" onchange="fsHandleDetailFile(this,'purchase')" />
+            </div>
+          </div>
+          <div id="fs-detail-summary" style="margin-top:10px;"></div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+          <button class="btn btn-primary" onclick="fsShowSection('figures')">Continue to Figures →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Figures A–N -->
+      <div id="fs-section-figures" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Current-Year Figures</div>
+            <div style="font-size:12px;color:var(--text-muted);">Purchases and Trade Receivables are solved, not entered</div>
+          </div>
+          <div id="fs-figures-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Fixed Assets — 3.1 PPE Movement</div>
+            <div style="font-size:12px;color:var(--text-muted);">Depreciation charged must total figure M</div>
+          </div>
+          <div id="fs-ppe-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Expense Lines</div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 12px;">Every line grows 5% on the prior year, except Rent and Audit Fee which are held flat (rule 1). Edit any figure to override.</p>
+          <div id="fs-expense-grid"></div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+          <button class="btn btn-outline" onclick="fsShowSection('setup')">← Back</button>
+          <button class="btn btn-primary" onclick="fsCalculate()">Build Statements →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Review & Export -->
+      <div id="fs-section-review" style="display:none;">
+        <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Proofs</div></div>
+          <div id="fs-proofs"></div>
+        </div>
+
+        <div class="card" id="fs-issues-card" style="display:none;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Findings</div></div>
+          <div id="fs-issues"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Levers</div>
+            <div style="font-size:12px;color:var(--text-muted);">Balancing figures re-solve as you edit</div>
+          </div>
+          <div id="fs-levers"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Statements</div>
+            <div class="rep-view-toggle" id="fs-sheet-tabs"></div>
+          </div>
+          <div id="fs-preview" style="max-height:640px; overflow:auto; background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px;"></div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+          <button class="btn btn-outline" onclick="fsShowSection('figures')">← Back</button>
+          <button class="btn btn-outline" id="fs-save-btn" onclick="fsSave()">Save to Database</button>
+          <button class="btn btn-outline" id="fs-print-btn" onclick="fsPrint()">Print / Save as PDF</button>
+          <button class="btn btn-primary" id="fs-excel-btn" onclick="fsDownloadExcel()">Download Excel</button>
+        </div>
+      </div>
+
+    </div>
+
     <!-- ── TAB: CLIENTS ── -->
     <div id="tab-clients-panel" class="tab-panel">
       <div class="page-header">
@@ -2818,6 +3000,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/projectionEngine.js?v=202607262000"></script>
 <script src="js/projection.js?v=202607262000"></script>
 <script src="js/projectionExport.js?v=202607262000"></script>
+<script src="js/finStatementEngine.js?v=202607262000"></script>
+<script src="js/finStatement.js?v=202607262000"></script>
+<script src="js/finStatementExport.js?v=202607262000"></script>
 <script src="js/auth.js?v=202607262000"></script>
 
 </body>
