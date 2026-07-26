@@ -244,6 +244,7 @@ function pjRenderReview() {
   // saving to the database is gated, so bad figures never become a record.
   const hasErrors = pjIssues.some(i => i.level === 'error');
   pjEl('pj-preview-btn').disabled = false;
+  pjEl('pj-print-btn').disabled = false;
   pjEl('pj-excel-btn').disabled = false;
   pjEl('pj-pdf-btn').disabled = false;
   pjEl('pj-save-btn').disabled = hasErrors;

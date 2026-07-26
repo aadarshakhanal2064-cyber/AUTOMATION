@@ -1988,7 +1988,8 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="action-row">
           <button class="btn btn-primary" id="pj-save-btn" onclick="pjSave()" disabled>Save to Database</button>
-          <button class="btn btn-outline" id="pj-preview-btn" onclick="pjPreviewPdf()" disabled>Preview PDF</button>
+          <button class="btn btn-outline" id="pj-preview-btn" onclick="pjPreviewPdf()" disabled>Preview</button>
+          <button class="btn btn-outline" id="pj-print-btn" onclick="pjPrintReport()" disabled>Print / Save as PDF</button>
           <button class="btn btn-outline" id="pj-excel-btn" onclick="pjDownloadExcel()" disabled>Download Excel</button>
           <button class="btn btn-outline" id="pj-pdf-btn" onclick="pjDownloadPdf()" disabled>Download PDF</button>
         </div>
@@ -2193,7 +2194,8 @@ function cropLoginLogoIcon(img) {
           <div class="pj-viewer-meta" id="pj-preview-meta"></div>
         </div>
         <div class="pj-viewer-actions">
-          <button class="btn btn-primary btn-sm" onclick="pjDownloadPdf()">Download PDF</button>
+          <button class="btn btn-primary btn-sm" onclick="pjPrintReport()">Print / Save as PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="pjDownloadPdf()">Download PDF</button>
           <button class="btn btn-outline btn-sm" onclick="pjDownloadExcel()">Download Excel</button>
           <button class="btn btn-outline btn-sm" onclick="pjClosePreview()">Close</button>
         </div>
@@ -2748,8 +2750,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/partyLedger.js?v=202607261200"></script>
 <script src="js/finalAccount.js?v=202607261200"></script>
 <script src="js/projectionEngine.js?v=202607251930"></script>
-<script src="js/projection.js?v=202607251200"></script>
-<script src="js/projectionExport.js?v=202607252340"></script>
+<script src="js/projection.js?v=202607260130"></script>
+<script src="js/projectionExport.js?v=202607260130"></script>
 <script src="js/auth.js?v=202607162100"></script>
 
 </body>

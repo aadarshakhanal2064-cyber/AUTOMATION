@@ -306,7 +306,7 @@ function pjxBuildReport() {
         xexpr: (R, c) => (R.sales && R.cogsTotal) ? `${c}${R.sales}-${c}${R.cogsTotal}` : null },
       // The detail sits on its own page (Schedule 1); the P&L carries only the
       // total, fetched from that schedule.
-      { k: 'adminTotal', label: PJX_PL_L.adminTotal, vals: withAud(audAdminTotal, v(x => x.pl.adminTotal)), kind: 'tot',
+      { k: 'adminTotal', label: `${PJX_PL_L.adminTotal} (Schedule 1)`, vals: withAud(audAdminTotal, v(x => x.pl.adminTotal)), kind: 'tot',
         xexpr: (R, c, X) => X('ADM', 'admTotal') },
       { k: 'pbid', label: PJX_PL_L.pbid, vals: withAud(audGP - audAdminTotal, v(x => x.pl.grossProfit - x.pl.adminTotal)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.gp}-${c}${R.adminTotal}` },
@@ -586,6 +586,129 @@ function pjxAmt(v) {
   return v < 0 ? `(${Math.abs(Math.round(v)).toLocaleString('en-IN')})` : Math.round(v).toLocaleString('en-IN');
 }
 
+// ── HTML rendering (preview + print) ───────────────────────────────
+//  The SAME shared model rendered as a standalone HTML document: a white
+//  page carrying only the content, exactly how the Audit Report and Notes
+//  to Accounts modules present theirs. The preview iframe and the Print
+//  window load this identical document, so what is reviewed on screen is
+//  precisely what prints — and it mirrors the PDF's design (navy header
+//  band, tinted totals, double-ruled grand totals, signature block).
+
+const PJX_PRINT_CSS = `
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#eef1f5; font-family:"Times New Roman",Georgia,serif; color:#14181f; }
+  .pjp-sheet{
+    background:#fff; width:210mm; min-height:297mm; margin:0 auto 18px; padding:14mm 12mm;
+    box-shadow:0 2px 14px rgba(15,23,42,.18);
+  }
+  .pjp-head{ text-align:center; margin-bottom:10px; }
+  .pjp-co{ font-size:15pt; font-weight:700; color:#0b1f3d; letter-spacing:.2px; }
+  .pjp-addr{ font-size:9.5pt; color:#5a6675; margin-top:2px; }
+  .pjp-title{ font-size:11.5pt; font-weight:700; margin-top:5px; }
+  .pjp-table{ width:100%; border-collapse:collapse; table-layout:fixed; border:1px solid #0b1f3d; }
+  .pjp-table th{
+    background:#0b1f3d; color:#fff; font-weight:700; text-align:right;
+    padding:6px 6px; vertical-align:middle; border-left:1px solid rgba(255,255,255,.18);
+  }
+  .pjp-table th span{ display:block; font-weight:400; font-size:.85em; opacity:.85; }
+  .pjp-table th.pjp-lbl{ text-align:left; width:34%; border-left:0; }
+  .pjp-table td{ padding:4px 6px; text-align:right; border-bottom:1px solid #dfe4ec; border-left:1px solid #e8ecf3; }
+  .pjp-table td.pjp-lbl{ text-align:left; border-left:0; }
+  tr.pjp-item td.pjp-lbl{ padding-left:20px; }
+  tr.pjp-sec td{ font-weight:700; color:#0b1f3d; border-bottom:0; padding-top:8px; }
+  tr.pjp-tot td{ background:#eef1f6; font-weight:700; border-top:1px solid #8593a6; }
+  tr.pjp-grand td{ background:#d8e2ed; font-weight:700; border-top:1px solid #8593a6; border-bottom:3px double #0b1f3d; }
+  tr.pjp-b td{ font-weight:700; }
+  tr.pjp-span td{ text-align:center; font-weight:700; color:#0b1f3d; padding:9px 0 4px; border-bottom:0; }
+  td.pjp-pass{ color:#1a8040; }
+  td.pjp-fail{ color:#bf2929; }
+  .pjp-sig{ display:flex; justify-content:space-between; margin-top:26px; font-size:9.5pt; }
+  .pjp-sig-r{ text-align:right; }
+  .pjp-sig-line{ border-top:1px dotted #14181f; width:150px; margin-bottom:4px; }
+  .pjp-sig-r .pjp-sig-line{ margin-left:auto; }
+  .pjp-sig-meta{ color:#3d4757; margin-top:2px; }
+  /* Cover */
+  .pjp-cover-frame{ border:1.5px solid #0b1f3d; outline:1px solid #8593a6; outline-offset:5px;
+    height:269mm; text-align:center; padding:56px 40px; display:flex; flex-direction:column; }
+  .pjp-cover-title{ font-size:26pt; font-weight:700; color:#0b1f3d; letter-spacing:.5px; text-transform:uppercase; }
+  .pjp-cover-rule{ width:260px; border-top:1.2px solid #0b1f3d; margin:12px auto 0; }
+  .pjp-cover-of{ font-size:10.5pt; color:#5a6675; text-transform:uppercase; letter-spacing:1px; margin-top:26px; }
+  .pjp-cover-entity{ font-size:19pt; font-weight:700; margin-top:22px; }
+  .pjp-cover-addr{ font-size:10.5pt; color:#5a6675; margin-top:8px; }
+  .pjp-cover-pan{ font-size:10.5pt; margin-top:5px; }
+  .pjp-cover-lines{ display:flex; align-items:flex-end; justify-content:center; gap:24px; height:120px; margin:auto 0; }
+  .pjp-cover-lines i{ display:block; width:0; border-left:1.4px solid #0b1f3d; }
+  .pjp-cover-lines i.s{ height:62%; } .pjp-cover-lines i.t{ height:92%; }
+  .pjp-cover-fy{ font-size:13pt; font-weight:700; }
+  .pjp-cover-sub{ font-size:10.5pt; color:#5a6675; margin-top:6px; }
+  .pjp-cover-date{ font-size:10.5pt; margin-top:auto; }
+  @page{ size:A4; margin:12mm; }
+  @media print{
+    body{ background:#fff; }
+    .pjp-sheet{ width:auto; min-height:0; margin:0; padding:0; box-shadow:none;
+      page-break-after:always; }
+    .pjp-sheet:last-child{ page-break-after:auto; }
+    .pjp-cover-frame{ height:262mm; }
+    thead{ display:table-header-group; }        /* repeat the band across pages */
+    tr{ page-break-inside:avoid; }
+  }`;
+
+function pjxReportHtmlDoc() {
+  const { meta, sections } = pjxBuildReport();
+  const { company, address, pan, T, bsDate, place, N, fyText } = meta;
+  const esc = s => escHtml(String(s == null ? '' : s));
+  const out = [];
+
+  out.push(`<section class="pjp-sheet"><div class="pjp-cover-frame">
+    <div class="pjp-cover-title">Projected Financial Report</div>
+    <div class="pjp-cover-rule"></div>
+    <div class="pjp-cover-of">of</div>
+    <div class="pjp-cover-entity">${esc(company.toUpperCase())}</div>
+    ${address ? `<div class="pjp-cover-addr">${esc(address)}</div>` : ''}
+    ${pan ? `<div class="pjp-cover-pan">PAN : ${esc(pan)}</div>` : ''}
+    <div class="pjp-cover-lines"><i class="s"></i><i class="t"></i><i class="s"></i></div>
+    <div class="pjp-cover-fy">${esc(fyText)}</div>
+    <div class="pjp-cover-sub">(${N}-Year Financial Projection)</div>
+    ${bsDate ? `<div class="pjp-cover-date">Date of Report : ${esc(bsDate)} B.S.</div>` : ''}
+  </div></section>`);
+
+  sections.forEach(sec => {
+    const nC = sec.cols.length;
+    // Narrower type as the year count grows, so wide tables still fit A4.
+    const size = nC <= 4 ? 9.5 : nC <= 6 ? 8.6 : nC <= 8 ? 7.8 : 7;
+    const lblW = nC <= 4 ? 36 : nC <= 6 ? 30 : nC <= 8 ? 26 : 22;
+    const head = `<tr><th class="pjp-lbl" style="width:${lblW}%">Particulars</th>` +
+      sec.cols.map(c => `<th>${esc(c.h1)}${c.h2 ? `<span>${esc(c.h2)}</span>` : ''}</th>`).join('') + '</tr>';
+    const body = sec.rows.map(r => {
+      if (r.kind === 'span') return `<tr class="pjp-span"><td colspan="${nC + 1}">${esc(r.label)}</td></tr>`;
+      const cls = 'pjp-' + (r.kind || 'plain') + (r.bold ? ' pjp-b' : '');
+      let cells = '';
+      for (let i = 0; i < nC; i++) {
+        const x = (r.vals || [])[i];
+        const tone = (x && typeof x === 'object' && x.tone) ? ` class="pjp-${x.tone}"` : '';
+        cells += `<td${tone}>${esc(pjxCellText(x))}</td>`;
+      }
+      return `<tr class="${cls}"><td class="pjp-lbl">${esc(r.label)}</td>${cells}</tr>`;
+    }).join('');
+    const sig = sec.sig ? `<div class="pjp-sig">
+      <div><div class="pjp-sig-line"></div><div>Accountant</div>
+        <div class="pjp-sig-meta">Date : ${esc(bsDate)} B.S.</div>
+        <div class="pjp-sig-meta">Place : ${esc(place)}</div></div>
+      <div class="pjp-sig-r"><div class="pjp-sig-line"></div><div>${esc(T.person)}</div></div>
+    </div>` : '';
+    out.push(`<section class="pjp-sheet">
+      <div class="pjp-head"><div class="pjp-co">${esc(company)}</div>
+      ${address ? `<div class="pjp-addr">${esc(address)}</div>` : ''}
+      <div class="pjp-title">${esc(sec.title)}</div></div>
+      <table class="pjp-table" style="font-size:${size}pt"><thead>${head}</thead><tbody>${body}</tbody></table>
+      ${sig}</section>`);
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Projection Report — ${esc(company)}</title><style>${PJX_PRINT_CSS}</style></head>
+<body>${out.join('\n')}</body></html>`;
+}
+
 // ── PDF ────────────────────────────────────────────────────────────
 //  Bank-submission report: cover page, then one statement per page in the
 //  order BS · P&L · CF · Dep · IRD · Ratio Analysis, rendered from
@@ -838,9 +961,11 @@ async function pjPreviewPdf() {
   if (!pjResult || !pjModel) return;
   try {
     pjStatus('Building preview…', 'searching');
-    const { bytes } = await pjBuildPdfBytes();
+    // The preview shows the printable HTML document — the same one the Print
+    // action opens — so the page you review is the page that prints.
+    const html = pjxReportHtmlDoc();
     if (pjPreviewUrl) URL.revokeObjectURL(pjPreviewUrl);
-    pjPreviewUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    pjPreviewUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     pjEl('pj-preview-frame').src = pjPreviewUrl;
     // Document meta under the title, like the Generate Report preview header.
     const meta = pjEl('pj-preview-meta');
@@ -855,6 +980,26 @@ async function pjPreviewPdf() {
   } catch (e) {
     console.error(e);
     pjStatus('Preview failed: ' + escHtml(e.message), 'error');
+  }
+}
+
+// Print / Save-as-PDF — opens the report in its own tab as a plain white
+// document and calls print, matching the Audit Report and Notes to Accounts
+// modules. Works straight from the review panel; no need to open Preview.
+function pjPrintReport() {
+  if (!pjResult || !pjModel) return;
+  try {
+    const html = pjxReportHtmlDoc().replace('</body>',
+      '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body>');
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    const win = window.open(url, '_blank');
+    if (!win) { pjStatus('Pop-up blocked — allow pop-ups for this site, then click Print again.', 'error'); return; }
+    pjStatus('Print view opened in a new tab.', 'success');
+    AuditLog.record('projection_printed', { module: 'projection', status: 'success',
+      client_name: pjEl('pj-company').value || pjModel.company.name });
+  } catch (e) {
+    console.error(e);
+    pjStatus('Print failed: ' + escHtml(e.message), 'error');
   }
 }
 
