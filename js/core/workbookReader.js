@@ -108,14 +108,21 @@ const WorkbookReader = (() => {
   // its own header row/columns, plus the row where it ends. The schedule sheets
   // stack many notes with their own Particulars headers, so every read has to
   // be fenced to one note or a label like "Total" matches the wrong section.
-  // Falls back to a 30-row window when the note carries no Total row.
+  //
+  // The fence is the CLOSER of the note's own Total row and the next numbered
+  // note, because not every note has a Total: Sch-BS 3.2 Investment ends at
+  // "Current portion", so a Total-only fence ran past 3.3 and 3.4 and read
+  // their figures as its own. Falls back to a 30-row window when neither is
+  // found.
   function noteSection(g, titleRe, endRe = /^total$/) {
     const t = findRowIdx(g, titleRe);
     if (t === -1) return null;
     const h = findHeader(g, t);
     if (!h) return null;
-    const end = findRowIdx(g, endRe, h.row + 1, h.labelCol);
-    return { ...h, titleRow: t, endRow: end === -1 ? h.row + 30 : end };
+    const total = findRowIdx(g, endRe, h.row + 1, h.labelCol);
+    const next = findRowIdx(g, /^3\.\d+\b/, h.row + 1, h.labelCol);
+    const ends = [total, next].filter(x => x !== -1);
+    return { ...h, titleRow: t, endRow: ends.length ? Math.min(...ends) : h.row + 30 };
   }
 
   return { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection };

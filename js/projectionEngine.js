@@ -372,21 +372,14 @@ const ProjectionEngine = (() => {
   // lakh). The master asks for a different number "every time"; we seed from
   // client+FY instead of using Math.random so a re-run reproduces the same
   // report (auditability — a deliberate improvement over the workbook).
-  function seededRng(key) {
-    let h = 1779033703 ^ String(key).length;
-    for (let i = 0; i < String(key).length; i++) {
-      h = Math.imul(h ^ String(key).charCodeAt(i), 3432918353);
-      h = (h << 13) | (h >>> 19);
-    }
-    return function () {
-      h = Math.imul(h ^ (h >>> 16), 2246822507);
-      h = Math.imul(h ^ (h >>> 13), 3266489909);
-      return ((h ^= h >>> 16) >>> 0) / 4294967296;
-    };
-  }
+  // seededRng and the '000 rounding live in js/core/engineMath.js — the
+  // Financial Statement engine seeds its cash the same way.
+  const EM = (typeof module !== 'undefined' && module.exports)
+    ? require('./core/engineMath')
+    : window.EngineMath;
 
-  const round1000Up   = (v) => Math.ceil(v / 1000) * 1000;
-  const round1000Down = (v) => Math.floor(v / 1000) * 1000;
+  const { seededRng, round1000Up, round1000Down } = EM;
+
   const round1000     = (v) => Math.round(v / 1000) * 1000;
   const round10       = (v) => Math.round(v / 10) * 10;
 
@@ -519,7 +512,7 @@ const ProjectionEngine = (() => {
       ? Math.round(input.creditors * (LIMITS.creditorLoPct + rng() * (LIMITS.creditorHiPct - LIMITS.creditorLoPct)))
       : Math.round(200000 + rng() * 600000);
     // avoid suspiciously round seeded figures
-    const deRound = (v) => (v % 1000 === 0 ? v + 137 : v);
+    const deRound = EM.deRound;
 
     const years = [];
     let prev = null;
