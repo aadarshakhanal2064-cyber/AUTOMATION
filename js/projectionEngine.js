@@ -16,93 +16,14 @@ const ProjectionEngine = (() => {
 
   // ───────────────────────── shared helpers ─────────────────────────
 
-  const num = (v) => {
-    if (typeof v === 'number' && isFinite(v)) return v;
-    if (typeof v === 'string') {
-      const n = parseFloat(v.replace(/,/g, ''));
-      if (isFinite(n)) return n;
-    }
-    return 0;
-  };
+  // The label-driven Excel locators live in js/core/workbookReader.js — the
+  // Financial Statement module reads the same workbook family, so they are
+  // shared rather than duplicated.
+  const WR = (typeof module !== 'undefined' && module.exports)
+    ? require('./core/workbookReader')
+    : window.WorkbookReader;
 
-  const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
-
-  // Convert a SheetJS worksheet into a dense 2D array of cell values
-  // (computed/cached values — SheetJS resolves formula caches into .v).
-  function grid(ws, XLSX) {
-    if (!ws || !ws['!ref']) return [];
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    const rows = [];
-    for (let r = range.s.r; r <= range.e.r; r++) {
-      const row = [];
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cell = ws[XLSX.utils.encode_cell({ r, c })];
-        row[c] = cell ? cell.v : undefined;
-      }
-      rows[r] = row;
-    }
-    return rows;
-  }
-
-  // Tolerant sheet-name lookup: exact (case/space-insensitive) first, then
-  // substring — real client files vary ("Sch-PL" vs "Sch PL" vs "Schedule-PL").
-  function findSheet(wb, keys) {
-    const names = wb.SheetNames;
-    for (const key of keys) {
-      const k = norm(key);
-      let hit = names.find(n => norm(n) === k);
-      if (!hit) hit = names.find(n => norm(n).includes(k));
-      if (hit) return wb.Sheets[hit];
-    }
-    return null;
-  }
-
-  // Find the row index whose label-column cell matches `re` (searching every
-  // column when labelCol is null). Search starts at `from`.
-  function findRowIdx(g, re, from = 0, labelCol = null) {
-    for (let r = from; r < g.length; r++) {
-      const row = g[r]; if (!row) continue;
-      if (labelCol != null) {
-        if (re.test(norm(row[labelCol]))) return r;
-      } else {
-        for (let c = 0; c < row.length; c++) if (re.test(norm(row[c]))) return r;
-      }
-    }
-    return -1;
-  }
-
-  // Locate a statement header: the row containing "Particulars", the column
-  // it sits in (label column), and the first non-empty column to its right
-  // (the current-year value column). Each sheet in the firm template uses a
-  // DIFFERENT value column (SFP→F, SOI→F, Sch-PL→D, Sch-BS→H), so this must
-  // be detected per section, never hardcoded.
-  function findHeader(g, from = 0) {
-    for (let r = from; r < g.length; r++) {
-      const row = g[r]; if (!row) continue;
-      for (let c = 0; c < row.length; c++) {
-        if (norm(row[c]) === 'particulars') {
-          let valCol = -1, prevCol = -1;
-          for (let cc = c + 1; cc < row.length; cc++) {
-            if (row[cc] !== undefined && norm(row[cc]) !== '' && norm(row[cc]) !== 'notes') {
-              if (valCol === -1) valCol = cc;
-              else { prevCol = cc; break; }
-            }
-          }
-          if (valCol !== -1) return { row: r, labelCol: c, valCol, prevCol };
-        }
-      }
-    }
-    return null;
-  }
-
-  // Read the value on the first row at/after `from` whose label matches `re`.
-  function labelValue(g, re, labelCol, valCol, from = 0, until = Infinity) {
-    for (let r = from; r < Math.min(g.length, until); r++) {
-      const row = g[r]; if (!row) continue;
-      if (re.test(norm(row[labelCol]))) return { row: r, value: num(row[valCol]) };
-    }
-    return null;
-  }
+  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue } = WR;
 
   // ───────────────────────── the parser ─────────────────────────
 
@@ -257,14 +178,7 @@ const ProjectionEngine = (() => {
     if (!schPl) { err('Could not find the P&L schedules sheet (Sch-PL).'); return { model, issues }; }
     const gP = grid(schPl, XLSX);
 
-    function section(titleRe) {
-      const t = findRowIdx(gP, titleRe);
-      if (t === -1) return null;
-      const h = findHeader(gP, t);
-      if (!h) return null;
-      const end = findRowIdx(gP, /^total$/, h.row + 1, h.labelCol);
-      return { ...h, titleRow: t, endRow: end === -1 ? h.row + 30 : end };
-    }
+    const section = (titleRe) => WR.noteSection(gP, titleRe);
 
     // 3.12 Materials Consumed
     const s312 = section(/^3\.12/);
