@@ -1,0 +1,71 @@
+# Database — Supabase Postgres
+
+> Loaded on demand, not in every session. **CLAUDE.md §6** carries the always-loaded
+> summary (table list, trigger rules, the 1000-row rule, the migration workflow and the
+> RLS posture); this file is the full column-level reference.
+> Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
+>
+> **Re-verify against live Supabase via the MCP before schema-dependent work** rather
+> than trusting this snapshot.
+
+---
+
+## 6. Database (Supabase Postgres)
+
+Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-26** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
+
+### 6.1 Tables (17)
+
+| Table | Purpose / key columns |
+|---|---|
+| `app_users` | Authorization list. `email` (unique), `role` (`admin`/`staff`, default staff). Checked after Google sign-in; not in the list = Access Denied. |
+| `clients` | Directory (**314 rows** since the 2026-07-26 master reload — 261 workbook + 45 Devanagari + 8 kept; §5.7). `name`, `email`, `pan`, `phone`, `address`, `entity_type` (free text), `business_nature`, `registration_number`, `chairman_name`, `shareholder_name`, `authorized_capital`/`issued_capital`/`paid_up_capital` (**text, not numeric** — preserves `"25,00,000"` formatting), `vat_status` (`active`/`inactive`/`not_registered`, CHECK-constrained), plus `district`, `country`, `it_return_type` (`D1/D2`/`D-01`/`D-02`/`D-03`, free text by design) and `tax_type_d3` — added by `db/2026-07-26_client_master_reload.sql`. **PANs may be Devanagari** on the 45 Nepali records, so normalize before comparing (§6.3). |
+| `client_shareholders` | Extra shareholders beyond `clients.shareholder_name`. `client_id` (FK, cascade delete), `name`, `sort_order`. |
+| `send_logs` | Send Document audit trail. Client name/email snapshotted (not FK'd — immutable trail). `status` `sent`/`error`/`pending`. |
+| `audit_log` | App-wide event log (AuditLog engine). `event_type`, `module`, `status`, `user_email`, `client_name`, `record_ref` (bigint), `detail` (jsonb). Feeds the Dashboard. History starts 2026-07-08 (table created after the engine). |
+| `vat_filings` | One row per client per month, lazy (§5.2). Unique on `(client_id, fiscal_year, month)`; `month` 1–12 CHECK; `status` CHECK-constrained to the nine §5.2 values; `assigned_staff_id` FK → app_users; `validation_summary` jsonb. |
+| `firm_bank_details` | PK `firm_key`. `invoice_prefix` (NOT NULL — see upsert gotcha §5.3), bank fields, `qr_image`. One row per firm. |
+| `invoices` | `invoice_number` (unique, trigger-assigned), `client_id`/`firm_key` FKs, `status` CHECK (`draft`/`sent`/`partially_paid`/`paid`/`void`), amounts numeric, `tax_rate` default 0.13. |
+| `invoice_items` | Line items: `description`, `quantity`, `rate`, `amount`, `sort_order`. |
+| `invoice_payments` | `amount > 0` CHECK, `method` CHECK (`cash`/`bank_transfer`/`qr`/`cheque`/`other`). |
+| `service_memos` | Internal service records (§5.13). One row per memo (no line-item/payments subtable). `memo_number` (trigger-assigned `SM-{firm}-{id}`), `memo_prefix` (NOT NULL, from config), `firm_key`, `firm_other` (typed name for the "other" firm), `client_id` (**nullable** FK → clients, on delete set null), client name/pan/address snapshots, `nature_category`/`nature_subcategory`/`nature_other`, `description`, `fiscal_year`, `professional_fee`/`apply_vat`/`vat_amount`/`total_amount`, `remarks`. **No payment columns** — `payment_status`/`amount_received`/`payment_date` were dropped 2026-07-26; collection lives in `bank_transactions` (§5.13). Member-CRUD RLS. `set_service_memo_number` AFTER INSERT trigger + shared `set_updated_at`. `db/2026-07-21_service_memos.sql`, `db/2026-07-26_financial_suite.sql`. |
+| `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`/`slm`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (Income-Tax: per-pool inputs + closing WDV; **SLM: per-asset line array** + carry-forward snapshots → next year's Opening), `addition_details` jsonb (Income-Tax only; `[]` for SLM), `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. `slm` added by `db/2026-07-21_slm_scheme.sql`. |
+| `bank_accounts` | Bank Book master (§5.14). `firm_key` (owning firm — drives Final Account's per-firm Bank Balance), `account_name` (holder), `bank_name`, `account_number` (text), `opening_balance` numeric, `opening_date` (B.S. text), `is_active` (soft-deactivate), `sort_order`. User-managed CRUD; holder/bank list is data, not config. Member-CRUD RLS. `db/2026-07-22_bank_book.sql`, `db/2026-07-26_financial_suite.sql`. |
+| `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`for_tax`/`expenses`/`tax_payment`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK — set for all three client particulars), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migrations. |
+| `party_opening_balances` | Per-client opening balance for the Party Ledger (§5.16) — the only figure in that ledger that is stored rather than derived. `client_id` FK (cascade), `firm_key`, `fiscal_year` (dash), `as_on_date` (B.S. text), `opening_amount` numeric, `client_name` snapshot. Unique on `(client_id, firm_key, fiscal_year)`. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_suite.sql`. |
+| `financial_statements` | Saved statement workings (§5.18). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year` (dash), `basis` CHECK (`provisional`/`audited`), `return_type` (free text like `clients.it_return_type`), `entity_type`, `inputs` jsonb (figures A–N + levers + PPE movement + the parsed prior year — everything needed to re-run `build()` identically), `computed` jsonb (the solved statements, COI computation, proofs), `created_by`. Unique on `(client_id, fiscal_year, basis)` where client_id is not null — `basis` is part of the key because a client legitimately holds both a provisional and an audited set for one year, and it decides both the titles and what gets taxed. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_statements.sql`. |
+| `projection_reports` | Saved Projection Report workings (§5.15). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year_base` (dash), `years` (1–10 CHECK), `inputs` jsonb (parsed statement model + assumptions — everything needed to re-run the engine exactly), `computed` jsonb (full engine output: statements/ratios/levers per year), `created_by`. Member-CRUD RLS. `db/2026-07-22_projection_reports.sql`. |
+
+### 6.2 Trigger-owned logic (never replicate in JS)
+
+- `sync_invoice_payment_totals()` — recomputes `invoices.amount_paid`/`status` from `invoice_payments` on every insert/update/delete.
+- `set_invoice_number` — AFTER INSERT, assigns `{SA|DC}-{id padded}`; re-fetch the row after insert.
+- `set_service_memo_number` — AFTER INSERT on `service_memos`, assigns `{memo_prefix}-{id padded}` (prefix sent from JS config); re-fetch after insert (§5.13).
+
+### 6.3 Data conventions
+
+- Capital amounts are formatted **text**, deliberately.
+- Registration numbers/PANs may be stored in **Devanagari numerals** — normalize with `NepaliLocale.toEnglishDigits` before comparing.
+- Log tables snapshot client data rather than FK it.
+- Lazy row creation for `vat_filings` (never pre-create).
+
+### 6.4 Query rules
+
+Supabase/PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 314 and growing.
+
+### 6.5 Migration workflow
+
+Show the SQL (annotated migration + rollback script as files under `db/`) → apply via the Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
+
+### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
+
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions`, `projection_reports` and `financial_statements` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql`, `db/2026-07-22_projection_reports.sql` and `db/2026-07-26_financial_statements.sql`). The permission model:
+
+- **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
+- **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
+- Triggers (`set_invoice_number`, `sync_invoice_payment_totals`) run as the invoking member — the member UPDATE policy on `invoices` is what lets them work. Don't remove it.
+- The 4 RPCs are EXECUTE-revoked for `anon`; `get_db_storage_usage` (SECURITY DEFINER) additionally guards internally on `is_app_user()`.
+- When adding a **new table**: enable RLS + add membership policies in the same migration, or the app can't read it at all.
+
+---
+
