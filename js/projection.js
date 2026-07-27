@@ -284,6 +284,11 @@ const PJ_OVERRIDE_FIELDS = [
   { field: 'closingStock',      label: 'Closing Stock' },
   { field: 'additionalCapital', label: 'Additional Capital' },
   { field: 'dividend',          label: 'Dividend / Withdrawal' },
+  // NCA is the one *derived* figure that is directly settable: it moves only
+  // with cash (NCA = sources − fixed assets − cash + short-term loan), so a
+  // target here releases cash down to the Rs 1,00,000 floor. If the target
+  // needs more cash than the projection holds, validation says so.
+  { field: 'nca',               label: 'Net Current Assets (target)' },
 ];
 
 function pjRenderOverrides() {
@@ -291,6 +296,7 @@ function pjRenderOverrides() {
   const auto = (yr, f) => ({
     cash: yr.bs.cash, creditors: yr.bs.creditors, closingStock: yr.pl.closingStock,
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
+    nca: yr.ratios.nca,
   })[f];
   pjEl('pj-overrides').innerHTML = `<div class="table-wrap"><table class="client-table">
     <thead><tr><th>Figure</th>${pjResult.years.map(yr => `<th style="text-align:right;">F.Y. ${escHtml(pjFyLabel(yr.year))}</th>`).join('')}</tr></thead>
@@ -314,11 +320,14 @@ function pjRenderOverrides() {
 function pjRenderLevers() {
   const applied = [];
   const describe = (l) => {
-    if (l.action === 'additionalCapital') return 'injected Additional Capital';
+    const dir = l.amount < 0 ? 'reduced' : 'raised';
+    if (l.action === 'additionalCapital') return l.amount < 0 ? 'gave back Additional Capital' : 'injected Additional Capital';
     if (l.action === 'dividend') return 'declared Dividend/Withdrawal';
-    return (l.amount < 0 ? 'reduced' : 'raised') + ' Closing Stock';   // closingStock
+    if (l.action === 'cash') return `${dir} Cash at Hand & Bank`;
+    return `${dir} Closing Stock`;                                     // closingStock
   };
-  const ruleLabel = (r) => (r === 'a' || r === 'b') ? `debtor-floor step (${r})` : `rule ${r}`;
+  const ruleLabel = (r) => r === 'trim' ? 'avoid owner capital'
+    : (r === 'a' || r === 'b') ? `debtor-floor step (${r})` : `rule ${r}`;
   pjResult.years.forEach(yr => yr.levers.forEach(l => applied.push(
     `F.Y. ${pjFyLabel(yr.year)} — ${ruleLabel(l.rule)}: ${describe(l)} of Rs ${pjAmt(Math.abs(l.amount))}`)));
   pjEl('pj-levers').innerHTML = applied.length

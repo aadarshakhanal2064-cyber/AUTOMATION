@@ -316,6 +316,9 @@ const ProjectionEngine = (() => {
     minDebtorDays: 30,     // CA rule (2026-07-22): a collection cycle under 30
                            // days reads as fabricated to a bank — flag + auto-lift
     minNca: 100000,        // <30-day step (a) won't push Net Current Assets below this
+    minCash: 100000,       // CA rule (2026-07-26): cash may be cut this low — but no
+                           // lower — to buy the NCA room that lets Director/Partner
+                           // Additional Capital be dropped from the projection
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
     ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive")
@@ -590,8 +593,12 @@ const ProjectionEngine = (() => {
       let addlCap = ov.additionalCapital != null ? num(ov.additionalCapital) : (prev ? prev.bs.additionalCapital : 0);
       let dividend = ov.dividend != null ? num(ov.dividend) : 0;
       let stockShift = 0;
+      let cashCut = 0;                               // cash given up to free NCA room
       let dividendApplied = ov.dividend != null, stockApplied = ov.closingStock != null;
       let stockFloorHit = ov.closingStock != null;   // <30-day step (a) exhausted?
+      let capTrimmed = ov.additionalCapital != null || ov.cash != null || ov.nca != null;
+      const ncaTarget = ov.nca != null ? num(ov.nca) : null;
+      let ncaMissed = false;
       const levers = [];
 
       let state = null;
@@ -606,8 +613,26 @@ const ProjectionEngine = (() => {
         const cl = creditors + provTax + expPayable + tdsPayable + stlTotal;
         const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC;
         const faNet = dep.closing;
-        const debtors = sources - faNet - cash - closingStock + cl;
-        const ca = cash + debtors + closingStock;
+        // Cash is the lever that moves Net Current Assets: NCA works out to
+        // `sources − fixed assets − cash + short-term loan`, independent of the
+        // stock/debtor split. So a manual NCA target is met by solving cash,
+        // and cutting cash is what buys room to drop additional capital.
+        //   A manual target may only RAISE NCA — i.e. release cash, never
+        //   invent it: cash is clamped to [minCash, the cash the projection
+        //   naturally holds]. Without that ceiling an unreachable target feeds
+        //   back on itself (more capital → more cash → debtors never recover).
+        //   validate() reports a target that could not be reached.
+        const cashNatural = Math.max(0, cash - cashCut);
+        let cashEff = cashNatural;
+        if (ov.cash != null) {
+          cashEff = num(ov.cash);
+        } else if (ncaTarget != null) {
+          const want = sources - faNet + stlTotal - ncaTarget;
+          cashEff = Math.min(cashNatural, Math.max(LIMITS.minCash, want));
+          ncaMissed = Math.abs(cashEff - want) > 1;
+        }
+        const debtors = sources - faNet - cashEff - closingStock + cl;
+        const ca = cashEff + debtors + closingStock;
         const debt = closingLT + closingPWC + stlTotal;
         const equity = input.shareCapital + addlCap + retainedClosing;
         const days = sales > 0 ? debtors / sales * 365 : 0;
@@ -618,7 +643,7 @@ const ProjectionEngine = (() => {
         const ncaHeadroom = nca70 - (stlTotal + closingPWC);   // must stay positive
 
         state = { closingStock, gp, cogs, directCost, purchases, retainedClosing, provTax, cl, sources, faNet,
-                  cash, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
+                  cash: cashEff, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
 
         if (!autoSolve) break;
 
@@ -693,6 +718,59 @@ const ProjectionEngine = (() => {
             addlCap += add;
             levers.push({ rule: 'b', action: 'additionalCapital', amount: add });
             continue;
+          }
+        }
+
+        // ── Trim Director/Partner/Proprietor Additional Capital (CA rule
+        //    2026-07-26). Every constraint is now satisfied, so give back as
+        //    much injected capital as the projection can stand — a bank reads
+        //    an owner injection as a weakness, and the firm's own reports
+        //    avoid one wherever the ratios allow.
+        //
+        //    The algebra: NCA = sources − fixed assets − cash + short-term
+        //    loan, so dropping capital costs NCA rupee-for-rupee while cutting
+        //    cash buys it back (down to `minCash`). Current assets and the
+        //    current ratio don't move with cash or stock at all, and closing
+        //    stock only shifts value into the balancing debtors — which is how
+        //    debtor-days are held at/above the 30-day floor while capital goes.
+        if (addlCap > 0 && !capTrimmed) {
+          capTrimmed = true;
+          const eps = 1;                                   // stay off the exact limit
+          const cashRoom  = Math.max(0, cashEff - LIMITS.minCash);
+          const stockFloorAbs = Math.max(0, openingStock + directCost - cogs);
+          const stockRoom = Math.max(0, closingStock - stockFloorAbs);
+          const dMin = sales > 0 ? sales * LIMITS.minDebtorDays / 365 : 0;
+
+          // How much capital can go, before the compensating levers.
+          let give = addlCap;
+          give = Math.min(give, ca - LIMITS.minCurrentRatio * cl - eps);          // current ratio
+          if (debt > 0) give = Math.min(give, equity - debt / LIMITS.maxDebtEquity - eps);  // debt-equity
+          give = Math.min(give, (nca - LIMITS.minNca - eps) + cashRoom);          // NCA, cash helping
+          // 70%-of-NCA headroom must also stay positive (rule 2).
+          give = Math.min(give, (ncaHeadroom / LIMITS.ncaFactor - eps) + cashRoom);
+          give = Math.max(0, give);
+
+          if (give > 1000) {
+            // Cash only gives up what the NCA floors actually demand.
+            const cut = Math.min(cashRoom, Math.max(0,
+              give - Math.min(nca - LIMITS.minNca - eps, ncaHeadroom / LIMITS.ncaFactor - eps)));
+            // Debtors fall with the capital and rise with the cash cut; closing
+            // stock makes up any shortfall against the 30-day floor.
+            let d = debtors - give + cut;
+            const shortD = Math.max(0, dMin - d);
+            const useStock = Math.min(stockRoom, shortD);
+            d += useStock;
+            if (d < dMin - 0.5) give = Math.max(0, give - (dMin - d));   // can't reach the floor: keep that much capital
+            give = Math.min(round1000Down(give), addlCap);
+            if (give > 0) {
+              addlCap -= give;
+              cashCut += cut;
+              stockShift -= useStock;
+              levers.push({ rule: 'trim', action: 'additionalCapital', amount: -give });
+              if (cut > 0.5)      levers.push({ rule: 'trim', action: 'cash', amount: -cut });
+              if (useStock > 0.5) levers.push({ rule: 'trim', action: 'closingStock', amount: -useStock });
+              continue;
+            }
           }
         }
         break;
@@ -776,7 +854,8 @@ const ProjectionEngine = (() => {
       cf.netChange = cf.operating + cf.investing + cf.financing;
       cf.closingCash = cf.openingCash + cf.netChange;
 
-      years.push({ year: y, pl, bs, cf, dep, ratios, levers });
+      years.push({ year: y, pl, bs, cf, dep, ratios, levers,
+        ncaOverride: ncaTarget != null ? { target: ncaTarget, met: !ncaMissed } : null });
       prev = years[y - 1];
     }
 
@@ -841,6 +920,9 @@ const ProjectionEngine = (() => {
       }
       if (yr.ratios.debtEquity > LIMITS.maxDebtEquity + 0.005) {
         push('warn', y, 'de', `Year ${y}: Debt-equity ${yr.ratios.debtEquity.toFixed(2)} exceeds ${LIMITS.maxDebtEquity} (rule 3).`);
+      }
+      if (yr.ncaOverride && !yr.ncaOverride.met) {
+        push('warn', y, 'ncatarget', `Year ${y}: Net Current Assets target of ${fmt(yr.ncaOverride.target)} could not be reached — it needs more cash than the projection holds (cash can only be released down to ${fmt(LIMITS.minCash)}). Actual NCA is ${fmt(yr.ratios.nca)}.`);
       }
       if (yr.ratios.ncaHeadroom < -0.5) {
         push('warn', y, 'nca', `Year ${y}: 70% of Net Current Assets is below total working-capital loans (rule 2) by ${fmt(-yr.ratios.ncaHeadroom)}.`);
