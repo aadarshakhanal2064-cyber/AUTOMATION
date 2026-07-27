@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607262000">
+<link rel="stylesheet" href="css/styles.css?v=202607271200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -89,6 +89,7 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openRegdModule('auditorChange', 'Auditor Change')">Auditor Change</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('pinReset', 'PIN Reset')">PIN Reset</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('bmAgmMinutes', 'BM/AGM Minutes')">BM/AGM Minutes</button>
+        <button class="topbar-dropdown-item" onclick="openRegdModule('companyProfile', 'Company Profile')">Company Profile</button>
       </div>
     </div>
     <div class="app-tag-dropdown">
@@ -1239,6 +1240,81 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
 
+        <!-- ── SUB: COMPANY PROFILE ──
+             The statutory registration details of a Nepalese company. These
+             used to sit on the general client form, where they were noise for
+             the ~150 proprietorship firms that have none of them. Same columns
+             on the same clients row — only the place they are edited moved. -->
+        <div id="regd-companyProfile-panel" class="regd-sub-panel">
+          <div class="card" style="margin-bottom:18px;">
+            <div class="card-header"><h3>Find a company</h3></div>
+            <div style="padding:18px 20px 20px;">
+              <div class="form-group" style="position:relative; max-width:520px;">
+                <label>Company name, registration number or PAN</label>
+                <input type="text" id="cp-client-search" placeholder="Start typing…" autocomplete="off" />
+                <div class="autocomplete-list" id="cp-client-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="cp-empty" class="log-empty">
+            Search for a company above to view and edit its registration details.
+          </div>
+
+          <div id="cp-form" style="display:none;">
+            <div class="card">
+              <div class="card-header cp-ident-header">
+                <div>
+                  <h3 id="cp-ident-name">—</h3>
+                  <div class="cp-ident-meta" id="cp-ident-meta">—</div>
+                </div>
+                <div class="cp-meter" id="cp-completeness"></div>
+              </div>
+              <div style="padding:20px;">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Registration Number</label>
+                    <input type="text" id="cp-registration-number" placeholder="e.g. 123456/078/079" />
+                  </div>
+                  <div class="form-group">
+                    <label>VAT Status</label>
+                    <select id="cp-vat-status">
+                      <option value="not_registered">Not VAT Registered</option>
+                      <option value="active">VAT Active (files monthly)</option>
+                      <option value="inactive">VAT Inactive</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Chairman Name</label>
+                    <input type="text" id="cp-chairman-name" placeholder="Optional" />
+                  </div>
+                  <div class="form-group">
+                    <label>Shareholder Name</label>
+                    <input type="text" id="cp-shareholder-name" placeholder="Optional" />
+                  </div>
+                  <div class="form-group">
+                    <label>Authorized Capital</label>
+                    <input type="text" id="cp-authorized-capital" placeholder="e.g. 25,00,000" />
+                  </div>
+                  <div class="form-group">
+                    <label>Issued Capital</label>
+                    <input type="text" id="cp-issued-capital" placeholder="e.g. 25,00,000" />
+                  </div>
+                  <div class="form-group">
+                    <label>Paid-up Capital</label>
+                    <input type="text" id="cp-paidup-capital" placeholder="e.g. 25,00,000" />
+                  </div>
+                </div>
+                <div class="action-row">
+                  <button class="btn btn-primary" onclick="cpSave()">Save Registration Details</button>
+                  <button class="btn btn-outline" onclick="cpClear()">Close</button>
+                </div>
+                <div id="cp-status"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -2216,14 +2292,6 @@ function cropLoginLogoIcon(img) {
           <div class="stat-label">D-3 Filers</div>
           <div class="stat-sub">Income-tax return type</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon green">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-          </div>
-          <div class="stat-num" id="stat-vat-active">0</div>
-          <div class="stat-label">VAT Active</div>
-          <div class="stat-sub">Filing monthly returns</div>
-        </div>
       </div>
 
       <div class="cd-grid">
@@ -2266,61 +2334,25 @@ function cropLoginLogoIcon(img) {
           </div>
           <div class="form-group">
             <label>Entity Type</label>
-            <!-- Values match the 2026-07-26 client master; the legacy spellings
-                 below it are kept so editing an older record does not silently
-                 change its entity type. Both are mapped in
-                 CLIENT_ENTITY_TO_REP_PROFILE. -->
-            <select id="ac-entity-type">
-              <option value="">— Select —</option>
-              <option>Private Limited Company</option>
-              <option>Public Limited Company</option>
-              <option>Proprietorship Firm</option>
-              <option>Partnership Firm</option>
-              <option>NPOs</option>
-              <option>NGO</option>
-              <option>Cooperatives</option>
-              <option>Pvt. Ltd. Company</option>
-              <option>Public Ltd. Company</option>
-              <option>Firms</option>
-              <option>Individuals</option>
-              <option>Other</option>
-            </select>
+            <!-- Exactly the eight types in CLIENT_ENTITY_TYPES. Any other value
+                 already on a record (e.g. the 7 Partnership Firms, or a legacy
+                 "Pvt. Ltd. Company") is injected by acFillEntityTypes() when
+                 that client is opened, so editing it can never silently change
+                 the stored entity type. -->
+            <select id="ac-entity-type"></select>
           </div>
           <div class="form-group">
-            <label>VAT Status</label>
-            <select id="ac-vat-status">
-              <option value="not_registered">Not VAT Registered</option>
-              <option value="active">VAT Active (files monthly)</option>
-              <option value="inactive">VAT Inactive</option>
+            <label>Type of Tax Registration</label>
+            <select id="ac-tax-registration-type">
+              <option value="">— Not set —</option>
+              <option>VAT</option>
+              <option>PAN</option>
             </select>
           </div>
           <div class="form-group">
             <label>Nature of Business</label>
-            <input type="text" id="ac-business" placeholder="Optional" />
-          </div>
-          <div class="form-group">
-            <label>Registration Number</label>
-            <input type="text" id="ac-registration-number" placeholder="Optional" />
-          </div>
-          <div class="form-group">
-            <label>Chairman Name</label>
-            <input type="text" id="ac-chairman-name" placeholder="Optional" />
-          </div>
-          <div class="form-group">
-            <label>Shareholder Name</label>
-            <input type="text" id="ac-shareholder-name" placeholder="Optional" />
-          </div>
-          <div class="form-group">
-            <label>Authorized Capital</label>
-            <input type="text" id="ac-authorized-capital" placeholder="e.g. 25,00,000" />
-          </div>
-          <div class="form-group">
-            <label>Issued Capital</label>
-            <input type="text" id="ac-issued-capital" placeholder="e.g. 25,00,000" />
-          </div>
-          <div class="form-group">
-            <label>Paid-up Capital</label>
-            <input type="text" id="ac-paidup-capital" placeholder="e.g. 25,00,000" />
+            <input type="text" id="ac-business" placeholder="Optional" list="ac-business-list" />
+            <datalist id="ac-business-list"></datalist>
           </div>
           <div class="form-group">
             <label>District</label>
@@ -2350,6 +2382,10 @@ function cropLoginLogoIcon(img) {
             <input type="text" id="ac-address" placeholder="Optional" />
           </div>
         </div>
+        <p class="ac-form-note">
+          Registration number, chairman, shareholder, the three capitals and VAT status
+          are edited under <strong>Company Registrar → Company Profile</strong>.
+        </p>
         <div class="action-row">
           <button class="btn btn-primary" onclick="saveClient()">Save Client</button>
           <button class="btn btn-outline" onclick="cancelAddClient()">Cancel</button>
@@ -2357,19 +2393,18 @@ function cropLoginLogoIcon(img) {
         <div id="client-form-status"></div>
       </div>
 
-      <div class="table-wrap" style="padding:24px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:16px; flex-wrap:wrap;">
-          <div class="search-bar-wrap" style="flex:1; min-width:260px; max-width:420px;">
+      <div class="table-wrap client-toolbar-wrap">
+        <div class="client-toolbar">
+          <div class="search-bar-wrap client-search-wrap">
             <span class="sb-icon">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             </span>
-            <input type="text" class="search-bar" id="client-search-bar" placeholder="Search by name, email, PAN, district, business or entity type…" oninput="applyClientFilters()" />
+            <input type="text" class="search-bar" id="client-search-bar" placeholder="Search by name, email, PAN, district, business or entity type…" oninput="clientFiltersChanged()" />
           </div>
-          <span class="cd-filter-summary" id="client-filter-summary"></span>
-          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <select id="client-filter-entity" class="cd-filter" onchange="applyClientFilters()"><option value="">All entity types</option></select>
-            <select id="client-filter-district" class="cd-filter" onchange="applyClientFilters()"><option value="">All districts</option></select>
-            <select id="client-filter-it" class="cd-filter" onchange="applyClientFilters()">
+          <div class="client-toolbar-filters">
+            <select id="client-filter-entity" class="cd-filter" onchange="clientFiltersChanged()"><option value="">All entity types</option></select>
+            <select id="client-filter-district" class="cd-filter" onchange="clientFiltersChanged()"><option value="">All districts</option></select>
+            <select id="client-filter-it" class="cd-filter" onchange="clientFiltersChanged()">
               <option value="">All IT returns</option>
               <option value="D1/D2">D1/D2</option>
               <option value="D-01">D-01</option>
@@ -2387,9 +2422,31 @@ function cropLoginLogoIcon(img) {
             </button>
           </div>
         </div>
+
+        <!-- Nature of Business categories, as a filter strip — a second entry
+             point onto the same category filter the dashboard bar drives. -->
+        <div class="nb-category-strip" id="nb-category-strip"></div>
+
+        <div class="client-toolbar-summary">
+          <span class="cd-filter-summary" id="client-filter-summary"></span>
+        </div>
+
         <div id="clients-table-wrap">
           <div class="log-empty">Loading clients…</div>
         </div>
+        <div class="clients-showall-wrap" id="clients-showall-wrap"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard drill-down modal — Nature of Business sub-types and the
+         incomplete-record lists from the Record Completeness meters. -->
+    <div class="cd-modal" id="cd-modal">
+      <div class="cd-modal-box">
+        <div class="cd-modal-header">
+          <h3 id="cd-modal-title">—</h3>
+          <button type="button" class="cd-modal-close" onclick="cdCloseModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="cd-modal-body" id="cd-modal-body"></div>
       </div>
     </div>
 
@@ -2963,47 +3020,48 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202607262000"></script>
-<script src="js/utils.js?v=202607262000"></script>
-<script src="js/core/moduleRegistry.js?v=202607262000"></script>
-<script src="js/core/statusBox.js?v=202607262000"></script>
-<script src="js/core/nepaliLocale.js?v=202607262000"></script>
-<script src="js/core/documentEngine.js?v=202607262000"></script>
-<script src="js/core/searchEngine.js?v=202607262000"></script>
-<script src="js/core/tableEngine.js?v=202607262000"></script>
-<script src="js/core/workflowEngine.js?v=202607262000"></script>
-<script src="js/core/auditLog.js?v=202607262000"></script>
-<script src="js/core/integrations.js?v=202607262000"></script>
-<script src="js/core/reportExport.js?v=202607262000"></script>
-<script src="js/core/workbookReader.js?v=202607262000"></script>
-<script src="js/core/engineMath.js?v=202607262000"></script>
-<script src="js/tabs.js?v=202607262000"></script>
-<script src="js/dashboard.js?v=202607262000"></script>
-<script src="js/registrar.js?v=202607262000"></script>
-<script src="js/clients.js?v=202607262000"></script>
-<script src="js/logs.js?v=202607262000"></script>
-<script src="js/vatCompliance.js?v=202607262000"></script>
-<script src="js/billing.js?v=202607262000"></script>
-<script src="js/serviceMemo.js?v=202607262000"></script>
-<script src="js/sendDocument.js?v=202607262000"></script>
-<script src="js/report.js?v=202607262000"></script>
-<script src="js/notesToAccounts.js?v=202607262000"></script>
-<script src="js/depreciation.js?v=202607262000"></script>
-<script src="js/depreciationSlm.js?v=202607262000"></script>
-<script src="js/bmAgmMinutes.js?v=202607262000"></script>
-<script src="js/auditorChange.js?v=202607262000"></script>
-<script src="js/salesPurchaseBook.js?v=202607262000"></script>
-<script src="js/confirmationLetters.js?v=202607262000"></script>
-<script src="js/bankBook.js?v=202607262000"></script>
-<script src="js/partyLedger.js?v=202607262000"></script>
-<script src="js/finalAccount.js?v=202607262000"></script>
-<script src="js/projectionEngine.js?v=202607262000"></script>
-<script src="js/projection.js?v=202607262000"></script>
-<script src="js/projectionExport.js?v=202607262000"></script>
-<script src="js/finStatementEngine.js?v=202607262000"></script>
-<script src="js/finStatement.js?v=202607262000"></script>
-<script src="js/finStatementExport.js?v=202607262000"></script>
-<script src="js/auth.js?v=202607262000"></script>
+<script src="js/config.js?v=202607271200"></script>
+<script src="js/utils.js?v=202607271200"></script>
+<script src="js/core/moduleRegistry.js?v=202607271200"></script>
+<script src="js/core/statusBox.js?v=202607271200"></script>
+<script src="js/core/nepaliLocale.js?v=202607271200"></script>
+<script src="js/core/documentEngine.js?v=202607271200"></script>
+<script src="js/core/searchEngine.js?v=202607271200"></script>
+<script src="js/core/tableEngine.js?v=202607271200"></script>
+<script src="js/core/workflowEngine.js?v=202607271200"></script>
+<script src="js/core/auditLog.js?v=202607271200"></script>
+<script src="js/core/integrations.js?v=202607271200"></script>
+<script src="js/core/reportExport.js?v=202607271200"></script>
+<script src="js/core/workbookReader.js?v=202607271200"></script>
+<script src="js/core/engineMath.js?v=202607271200"></script>
+<script src="js/tabs.js?v=202607271200"></script>
+<script src="js/dashboard.js?v=202607271200"></script>
+<script src="js/registrar.js?v=202607271200"></script>
+<script src="js/clients.js?v=202607271200"></script>
+<script src="js/logs.js?v=202607271200"></script>
+<script src="js/vatCompliance.js?v=202607271200"></script>
+<script src="js/billing.js?v=202607271200"></script>
+<script src="js/serviceMemo.js?v=202607271200"></script>
+<script src="js/sendDocument.js?v=202607271200"></script>
+<script src="js/report.js?v=202607271200"></script>
+<script src="js/notesToAccounts.js?v=202607271200"></script>
+<script src="js/depreciation.js?v=202607271200"></script>
+<script src="js/depreciationSlm.js?v=202607271200"></script>
+<script src="js/bmAgmMinutes.js?v=202607271200"></script>
+<script src="js/auditorChange.js?v=202607271200"></script>
+<script src="js/companyProfile.js?v=202607271200"></script>
+<script src="js/salesPurchaseBook.js?v=202607271200"></script>
+<script src="js/confirmationLetters.js?v=202607271200"></script>
+<script src="js/bankBook.js?v=202607271200"></script>
+<script src="js/partyLedger.js?v=202607271200"></script>
+<script src="js/finalAccount.js?v=202607271200"></script>
+<script src="js/projectionEngine.js?v=202607271200"></script>
+<script src="js/projection.js?v=202607271200"></script>
+<script src="js/projectionExport.js?v=202607271200"></script>
+<script src="js/finStatementEngine.js?v=202607271200"></script>
+<script src="js/finStatement.js?v=202607271200"></script>
+<script src="js/finStatementExport.js?v=202607271200"></script>
+<script src="js/auth.js?v=202607271200"></script>
 
 </body>
 </html>

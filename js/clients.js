@@ -33,7 +33,9 @@ async function loadClients() {
   }
 
   window.clientsList = data || [];
+  window.clientShowAll = false;
   populateClientFilters(window.clientsList);
+  renderNatureCategoryStrip(window.clientsList);
   applyClientFilters();
   renderClientStats(window.clientsList);
 }
@@ -66,14 +68,21 @@ function cdGroup(list, pick) {
     (a[0] === CD_BLANK) - (b[0] === CD_BLANK) || b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
-function cdRenderBars(elId, countId, groups, noun) {
+// kind: 'entity' | 'district' | 'nature' — drives what a bar click does
+// (see the delegated listener near the bottom of this section). Omit for a
+// non-clickable panel.
+function cdRenderBars(elId, countId, groups, noun, kind) {
   const el = document.getElementById(elId);
   if (!el) return;
   // The blank bucket is not one of the categories, so it must not be counted
   // as one — "7 types" when six are real would be wrong.
   const real = groups.filter(([name]) => name !== CD_BLANK).length;
   const label = document.getElementById(countId);
-  if (label) label.textContent = `${real} ${noun}${real === 1 ? '' : 's'}`;
+  // Plain 's' pluralization doesn't fit "category" — pass the exact word for
+  // the single case ("1 category") and let the simple form cover every noun
+  // that IS just +s ("1 type", "1 district").
+  const plural = real === 1 ? noun : (noun === 'category' ? 'categories' : noun + 's');
+  if (label) label.textContent = `${real} ${plural}`;
 
   if (!groups.length) { el.innerHTML = '<div class="log-empty">No data yet.</div>'; return; }
 
@@ -94,34 +103,48 @@ function cdRenderBars(elId, countId, groups, noun) {
   const top = Math.max(...shown.map(g => g[1]), 1);
   const total = groups.reduce((s, g) => s + g[1], 0) || 1;
 
-  el.innerHTML = shown.map(([name, n]) => `
-    <div class="cd-bar-row">
+  // A bar is clickable when it names a real, filterable value — not the
+  // blank bucket and not the "Other (n)" rollup, which is nothing the filter
+  // dropdowns can express. Values go through data-* attributes rather than an
+  // inline onclick string (CLAUDE.md §11 rule 13) since a district or
+  // category name is free text and could carry a quote.
+  el.innerHTML = shown.map(([name, n]) => {
+    const clickable = kind && name !== CD_BLANK && !/^Other \(/.test(name);
+    const attrs = clickable ? ` class="cd-bar-row clickable" data-cd-kind="${kind}" data-cd-name="${escHtml(name)}" role="button" tabindex="0"` : ' class="cd-bar-row"';
+    return `
+    <div${attrs}>
       <div class="cd-bar-label" title="${escHtml(name)}">${escHtml(name)}</div>
       <div class="cd-bar-track"><div class="cd-bar-fill${name === CD_BLANK ? ' blank' : ''}" style="width:${(n / top * 100).toFixed(1)}%"></div></div>
       <div class="cd-bar-val">${n}<span class="cd-bar-pct">${Math.round(n / total * 100)}%</span></div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
+
+// The fields other modules actually need before they can do their job. Kept
+// as a module-level list (not built fresh inside the render function) so the
+// click handler can look a field up by key without recomputing anything.
+const CD_COMPLETENESS_FIELDS = [
+  ['pan',                   'PAN',              c => c.pan],
+  ['address',               'Address',          c => c.address],
+  ['entity_type',           'Entity Type',      c => c.entity_type],
+  ['district',              'District',         c => c.district],
+  ['it_return_type',        'IT Return Type',   c => c.it_return_type],
+  ['tax_registration_type', 'Tax Registration', c => c.tax_registration_type],
+  ['email',                 'Email',            c => c.email],
+  ['phone',                 'Phone',            c => c.phone],
+];
+function cdIsFilled(v) { return v !== null && v !== undefined && String(v).trim() !== ''; }
 
 function cdRenderCompleteness(list) {
   const el = document.getElementById('cd-completeness');
   if (!el) return;
   const total = list.length || 1;
-  // The fields other modules actually need before they can do their job.
-  const fields = [
-    ['PAN',           c => c.pan],
-    ['Address',       c => c.address],
-    ['Entity Type',   c => c.entity_type],
-    ['District',      c => c.district],
-    ['IT Return',     c => c.it_return_type],
-    ['Email',         c => c.email],
-    ['Phone',         c => c.phone],
-  ];
-  el.innerHTML = fields.map(([label, pick]) => {
-    const n = list.filter(c => { const v = pick(c); return v !== null && v !== undefined && String(v).trim() !== ''; }).length;
+  el.innerHTML = CD_COMPLETENESS_FIELDS.map(([key, label, pick]) => {
+    const n = list.filter(c => cdIsFilled(pick(c))).length;
     const pct = Math.round(n / total * 100);
     const tone = pct >= 90 ? 'good' : pct >= 50 ? 'mid' : 'low';
     return `
-      <div class="cd-meter-row">
+      <div class="cd-meter-row clickable" data-cd-kind="completeness" data-cd-name="${key}" role="button" tabindex="0">
         <div class="cd-meter-label">${escHtml(label)}</div>
         <div class="cd-meter-track"><div class="cd-meter-fill ${tone}" style="width:${pct}%"></div></div>
         <div class="cd-meter-val">${pct}%</div>
@@ -137,18 +160,140 @@ function renderClientStats(list) {
   const isD12 = c => /^D(1\/D2|-01|-02)$/.test(String(c.it_return_type || ''));
 
   set('stat-total-clients', list.length);
-  set('stat-d12',        list.filter(isD12).length);
-  set('stat-d3',         list.filter(isD3).length);
-  set('stat-vat-active', list.filter(c => c.vat_status === 'active').length);
+  set('stat-d12', list.filter(isD12).length);
+  set('stat-d3',  list.filter(isD3).length);
 
   const unset = list.filter(c => !c.it_return_type).length;
   set('stat-total-sub', unset ? `${unset} without an IT return type` : 'All classified');
 
-  cdRenderBars('cd-entity-bars',   'cd-entity-count',   cdGroup(list, c => c.entity_type),     'type');
-  cdRenderBars('cd-district-bars', 'cd-district-count', cdGroup(list, c => c.district),        'district');
-  cdRenderBars('cd-nature-bars',   'cd-nature-count',   cdGroup(list, c => c.business_nature), 'sector');
+  cdRenderBars('cd-entity-bars',   'cd-entity-count',   cdGroup(list, c => c.entity_type), 'type',     'entity');
+  cdRenderBars('cd-district-bars', 'cd-district-count', cdGroup(list, c => c.district),    'district', 'district');
+  cdRenderBars('cd-nature-bars',   'cd-nature-count',   cdGroup(list, c => nbCategorize(c.business_nature)), 'category', 'nature');
   cdRenderCompleteness(list);
 }
+
+// ════════════════════════════════════════════
+//  NATURE OF BUSINESS — categories + drill-down
+// ════════════════════════════════════════════
+// The raw business_nature column has ~70 distinct spellings for the same 261
+// clients. NATURE_CATEGORY_RULES (config.js) groups them into parent sectors
+// derived from the actual data; NATURE_CANON_RULES merges spelling variants
+// for DISPLAY only inside the drill-down — the stored value is never rewritten.
+function nbCategorize(nature) {
+  const s = (nature || '').trim();
+  if (!s) return CD_BLANK;
+  for (const [name, re] of (window.NATURE_CATEGORY_RULES || [])) if (re.test(s)) return name;
+  return 'Other';
+}
+function nbCanon(nature) {
+  const s = (nature || '').trim();
+  if (!s) return '(blank)';
+  for (const [re, name] of (window.NATURE_CANON_RULES || [])) if (re.test(s)) return name;
+  return s;
+}
+
+// Filter pill strip below the search bar — a second entry point onto the same
+// category filter the dashboard bar uses. Counts are always whole-portfolio
+// (like the dropdowns), so the strip doesn't shrink as you narrow the search.
+function renderNatureCategoryStrip(list) {
+  const el = document.getElementById('nb-category-strip');
+  if (!el) return;
+  const groups = cdGroup(list, c => nbCategorize(c.business_nature));
+  const active = window.nbActiveCategory || '';
+  const pills = groups.map(([name, n]) => {
+    const isActive = name === active;
+    return `<button type="button" class="nb-pill${isActive ? ' active' : ''}" data-nb-pill="${escHtml(name)}">
+      ${escHtml(name)}<span class="nb-pill-count">${n}</span>
+    </button>`;
+  }).join('');
+  el.innerHTML = pills + (active
+    ? `<button type="button" class="nb-pill nb-pill-clear" data-nb-pill="">✕ Clear filter</button>`
+    : '');
+}
+
+function nbFilterByCategory(name) {
+  window.clientShowAll = false;
+  window.nbActiveCategory = (window.nbActiveCategory === name) ? '' : name;
+  renderNatureCategoryStrip(window.clientsList || []);
+  applyClientFilters();
+}
+
+// Clicking a category bar/pill drills into its sub-types before committing to
+// the table filter — "Trading" alone doesn't say whether that means grocery,
+// hardware, or petroleum.
+function nbOpenCategoryDrilldown(name) {
+  const list = window.clientsList || [];
+  const clients = list.filter(c => nbCategorize(c.business_nature) === name);
+  const subs = new Map();
+  clients.forEach(c => { const s = nbCanon(c.business_nature); subs.set(s, (subs.get(s) || 0) + 1); });
+  const rows = [...subs.entries()].sort((a, b) => b[1] - a[1]).map(([s, n]) => `
+    <div class="cd-modal-row"><span>${escHtml(s)}</span><span class="cd-modal-count">${n}</span></div>
+  `).join('') || '<div class="log-empty">No clients in this category.</div>';
+
+  const safe = String(name).replace(/'/g, "\\'");
+  cdOpenModal(name, `
+    <p class="cd-modal-sub">${clients.length} client${clients.length === 1 ? '' : 's'} in <strong>${escHtml(name)}</strong>, by sub-type</p>
+    <div class="cd-modal-list">${rows}</div>
+    <button class="btn btn-primary cd-modal-action" onclick="cdCloseModal(); nbFilterByCategory('${safe}');">
+      View these ${clients.length} clients in the table
+    </button>
+  `);
+}
+
+// ── Dashboard drill-down modal — shared by Nature of Business, and used
+//    directly (no drill-down step) by the completeness meters. ──
+function cdOpenModal(title, bodyHtml) {
+  document.getElementById('cd-modal-title').textContent = title;
+  document.getElementById('cd-modal-body').innerHTML = bodyHtml;
+  document.getElementById('cd-modal').classList.add('open');
+}
+function cdCloseModal() {
+  document.getElementById('cd-modal').classList.remove('open');
+}
+
+function cdFilterByEntity(name) {
+  window.clientShowAll = false;
+  const el = document.getElementById('client-filter-entity');
+  if (el) el.value = name;
+  applyClientFilters();
+  document.getElementById('clients-table-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cdFilterByDistrict(name) {
+  window.clientShowAll = false;
+  const el = document.getElementById('client-filter-district');
+  if (el) el.value = name;
+  applyClientFilters();
+  document.getElementById('clients-table-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cdOpenIncompleteModal(fieldKey) {
+  const entry = CD_COMPLETENESS_FIELDS.find(f => f[0] === fieldKey);
+  if (!entry) return;
+  const [, label, pick] = entry;
+  const missing = (window.clientsList || []).filter(c => !cdIsFilled(pick(c)));
+  const SHOW = 200;
+  const rows = missing.slice(0, SHOW).map(c => `
+    <div class="cd-modal-row"><span>${escHtml(c.name)}</span><span class="cd-modal-count">${escHtml(c.entity_type || '—')}</span></div>
+  `).join('') || '<div class="log-empty">Every client has this field filled in.</div>';
+  const more = missing.length > SHOW ? `<p class="cd-modal-sub">…and ${missing.length - SHOW} more.</p>` : '';
+  cdOpenModal(`Missing ${label} (${missing.length})`, `<div class="cd-modal-list">${rows}</div>${more}`);
+}
+
+// One delegated listener for every clickable dashboard element — bars,
+// meters, and the category pill strip all read their target out of data-*
+// attributes rather than a name baked into an inline onclick string.
+document.addEventListener('click', e => {
+  const pill = e.target.closest('[data-nb-pill]');
+  if (pill) { nbFilterByCategory(pill.dataset.nbPill); return; }
+
+  const row = e.target.closest('[data-cd-kind]');
+  if (!row) return;
+  const kind = row.dataset.cdKind, name = row.dataset.cdName;
+  if (kind === 'entity') cdFilterByEntity(name);
+  else if (kind === 'district') cdFilterByDistrict(name);
+  else if (kind === 'nature') nbOpenCategoryDrilldown(name);
+  else if (kind === 'completeness') cdOpenIncompleteModal(name);
+});
 
 // ── Filters ──────────────────────────────────
 // The search box and the three dropdowns are one predicate, so they compose
@@ -179,6 +324,22 @@ function populateClientFilters(list) {
       .filter(([name]) => name !== CD_BLANK)
       .map(([name]) => `<option value="${escHtml(name)}"></option>`).join('');
   }
+  const bl = document.getElementById('ac-business-list');
+  if (bl) {
+    const seen = new Set();
+    bl.innerHTML = list.map(c => nbCanon(c.business_nature)).filter(v => v !== '(blank)')
+      .filter(v => (seen.has(v) ? false : (seen.add(v), true))).sort()
+      .map(v => `<option value="${escHtml(v)}"></option>`).join('');
+  }
+}
+
+// Wired to the search box and the three filter dropdowns in index.html
+// instead of applyClientFilters directly, so any deliberate filter change
+// collapses the table back to the summary page — "Show All" only stays
+// expanded for a filter set the user hasn't just changed.
+function clientFiltersChanged() {
+  window.clientShowAll = false;
+  applyClientFilters();
 }
 
 function applyClientFilters() {
@@ -187,15 +348,17 @@ function applyClientFilters() {
   const entity   = val('client-filter-entity');
   const district = val('client-filter-district');
   const itType   = val('client-filter-it');
+  const category = window.nbActiveCategory || '';
 
   const filtered = (window.clientsList || []).filter(c => {
     if (entity   && (c.entity_type || '') !== entity)   return false;
     if (district && (c.district || '')    !== district) return false;
     if (itType === '__none') { if (c.it_return_type) return false; }
     else if (itType && (c.it_return_type || '') !== itType) return false;
+    if (category && nbCategorize(c.business_nature) !== category) return false;
     if (!q) return true;
     return [c.name, c.email, c.pan, c.registration_number, c.entity_type,
-            c.district, c.business_nature, c.it_return_type]
+            c.district, c.business_nature, c.it_return_type, c.tax_registration_type]
       .some(v => (v || '').toLowerCase().includes(q));
   });
 
@@ -219,19 +382,36 @@ function clientInitials(name) {
 // (e.g. after a role change affects whether the Actions column shows).
 let clientsTable = null;
 
+// The directory doesn't load or scroll all 314+ clients by default — a
+// filtered/searched result under this size shows in full anyway, so the cap
+// only bites on the unfiltered "all clients" view.
+const CLIENTS_PAGE_SIZE = 25;
+window.clientShowAll = false;
+
+function clientsShowAllToggle(showAll) {
+  window.clientShowAll = showAll;
+  applyClientFilters();
+  if (!showAll) document.getElementById('clients-table-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderClientsTable(list) {
   const wrap = document.getElementById('clients-table-wrap');
+  const moreWrap = document.getElementById('clients-showall-wrap');
   if (clientsTable) { clientsTable.destroy(); clientsTable = null; }
 
   if (!list.length) {
-    wrap.innerHTML = '<div class="log-empty">No clients yet. Add your first client above.</div>';
+    wrap.innerHTML = '<div class="log-empty">No clients match your search and filters.</div>';
+    if (moreWrap) moreWrap.innerHTML = '';
     return;
   }
+
+  const showAll = window.clientShowAll || list.length <= CLIENTS_PAGE_SIZE;
+  const visible = showAll ? list : list.slice(0, CLIENTS_PAGE_SIZE);
 
   const isAdmin = window.currentUser?.role === 'admin';
   wrap.innerHTML = '';
   clientsTable = TableEngine.createTable(wrap, {
-    data: list,
+    data: visible,
     columns: [
       { title: 'Client Name', field: 'name', minWidth: 200, formatter: cell => {
           const c = cell.getRow().getData();
@@ -243,18 +423,16 @@ function renderClientsTable(list) {
         } },
       { title: 'PAN', field: 'pan', minWidth: 110, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'District', field: 'district', minWidth: 110, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'Tax Reg.', field: 'tax_registration_type', minWidth: 95, formatter: cell => {
+          const v = cell.getValue();
+          return v ? `<span class="log-badge ${v === 'VAT' ? 'badge-sent' : 'badge-blue'}">${escHtml(v)}</span>` : '<span style="color:var(--text-faint);">—</span>';
+        } },
       { title: 'IT Return', field: 'it_return_type', minWidth: 110, formatter: cell => {
           const v = cell.getValue();
           if (!v) return '<span style="color:var(--text-faint);">—</span>';
           return `<span class="log-badge ${v === 'D-03' ? 'badge-yellow' : 'badge-sent'}">${escHtml(v)}</span>`;
         } },
       { title: 'Email', field: 'email', minWidth: 170, formatter: cell => escHtml(cell.getValue() || '—') },
-      { title: 'VAT', field: 'vat_status', minWidth: 110, formatter: cell => {
-          const v = cell.getValue();
-          return v === 'active' ? '<span class="log-badge badge-sent">Active</span>'
-            : v === 'inactive' ? '<span class="log-badge badge-yellow">Inactive</span>'
-            : '<span style="color:var(--text-faint);">—</span>';
-        } },
       { title: 'Phone', field: 'phone', minWidth: 130, formatter: cell => escHtml(cell.getValue() || '—') },
       ...(isAdmin ? [{
         title: 'Actions', field: 'id', headerSort: false, minWidth: 150,
@@ -268,6 +446,15 @@ function renderClientsTable(list) {
       }] : []),
     ],
   });
+
+  if (moreWrap) {
+    moreWrap.innerHTML = !showAll
+      ? `<button class="btn btn-outline" onclick="clientsShowAllToggle(true)">Show All ${list.length} Clients</button>
+         <span class="clients-showall-hint">Showing ${visible.length} of ${list.length}</span>`
+      : (list.length > CLIENTS_PAGE_SIZE
+          ? `<button class="btn btn-outline" onclick="clientsShowAllToggle(false)">Show Less</button>`
+          : '');
+  }
 }
 
 // Superseded by applyClientFilters(), which folds the search box and the three
@@ -293,9 +480,26 @@ function cancelAddClient() {
   document.getElementById('add-client-form').classList.remove('open');
 }
 
+// Populates #ac-entity-type from CLIENT_ENTITY_TYPES. When editing a client
+// whose stored value isn't one of the eight (the 7 Partnership Firms, or a
+// legacy import spelling), that value is injected as an extra option so
+// opening the record for edit can never silently rewrite its entity type —
+// only an explicit re-selection changes it.
+function acFillEntityTypes(currentValue) {
+  const el = document.getElementById('ac-entity-type');
+  if (!el) return;
+  const base = window.CLIENT_ENTITY_TYPES || [];
+  const extra = currentValue && !base.includes(currentValue) ? [currentValue] : [];
+  el.innerHTML = '<option value="">— Select —</option>'
+    + base.map(v => `<option${v === currentValue ? ' selected' : ''}>${escHtml(v)}</option>`).join('')
+    + extra.map(v => `<option selected>${escHtml(v)}</option>`).join('');
+}
+acFillEntityTypes(); // populate on script load so Add Client has options before anything is edited
+
 function clearClientForm() {
-  ['ac-name','ac-email','ac-pan','ac-phone','ac-entity-type','ac-business','ac-registration-number','ac-chairman-name','ac-shareholder-name','ac-authorized-capital','ac-issued-capital','ac-paidup-capital','ac-address','ac-district','ac-it-return-type','ac-tax-type-d3'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('ac-vat-status').value = 'not_registered';
+  ['ac-name','ac-email','ac-pan','ac-phone','ac-business','ac-address','ac-district','ac-it-return-type','ac-tax-type-d3','ac-tax-registration-type']
+    .forEach(id => document.getElementById(id).value = '');
+  acFillEntityTypes();
   // Every client on file is Nepal-based; typing it 300 times is not a feature.
   document.getElementById('ac-country').value = 'Nepal';
   document.getElementById('client-form-status').innerHTML = '';
@@ -310,31 +514,33 @@ async function saveClient() {
     return;
   }
 
+  // Registration number, chairman, shareholder, the three capitals and VAT
+  // status are NOT in this payload — they moved to Company Registrar →
+  // Company Profile (js/companyProfile.js) and are edited there. Omitting the
+  // keys leaves them untouched in the database; this form must never send
+  // them as null.
   const payload = {
     name,
     email:         email || null,
     pan:           document.getElementById('ac-pan').value.trim() || null,
     phone:         document.getElementById('ac-phone').value.trim() || null,
     entity_type:   document.getElementById('ac-entity-type').value.trim() || null,
-    vat_status:    document.getElementById('ac-vat-status').value,
     business_nature: document.getElementById('ac-business').value.trim() || null,
-    registration_number: document.getElementById('ac-registration-number').value.trim() || null,
-    chairman_name:       document.getElementById('ac-chairman-name').value.trim() || null,
-    shareholder_name:    document.getElementById('ac-shareholder-name').value.trim() || null,
-    authorized_capital:  document.getElementById('ac-authorized-capital').value.trim() || null,
-    issued_capital:      document.getElementById('ac-issued-capital').value.trim() || null,
-    paid_up_capital:     document.getElementById('ac-paidup-capital').value.trim() || null,
     address:       document.getElementById('ac-address').value.trim() || null,
     district:      document.getElementById('ac-district').value.trim() || null,
     country:       document.getElementById('ac-country').value.trim() || null,
     it_return_type: document.getElementById('ac-it-return-type').value.trim() || null,
     tax_type_d3:   document.getElementById('ac-tax-type-d3').value.trim() || null,
+    tax_registration_type: document.getElementById('ac-tax-registration-type').value.trim() || null,
   };
 
   let error;
   if (window.editingClientId) {
     ({ error } = await window.sb.from('clients').update(payload).eq('id', window.editingClientId));
   } else {
+    // A brand-new client has no VAT status yet; the column is NOT NULL with
+    // a default, but an explicit insert value keeps intent obvious here.
+    payload.vat_status = 'not_registered';
     ({ error } = await window.sb.from('clients').insert(payload));
   }
 
@@ -356,20 +562,14 @@ function editClient(id) {
   document.getElementById('ac-email').value       = c.email || '';
   document.getElementById('ac-pan').value         = c.pan || '';
   document.getElementById('ac-phone').value       = c.phone || '';
-  document.getElementById('ac-entity-type').value = c.entity_type || '';
-  document.getElementById('ac-vat-status').value  = c.vat_status || 'not_registered';
+  acFillEntityTypes(c.entity_type || '');
   document.getElementById('ac-business').value    = c.business_nature || '';
-  document.getElementById('ac-registration-number').value = c.registration_number || '';
-  document.getElementById('ac-chairman-name').value       = c.chairman_name || '';
-  document.getElementById('ac-shareholder-name').value    = c.shareholder_name || '';
-  document.getElementById('ac-authorized-capital').value  = c.authorized_capital || '';
-  document.getElementById('ac-issued-capital').value      = c.issued_capital || '';
-  document.getElementById('ac-paidup-capital').value      = c.paid_up_capital || '';
   document.getElementById('ac-address').value     = c.address || '';
   document.getElementById('ac-district').value    = c.district || '';
   document.getElementById('ac-country').value     = c.country || 'Nepal';
   document.getElementById('ac-it-return-type').value = c.it_return_type || '';
   document.getElementById('ac-tax-type-d3').value = c.tax_type_d3 || '';
+  document.getElementById('ac-tax-registration-type').value = c.tax_registration_type || '';
   document.getElementById('add-client-title').textContent = 'Edit Client';
   document.getElementById('add-client-form').classList.add('open');
   document.getElementById('add-client-form').scrollIntoView({ behavior: 'smooth' });

@@ -43,12 +43,75 @@ window.IMPORT_FIELDS = [
   { key:'country',         label:'Country',       required:false, keywords:['country'] },
   { key:'it_return_type',  label:'IT Return Type', required:false, keywords:['type of it return','it return','income tax return type','return type'] },
   { key:'tax_type_d3',     label:'Tax Type (D-3)', required:false, keywords:['tax type for only d3','tax type for d3','tax type'] },
+  { key:'tax_registration_type', label:'Tax Registration (VAT/PAN)', required:false, keywords:['vat/pan','vat / pan','tax registration','type of tax registration','vat or pan'] },
 ];
 
 // The income-tax return types the firm files. D1/D2 is a real single value,
 // not a placeholder: the client master marks a client as "D-1 and D-2 — it can
 // be both", and it is narrowed to one of the two only when that is known.
 window.CLIENT_IT_RETURN_TYPES = ['D1/D2', 'D-01', 'D-02', 'D-03'];
+
+// Whether the client is registered for VAT or holds a PAN only. From the
+// client master's "VAT/PAN" column (V/P). NOT the same thing as
+// clients.vat_status, which is whether the firm files that client's monthly
+// VAT returns — a hand-picked subset (§5.2). A client can be VAT-registered
+// without the firm filing for it.
+window.CLIENT_TAX_REGISTRATION_TYPES = ['VAT', 'PAN'];
+
+// The entity types the client form offers. Reduced to these eight on
+// 2026-07-26 at the user's request.
+window.CLIENT_ENTITY_TYPES = [
+  'Private Limited Company',
+  'Public Limited Company',
+  'Proprietorship Firm',
+  'NPO',
+  'NGO',
+  'Cooperative Organization',
+  'Individual',
+  'Others',
+];
+
+// ── Nature of Business → parent category ──
+// Derived from the 261 client-master values on 2026-07-26; every one of them
+// matches a rule, so nothing lands in a junk bucket. ORDER IS LOAD-BEARING:
+// the first match wins, so specific sectors are tested before the broad
+// Trading/Manufacturing verbs — "Manufacturing of Feed of birds" is Poultry,
+// not Manufacturing, and "Trading of Medicines" is Health, not Trading.
+window.NATURE_CATEGORY_RULES = [
+  ['Poultry',                    /poultry|feed\s+(of|for)\s+birds|bird breeding|hatchery/i],
+  // Grocery beats the vegetable rule below: "Trading of Grocery,Vegetables"
+  // is a kirana shop, not a farm.
+  ['Trading',                    /grocery|khadhyanna|kirana/i],
+  ['Agriculture & Livestock',    /agricultur|cattle|fish farming|krishi|dairy|milk product|vegetable/i],
+  ['Hotel & Restaurant',         /hotel|restaurant|resort|khaja/i],
+  ['Health',                     /health|medicine|medical|pharmac|polyclinic|dental|clinic/i],
+  ['Education & Consultancy',    /education|consultan|migration|visa|montessori|academy|study cent/i],
+  ['Transport & Freight',        /freight|dhuwani|logistic|transport/i],
+  ['Construction & Engineering', /construction|engineering|nirman|builder/i],
+  ['Investment & Finance',       /investment|saving|credit|co ?operativ/i],
+  ['Real Estate',                /real ?estate|housing/i],
+  ['Mining',                     /mining/i],
+  ['Manufacturing',              /manufactur|manufacture|udhyog|industr|mill\b/i],
+  ['Import & Distribution',      /^import\b/i],
+  ['Trading',                    /trading|trade|supplier|stores|distribut/i],
+  ['Other Services',             /service|saloon|cinema|software|labour/i],
+];
+
+// Display-only canonicalisation of the sub-type shown in the drill-down. The
+// stored business_nature is never rewritten — this only stops the list showing
+// "Trading Hardware items", "Trading of Hardware Items" and "Trading of
+// Hardware items" as three separate things.
+window.NATURE_CANON_RULES = [
+  [/hardware/i,                         'Trading of Hardware Items'],
+  [/stationery/i,                       'Trading of Stationery Items & Books'],
+  [/motors? parts/i,                    'Trading of Motor Parts'],
+  [/^trading of grocery/i,              'Trading of Grocery'],
+  [/house ?hold/i,                      'Trading of Household Items'],
+  [/^trading of (cosmetics|closet)/i,   'Trading of Cosmetics'],
+  [/^trading of medicines?$/i,          'Trading of Medicines'],
+  [/manufacturing of rice/i,            'Manufacturing of Rice & Oil'],
+  [/feed\s+(of|for)\s+(birds|cattle)/i, 'Manufacturing of Feed'],
+];
 
 window.importHeaders     = [];   // raw header strings from the file
 window.importDataRows    = [];   // raw row arrays (excludes header row)
@@ -237,4 +300,8 @@ window.CLIENT_ENTITY_TO_REP_PROFILE = {
   'partnership': 'partnership',
   'cooperatives': 'cooperative',
   'cooperative': 'cooperative',
+  // The 2026-07-26 form vocabulary. 'Others' is deliberately unmapped — it
+  // carries no entity profile, so the report modules leave the field for the
+  // user rather than guessing one.
+  'cooperative organization': 'cooperative',
 };

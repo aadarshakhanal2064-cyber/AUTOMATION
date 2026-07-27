@@ -699,6 +699,115 @@ textarea { resize: vertical; min-height: 100px; }
 @media (max-width: 1100px) { .cd-grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px)  { .cd-bar-row { grid-template-columns: minmax(0, 100px) 1fr auto; } .cd-filter { max-width: 100%; flex: 1; } }
 
+/* Clickable bars/meters — Entity Type, District and Nature of Business filter
+   the directory on click; the completeness meters open the incomplete-client
+   list. A visible affordance so "clickable" isn't a hidden feature. */
+.cd-bar-row.clickable, .cd-meter-row.clickable {
+  cursor: pointer; margin: 0 -10px; padding: 4px 10px; border-radius: 8px;
+  transition: background 0.12s ease;
+}
+.cd-bar-row.clickable:hover, .cd-meter-row.clickable:hover { background: var(--bg-page-alt); }
+.cd-bar-row.clickable:hover .cd-bar-label,
+.cd-meter-row.clickable:hover .cd-meter-label { color: var(--accent-blue); }
+.cd-bar-row.clickable:focus-visible, .cd-meter-row.clickable:focus-visible {
+  outline: 2px solid var(--accent-blue); outline-offset: 1px;
+}
+
+/* ── Client section: premium KPI card redesign ──
+   Scoped to #client-stat-grid so VAT Compliance / Dashboard / Billing stat
+   cards (which reuse the plain .stat-card look) are untouched. */
+#client-stat-grid { grid-template-columns: repeat(3, 1fr); gap: 20px; }
+#client-stat-grid .stat-card {
+  position: relative; overflow: hidden; display: flex; flex-direction: column;
+  gap: 6px; padding: 22px 24px; border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-sm); transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+#client-stat-grid .stat-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--brand-navy-lt));
+  opacity: 0.85;
+}
+#client-stat-grid .stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+#client-stat-grid .stat-icon {
+  width: 42px; height: 42px; border-radius: 12px; display: flex;
+  align-items: center; justify-content: center; margin-bottom: 4px;
+}
+#client-stat-grid .stat-num { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+#client-stat-grid .stat-label { font-size: 13px; font-weight: 600; color: var(--text-main); }
+#client-stat-grid .stat-sub { font-size: 12px; color: var(--text-faint); min-height: 16px; }
+@media (max-width: 900px) { #client-stat-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { #client-stat-grid { grid-template-columns: 1fr; } }
+
+/* ── Nature of Business filter strip (below the client search bar) ── */
+.nb-category-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
+.nb-pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--white);
+  color: var(--text-muted); font-size: 12.5px; font-weight: 600; font-family: inherit;
+  cursor: pointer; transition: all 0.12s ease; white-space: nowrap;
+}
+.nb-pill:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+.nb-pill.active { background: var(--brand-navy); border-color: var(--brand-navy); color: var(--white); }
+.nb-pill-count {
+  font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px;
+  background: var(--bg-page-alt); color: var(--text-muted);
+}
+.nb-pill.active .nb-pill-count { background: rgba(255,255,255,0.2); color: var(--white); }
+.nb-pill-clear { background: var(--red-bg); border-color: var(--red-border); color: var(--red-dk); }
+.nb-pill-clear:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Client directory toolbar (search + filters) ── */
+.client-toolbar-wrap { padding: 22px 24px; }
+.client-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.client-search-wrap { flex: 1; min-width: 260px; max-width: 420px; }
+.client-toolbar-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.client-toolbar-summary { display: flex; justify-content: flex-end; margin: -4px 0 10px; }
+@media (max-width: 700px) { .client-search-wrap { max-width: 100%; } }
+
+/* ── "Show All Clients" pagination footer ── */
+.clients-showall-wrap { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 18px 0 6px; }
+.clients-showall-hint { font-size: 12.5px; color: var(--text-faint); }
+
+/* ── Dashboard drill-down modal ── */
+.cd-modal {
+  display: none; position: fixed; inset: 0; z-index: 300;
+  background: rgba(11,31,61,0.45); align-items: center; justify-content: center; padding: 24px;
+}
+.cd-modal.open { display: flex; }
+.cd-modal-box {
+  background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  width: 100%; max-width: 480px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden;
+}
+.cd-modal-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 18px 22px; border-bottom: 1px solid var(--border-soft); flex-shrink: 0;
+}
+.cd-modal-header h3 { font-size: 16px; font-weight: 700; color: var(--text-main); margin: 0; }
+.cd-modal-close {
+  background: none; border: none; font-size: 22px; line-height: 1; color: var(--text-faint);
+  cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.cd-modal-close:hover { background: var(--bg-page-alt); color: var(--text-main); }
+.cd-modal-body { padding: 18px 22px 22px; overflow-y: auto; }
+.cd-modal-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; }
+.cd-modal-list { display: flex; flex-direction: column; gap: 2px; max-height: 40vh; overflow-y: auto; }
+.cd-modal-row {
+  display: flex; justify-content: space-between; gap: 12px; padding: 8px 4px;
+  border-bottom: 1px solid var(--border-soft); font-size: 13px; color: var(--text-main);
+}
+.cd-modal-row:last-child { border-bottom: none; }
+.cd-modal-count { font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.cd-modal-action { width: 100%; margin-top: 16px; }
+
+/* ── Add/Edit Client form note ── */
+.ac-form-note { font-size: 12.5px; color: var(--text-faint); font-style: italic; margin: -6px 0 16px; }
+
+/* ── Company Profile (Company Registrar sub-module) ── */
+.cp-ident-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.cp-ident-header h3 { font-size: 17px; font-weight: 700; margin: 0 0 4px; }
+.cp-ident-meta { font-size: 13px; color: var(--text-muted); }
+.cp-meter { min-width: 160px; padding-top: 4px; }
+
 /* ── SPINNER ── */
 .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: currentColor; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
 .spinner-navy { border-color: rgba(11,31,61,0.15); border-top-color: var(--brand-navy); }
