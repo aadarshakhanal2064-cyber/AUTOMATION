@@ -24,3 +24,16 @@ assets/templates/*.pdf
 # addresses. The annotated migrations in db/ stay tracked; only the data does
 # not. See db/2026-07-26_client_master_reload.sql for how the two fit together.
 db/backups/
+
+# Local-only archives kept for retrievability, NOT for publication. Both carry
+# real client names in file paths (the permission rules and two memory files
+# reference client workbooks by name), and this repo is PUBLIC. They live on
+# disk beside the tracked history so nothing is lost; they just never ship.
+# See docs/history/README.md.
+docs/history/settings.local.json.bak
+docs/history/memory-*/
+
+# Third-party Claude Code plugin cloned into the project root (4.2 MB, its own
+# git repo, github.com/JuliusBrussee/caveman). Nothing to do with this app —
+# ignored so it can never be swept into a commit by `git add .`.
+caveman/
