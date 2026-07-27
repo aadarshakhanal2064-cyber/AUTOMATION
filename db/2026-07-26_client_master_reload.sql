@@ -27,11 +27,16 @@
 --  RESULT: 451 -> 314 clients (261 workbook + 45 Devanagari + 8 kept), with
 --          zero attached work rows destroyed and zero FKs re-pointed.
 --
---  it_return_type: the workbook carries this ONLY as a cell fill — columns
---    "Tax Type for only D3" and "Type of IT return" are blank on all 261 rows.
---    Per the user (2026-07-26): a row with any yellow cell is D-1/D-2 (it can
---    be either, hence the single 'D1/D2' value), a row with no fill at all is
---    D-3. That yields 233 D1/D2 and 28 D-03.
+--  it_return_type: the workbook carries this ONLY as a cell fill — the
+--    "Tax Type for only D3" and "Type of IT return" columns are blank on 259
+--    of the 261 rows.
+--
+--    *** THE RULE USED HERE IS WRONG AND WAS CORRECTED ON 2026-07-27. ***
+--    This pass read "a row with any yellow cell" as D-1/D-2, yielding 233
+--    D1/D2 / 28 D-03. The real marking is the S.No cell in column A, giving
+--    39 D1/D2 / 222 D-03. See db/2026-07-27_fix_it_return_type.sql, which
+--    supersedes the it_return_type values written below. Everything else this
+--    migration does (the de-duplication, the other columns) still stands.
 --  Rollback: db/2026-07-26_client_master_reload_rollback.sql
 -- ============================================================================
 
@@ -90,7 +95,9 @@ alter table public.client_master_import enable row level security;
 --   pan, name, address, entity_type, business_nature, district, country,
 --   it_return_type
 -- and it_return_type is derived from the workbook's cell fill exactly as the
--- header note above describes (any yellow => 'D1/D2', no fill => 'D-03').
+-- header note above describes. NOTE: that rule is the WRONG one — the row
+-- file's it_return_type values are superseded by
+-- db/2026-07-27_fix_it_return_type.sql. Run that after this migration.
 --
 -- If the row file is missing, regenerate it from the workbook rather than
 -- hand-typing it — the fill-to-D1/D2 mapping is not recoverable by eye.

@@ -17,9 +17,14 @@
 --    also in the firm's filed-for subset.
 --
 --  it_return_type: same rule as the first reload (any yellow cell on the row
---    => D1/D2, no fill => D-03), re-derived from this corrected workbook's
---    fill. One client's classification changed between the two workbook
---    versions. Result: 234 D1/D2, 27 D-03 (was 233/28 on the first reload).
+--    => D1/D2), re-derived from this corrected workbook's fill, giving
+--    234 D1/D2 / 27 D-03.
+--
+--    *** THAT RULE IS WRONG AND WAS CORRECTED ON 2026-07-27. *** The real
+--    marking is the S.No cell in column A, giving 39 D1/D2 / 222 D-03. See
+--    db/2026-07-27_fix_it_return_type.sql, which supersedes the
+--    it_return_type values this migration writes. The VAT/PAN and
+--    business_nature corrections below are unaffected and still stand.
 --
 --  entity_type normalized to the 8-value client-form vocabulary added the
 --    same day (js/config.js CLIENT_ENTITY_TYPES): 'NPOs' -> 'NPO',
