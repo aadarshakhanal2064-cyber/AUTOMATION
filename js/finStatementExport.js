@@ -226,55 +226,58 @@ function fsxBuildReport(out) {
 
   // ── SOCF: Statement of Cash Flows ──
   const op = cf.operating || {}, iv = cf.investing || {}, fi = cf.financing || {};
+  // The prior year is READ from the uploaded statement, not re-derived: a cash
+  // flow needs two balance sheets and the year before last is not in the file.
+  const pc2 = py.socf || {};
   sheets.push({
     key: 'SOCF', name: 'SOCF', geom: FSX_GEOM.SOCF,
     title: m.titles && m.titles.socf, subtitle: m.forYearLine, sig: true,
     cols: [{ h1: 'Year Ended', h2: yrHead }, { h1: 'Year Ended', h2: yrHeadPy }],
     rows: [
       R('Cash Flows From Operating Activities', [], 'head'),
-      R('Profit For the Year', [op.profit], 'item', { k: 'cfProfit', xf: ({ X }) => X('SOI', 'np') }),
+      R('Profit For the Year', [op.profit, pc2.profit], 'item', { k: 'cfProfit', xf: ({ X }) => X('SOI', 'np') }),
       R('Adjustment for :', [], 'sub'),
-      R('Depreciation/Impairment on Property, Plant & Equipment', [op.depreciation], 'item', { k: 'cfDep', xf: ({ X }) => X('SOI', 'dep') }),
-      R('Interest Income', [op.interestIncome], 'item', { k: 'cfIntInc', xf: ({ X }) => X('SOI', 'intInc') }),
-      R('Interest Expenses/ Finance Cost', [op.financeCost], 'item', { k: 'cfFin', xf: ({ X }) => X('SOI', 'finance') }),
-      R('Loss/(gain) On Sale of Property, Plant & Equipment', [op.ppeLoss], 'item', { k: 'cfPpeLoss' }),
-      R('Income Tax Expenses Charged to Profit or Loss Statements', [op.taxExpense], 'item', { k: 'cfTax', xf: ({ X }) => X('SOI', 'tax') }),
-      R('Increase/Decrease in Trade & Other Receivables', [op.dRecv], 'item', { k: 'cfRecv' }),
-      R('Increase/Decrease in Inventories', [op.dStock], 'item', { k: 'cfStock' }),
-      R('Increase/Decrease in Trade & Other Payables', [op.dPay], 'item', { k: 'cfPay' }),
-      R('Cash Generated From Operations.', [cf.generated], 'tot', {
+      R('Depreciation/Impairment on Property, Plant & Equipment', [op.depreciation, pc2.depreciation], 'item', { k: 'cfDep', xf: ({ X }) => X('SOI', 'dep') }),
+      R('Interest Income', [op.interestIncome, pc2.interestIncome], 'item', { k: 'cfIntInc', xf: ({ X }) => X('SOI', 'intInc') }),
+      R('Interest Expenses/ Finance Cost', [op.financeCost, pc2.financeCost], 'item', { k: 'cfFin', xf: ({ X }) => X('SOI', 'finance') }),
+      R('Loss/(gain) On Sale of Property, Plant & Equipment', [op.ppeLoss, pc2.ppeLoss], 'item', { k: 'cfPpeLoss' }),
+      R('Income Tax Expenses Charged to Profit or Loss Statements', [op.taxExpense, pc2.taxExpense], 'item', { k: 'cfTax', xf: ({ X }) => X('SOI', 'tax') }),
+      R('Increase/Decrease in Trade & Other Receivables', [op.dRecv, pc2.dRecv], 'item', { k: 'cfRecv' }),
+      R('Increase/Decrease in Inventories', [op.dStock, pc2.dStock], 'item', { k: 'cfStock' }),
+      R('Increase/Decrease in Trade & Other Payables', [op.dPay, pc2.dPay], 'item', { k: 'cfPay' }),
+      R('Cash Generated From Operations.', [cf.generated, pc2.generated], 'tot', {
         k: 'cfGen',
         xf: ({ R: r, c }) => (r.cfProfit && r.cfPay)
           ? `${c}${r.cfProfit}+${c}${r.cfDep}-${c}${r.cfIntInc}+${c}${r.cfFin}+SUM(${c}${r.cfPpeLoss}:${c}${r.cfPay})` : null,
       }),
-      R('Interest Paid', [cf.interestPaid], 'item', { k: 'cfIntPaid', xf: ({ R: r, c }) => r.cfFin ? `${c}${r.cfFin}` : null }),
-      R('Income Tax Paid', [cf.taxPaid], 'item', { k: 'cfTaxPaid' }),
-      R('Net Cash Flows from Operating Activities', [cf.netOperating], 'tot', {
+      R('Interest Paid', [cf.interestPaid, pc2.interestPaid], 'item', { k: 'cfIntPaid', xf: ({ R: r, c }) => r.cfFin ? `${c}${r.cfFin}` : null }),
+      R('Income Tax Paid', [cf.taxPaid, pc2.taxPaid], 'item', { k: 'cfTaxPaid' }),
+      R('Net Cash Flows from Operating Activities', [cf.netOperating, pc2.netOperating], 'tot', {
         k: 'cfOper', xf: ({ R: r, c }) => `${c}${r.cfGen}-${c}${r.cfIntPaid}-${c}${r.cfTaxPaid}`,
       }),
       R('Cash Flow from Investing Activities :', [], 'head'),
-      R('Acquisition of Property, Plant and Equipment', [iv.ppeAcquired], 'item', { k: 'cfPpeAcq', xf: ({ X }) => { const x = X('PPE', 'additions', ppeTotalIdx); return x ? `-${x}` : null; } }),
-      R('Investments', [iv.investments], 'item', { k: 'cfInv' }),
-      R('Interest/Dividend Received', [iv.interestReceived], 'item', { k: 'cfIntRec', xf: ({ R: r, c }) => r.cfIntInc ? `${c}${r.cfIntInc}` : null }),
-      R('Proceeds from Sale of PPE, Investments/Financial Assets', [iv.ppeProceeds], 'item', { k: 'cfPpeSale' }),
-      R('Net Cash Flows from Investing Activities', [cf.netInvesting], 'tot', {
+      R('Acquisition of Property, Plant and Equipment', [iv.ppeAcquired, pc2.ppeAcquired], 'item', { k: 'cfPpeAcq', xf: ({ X }) => { const x = X('PPE', 'additions', ppeTotalIdx); return x ? `-${x}` : null; } }),
+      R('Investments', [iv.investments, pc2.investments], 'item', { k: 'cfInv' }),
+      R('Interest/Dividend Received', [iv.interestReceived, pc2.interestReceived], 'item', { k: 'cfIntRec', xf: ({ R: r, c }) => r.cfIntInc ? `${c}${r.cfIntInc}` : null }),
+      R('Proceeds from Sale of PPE, Investments/Financial Assets', [iv.ppeProceeds, pc2.ppeProceeds], 'item', { k: 'cfPpeSale' }),
+      R('Net Cash Flows from Investing Activities', [cf.netInvesting, pc2.netInvesting], 'tot', {
         k: 'cfInvest', xf: ({ R: r, c }) => `SUM(${c}${r.cfPpeAcq}:${c}${r.cfPpeSale})`,
       }),
       R('Cash Flows from Financing Activities :', [], 'head'),
-      R('Proceeds from Capital introduced during the year', [fi.capital], 'item', { k: 'cfCap' }),
-      R('Proceeds/ (Repayment) from Non-Current Borrowings', [fi.nonCurrentBorrowings], 'item', { k: 'cfNCB' }),
-      R('Proceeds/ (Repayment) from Current Borrowings', [fi.currentBorrowings], 'item', { k: 'cfCB' }),
-      R(T.distribution === 'Drawing' ? 'Drawing' : 'Dividend Paid', [fi.drawing], 'item', { k: 'cfDraw' }),
-      R('Net Cash Flows from Financing Activities', [cf.netFinancing], 'tot', {
+      R('Proceeds from Capital introduced during the year', [fi.capital, pc2.capital], 'item', { k: 'cfCap' }),
+      R('Proceeds/ (Repayment) from Non-Current Borrowings', [fi.nonCurrentBorrowings, pc2.nonCurrentBorrowings], 'item', { k: 'cfNCB' }),
+      R('Proceeds/ (Repayment) from Current Borrowings', [fi.currentBorrowings, pc2.currentBorrowings], 'item', { k: 'cfCB' }),
+      R(T.distribution === 'Drawing' ? 'Drawing' : 'Dividend Paid', [fi.drawing, pc2.drawing], 'item', { k: 'cfDraw' }),
+      R('Net Cash Flows from Financing Activities', [cf.netFinancing, pc2.netFinancing], 'tot', {
         k: 'cfFinance', xf: ({ R: r, c }) => `SUM(${c}${r.cfCap}:${c}${r.cfDraw})`,
       }),
       B(),
-      R('Net Increase in Cash & Cash Equivalents', [cf.netIncrease], 'tot', {
+      R('Net Increase in Cash & Cash Equivalents', [cf.netIncrease, pc2.netIncrease], 'tot', {
         k: 'cfNet', xf: ({ R: r, c }) => `${c}${r.cfOper}+${c}${r.cfInvest}+${c}${r.cfFinance}`,
       }),
-      R('Cash & Cash Equivalents at the Beginning of the year', [cf.openingCash], 'item', { k: 'cfOpen' }),
-      R('Exchanges (Losses)/Gains on Cash & Cash Equivalents', [0], 'item', { k: 'cfFx' }),
-      R('Cash & Cash Equivalents at the end of the year', [cf.closingCash], 'grand', {
+      R('Cash & Cash Equivalents at the Beginning of the year', [cf.openingCash, pc2.openingCash], 'item', { k: 'cfOpen' }),
+      R('Exchanges (Losses)/Gains on Cash & Cash Equivalents', [0, 0], 'item', { k: 'cfFx' }),
+      R('Cash & Cash Equivalents at the end of the year', [cf.closingCash, pc2.closingCash], 'grand', {
         k: 'cfClose', xf: ({ R: r, c }) => `${c}${r.cfNet}+${c}${r.cfOpen}+${c}${r.cfFx}`,
       }),
       B(),
@@ -328,6 +331,14 @@ function fsxBuildReport(out) {
     for (const k of Object.keys(pyPayByName)) if (k.includes(n) || n.includes(k)) return pyPayByName[k];
     return 0;
   };
+  // Prior-year figures for the notes whose comparative column would otherwise
+  // be blank. Matched by label against the client's own 3.8 lines rather than
+  // splitting the SFP total, which would be inventing a breakdown.
+  const pyFind = (list, re) => {
+    const hit = (list || []).find(it => re.test(String(it.name)));
+    return hit ? hit.amount : 0;
+  };
+  const pyLoan = (re) => pyFind(py.loanItems, re);
 
   const schBsRows = [
     R('3.2 Investment', [], 'head'),
@@ -369,22 +380,25 @@ function fsxBuildReport(out) {
     R('Total', [bal.cash, pySfp.cash], 'tot', { k: 'cashTotal', xsum: ['cashBank'] }),
     B(),
     R('3.6 ' + T.capital, [], 'head'),
-    R('At the beginning of the year', [(bal.shareCapital || 0) - ((out.soce || {}).capital || 0), pySfp.shareCapital], 'item', { k: 'capOpen' }),
-    R('Addition During the Year', [(out.soce || {}).capital || 0, 0], 'item', { k: 'capAdd' }),
+    R('At the beginning of the year', [(bal.shareCapital || 0) - ((out.soce || {}).capital || 0), pyFind(py.capitalItems, /beginning/i) || pySfp.shareCapital], 'item', { k: 'capOpen' }),
+    R('Addition During the Year', [(out.soce || {}).capital || 0, pyFind(py.capitalItems, /addition|issue|call money/i)], 'item', { k: 'capAdd' }),
     R('Total', [bal.shareCapital, pySfp.shareCapital], 'tot', { k: 'capTotal', xsum: ['capOpen', 'capAdd'] }),
     B(),
     R('3.7 Reserves', [], 'head'),
-    R('Opening', [(out.soce || {}).open && (out.soce.open.retained || 0), 0], 'item', { k: 'resOpen' }),
+    // The prior year's own opening is its closing less its result for that
+    // year — the only way to state it without a second comparative file.
+    R('Opening', [(out.soce || {}).open && (out.soce.open.retained || 0),
+                  pyFind(py.reserveItems, /opening/i) || r2((pySfp.reserves || 0) - (pySoi.netProfit || 0))], 'item', { k: 'resOpen' }),
     R('Add: Profit for the year', [inc.netProfit, pySoi.netProfit], 'item', { k: 'resProfit', xf: ({ X }) => X('SOI', 'np') }),
-    R('Less: ' + T.distribution, [-((out.soce || {}).dividend || 0), 0], 'item', { k: 'resDist' }),
+    R('Less: ' + T.distribution, [-((out.soce || {}).dividend || 0), -Math.abs(pyFind(py.reserveItems, /drawing|dividend/i))], 'item', { k: 'resDist' }),
     R('Total', [bal.reserves, pySfp.reserves], 'tot', { k: 'resTotal', xsum: ['resOpen', 'resProfit', 'resDist'] }),
     B(),
     R('3.8 Loans Borrowings', [], 'head'),
     R('Non-Current :', [], 'sub'),
-    R('Term Loan', [(out.rawFigures || {}).H || 0, 0], 'item', { k: 'loanTerm' }),
-    R('PWC Loan', [(out.rawFigures || {}).I || 0, 0], 'item', { k: 'loanPwc' }),
-    R('HP Loan', [(out.rawFigures || {}).J || 0, 0], 'item', { k: 'loanHp' }),
-    R(T.person + ' Loan', [(out.levers || {}).directorLoan || 0, 0], 'item', { k: 'loanDir' }),
+    R('Term Loan', [(out.rawFigures || {}).H || 0, pyLoan(/term/i)], 'item', { k: 'loanTerm' }),
+    R('PWC Loan', [(out.rawFigures || {}).I || 0, pyLoan(/pwc|permanent/i)], 'item', { k: 'loanPwc' }),
+    R('HP Loan', [(out.rawFigures || {}).J || 0, pyLoan(/\bhp\b|hire/i)], 'item', { k: 'loanHp' }),
+    R(T.person + ' Loan', [(out.levers || {}).directorLoan || 0, pyLoan(/director|proprietor|partner/i)], 'item', { k: 'loanDir' }),
     R('Total', [bal.loansNonCurrent, pySfp.loansNC], 'tot', { k: 'loanNCTotal', xsum: ['loanTerm', 'loanPwc', 'loanHp', 'loanDir'] }),
     R('Current :', [], 'sub'),
     R('Bank Overdrafts', [bal.loansCurrent, pySfp.loansC], 'item', { k: 'loanOd' }),
@@ -500,6 +514,25 @@ function fsxBuildReport(out) {
     rows: schPlRows,
   });
 
+  // ── blank current year ──
+  // The firm may want the statement set laid out before any current-year
+  // figure exists: the comparative column carries last year in full and the
+  // current-year column is left empty, to be filled in as figures arrive.
+  // Rows whose current-year value is genuinely KNOWN from the prior year — the
+  // SOCE opening balance and the 3.1 PPE opening cost/depreciation/carrying —
+  // keep their figures, because those are last year's closing by definition.
+  if (m.blankCurrentYear) {
+    const KEEP = { SOCE: ['open'], PPE: ['costOpen', 'depOpen', 'carryOpen'] };
+    for (const sh of sheets) {
+      const keep = KEEP[sh.key] || [];
+      for (const r of sh.rows) {
+        if (keep.includes(r.k)) continue;
+        if (sh.matrix) r.vals = (r.vals || []).map(v => (fsxIsNum(v) ? null : v));
+        else r.vals = (r.vals || []).map((v, i) => (i === 0 && fsxIsNum(v) ? null : v));
+      }
+    }
+  }
+
   return { meta: m, sheets, proofs: out.proofs || {}, issues: out.issues || [] };
 }
 
@@ -508,6 +541,7 @@ function fsxBuildReport(out) {
 // ════════════════════════════════════════════════════════════════
 
 const fsxIsNum = (v) => typeof v === 'number' && isFinite(v);
+const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
 // Accounting presentation: brackets for negatives, en-dash for nil.
 function fsxAmt(v) {
@@ -662,6 +696,11 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
         if (!colLetter) return;
         const cell = ws.getCell(rowNo, fsxColNum(colLetter));
 
+        // A blank current-year cell stays genuinely empty — no formula, no
+        // zero. Writing a formula whose result is null would make Excel show
+        // 0 the moment it recalculated, which is not the same claim as "not
+        // entered yet".
+        if (v === null) { cell.value = null; cell.numFmt = FSX_NUMFMT; return; }
         if (!fsxIsNum(v)) { cell.value = v == null ? '' : String(v); cell.alignment = { horizontal: 'left' }; return; }
 
         // A row total across a matrix sheet sums its own row rather than

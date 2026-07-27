@@ -24,10 +24,47 @@ let fsDetails = { sales: null, purchase: null };
 let fsPpeInput = [];         // per-class movement rows
 let fsLevers = {};           // user overrides
 let fsExpenseEdits = null;   // edited expense line arrays
+let fsFigures = {};          // the current-year figures A–N
 
 const fsEl = (id) => document.getElementById(id);
 const fsStatus = (msg, type) => showStatus(msg, type, 'fs-status-area');
 const fsNum = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n) ? n : 0; };
+
+// ── keeping inputs alive across a re-render ──
+// The debounced re-solve rebuilds the levers, fixed-asset and expense grids.
+// That detaches whichever input the user is typing in and drops focus to
+// <body>, so every keystroke after the first was lost and the fields read as
+// uneditable. Each editable input carries a stable `data-fsk`; this restores
+// focus, the caret, and the RAW in-progress text — a half-typed "1234." must
+// not be normalised out from under the caret.
+function fsPreserveFocus(render) {
+  const el = document.activeElement;
+  const key = el && el.dataset ? el.dataset.fsk : null;
+  const raw = key ? el.value : null;
+  let start = null, end = null;
+  if (key) { try { start = el.selectionStart; end = el.selectionEnd; } catch (e) { /* unsupported input type */ } }
+
+  render();
+
+  if (!key) return;
+  const next = document.querySelector('[data-fsk="' + key.replace(/"/g, '\\"') + '"]');
+  if (!next) return;
+  if (raw != null) next.value = raw;
+  next.focus();
+  if (start != null) { try { next.setSelectionRange(start, end); } catch (e) { /* unsupported */ } }
+}
+
+// Money fields are text + inputmode="decimal" rather than type="number": it
+// lets the caret be restored after a re-render (number inputs have no
+// selection API), and lets the user paste a comma-grouped figure.
+// `width` is a pixel number, or omit it for a full-width field in a form-grid.
+function fsMoneyInput(key, value, handler, width) {
+  const v = (value == null || value === '' || !isFinite(value)) ? '' : value;
+  const w = (width == null) ? '100%' : width + 'px';
+  return `<input type="text" inputmode="decimal" data-fsk="${escHtml(key)}"
+    style="width:${w};text-align:right;" value="${escHtml(String(v))}"
+    oninput="${handler}" />`;
+}
 
 // The figures A–N, in the order the spec lists them.
 const FS_FIGURES = [
@@ -95,7 +132,7 @@ function fsRenderReturnTypes() {
   const sel = fsEl('fs-return-type');
   if (!sel) return;
   const entity = (fsEl('fs-entity') || {}).value || 'private';
-  const sales = fsNum((fsEl('fs-fig-A') || {}).value);
+  const sales = fsNum(fsFigures.A);
   const allowed = FinStatementEngine.allowedReturnTypes(entity, sales);
   const LABEL = { D1: 'D1 — presumptive', D2: 'D2 — presumptive', D3: 'D3', D3V: 'D3 (Voluntary)' };
   const prev = sel.value;
@@ -302,38 +339,51 @@ async function fsLoadDepreciation() {
 }
 
 function fsSetFigure(k, v) {
-  const el = fsEl('fs-fig-' + k);
-  if (el) el.value = Math.round(v * 100) / 100;
+  fsFigures[k] = Math.round(v * 100) / 100;
+  fsSyncFigureInputs(k);
 }
 
 // ════════════════════════════════════════════════════════════════
 //  STEP 2 — figures, PPE movement, expense lines
 // ════════════════════════════════════════════════════════════════
 
+// The figures live in `fsFigures`, not in the DOM, because they are edited from
+// two places — step 2 and the Levers panel — and two inputs bound to one value
+// would drift apart.
 function fsRenderFigures() {
   const grid = fsEl('fs-figures-grid');
   if (!grid) return;
-  const existing = {};
-  FS_FIGURES.forEach(f => { const el = fsEl('fs-fig-' + f.k); if (el) existing[f.k] = el.value; });
-
   let html = '<div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">';
   for (const f of FS_FIGURES) {
     html += `<div class="form-group">
       <label>${f.k}. ${escHtml(f.label)}</label>
-      <input type="number" step="0.01" id="fs-fig-${f.k}" value="${existing[f.k] != null ? escHtml(existing[f.k]) : ''}"
-             oninput="fsOnFigureInput('${f.k}')" />
+      ${fsMoneyInput('fig2-' + f.k, fsFigures[f.k], `fsOnFigureInput('${f.k}', this.value)`)}
       <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${escHtml(f.hint)}</div>
     </div>`;
   }
   html += '</div>';
   html += `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
-    D. Tax is computed from the return type — see the Return of Income sheet in step 3.</div>`;
+    D. Tax is computed from the return type — see the Return of Income sheet in step 3.
+    Leave every figure blank to lay out the statements with the comparative year only.</div>`;
   grid.innerHTML = html;
 }
 
-function fsOnFigureInput(k) {
+function fsOnFigureInput(k, v) {
+  fsFigures[k] = (String(v).trim() === '') ? '' : fsNum(v);
   if (k === 'A') fsRenderReturnTypes();   // turnover changes which returns qualify
+  fsSyncFigureInputs(k);
   fsRecalcDebounced();
+}
+
+// Mirror a figure into the other panel's input without touching the one being
+// typed in (that would move the caret).
+function fsSyncFigureInputs(k) {
+  const active = document.activeElement;
+  const v = fsFigures[k];
+  const text = (v == null || v === '') ? '' : String(v);
+  document.querySelectorAll(`[data-fsk="fig2-${k}"], [data-fsk="figL-${k}"]`).forEach(el => {
+    if (el !== active) el.value = text;
+  });
 }
 
 function fsSeedPpe() {
@@ -382,13 +432,12 @@ function fsRenderPpe() {
     html += `<tr><td>${escHtml(fsPpeClassName(p.key))}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;">${fsFmt(opening)}</td>
       ${['additions', 'disposals', 'disposalDep', 'depCharge'].map(fld =>
-        `<td style="text-align:right;"><input type="number" step="0.01" style="width:118px;text-align:right;"
-          value="${p[fld] || ''}" oninput="fsPpeEdit(${i},'${fld}',this.value)" /></td>`).join('')}
+        `<td style="text-align:right;">${fsMoneyInput('ppe-' + p.key + '-' + fld, p[fld] || '', `fsPpeEdit(${i},'${fld}',this.value)`, 118)}</td>`).join('')}
       </tr>`;
   });
   html += '</tbody></table></div>';
   const charged = fsPpeInput.reduce((s, p) => s + fsNum(p.depCharge), 0);
-  const M = fsNum((fsEl('fs-fig-M') || {}).value);
+  const M = fsNum(fsFigures.M);
   const ok = Math.abs(charged - M) < 0.5;
   html += `<div style="margin-top:10px;font-size:12.5px;">Depreciation charged: <b style="font-variant-numeric:tabular-nums;">${fsFmt(charged)}</b>
      &nbsp;·&nbsp; figure M: <b style="font-variant-numeric:tabular-nums;">${fsFmt(M)}</b>
@@ -406,7 +455,7 @@ function fsPpeEdit(i, field, v) {
 // Convenience only, and it says so: splitting one total across classes by
 // opening balance is an allocation, not the SLM module's own per-asset answer.
 function fsSpreadDepreciation() {
-  const M = fsNum((fsEl('fs-fig-M') || {}).value);
+  const M = fsNum(fsFigures.M);
   if (!M || !fsPy) { fsStatus('Enter figure M first.', 'error'); return; }
   const pyByKey = {};
   for (const c of (fsPy.ppe.classes || [])) {
@@ -452,8 +501,7 @@ function fsRenderExpenses() {
       const flat = /\brent\b|audit\s*fee/i.test(it.name);
       h += `<tr><td>${escHtml(it.name)}${flat ? ' <span style="font-size:11px;color:var(--text-muted);">held flat</span>' : ''}</td>
         <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--text-muted);">${fsFmt(prior)}</td>
-        <td style="text-align:right;"><input type="number" step="0.01" style="width:130px;text-align:right;"
-           value="${it.amount}" oninput="fsExpenseEdit('${kind}',${i},this.value)" /></td></tr>`;
+        <td style="text-align:right;">${fsMoneyInput(`exp-${kind}-${i}`, it.amount, `fsExpenseEdit('${kind}',${i},this.value)`, 130)}</td></tr>`;
     });
     h += '</tbody></table></div>';
     return h;
@@ -484,7 +532,10 @@ function fsExpenseEdit(kind, i, v) {
 
 function fsCollectInput() {
   const figures = {};
-  FS_FIGURES.forEach(f => { figures[f.k] = fsNum((fsEl('fs-fig-' + f.k) || {}).value); });
+  FS_FIGURES.forEach(f => { figures[f.k] = fsNum(fsFigures[f.k]); });
+  // Nothing entered yet = lay the statements out with the comparative column
+  // only, rather than refusing to build.
+  const blankCurrentYear = !FS_FIGURES.some(f => fsNum(fsFigures[f.k]) !== 0);
 
   const fy = fsEl('fs-fy').value;
   const [y1] = fy.split('-');
@@ -524,7 +575,7 @@ function fsCollectInput() {
       dateBs: `${today.year}.${String(today.month).padStart(2, '0')}.${String(today.day).padStart(2, '0')}`,
       place,
     },
-    figures,
+    figures, blankCurrentYear,
     ppeClasses: window.DEP_SLM_CLASSES || [],
     ppe: fsPpeInput,
     levers: Object.assign({}, fsLevers, fsExpenseEdits || {}),
@@ -549,6 +600,9 @@ function fsCalculate() {
   if (fsPyIssues.some(i => i.level === 'error')) { fsStatus('The prior-year file is missing required figures — fix it and re-upload.', 'error'); return; }
   fsRun();
   fsShowSection('review');
+  if (fsResult && fsResult.meta.blankCurrentYear) {
+    fsStatus('Statements laid out with the comparative year only — enter any figure to start filling the current-year column.', 'info');
+  }
   AuditLog.record('finstatement_generated', {
     module: 'finStatement', client_name: fsEl('fs-company').value, status: 'success',
     detail: { fy: fsEl('fs-fy').value, basis: fsEl('fs-basis').value, returnType: fsEl('fs-return-type').value },
@@ -560,9 +614,13 @@ function fsRun() {
   fsResult = FinStatementEngine.build(input);
   fsReport = fsxBuildReport(fsResult);
   fsSavedId = null;
-  fsRenderReview();
-  fsRenderPpe();
-  fsRenderExpenses();
+  // All three of these rebuild grids that hold live inputs, so the field the
+  // user is typing in has to survive the rebuild.
+  fsPreserveFocus(() => {
+    fsRenderReview();
+    fsRenderPpe();
+    fsRenderExpenses();
+  });
 }
 
 function fsRecalcDebounced() {
@@ -594,35 +652,51 @@ function fsRenderReview() {
   // The three proofs. Shown, never forced — a non-zero figure is a real
   // finding about the inputs (§16, following Final Account).
   const proof = (label, v, note) => {
-    const ok = Math.abs(v) < 0.5;
+    const blank = v == null;
+    const ok = !blank && Math.abs(v) < 0.5;
+    const colour = blank ? 'var(--text-muted)' : (ok ? 'var(--green-dk)' : 'var(--red-dk)');
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);">
       <div><b style="font-size:13px;">${label}</b><div style="font-size:11.5px;color:var(--text-muted);">${note}</div></div>
-      <div style="font-variant-numeric:tabular-nums;font-weight:700;color:${ok ? 'var(--green-dk)' : 'var(--red-dk)'};">${fsFmt(v)}</div>
+      <div style="font-variant-numeric:tabular-nums;font-weight:700;color:${colour};">${blank ? '—' : fsFmt(v)}</div>
     </div>`;
   };
   fsEl('fs-proofs').innerHTML =
-    proof('Balance Sheet', p.balanceSheet, 'Total Assets less Total Equity and Liabilities — always zero')
+    (p.blank ? `<div class="status-box status-info" style="margin-bottom:10px;">No current-year figures entered — the statements are laid out with the comparative year only, and the current-year column is left blank. The proofs apply once figures are entered.</div>` : '')
+    + proof('Balance Sheet', p.balanceSheet, 'Total Assets less Total Equity and Liabilities — always zero')
     + proof('Cash Flow', p.cashFlow, 'Closing cash per the cash-flow statement less the balance-sheet cash')
     + proof('Profit', p.profit, 'Solved profit before tax less figure C')
-    + `<div style="margin-top:12px;font-size:12.5px;color:var(--text-muted);">
+    + (p.blank ? '' : `<div style="margin-top:12px;font-size:12.5px;color:var(--text-muted);">
         Goods Purchase solved to <b style="font-variant-numeric:tabular-nums;color:var(--text);">${fsFmt(fsResult.income.materials.purchases)}</b>
         &nbsp;·&nbsp; Trade Receivables solved to <b style="font-variant-numeric:tabular-nums;color:var(--text);">${fsFmt((fsResult.balance.receivableLines[0] || {}).amount)}</b>
         &nbsp;·&nbsp; Tax <b style="font-variant-numeric:tabular-nums;color:var(--text);">${fsFmt(fsResult.coi.tax)}</b>
-        <span style="color:var(--text-muted);">(${escHtml(fsResult.coi.rule || '')})</span></div>`;
+        <span style="color:var(--text-muted);">(${escHtml(fsResult.coi.rule || '')})</span></div>`);
 
   const issues = fsResult.issues || [];
   fsEl('fs-issues-card').style.display = issues.length ? '' : 'none';
   fsEl('fs-issues').innerHTML = fsIssuesHtml(issues);
 
-  // Levers
+  // ── Levers. Every current-year figure is editable here as well as in step 2,
+  //    so the whole statement can be driven from the review screen. ──
   const lv = fsResult.levers;
-  const lever = (key, label, val, note) => `<div class="form-group">
+  const field = (key, label, val, note, handler) => `<div class="form-group">
       <label>${escHtml(label)}</label>
-      <input type="number" step="0.01" value="${val}" oninput="fsLeverEdit('${key}', this.value)" />
+      ${fsMoneyInput(key, val, handler)}
       <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${escHtml(note)}</div>
     </div>`;
-  fsEl('fs-levers').innerHTML = '<div class="form-grid" style="grid-template-columns:repeat(3,1fr);gap:14px;">'
+  const lever = (key, label, val, note) =>
+    field('lev-' + key, label, val, note, `fsLeverEdit('${key}', this.value)`);
+
+  const figuresHtml = FS_FIGURES.map(f =>
+    field('figL-' + f.k, `${f.k}. ${f.label}`, fsFigures[f.k], f.hint,
+      `fsOnFigureInput('${f.k}', this.value)`)).join('');
+
+  fsEl('fs-levers').innerHTML =
+    '<div style="font-weight:700;font-size:13px;margin:0 0 8px;">Current-year figures</div>'
+    + '<div class="form-grid" style="grid-template-columns:repeat(3,1fr);gap:14px;">' + figuresHtml + '</div>'
+    + '<div style="font-weight:700;font-size:13px;margin:18px 0 8px;">Balancing levers &amp; accruals</div>'
+    + '<div class="form-grid" style="grid-template-columns:repeat(3,1fr);gap:14px;">'
     + lever('cash', 'Cash & Bank', lv.cash, 'Seeded 2–9 lakh, reproducible per client')
+    + lever('tradePayables', 'Trade & Other Payables', lv.tradePayables, 'Note 3.9 Trade Payables — flows to the SFP and the cash flow')
     + lever('dividend', fsResult.meta.terms.distribution, lv.dividend, 'Reduces retained earnings')
     + lever('directorLoan', fsResult.meta.terms.person + ' Loan', lv.directorLoan, 'Raised automatically if receivables solve negative')
     + lever('auditFee', 'Audit Fee', lv.auditFee, 'Held flat at the prior year (rule 1)')
@@ -774,7 +848,7 @@ function fsShowSection(which) {
     if (btn) btn.classList.toggle('active', s === which);
   });
   if (which === 'figures') {
-    if (!fsEl('fs-fig-A')) fsRenderFigures();
+    fsRenderFigures();
     fsRenderPpe();
     fsRenderExpenses();
   }

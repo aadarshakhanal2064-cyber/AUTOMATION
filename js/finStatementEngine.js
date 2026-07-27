@@ -196,7 +196,8 @@ const FinStatementEngine = (() => {
       financeItems: [], financeTotal: 0,
       otherItems: [], otherTotal: 0,
       auditFee: 0, rent: 0, salary: 0,
-      receivableItems: [], payableItems: [],
+      receivableItems: [], payableItems: [], loanItems: [], capitalItems: [], reserveItems: [],
+      socf: {},
       ppe: { classes: [], totalCost: 0, totalDep: 0, totalCarrying: 0 },
       equity: { shareCapital: 0, sharePremium: 0, retained: 0, otherReserves: 0 },
     };
@@ -365,6 +366,49 @@ const FinStatementEngine = (() => {
       }
     }
 
+    // ── SOCF: the prior year's own cash flow ──
+    // Read rather than re-derived: a cash flow needs TWO balance sheets, and
+    // the year before last isn't in this file. The uploaded statement already
+    // contains the finished figures, so they become the comparative column
+    // directly.
+    const socf = findSheet(wb, ['SOCF', 'Statement of Cash Flow', 'Cash Flow']);
+    if (socf) {
+      const gC = grid(socf, XLSX);
+      const hC = findHeader(gC);
+      if (hC) {
+        const colC = pickCol(hC);
+        const cVal = (re) => { const h = labelValue(gC, re, hC.labelCol, colC, hC.row + 1); return h ? h.value : 0; };
+        py.socf = {
+          profit: cVal(/^profit for the year/),
+          depreciation: cVal(/depreciation.*impairment|depreciation\/impairment/),
+          interestIncome: cVal(/^interest income/),
+          financeCost: cVal(/interest expenses|finance cost/),
+          ppeLoss: cVal(/loss.*gain.*sale/),
+          taxExpense: cVal(/income tax expenses charged/),
+          dRecv: cVal(/increase\/decrease in trade & other receivable|increase\/decrease in trade and other receivable/),
+          dStock: cVal(/increase\/decrease in inventor/),
+          dPay: cVal(/increase\/decrease in trade & other payable|increase\/decrease in trade and other payable/),
+          generated: cVal(/cash generated from operation/),
+          interestPaid: cVal(/^interest paid/),
+          taxPaid: cVal(/^income tax paid/),
+          netOperating: cVal(/net cash flows? from operating/),
+          ppeAcquired: cVal(/acquisition of property/),
+          investments: cVal(/^investments$/),
+          interestReceived: cVal(/interest\/dividend received/),
+          ppeProceeds: cVal(/proceeds from sale of ppe/),
+          netInvesting: cVal(/net cash flows? from investing/),
+          capital: cVal(/proceeds from capital introduced/),
+          nonCurrentBorrowings: cVal(/non-current borrowing/),
+          currentBorrowings: cVal(/from current borrowing/),
+          drawing: cVal(/^drawing$|^dividend paid$/),
+          netFinancing: cVal(/net cash flows? from financing/),
+          netIncrease: cVal(/net increase in cash/),
+          openingCash: cVal(/cash & cash equivalents at the beginning|cash and cash equivalents at the beginning/),
+          closingCash: cVal(/cash & cash equivalents at the end|cash and cash equivalents at the end/),
+        };
+      }
+    }
+
     // ── Sch-BS: receivable and payable detail ──
     const schBs = findSheet(wb, ['Sch-BS', 'Sch BS', 'Schedule BS']);
     if (schBs) {
@@ -389,6 +433,12 @@ const FinStatementEngine = (() => {
       // block; the trade figure itself is a balancing figure next year.
       py.receivableItems = pick(/^3\.3\b/, /trade receivable|provisions for impairment|non-current portion|current portion/);
       py.payableItems = pick(/^3\.9\b/, null);
+      // 3.8 loan lines, so the comparative column of that note shows the
+      // client's own prior-year split rather than a fabricated one.
+      py.loanItems = pick(/^3\.8\b/, /^non-current|^current\s*:?$|^bank loans?$|total loans/);
+      // 3.6 / 3.7 give the equity notes their comparative figures.
+      py.capitalItems = pick(/^3\.6\b/, /^type of shares|^number$|^npr$/);
+      py.reserveItems = pick(/^3\.7\b/, /^retained earnings/);
     }
 
     // ── 3.1 PPE: closing carrying per class becomes next year's opening ──
@@ -533,6 +583,17 @@ const FinStatementEngine = (() => {
     const T = termsFor(input.entity);
     const basis = input.basis === 'audited' ? 'audited' : 'provisional';
 
+    // A statement set can legitimately be produced before any current-year
+    // figure exists: the firm wants the prior year laid out as the comparative
+    // column and the current-year column left blank, to be filled in as the
+    // year's figures come in. Everything below still computes (so the shape of
+    // the statements is real) but the export blanks the current-year column and
+    // the proofs are suppressed — there is nothing yet to prove.
+    const blankCurrentYear = input.blankCurrentYear != null
+      ? !!input.blankCurrentYear
+      : !['A', 'B', 'C', 'E1', 'E2', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
+          .some(k => num(f[k]) !== 0);
+
     const A = num(f.A), B = num(f.B), C = num(f.C);
     const E1 = num(f.E1), E2 = num(f.E2), F = num(f.F);
     const G = num(f.G), H = num(f.H), I = num(f.I), J = num(f.J);
@@ -595,7 +656,7 @@ const FinStatementEngine = (() => {
     const totalExpenses = r2(materialsTotal + nonMaterialExpenses);
     const pbt = r2(totalIncome - totalExpenses);
 
-    if (purchases < 0) {
+    if (purchases < 0 && !blankCurrentYear) {
       warn(`Goods Purchase solves to a negative figure (${r2(purchases)}). Check Sales (A), Closing Stock (B) and Profit (C) — the profit target may be unreachable at this sales level.`);
     }
 
@@ -610,7 +671,7 @@ const FinStatementEngine = (() => {
     const netProfit = r2(pbt - tax);
 
     const allowed = allowedReturnTypes(input.entity, A);
-    if (input.returnType && !allowed.includes(input.returnType)) {
+    if (input.returnType && !allowed.includes(input.returnType) && !blankCurrentYear) {
       warn(`Return type ${input.returnType} does not match the turnover: ${T.entity} with sales of ${r0(A).toLocaleString('en-IN')} qualifies for ${allowed.join(' or ')}.`);
     }
 
@@ -727,7 +788,12 @@ const FinStatementEngine = (() => {
     const tdsRent = r2(rent * RULES.tdsRent);
     const salaryPayable = r2(salary / 12 * RULES.salaryPayableMonths);
     const expensesPayable = num(lv.expensesPayable);
-    const tradePayables = num(input.purchaseTotal);
+    // Trade Payables defaults to the uploaded purchase detail's closing-balance
+    // total (Sch-BS H91 = +p!D12 in the template) but is overridable, because
+    // the detail file is optional and the figure is often known before it. It
+    // drives note 3.9, the SFP line, the cash-flow payables movement and — via
+    // the balance sheet — the balancing receivable.
+    const tradePayables = lv.tradePayables != null ? num(lv.tradePayables) : num(input.purchaseTotal);
 
     const payableLines = [
       { name: 'Trade Payables', amount: tradePayables },
@@ -765,12 +831,12 @@ const FinStatementEngine = (() => {
     };
 
     let bs = solveReceivable(directorLoan);
-    if (bs.tradeReceivables < 0 && lv.directorLoan == null) {
+    if (bs.tradeReceivables < 0 && lv.directorLoan == null && !blankCurrentYear) {
       directorLoan = EM.round1000Up(directorLoan - bs.tradeReceivables);
       bs = solveReceivable(directorLoan);
       warn(`Trade Receivables solved negative, so ${T.person} loan was raised to ${r0(directorLoan).toLocaleString('en-IN')} to bring it back to zero or above.`);
     }
-    if (bs.tradeReceivables < 0) {
+    if (bs.tradeReceivables < 0 && !blankCurrentYear) {
       err(`Trade Receivables is negative (${r2(bs.tradeReceivables)}). Raise the ${T.person} loan or revisit the loan and capital figures.`);
     }
 
@@ -836,13 +902,17 @@ const FinStatementEngine = (() => {
 
     // ── The two proof rows. Shown, never forced (the Final Account precedent):
     //    a non-zero figure is a real finding about the inputs. ──
-    const proofs = {
-      balanceSheet: r2(totalAssets - bs.totalEquityLiab),
-      cashFlow: r2(closingCash - cash),
-      profit: r2(pbt - C),
-    };
-    if (Math.abs(proofs.balanceSheet) > 0.5) err(`Balance sheet is out by ${r2(proofs.balanceSheet)}.`);
-    if (Math.abs(proofs.cashFlow) > 0.5) warn(`Cash flow closing cash is out by ${r2(proofs.cashFlow)} against the balance-sheet cash.`);
+    const proofs = blankCurrentYear
+      ? { balanceSheet: null, cashFlow: null, profit: null, blank: true }
+      : {
+        balanceSheet: r2(totalAssets - bs.totalEquityLiab),
+        cashFlow: r2(closingCash - cash),
+        profit: r2(pbt - C),
+      };
+    if (!blankCurrentYear) {
+      if (Math.abs(proofs.balanceSheet) > 0.5) err(`Balance sheet is out by ${r2(proofs.balanceSheet)}.`);
+      if (Math.abs(proofs.cashFlow) > 0.5) warn(`Cash flow closing cash is out by ${r2(proofs.cashFlow)} against the balance-sheet cash.`);
+    }
 
     return {
       meta: {
@@ -855,6 +925,7 @@ const FinStatementEngine = (() => {
           soce: TITLES.soce[basis], socf: TITLES.socf[basis],
         },
         allowedReturnTypes: allowed,
+        blankCurrentYear,
         serviceIndustry: !!input.serviceIndustry,
         // B.S. date wording ("As at 32nd Ashadh 2082 (16th July 2025)") is
         // built by the UI through NepaliLocale and passed straight through, so
@@ -893,7 +964,7 @@ const FinStatementEngine = (() => {
         financing: cfFinancing, netFinancing,
         netIncrease, openingCash, closingCash,
       },
-      levers: { cash, dividend, directorLoan, auditFee, rent, expensesPayable, purchases },
+      levers: { cash, dividend, directorLoan, auditFee, rent, expensesPayable, tradePayables, purchases },
       // Carried through for the export layer: the comparative column comes
       // straight off the prior-year model, and Sch-BS 3.8 shows the loan inputs
       // broken out as Term / PWC / HP rather than only as their total.
