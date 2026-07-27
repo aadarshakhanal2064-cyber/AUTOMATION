@@ -95,13 +95,20 @@ function fsInit() {
   fsPopulateFy();
   fsRenderReturnTypes();
 
+  // Reads the same window.clientsList the Clients directory loads. The config
+  // keys are getList/renderItem/onSelect — see js/core/searchEngine.js.
   SearchEngine.attachAutocomplete(fsEl('fs-client-search'), fsEl('fs-client-autocomplete'), {
-    getItems: () => (window.clientsList || []),
+    getList: () => window.clientsList,
     keys: ['name', 'pan'],
+    // Digit-agnostic: 45 client records carry Devanagari PANs, so both the
+    // query and the indexed PAN are normalised before matching.
     normalizeQuery: (q) => NepaliLocale.toEnglishDigits(q || ''),
-    normalizeItem: (it) => ({ ...it, pan: NepaliLocale.toEnglishDigits(it.pan || '') }),
-    render: (it) => `${escHtml(it.name)}${it.pan ? ' · ' + escHtml(it.pan) : ''}`,
-    onPick: (it) => fsPickClient(it),
+    normalizeItem: (c) => Object.assign({}, c, { pan: NepaliLocale.toEnglishDigits(c.pan || '') }),
+    renderItem: c => `
+      <div class="ac-name">${escHtml(c.name)}</div>
+      <div class="ac-email">${escHtml(c.pan ? 'PAN: ' + c.pan : (c.email || 'No details on file'))}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
+    `,
+    onSelect: fsPickClient,
   });
 
   fsShowSection('setup');
@@ -215,7 +222,7 @@ async function fsHandlePyFile(input) {
     }
     fsSeedPpe();
     AuditLog.record('finstatement_py_parsed', {
-      module: 'finStatement', client_name: fsEl('fs-company').value, status: 'success',
+      module: 'finStatement', clientName: fsEl('fs-company').value, status: 'success',
       detail: { otherExpenseLines: py.otherItems.length, ppeClasses: py.ppe.classes.length },
     });
     fsStatus('Prior-year statement read.', 'success');
@@ -543,9 +550,13 @@ function fsCollectInput() {
   const pyYear = cyYear - 1;
   const asAt = (y) => `${NepaliLocale.bsOrdinal ? '' : ''}${fsAshadhEnd(y)}`;
 
+  // REP_FIRMS is keyed 'shailesh' / 'dallakoti' — it is the one source for both
+  // firms' letterhead details across the app, so the name comes from there
+  // rather than being repeated here.
   const auditorKey = fsEl('fs-auditor').value;
-  const auditorName = auditorKey === 'SA' ? ((window.REP_FIRMS || {}).SA || {}).name || 'Shailesh & Associates'
-    : auditorKey === 'DC' ? ((window.REP_FIRMS || {}).DC || {}).name || 'Dallakoti & Company'
+  const FIRM_KEY = { SA: 'shailesh', DC: 'dallakoti' };
+  const firm = (window.REP_FIRMS || {})[FIRM_KEY[auditorKey]];
+  const auditorName = firm ? firm.name
     : auditorKey === 'other' ? fsEl('fs-auditor-other').value.trim()
     : '';
 
@@ -587,10 +598,13 @@ function fsCollectInput() {
 }
 
 // Ashadh is the last B.S. month and its length varies (31 or 32 days), so the
-// year-end wording comes from the calendar table rather than being hardcoded.
+// year-end wording comes from the calendar table rather than being hardcoded —
+// the sample statements read "32nd Ashadh 2082". fyEndBs(startYear) returns the
+// fiscal year's closing date, which IS Ashadh end; the raw BS_MONTH_LENGTHS
+// table is private to NepaliLocale, so this is the supported way to reach it.
 function fsAshadhEnd(bsYear) {
-  const len = (NepaliLocale.BS_MONTH_LENGTHS && NepaliLocale.BS_MONTH_LENGTHS[bsYear])
-    ? NepaliLocale.BS_MONTH_LENGTHS[bsYear][11] : 31;
+  const end = NepaliLocale.fyEndBs(bsYear - 1);
+  const len = (end && end.day) || 31;
   const suffix = (n) => (n % 10 === 1 && n !== 11) ? 'st' : (n % 10 === 2 && n !== 12) ? 'nd' : (n % 10 === 3 && n !== 13) ? 'rd' : 'th';
   return `${len}${suffix(len)} Ashadh ${bsYear}`;
 }
@@ -604,7 +618,7 @@ function fsCalculate() {
     fsStatus('Statements laid out with the comparative year only — enter any figure to start filling the current-year column.', 'info');
   }
   AuditLog.record('finstatement_generated', {
-    module: 'finStatement', client_name: fsEl('fs-company').value, status: 'success',
+    module: 'finStatement', clientName: fsEl('fs-company').value, status: 'success',
     detail: { fy: fsEl('fs-fy').value, basis: fsEl('fs-basis').value, returnType: fsEl('fs-return-type').value },
   });
 }
@@ -750,7 +764,7 @@ function fsPrint() {
   if (!w) { fsStatus('The print window was blocked — allow pop-ups for this site.', 'error'); URL.revokeObjectURL(url); return; }
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   AuditLog.record('finstatement_printed', {
-    module: 'finStatement', client_name: fsEl('fs-company').value, status: 'success',
+    module: 'finStatement', clientName: fsEl('fs-company').value, status: 'success',
     detail: { fy: fsEl('fs-fy').value, basis: fsEl('fs-basis').value },
   });
 }
@@ -767,7 +781,7 @@ async function fsDownloadExcel() {
     DocumentEngine.downloadBlob(
       new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
       name,
-      { eventType: 'finstatement_excel_downloaded', module: 'finStatement', client_name: fsEl('fs-company').value });
+      { eventType: 'finstatement_excel_downloaded', module: 'finStatement', clientName: fsEl('fs-company').value });
     fsStatus('Workbook downloaded.', 'success');
   } catch (e) {
     fsStatus('Could not build the workbook: ' + e.message, 'error');
@@ -827,8 +841,8 @@ async function fsSave() {
     if (error) throw error;
     fsSavedId = data.id;
     AuditLog.record('finstatement_saved', {
-      module: 'finStatement', client_name: input.company.name, status: 'success',
-      record_ref: data.id, detail: { fy: input.fy, basis: input.basis },
+      module: 'finStatement', clientName: input.company.name, status: 'success',
+      recordRef: data.id, detail: { fy: input.fy, basis: input.basis },
     });
     fsStatus(`Saved (${input.basis}, ${input.fy}).`, 'success');
   } catch (e) {
