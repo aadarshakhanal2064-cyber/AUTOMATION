@@ -1,6 +1,25 @@
 // ════════════════════════════════════════════
-//  FIND + SEND DOCUMENT (unchanged logic)
+//  FIND + SEND DOCUMENT
 // ════════════════════════════════════════════
+
+// The found file belongs to the client that was in the box when Find ran.
+// Any change to the client, document type or fiscal year invalidates it, so
+// Send can never mail one client's document to another's address.
+function sdClearFoundFile() {
+  if (!window.foundFile) return;   // nothing staged — leave any other status alone
+  window.foundFile = null;
+  const preview = document.getElementById('file-preview');
+  const sendBtn = document.getElementById('sendBtn');
+  if (preview) preview.style.display = 'none';
+  if (sendBtn) sendBtn.style.display = 'none';
+  showStatus('ℹ️ The document you found was for the previous selection — search again before sending.', 'info');
+}
+
+['clientName', 'clientEmail', 'docType', 'fiscalYear'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) { el.addEventListener('input', sdClearFoundFile); el.addEventListener('change', sdClearFoundFile); }
+});
+
 async function findDocument() {
   const clientName  = document.getElementById('clientName').value.trim();
   const docType     = document.getElementById('docType').value;

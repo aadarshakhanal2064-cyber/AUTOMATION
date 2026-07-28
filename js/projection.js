@@ -53,21 +53,47 @@ function pjInit() {
     renderItem: c => `<div class="ac-name">${escHtml(c.name)}</div><div class="ac-email">PAN ${escHtml(c.pan || '—')}</div>`,
     onSelect: pjSelectClient,
   });
+  // Typing over the picked name detaches the screen from that client record,
+  // so a later Save can't attach to it.
+  pjEl('pj-client-search').addEventListener('input', () => { pjScope.invalidate(); pjSelectedClient = null; });
   pjRenderAdditionsRows();
   pjAddLoanRow('st');          // one starter row for the common case
   pjInitDone = true;
 }
 
-function pjSelectClient(c) {
-  pjSelectedClient = c;
-  pjEl('pj-client-search').value = c.name;
-  pjEl('pj-company').value = c.name;
-  pjEl('pj-pan').value = c.pan || '';
-  const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(c.entity_type || '').toLowerCase().trim()];
-  pjEl('pj-org-type').value = profile === 'partnership' ? 'partnership'
-    : profile === 'proprietorship' ? 'proprietorship' : 'private';
-  pjOrgTypeChanged();
-}
+// Everything on this screen belongs to one client: the uploaded statement,
+// the parsed model, the computed projection AND pjSavedId. That last one is
+// why the clear is not cosmetic — a stale pjSavedId made pjSave() UPDATE the
+// previous client's projection_reports row with the new client's figures.
+const pjScope = WorkflowEngine.createClientScope({
+  clear() {
+    const hadUpload = !!pjModel;
+    pjSelectedClient = null;
+    pjModel = null; pjParseIssues = [];
+    pjResult = null; pjIssues = [];
+    pjSavedId = null;
+    ['pj-company', 'pj-pan'].forEach(id => { pjEl(id).value = ''; });
+    const fileEl = pjEl('pj-file');
+    if (fileEl) fileEl.value = '';
+    pjRenderDetectSummary();
+    pjShowSection('upload');
+    pjStatus(hadUpload
+      ? "Cleared the previous client's imported statement — upload this client's workbook to continue."
+      : '', 'info');
+  },
+  load(c) {
+    pjSelectedClient = c;
+    pjEl('pj-client-search').value = c.name;
+    pjEl('pj-company').value = c.name;
+    pjEl('pj-pan').value = c.pan || '';
+    const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(c.entity_type || '').toLowerCase().trim()];
+    pjEl('pj-org-type').value = profile === 'partnership' ? 'partnership'
+      : profile === 'proprietorship' ? 'proprietorship' : 'private';
+    pjOrgTypeChanged();
+  },
+});
+
+function pjSelectClient(c) { pjScope.select(c); }
 
 // Organization type drives both the report terminology (Director/Partner/
 // Proprietor, Paid-up vs Registered Capital) and the rule-9 tax profile.
