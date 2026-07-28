@@ -596,61 +596,75 @@ function pjxAmt(v) {
 
 const PJX_PRINT_CSS = `
   *{ box-sizing:border-box; }
-  body{ margin:0; background:#eef1f5; font-family:"Times New Roman",Georgia,serif; color:#14181f; }
+  /* Browsers drop background fills when printing unless told otherwise, which
+     silently stripped the navy column band and the tinted total rows out of
+     every saved PDF — the figures stayed but the report lost its structure.
+     Forcing exact colour on the whole document is what keeps the printed page
+     identical to the preview. */
+  html, body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{ margin:0; background:#eef1f5; font-family:"Times New Roman",Georgia,serif;
+        color:#0d131c; -webkit-font-smoothing:antialiased; }
   .pjp-sheet{
     background:#fff; width:210mm; min-height:297mm; margin:0 auto 18px; padding:14mm 12mm;
     box-shadow:0 2px 14px rgba(15,23,42,.18);
   }
-  .pjp-head{ text-align:center; margin-bottom:10px; }
-  .pjp-co{ font-size:15pt; font-weight:700; color:#0b1f3d; letter-spacing:.2px; }
-  .pjp-addr{ font-size:9.5pt; color:#5a6675; margin-top:2px; }
-  .pjp-title{ font-size:11.5pt; font-weight:700; margin-top:5px; }
+  .pjp-head{ text-align:center; margin-bottom:12px; }
+  .pjp-co{ font-size:16.5pt; font-weight:700; color:#0b1f3d; letter-spacing:.2px; }
+  .pjp-addr{ font-size:11pt; color:#3f4a5a; margin-top:3px; }
+  .pjp-title{ font-size:12.5pt; font-weight:700; margin-top:6px; }
   .pjp-table{ width:100%; border-collapse:collapse; table-layout:fixed; border:1px solid #0b1f3d; }
   .pjp-table th{
     background:#0b1f3d; color:#fff; font-weight:700; text-align:right;
-    padding:6px 6px; vertical-align:middle; border-left:1px solid rgba(255,255,255,.18);
+    padding:7px 7px; vertical-align:middle; border-left:1px solid #33507a;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
-  .pjp-table th span{ display:block; font-weight:400; font-size:.85em; opacity:.85; }
+  /* A solid tint rather than opacity — translucency is the first thing a print
+     pipeline flattens, and it made the year sub-heading look washed out. */
+  .pjp-table th span{ display:block; font-weight:400; font-size:.86em; color:#c6d4e6; }
   .pjp-table th.pjp-lbl{ text-align:left; width:34%; border-left:0; }
-  .pjp-table td{ padding:4px 6px; text-align:right; border-bottom:1px solid #dfe4ec; border-left:1px solid #e8ecf3; }
+  .pjp-table td{ padding:5.5px 7px; text-align:right;
+                 border-bottom:1px solid #c5cfdd; border-left:1px solid #d3dbe6; }
   .pjp-table td.pjp-lbl{ text-align:left; border-left:0; }
   tr.pjp-item td.pjp-lbl{ padding-left:20px; }
-  tr.pjp-sec td{ font-weight:700; color:#0b1f3d; border-bottom:0; padding-top:8px; }
-  tr.pjp-tot td{ background:#eef1f6; font-weight:700; border-top:1px solid #8593a6; }
-  tr.pjp-grand td{ background:#d8e2ed; font-weight:700; border-top:1px solid #8593a6; border-bottom:3px double #0b1f3d; }
+  tr.pjp-sec td{ font-weight:700; color:#0b1f3d; border-bottom:0; padding-top:9px; }
+  tr.pjp-tot td{ background:#e7ecf4; font-weight:700; border-top:1px solid #7686a0;
+                 -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  tr.pjp-grand td{ background:#cfdcec; font-weight:700; border-top:1px solid #7686a0;
+                   border-bottom:3px double #0b1f3d;
+                   -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   tr.pjp-b td{ font-weight:700; }
-  tr.pjp-span td{ text-align:center; font-weight:700; color:#0b1f3d; padding:9px 0 4px; border-bottom:0; }
-  td.pjp-pass{ color:#1a8040; }
-  td.pjp-fail{ color:#bf2929; }
-  .pjp-sig{ display:flex; justify-content:space-between; margin-top:26px; font-size:9.5pt; }
+  tr.pjp-span td{ text-align:center; font-weight:700; color:#0b1f3d; padding:10px 0 5px; border-bottom:0; }
+  td.pjp-pass{ color:#15703a; font-weight:700; }
+  td.pjp-fail{ color:#a81f1f; font-weight:700; }
+  .pjp-sig{ display:flex; justify-content:space-between; margin-top:28px; font-size:10.5pt; }
   .pjp-sig-r{ text-align:right; }
-  .pjp-sig-line{ border-top:1px dotted #14181f; width:150px; margin-bottom:4px; }
+  .pjp-sig-line{ border-top:1px dotted #0d131c; width:150px; margin-bottom:5px; }
   .pjp-sig-r .pjp-sig-line{ margin-left:auto; }
-  .pjp-sig-meta{ color:#3d4757; margin-top:2px; }
+  .pjp-sig-meta{ color:#2f3a49; margin-top:3px; }
   /* Cover */
-  .pjp-cover-frame{ border:1.5px solid #0b1f3d; outline:1px solid #8593a6; outline-offset:5px;
+  .pjp-cover-frame{ border:1.5px solid #0b1f3d; outline:1px solid #7686a0; outline-offset:5px;
     height:269mm; text-align:center; padding:56px 40px; display:flex; flex-direction:column; }
-  .pjp-cover-title{ font-size:26pt; font-weight:700; color:#0b1f3d; letter-spacing:.5px; text-transform:uppercase; }
+  .pjp-cover-title{ font-size:27pt; font-weight:700; color:#0b1f3d; letter-spacing:.5px; text-transform:uppercase; }
   .pjp-cover-rule{ width:260px; border-top:1.2px solid #0b1f3d; margin:12px auto 0; }
-  .pjp-cover-of{ font-size:10.5pt; color:#5a6675; text-transform:uppercase; letter-spacing:1px; margin-top:26px; }
-  .pjp-cover-entity{ font-size:19pt; font-weight:700; margin-top:22px; }
-  .pjp-cover-addr{ font-size:10.5pt; color:#5a6675; margin-top:8px; }
-  .pjp-cover-pan{ font-size:10.5pt; margin-top:5px; }
+  .pjp-cover-of{ font-size:11.5pt; color:#3f4a5a; text-transform:uppercase; letter-spacing:1px; margin-top:26px; }
+  .pjp-cover-entity{ font-size:20pt; font-weight:700; margin-top:22px; }
+  .pjp-cover-addr{ font-size:12pt; color:#3f4a5a; margin-top:9px; }
+  .pjp-cover-pan{ font-size:12pt; margin-top:6px; }
   .pjp-cover-lines{ display:flex; align-items:flex-end; justify-content:center; gap:24px; height:120px; margin:auto 0; }
   .pjp-cover-lines i{ display:block; width:0; border-left:1.4px solid #0b1f3d; }
   .pjp-cover-lines i.s{ height:62%; } .pjp-cover-lines i.t{ height:92%; }
-  .pjp-cover-fy{ font-size:13pt; font-weight:700; }
-  .pjp-cover-sub{ font-size:10.5pt; color:#5a6675; margin-top:6px; }
-  .pjp-cover-date{ font-size:10.5pt; margin-top:auto; }
+  .pjp-cover-fy{ font-size:13.5pt; font-weight:700; }
+  .pjp-cover-sub{ font-size:11.5pt; color:#3f4a5a; margin-top:7px; }
+  .pjp-cover-date{ font-size:11.5pt; margin-top:auto; }
   @page{ size:A4; margin:12mm; }
   @media print{
-    body{ background:#fff; }
+    html, body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .pjp-sheet{ width:auto; min-height:0; margin:0; padding:0; box-shadow:none;
-      page-break-after:always; }
-    .pjp-sheet:last-child{ page-break-after:auto; }
+      page-break-after:always; break-after:page; }
+    .pjp-sheet:last-child{ page-break-after:auto; break-after:auto; }
     .pjp-cover-frame{ height:262mm; }
     thead{ display:table-header-group; }        /* repeat the band across pages */
-    tr{ page-break-inside:avoid; }
+    tr{ page-break-inside:avoid; break-inside:avoid; }
   }`;
 
 function pjxReportHtmlDoc() {
@@ -675,7 +689,7 @@ function pjxReportHtmlDoc() {
   sections.forEach(sec => {
     const nC = sec.cols.length;
     // Narrower type as the year count grows, so wide tables still fit A4.
-    const size = nC <= 4 ? 9.5 : nC <= 6 ? 8.6 : nC <= 8 ? 7.8 : 7;
+    const size = nC <= 4 ? 10.5 : nC <= 6 ? 9.4 : nC <= 8 ? 8.4 : 7.4;
     const lblW = nC <= 4 ? 36 : nC <= 6 ? 30 : nC <= 8 ? 26 : 22;
     const head = `<tr><th class="pjp-lbl" style="width:${lblW}%">Particulars</th>` +
       sec.cols.map(c => `<th>${esc(c.h1)}${c.h2 ? `<span>${esc(c.h2)}</span>` : ''}</th>`).join('') + '</tr>';
