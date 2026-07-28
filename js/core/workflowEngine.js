@@ -117,5 +117,45 @@ window.WorkflowEngine = (function () {
     return { meta, badgeHtml, transition, statusKeys: Object.keys(statuses) };
   }
 
-  return { attachFormWatcher, createDebouncedRefresh, createAutosave, updateCompletionIndicator, createZoomControl, createStatusFlow };
+  // One choke point for "which client is this screen showing?".
+  //
+  // Every module used to fill its fields from the picked client and nothing
+  // else — so anything the NEW client didn't supply kept the OLD client's
+  // value, and any loader that returned early (no saved sheet for this
+  // client/year) left the previous client's grid on screen under the new
+  // client's name. This inverts that: clear() runs unconditionally BEFORE
+  // load(), so no path through the loader — early return, thrown error,
+  // slow network — can leak the previous client's data.
+  //
+  //   clear(reason)  'client'  → blank identity fields AND loaded data
+  //                  'context' → blank loaded data only (same client, new
+  //                              fiscal year / scheme / method)
+  //   load(client, reason)     fill from the record + fetch what's saved
+  //
+  // Because the surface is already blank when load() runs, load() never
+  // needs to clear anything itself — that is the whole point of the split.
+  function createClientScope({ clear, load }) {
+    let current = null;
+
+    function select(client) {
+      clear('client');
+      current = client || null;
+      if (current) load(current, 'client');
+    }
+    // Fiscal year / scheme / method changed — same client, different context.
+    function refresh() {
+      if (!current) { clear('context'); return; }
+      clear('context');
+      load(current, 'context');
+    }
+    // Typing freely in the search box instead of picking a result: the
+    // identity on screen no longer matches a real record, so nothing may
+    // save or carry forward against the old id.
+    function invalidate() { current = null; }
+    function reset() { clear('client'); current = null; }
+
+    return { select, refresh, invalidate, reset, get: () => current, id: () => (current && current.id != null ? current.id : null) };
+  }
+
+  return { attachFormWatcher, createDebouncedRefresh, createAutosave, updateCompletionIndicator, createZoomControl, createStatusFlow, createClientScope };
 })();

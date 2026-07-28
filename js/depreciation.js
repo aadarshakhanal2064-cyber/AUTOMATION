@@ -193,19 +193,32 @@ function depSetScheme(scheme) {
   if (sub) sub.textContent = scheme === 'special'
     ? 'Special Industries — Pools A–D depreciate at the accelerated rate (1/3 additional).'
     : 'Depreciation as per Income Tax — standard reducing-balance rates.';
+  // Scheme is part of the sheet identity (like client + FY) — rebuild the
+  // grid, drop the other scheme's figures, then reload. Only the Income-Tax
+  // working is scheme-scoped, so the SLM side is deliberately left alone.
   depBuildGrid();
-  // Scheme is part of the sheet identity (like client + FY) — reload its data.
+  depClearIncomeTaxData();
+  depCarryBanner('');
   depReloadForContext();
 }
 
-function depReset() {
+// Blanks the Income-Tax working only (pool inputs + addition lines). Split
+// out from depReset so the client-scope clear and the "Reset all" button
+// share one definition of "empty" instead of drifting apart.
+function depClearIncomeTaxData() {
   depPools().forEach(p => {
-    DEP_INPUT_COLS.forEach(f => { document.getElementById('dep-' + p.key + '-' + f).value = ''; });
-    if (p.mode === 'slm') { const y = document.getElementById('dep-' + p.key + '-years'); if (y) y.value = p.years; }
+    const el = f => document.getElementById('dep-' + p.key + '-' + f);
+    DEP_INPUT_COLS.forEach(f => { const e = el(f); if (e) e.value = ''; });
+    if (p.mode === 'slm') { const y = el('years'); if (y) y.value = p.years; }
   });
-  document.getElementById('dep-add-tbody').innerHTML = '';
-  depCarryBanner('');
+  const addTbody = document.getElementById('dep-add-tbody');
+  if (addTbody) addTbody.innerHTML = '';
   depRecalc();
+}
+
+function depReset() {
+  depClearIncomeTaxData();
+  depCarryBanner('');
   depStatus('', 'info');
 }
 
@@ -246,17 +259,39 @@ function depBuildFyOptions() {
 //  so search here matches the Clients tab exactly. Selecting a client fills
 //  company + PAN and triggers the carry-forward fetch.
 // ════════════════════════════════════════════
-function depSelectClient(c) {
-  depClientId = c.id != null ? c.id : null;
-  document.getElementById('dep-company').value = c.name || '';
-  document.getElementById('dep-pan').value = c.pan || '';
-  depUpdateSaveState();
-  depReloadForContext();
-}
+// Client + fiscal year are shared by BOTH workings, so a change to either
+// clears both — otherwise flipping the method toggle right after switching
+// client would surface the previous client's other working. The method
+// toggle itself deliberately does NOT clear: each working keeps its
+// in-progress edits while you look at the other one.
+const depScope = WorkflowEngine.createClientScope({
+  clear(reason) {
+    if (reason === 'client') {
+      depClientId = null;
+      document.getElementById('dep-company').value = '';
+      document.getElementById('dep-pan').value = '';
+      depUpdateSaveState();
+    }
+    depClearIncomeTaxData();
+    if (typeof depSlmClearData === 'function') depSlmClearData();
+    depCarryBanner('');
+    depStatus('', 'info');
+  },
+  load(c, reason) {
+    if (reason === 'client') {
+      depClientId = c.id != null ? c.id : null;
+      document.getElementById('dep-company').value = c.name || '';
+      document.getElementById('dep-pan').value = c.pan || '';
+      depUpdateSaveState();
+    }
+    depReloadForContext();
+  },
+});
 
-// Fires on any context change (client / FY / scheme). Kept as a hook so the
-// three selectors stay consistent.
-function depOnFyChange() { depReloadForContext(); }
+function depSelectClient(c) { depScope.select(c); }
+
+// Fiscal year changed — same client, different sheet.
+function depOnFyChange() { depScope.refresh(); }
 
 // ════════════════════════════════════════════
 //  ADDITION DETAILS — itemize each purchase; auto-bucket into the three tax
@@ -713,5 +748,5 @@ async function depGenerateExcel() {
   });
   // Typing freely (not picking a result) invalidates the selected client, so
   // Save/carry-forward don't silently attach to a stale id.
-  input.addEventListener('input', () => { depClientId = null; depUpdateSaveState(); });
+  input.addEventListener('input', () => { depScope.invalidate(); depClientId = null; depUpdateSaveState(); });
 })();

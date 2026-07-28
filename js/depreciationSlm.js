@@ -439,6 +439,15 @@ function depSlmApplyCarryForward(rows) {
   depSlmRender();
 }
 
+// Blanks the SLM working only (asset lines + addition lines). The shared
+// client scope in depreciation.js calls this before every load, so no early
+// return below can leave the previous client's assets on screen.
+function depSlmClearData() {
+  depSlmRows = [];
+  depSlmApplyAdditionLines([]);
+  depSlmRender();
+}
+
 async function depSlmReload() {
   if (typeof depClientId === 'undefined' || depClientId == null) { depCarryBanner(''); return; }
   const fy = document.getElementById('dep-fy').value;
@@ -516,9 +525,7 @@ async function depSlmDelete() {
 }
 
 function depSlmReset() {
-  depSlmRows = [];
-  depSlmApplyAdditionLines([]);
-  depSlmRender();
+  depSlmClearData();
   depCarryBanner('');
   depStatus('', 'info');
 }
