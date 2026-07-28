@@ -30,7 +30,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202607271200">
+<link rel="stylesheet" href="css/styles.css?v=202607281100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1514,6 +1514,30 @@ function cropLoginLogoIcon(img) {
                 </tr>
               </tfoot>
             </table>
+          </div>
+        </div>
+
+        <!-- Addition details — the SLM counterpart of the Income-Tax helper. Here an
+             addition IS an asset line, so "Apply" creates/updates rows in the schedule
+             above instead of filling timing columns. -->
+        <div class="card" style="margin-top:24px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Addition details <span style="font-weight:500; color:var(--text-muted);">(optional)</span></div>
+              <div class="card-desc">Itemize this year's purchases; "Apply" puts each one into the schedule above as its own asset line — Addition = cost, full useful life running from its Date of Use, days prorated automatically. Re-applying updates the lines it created rather than duplicating them; removing a line here never removes the asset (use ✕ in the schedule).</div>
+            </div>
+          </div>
+          <div class="table-wrap" style="padding:0; box-shadow:none; border:1px solid var(--border); margin-top:12px; overflow-x:auto;">
+            <table class="client-table" style="min-width:760px;">
+              <thead>
+                <tr><th style="width:150px;">Date (B.S.)</th><th>Class</th><th>Particular</th><th style="width:110px;">Life (yr)</th><th style="width:140px;">Amount</th><th style="width:90px;"></th></tr>
+              </thead>
+              <tbody id="dep-slm-add-tbody"></tbody>
+            </table>
+          </div>
+          <div class="action-row" style="margin-top:16px;">
+            <button class="btn btn-outline btn-sm" onclick="depSlmAddLine()">＋ Add line</button>
+            <button class="btn btn-primary btn-sm" onclick="depSlmApplyAdditions()">Apply to schedule</button>
           </div>
         </div>
 
@@ -3021,48 +3045,48 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202607271200"></script>
-<script src="js/utils.js?v=202607271200"></script>
-<script src="js/core/moduleRegistry.js?v=202607271200"></script>
-<script src="js/core/statusBox.js?v=202607271200"></script>
-<script src="js/core/nepaliLocale.js?v=202607271200"></script>
-<script src="js/core/documentEngine.js?v=202607271200"></script>
-<script src="js/core/searchEngine.js?v=202607271200"></script>
-<script src="js/core/tableEngine.js?v=202607271200"></script>
-<script src="js/core/workflowEngine.js?v=202607271200"></script>
-<script src="js/core/auditLog.js?v=202607271200"></script>
-<script src="js/core/integrations.js?v=202607271200"></script>
-<script src="js/core/reportExport.js?v=202607271200"></script>
-<script src="js/core/workbookReader.js?v=202607271200"></script>
-<script src="js/core/engineMath.js?v=202607271200"></script>
-<script src="js/tabs.js?v=202607271200"></script>
-<script src="js/dashboard.js?v=202607271200"></script>
-<script src="js/registrar.js?v=202607271200"></script>
-<script src="js/clients.js?v=202607271200"></script>
-<script src="js/logs.js?v=202607271200"></script>
-<script src="js/vatCompliance.js?v=202607271200"></script>
-<script src="js/billing.js?v=202607271200"></script>
-<script src="js/serviceMemo.js?v=202607271200"></script>
-<script src="js/sendDocument.js?v=202607271200"></script>
-<script src="js/report.js?v=202607271200"></script>
-<script src="js/notesToAccounts.js?v=202607271200"></script>
-<script src="js/depreciation.js?v=202607271200"></script>
-<script src="js/depreciationSlm.js?v=202607271200"></script>
-<script src="js/bmAgmMinutes.js?v=202607271200"></script>
-<script src="js/auditorChange.js?v=202607271200"></script>
-<script src="js/companyProfile.js?v=202607271200"></script>
-<script src="js/salesPurchaseBook.js?v=202607271200"></script>
-<script src="js/confirmationLetters.js?v=202607271200"></script>
-<script src="js/bankBook.js?v=202607271200"></script>
-<script src="js/partyLedger.js?v=202607271200"></script>
-<script src="js/finalAccount.js?v=202607271200"></script>
+<script src="js/config.js?v=202607281100"></script>
+<script src="js/utils.js?v=202607281100"></script>
+<script src="js/core/moduleRegistry.js?v=202607281100"></script>
+<script src="js/core/statusBox.js?v=202607281100"></script>
+<script src="js/core/nepaliLocale.js?v=202607281100"></script>
+<script src="js/core/documentEngine.js?v=202607281100"></script>
+<script src="js/core/searchEngine.js?v=202607281100"></script>
+<script src="js/core/tableEngine.js?v=202607281100"></script>
+<script src="js/core/workflowEngine.js?v=202607281100"></script>
+<script src="js/core/auditLog.js?v=202607281100"></script>
+<script src="js/core/integrations.js?v=202607281100"></script>
+<script src="js/core/reportExport.js?v=202607281100"></script>
+<script src="js/core/workbookReader.js?v=202607281100"></script>
+<script src="js/core/engineMath.js?v=202607281100"></script>
+<script src="js/tabs.js?v=202607281100"></script>
+<script src="js/dashboard.js?v=202607281100"></script>
+<script src="js/registrar.js?v=202607281100"></script>
+<script src="js/clients.js?v=202607281100"></script>
+<script src="js/logs.js?v=202607281100"></script>
+<script src="js/vatCompliance.js?v=202607281100"></script>
+<script src="js/billing.js?v=202607281100"></script>
+<script src="js/serviceMemo.js?v=202607281100"></script>
+<script src="js/sendDocument.js?v=202607281100"></script>
+<script src="js/report.js?v=202607281100"></script>
+<script src="js/notesToAccounts.js?v=202607281100"></script>
+<script src="js/depreciation.js?v=202607281100"></script>
+<script src="js/depreciationSlm.js?v=202607281100"></script>
+<script src="js/bmAgmMinutes.js?v=202607281100"></script>
+<script src="js/auditorChange.js?v=202607281100"></script>
+<script src="js/companyProfile.js?v=202607281100"></script>
+<script src="js/salesPurchaseBook.js?v=202607281100"></script>
+<script src="js/confirmationLetters.js?v=202607281100"></script>
+<script src="js/bankBook.js?v=202607281100"></script>
+<script src="js/partyLedger.js?v=202607281100"></script>
+<script src="js/finalAccount.js?v=202607281100"></script>
 <script src="js/projectionEngine.js?v=202607281400"></script>
 <script src="js/projection.js?v=202607281400"></script>
 <script src="js/projectionExport.js?v=202607281400"></script>
-<script src="js/finStatementEngine.js?v=202607271200"></script>
-<script src="js/finStatement.js?v=202607271200"></script>
-<script src="js/finStatementExport.js?v=202607271200"></script>
-<script src="js/auth.js?v=202607271200"></script>
+<script src="js/finStatementEngine.js?v=202607281100"></script>
+<script src="js/finStatement.js?v=202607281100"></script>
+<script src="js/finStatementExport.js?v=202607281100"></script>
+<script src="js/auth.js?v=202607281100"></script>
 
 </body>
 </html>

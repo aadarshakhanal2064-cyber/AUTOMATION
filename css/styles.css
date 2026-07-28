@@ -510,8 +510,13 @@ textarea { resize: vertical; min-height: 100px; }
 .dep-table td:has(input) { padding: 6px 8px; }
 .dep-table tr:hover td { background: transparent; }
 .dep-total-row td { font-weight: 700; color: var(--brand-navy); background: var(--bg-page-alt) !important; border-top: 2px solid var(--border); font-variant-numeric: tabular-nums; }
-#dep-add-tbody input.dep-in, #dep-add-tbody select { text-align: left; }
-#dep-add-tbody select { padding: 7px 9px; font-size: 13px; width: 100%; }
+#dep-add-tbody input.dep-in, #dep-add-tbody select,
+#dep-slm-add-tbody input.dep-in, #dep-slm-add-tbody select { text-align: left; }
+#dep-add-tbody select, #dep-slm-add-tbody select { padding: 7px 9px; font-size: 13px; width: 100%; }
+/* Six columns don't fit at the browser's default input width — fill the cell instead
+   (the .table-wrap is overflow:hidden, so a too-wide table would be clipped, not scrolled). */
+#dep-slm-add-tbody input.dep-in { width: 100%; min-width: 0; }
+#dep-slm-add-tbody input.dep-slm-add-life, #dep-slm-add-tbody input.dep-slm-add-amount { text-align: right; }
 /* Editable SLM years input sits inline in the Rate cell */
 .dep-table td.dep-rate input.dep-years { width: 46px; min-width: 0; padding: 5px 6px; text-align: center; font-size: 12.5px; }
 /* Carry-forward / saved-state banner */

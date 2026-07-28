@@ -124,15 +124,22 @@ function depSlmRowHtml(r) {
   </tr>`;
 }
 
-function depSlmAdd(data) {
+// One asset-line shape, used by every builder (manual add, addition helper, load).
+// `fromAdd` links a row back to the Addition-details line that created it, so
+// re-applying that helper updates the row instead of appending a duplicate.
+function depSlmNewRow(data) {
   const first = depSlmClasses().find(c => c.depreciable) || depSlmClasses()[0] || {};
   const row = Object.assign({
-    uid: ++depSlmSeq, classKey: first.key || '', particular: '', dateOfUse: '', disposalDate: '',
+    uid: 0, classKey: first.key || '', particular: '', dateOfUse: '', disposalDate: '',
     life: first.life || '', remainDays: '', origCost: '', openWDV: '', openDep: '',
-    delCost: '', delDep: '', impairment: '',
+    delCost: '', delDep: '', impairment: '', fromAdd: '',
   }, data || {});
   row.uid = row.uid || ++depSlmSeq;
-  depSlmRows.push(row);
+  return row;
+}
+
+function depSlmAdd(data) {
+  depSlmRows.push(depSlmNewRow(data));
   depSlmRender();
 }
 
@@ -281,6 +288,107 @@ function depSlmRenderPpe() {
 }
 
 // ════════════════════════════════════════════
+//  ADDITION DETAILS — itemize this year's purchases. The Income-Tax sibling
+//  buckets amounts into three timing columns on a permanent pool row; SLM has no
+//  pools, so here an addition IS an asset line: "Apply" creates a row whose Date
+//  of Use drives Addition = cost, a full useful life and the day proration.
+//
+//  Apply is a SYNC, not an append — each line carries a stable `aid` stamped onto
+//  the row it created (`fromAdd`), so re-applying edits that row. Deleting a line
+//  deliberately leaves its asset alone; removal is the grid's ✕ button.
+// ════════════════════════════════════════════
+let depSlmAddSeq = 0;   // uid generator for addition-detail lines
+
+function depSlmAddLine(data) {
+  const tbody = document.getElementById('dep-slm-add-tbody');
+  if (!tbody) return;
+  const d = data || {};
+  const aid = depParse(d.aid) || ++depSlmAddSeq;
+  if (aid > depSlmAddSeq) depSlmAddSeq = aid;   // keep the seq clear of restored ids
+  const opts = depSlmClasses().map(c => `<option value="${c.key}"${c.key === d.classKey ? ' selected' : ''}>${escHtml(c.name)}</option>`).join('');
+  const val = v => escHtml(v == null || v === '' ? '' : String(v));
+  const tr = document.createElement('tr');
+  tr.dataset.aid = aid;
+  tr.innerHTML = `
+    <td><input class="dep-in dep-slm-add-date" placeholder="e.g. 2081/09/15" value="${val(d.date)}" /></td>
+    <td><select class="dep-slm-add-class" onchange="depSlmAddLineClass(this)">${opts}</select></td>
+    <td><input class="dep-in dep-slm-add-particular" placeholder="Asset description" value="${val(d.particular)}" /></td>
+    <td><input class="dep-in dep-slm-add-life" inputmode="decimal" placeholder="auto" value="${val(d.life)}" /></td>
+    <td><input class="dep-in dep-slm-add-amount" inputmode="decimal" placeholder="0" value="${val(d.amount)}" /></td>
+    <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">Remove</button></td>`;
+  tbody.appendChild(tr);
+  if (!data) depSlmAddLineClass(tr.querySelector('.dep-slm-add-class'));   // seed the class's default life
+}
+
+// Blank life follows the class default (same rule as the grid's class picker).
+function depSlmAddLineClass(sel) {
+  const life = sel.closest('tr').querySelector('.dep-slm-add-life');
+  const cls = depSlmClass(sel.value);
+  if (life && !depParse(life.value)) life.value = cls && cls.life ? cls.life : '';
+}
+
+function depSlmApplyAdditions() {
+  const fyStart = depSlmFyStart();
+  const fyLbl = document.getElementById('dep-fy').value || '';
+  let created = 0, updated = 0, noDate = 0, offYear = 0;
+  document.querySelectorAll('#dep-slm-add-tbody tr').forEach(tr => {
+    const amount = depParse(tr.querySelector('.dep-slm-add-amount').value);
+    if (!amount) return;
+    const date = tr.querySelector('.dep-slm-add-date').value.trim();
+    if (!NepaliLocale.bsPartsNum(date)) { noDate++; return; }
+    if (!depSlmAcquiredThisFy(date, fyStart)) offYear++;
+    const classKey = tr.querySelector('.dep-slm-add-class').value;
+    const cls = depSlmClass(classKey);
+    const life = depParse(tr.querySelector('.dep-slm-add-life').value) || (cls && cls.life) || '';
+    const fields = {
+      classKey,
+      particular: tr.querySelector('.dep-slm-add-particular').value.trim() || (cls ? cls.name : ''),
+      dateOfUse: date, life, remainDays: life ? life * 365 : '', origCost: amount,
+    };
+    const aid = depParse(tr.dataset.aid);
+    const existing = depSlmRows.find(r => r.fromAdd === aid);
+    if (existing) { Object.assign(existing, fields); updated++; }
+    else { depSlmRows.push(depSlmNewRow(Object.assign({ fromAdd: aid }, fields))); created++; }
+  });
+  depSlmRender();
+
+  const done = [];
+  if (created) done.push(`${created} asset line(s) added`);
+  if (updated) done.push(`${updated} updated`);
+  let msg = done.length
+    ? `✅ ${done.join(', ')} in the schedule above.`
+    : '⚠️ No addition lines with both a B.S. date and an amount to apply.';
+  if (noDate) msg += ` (${noDate} line(s) skipped — missing or invalid B.S. date.)`;
+  if (offYear) msg += ` ⚠️ ${offYear} line(s) fall outside F.Y. ${escHtml(fyLbl)} — added, but they won't count as this year's addition until the date or the fiscal year is corrected.`;
+  depStatus(msg, done.length ? 'success' : 'info');
+}
+
+function depSlmCollectAdditions() {
+  const lines = [];
+  document.querySelectorAll('#dep-slm-add-tbody tr').forEach(tr => {
+    const amount = depParse(tr.querySelector('.dep-slm-add-amount').value);
+    if (!amount) return;
+    lines.push({
+      aid: depParse(tr.dataset.aid) || null,
+      date: tr.querySelector('.dep-slm-add-date').value.trim(),
+      classKey: tr.querySelector('.dep-slm-add-class').value,
+      particular: tr.querySelector('.dep-slm-add-particular').value.trim(),
+      life: depParse(tr.querySelector('.dep-slm-add-life').value) || null,
+      amount,
+    });
+  });
+  return lines;
+}
+
+function depSlmApplyAdditionLines(lines) {
+  const tbody = document.getElementById('dep-slm-add-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  depSlmAddSeq = 0;
+  (lines || []).forEach(l => depSlmAddLine(l));
+}
+
+// ════════════════════════════════════════════
 //  PERSISTENCE & CARRY-FORWARD  (scheme = 'slm' in depreciation_schedules)
 // ════════════════════════════════════════════
 // Serialize the grid: editable inputs + a snapshot of the computed closings that
@@ -291,7 +399,7 @@ function depSlmCollectRows() {
     const c = r._c || depSlmComputeLine(r, fyStart);
     return {
       classKey: r.classKey, particular: (r.particular || '').trim(), dateOfUse: (r.dateOfUse || '').trim(),
-      disposalDate: (r.disposalDate || '').trim(), life: depParse(r.life),
+      disposalDate: (r.disposalDate || '').trim(), life: depParse(r.life), fromAdd: r.fromAdd || null,
       origCost: depParse(r.origCost), openWDV: depParse(r.openWDV), openDep: depParse(r.openDep),
       delCost: depParse(r.delCost), delDep: depParse(r.delDep), impairment: depParse(r.impairment),
       remainDays: depParse(r.remainDays) || (depParse(r.life) * 365),
@@ -303,11 +411,12 @@ function depSlmCollectRows() {
 
 // Re-hydrate the grid from a saved row set (resume this year's sheet).
 function depSlmApplyRows(rows) {
-  depSlmRows = (rows || []).map(s => ({
-    uid: ++depSlmSeq, classKey: s.classKey, particular: s.particular || '', dateOfUse: s.dateOfUse || '',
+  depSlmRows = (rows || []).map(s => depSlmNewRow({
+    classKey: s.classKey, particular: s.particular || '', dateOfUse: s.dateOfUse || '',
     disposalDate: s.disposalDate || '', life: s.life || '', remainDays: s.remainDays || '',
     origCost: s.origCost || '', openWDV: s.openWDV || '', openDep: s.openDep || '',
     delCost: s.delCost || '', delDep: s.delDep || '', impairment: s.impairment || '',
+    fromAdd: s.fromAdd || '',
   }));
   depSlmRender();
 }
@@ -318,13 +427,14 @@ function depSlmApplyRows(rows) {
 function depSlmApplyCarryForward(rows) {
   depSlmRows = (rows || [])
     .filter(s => (s._costHeldClosing || 0) > 0.005)
-    .map(s => ({
-      uid: ++depSlmSeq, classKey: s.classKey, particular: s.particular || '', dateOfUse: s.dateOfUse || '',
+    .map(s => depSlmNewRow({
+      classKey: s.classKey, particular: s.particular || '', dateOfUse: s.dateOfUse || '',
       disposalDate: '', life: s.life || '',
       remainDays: Math.max(0, (s._remainDays || 0) - (s._days || 0)),
       origCost: s._costHeldClosing || s.origCost || '',
       openWDV: s._closingWDV || 0, openDep: s._totalDep || 0,
       delCost: '', delDep: '', impairment: '',
+      // No fromAdd — a carried asset is no longer this year's addition.
     }));
   depSlmRender();
 }
@@ -335,10 +445,11 @@ async function depSlmReload() {
   const startYear = depFyStartYear(fy);
   try {
     const { data: cur, error: e1 } = await window.sb.from('depreciation_schedules')
-      .select('pools').eq('client_id', depClientId).eq('scheme', 'slm').eq('fiscal_year', fy).maybeSingle();
+      .select('pools, addition_details').eq('client_id', depClientId).eq('scheme', 'slm').eq('fiscal_year', fy).maybeSingle();
     if (e1) throw e1;
     if (cur) {
       depSlmApplyRows(cur.pools);
+      depSlmApplyAdditionLines(cur.addition_details);
       depCarryBanner(`📂 Loaded your saved SLM schedule for F.Y. ${escHtml(fy)}. Edit and re-save to update it.`, 'saved');
       return;
     }
@@ -349,6 +460,7 @@ async function depSlmReload() {
       if (e2) throw e2;
       if (prev && prev.pools && prev.pools.length) {
         depSlmApplyCarryForward(prev.pools);
+        depSlmApplyAdditionLines([]);   // last year's purchases aren't this year's additions
         depCarryBanner(`↪️ Assets carried forward from F.Y. ${escHtml(prevFy)} — opening WDV, accumulated depreciation and remaining life brought forward. Nothing saved yet for ${escHtml(fy)}.`, 'carry');
         return;
       }
@@ -368,7 +480,7 @@ async function depSlmSave() {
     company_name: document.getElementById('dep-company').value.trim() || null,
     pan: document.getElementById('dep-pan').value.trim() || null,
     pools: depSlmCollectRows(),
-    addition_details: [],
+    addition_details: depSlmCollectAdditions(),
     created_by: (window.currentUser && window.currentUser.email) || null,
   };
   const btn = document.getElementById('dep-save-btn');
@@ -405,6 +517,7 @@ async function depSlmDelete() {
 
 function depSlmReset() {
   depSlmRows = [];
+  depSlmApplyAdditionLines([]);
   depSlmRender();
   depCarryBanner('');
   depStatus('', 'info');
@@ -616,6 +729,45 @@ async function depSlmGenerateExcel() {
 
   // Borders across the whole grid
   for (let rr = H; rr <= gtRow; rr++) for (let cc = 1; cc <= 18; cc++) ws.getRow(rr).getCell(cc).border = box;
+
+  // Optional Addition-details block below the grid (mirrors the Income-Tax sheet) —
+  // the schedule already itemizes assets, but the working paper wants the year's
+  // purchases listed and footed on their own. Only lines dated INSIDE the selected
+  // F.Y. are listed: they are exactly the ones the schedule counts as an addition,
+  // so this block's total always equals the grid's Addition grand total.
+  const addLines = depSlmCollectAdditions().filter(l => depSlmAcquiredThisFy(l.date, fyStart));
+  if (addLines.length) {
+    let ar = gtRow + 2;
+    ws.mergeCells(`B${ar}:E${ar}`);
+    ws.getCell(`B${ar}`).value = 'Addition details';
+    ws.getCell(`B${ar}`).font = { bold: true, color: { argb: NAVY } };
+    ar++;
+    ['Date (B.S.)', 'Class', 'Particular', 'Amount'].forEach((t, i) => {
+      const cell = ws.getRow(ar).getCell(2 + i);
+      cell.value = t; cell.font = { bold: true }; cell.border = box;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADFILL } };
+    });
+    const firstAdd = ar + 1;
+    addLines.forEach(l => {
+      ar++;
+      const cls = depSlmClass(l.classKey);
+      [l.date, cls ? cls.name : '', l.particular, l.amount].forEach((v, i) => {
+        const cell = ws.getRow(ar).getCell(2 + i);
+        cell.value = v; cell.border = box;
+        if (i === 3) cell.numFmt = MONEY;
+      });
+    });
+    ar++;
+    ws.getCell(`D${ar}`).value = 'Total';
+    const totCell = ws.getCell(`E${ar}`);
+    totCell.value = { formula: `SUM(E${firstAdd}:E${ar - 1})`, result: addLines.reduce((a, l) => a + l.amount, 0) };
+    totCell.numFmt = MONEY;
+    ['B', 'C', 'D', 'E'].forEach(cl => {
+      const cell = ws.getCell(`${cl}${ar}`);
+      cell.border = box; cell.font = { bold: true, color: { argb: NAVY } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTFILL } };
+    });
+  }
 
   // ───────────── Sheet 2: 3.1 PPE note ─────────────
   const ps = wb.addWorksheet('3.1 PPE');
