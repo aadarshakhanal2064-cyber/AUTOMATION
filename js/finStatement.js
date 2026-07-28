@@ -169,30 +169,84 @@ function fsOnAuditorChange() {
   fsRecalcDebounced();
 }
 
-function fsPickClient(it) {
-  fsSelectedClient = it;
-  fsEl('fs-company').value = it.name || '';
-  fsEl('fs-pan').value = NepaliLocale.toEnglishDigits(it.pan || '');
-  fsEl('fs-address').value = it.address || '';
-  fsEl('fs-client-search').value = it.name || '';
+// Everything on this screen — the uploaded prior year, the sales/purchase
+// details, the A–N figures, the PPE movement rows and the lever overrides —
+// belongs to the selected client. clear() runs before every load so none of
+// it can survive into the next client's statement.
+const fsScope = WorkflowEngine.createClientScope({
+  clear(reason) {
+    if (reason === 'client') {
+      fsSelectedClient = null;
+      ['fs-company', 'fs-pan', 'fs-address'].forEach(id => { fsEl(id).value = ''; });
+    }
+    const hadUpload = !!fsPy || !!fsDetails.sales || !!fsDetails.purchase;
+    fsPy = null; fsPyIssues = [];
+    fsResult = null; fsReport = null; fsSavedId = null;
+    fsDetails = { sales: null, purchase: null };
+    fsPpeInput = []; fsLevers = {}; fsExpenseEdits = null;
+    fsFigures = {};
+    ['fs-py-file', 'fs-sales-file', 'fs-purchase-file'].forEach(id => {
+      const el = fsEl(id); if (el) el.value = '';
+    });
+    fsRenderPySummary();
+    fsRenderFigures();
+    fsShowSection('setup');
+    fsStatus(hadUpload
+      ? "Cleared the previous client's uploaded statement and figures — upload this client's files to continue."
+      : '', 'info');
+  },
+  load(it) {
+    fsSelectedClient = it;
+    fsEl('fs-company').value = it.name || '';
+    fsEl('fs-pan').value = NepaliLocale.toEnglishDigits(it.pan || '');
+    fsEl('fs-address').value = it.address || '';
+    fsEl('fs-client-search').value = it.name || '';
 
-  // entity_type is free text; the shared map is the one authority (§16 — a new
-  // spelling silently kills auto-fill in every module that reads it).
-  const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(it.entity_type || '').toLowerCase().trim()];
-  const toEntity = {
-    private_company: 'private', public_company: 'public',
-    partnership: 'partnership', proprietorship: 'proprietorship',
-  };
-  if (profile && toEntity[profile]) fsEl('fs-entity').value = toEntity[profile];
+    // entity_type is free text; the shared map is the one authority (§16 — a new
+    // spelling silently kills auto-fill in every module that reads it). Both of
+    // these ASSIGN unconditionally: an `if (mapped)` would leave the previous
+    // client's entity/return type standing when this one has none on file.
+    const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(it.entity_type || '').toLowerCase().trim()];
+    const toEntity = {
+      private_company: 'private', public_company: 'public',
+      partnership: 'partnership', proprietorship: 'proprietorship',
+    };
+    fsEl('fs-entity').value = (profile && toEntity[profile]) || 'private';
 
-  // it_return_type carries the firm's own classification ('D1/D2', 'D-03', …).
-  const rt = String(it.it_return_type || '').toUpperCase().replace(/[^0-9D/]/g, '');
-  if (/^D0?1\/?D?0?2$|^D0?1$/.test(rt)) fsEl('fs-return-type').value = 'D1';
-  else if (/^D0?2$/.test(rt)) fsEl('fs-return-type').value = 'D2';
+    // The Type-of-Return options are rendered FROM the entity type, so the
+    // entity has to be applied first — setting the return type before that
+    // rebuild just gets discarded by it.
+    fsRenderReturnTypes();
 
-  fsOnEntityChange();
+    // it_return_type carries the firm's own classification ('D1/D2', 'D-03', …).
+    // An option the entity isn't allowed to file is silently ignored by the
+    // select, leaving the allowed default — which is the right answer.
+    const rt = String(it.it_return_type || '').toUpperCase().replace(/[^0-9D/]/g, '');
+    const wanted = /^D0?2$/.test(rt) ? 'D2' : 'D1';
+    if (Array.from(fsEl('fs-return-type').options).some(o => o.value === wanted)) {
+      fsEl('fs-return-type').value = wanted;
+    }
+
+    fsOnEntityChange();
+    fsLoadDepreciation();
+    fsStatus(`Client loaded: ${it.name}`, 'success');
+  },
+});
+
+function fsPickClient(it) { fsScope.select(it); }
+
+// Fiscal year changed. Only M and N are read from the database, so only they
+// are dropped — an upload the user just made is NOT discarded over a change
+// of year. Dropping them first is what stops the old year's depreciation
+// standing when the new year has no saved schedule (fsLoadDepreciation
+// returns early in that case).
+function fsOnFyChange() {
+  delete fsFigures.M;
+  delete fsFigures.N;
+  fsSyncFigureInputs('M');
+  fsSyncFigureInputs('N');
   fsLoadDepreciation();
-  fsStatus(`Client loaded: ${it.name}`, 'success');
+  fsRecalcDebounced();
 }
 
 // ════════════════════════════════════════════════════════════════

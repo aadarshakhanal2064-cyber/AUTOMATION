@@ -105,17 +105,37 @@ function clAttachCompanySearch() {
       <div class="ac-name">${escHtml(c.name)}</div>
       <div class="ac-email">${escHtml(c.pan || '')}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
     `,
-    onSelect: c => {
-      clClientId = c.id != null ? c.id : null;
-      input.value = c.name || '';
-      document.getElementById('cl-firm-name').value = c.name || '';
-      document.getElementById('cl-firm-address').value = c.address || '';
-      document.getElementById('cl-firm-pan').value = c.pan || '';
-      document.getElementById('cl-firm-phone').value = c.phone || '';
-    },
+    onSelect: c => clScope.select(c),
   });
-  input.addEventListener('input', () => { clClientId = null; });
+  input.addEventListener('input', () => { clScope.invalidate(); clClientId = null; });
 }
+
+// The parsed party list comes from ONE company's Autobooks workbook, so it
+// cannot survive a change of company — the letters it generates are written
+// on that company's letterhead to that company's parties.
+const clScope = WorkflowEngine.createClientScope({
+  clear() {
+    const hadUpload = clCandidates.length > 0;
+    clClientId = null;
+    clCandidates = [];
+    clShowBelowThreshold = false;
+    ['cl-company', 'cl-firm-name', 'cl-firm-address', 'cl-firm-pan', 'cl-firm-phone'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const fileEl = document.getElementById('cl-workbook-upload');
+    if (fileEl) fileEl.value = '';
+    clRenderTable();
+    if (hadUpload) clStatus("ℹ️ Cleared the previous company's party list — upload this company's workbook to continue.", 'info');
+  },
+  load(c) {
+    clClientId = c.id != null ? c.id : null;
+    document.getElementById('cl-company').value = c.name || '';
+    document.getElementById('cl-firm-name').value = c.name || '';
+    document.getElementById('cl-firm-address').value = c.address || '';
+    document.getElementById('cl-firm-pan').value = c.pan || '';
+    document.getElementById('cl-firm-phone').value = c.phone || '';
+  },
+});
 
 // ════════════════════════════════════════════
 //  UPLOAD + PARSE — reads the SPB workbook's own output format back.

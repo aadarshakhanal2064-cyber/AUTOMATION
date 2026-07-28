@@ -1609,6 +1609,32 @@ function spbOnContextChange() {
   spbReparse();
 }
 
+// The imported transactions belong to whoever was selected when the files
+// were dropped, so switching client discards them rather than re-parsing one
+// client's book under another's name and PAN into the generated workbook.
+const spbScope = WorkflowEngine.createClientScope({
+  clear(reason) {
+    const hadImport = !!spbRaw;
+    if (reason === 'client') {
+      spbClientId = null;
+      document.getElementById('spb-company').value = '';
+      document.getElementById('spb-pan').value = '';
+    }
+    const fileEl = document.getElementById('spb-file');
+    if (fileEl) fileEl.value = '';
+    spbReset();
+    if (hadImport) spbStatus("ℹ️ Cleared the previous client's imported transactions — drop this client's files to continue.", 'info');
+  },
+  load(c, reason) {
+    if (reason === 'client') {
+      spbClientId = c.id != null ? c.id : null;
+      document.getElementById('spb-company').value = c.name || '';
+      document.getElementById('spb-pan').value = c.pan || '';
+    }
+    spbOnContextChange();
+  },
+});
+
 (function spbWireSearch() {
   const input = document.getElementById('spb-company');
   const list = document.getElementById('spb-autocomplete-list');
@@ -1620,13 +1646,8 @@ function spbOnContextChange() {
       <div class="ac-name">${escHtml(c.name)}</div>
       <div class="ac-email">${escHtml(c.pan ? 'PAN: ' + c.pan : (c.email || 'No details on file'))}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
     `,
-    onSelect: c => {
-      spbClientId = c.id != null ? c.id : null;
-      input.value = c.name || '';
-      document.getElementById('spb-pan').value = c.pan || '';
-      spbOnContextChange();
-    },
+    onSelect: c => spbScope.select(c),
   });
-  input.addEventListener('input', () => { spbClientId = null; });
+  input.addEventListener('input', () => { spbScope.invalidate(); spbClientId = null; });
   input.addEventListener('change', spbOnContextChange);
 })();
