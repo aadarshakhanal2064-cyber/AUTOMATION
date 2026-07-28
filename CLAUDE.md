@@ -112,7 +112,7 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | DocumentEngine | `documentEngine.js` | `downloadBlob` (fires an AuditLog event), `getTemplate` (fetch-once cache), `renderWord` (PizZip+docxtemplater), `previewWordAsHtml`. |
 | SearchEngine | `searchEngine.js` | `attachAutocomplete(inputEl, listEl, config)` / `buildIndex` over Fuse.js. One shared autocomplete; supports digit-agnostic search. |
 | TableEngine | `tableEngine.js` | `createTable(container, options)` over Tabulator. **Only the Clients directory uses it** — deliberate. |
-| WorkflowEngine | `workflowEngine.js` | Form watchers, debounced live preview, localStorage autosave, completion indicator, zoom, and `createStatusFlow` — one `transition()` choke point per status-tracked module so badge, persistence and audit entry can never disagree. |
+| WorkflowEngine | `workflowEngine.js` | Form watchers, debounced live preview, localStorage autosave, completion indicator, zoom, `createStatusFlow` — one `transition()` choke point per status-tracked module so badge, persistence and audit entry can never disagree — and `createClientScope`, the same idea for client switching: `clear()` runs unconditionally before every `load()`, so no loader path can leak the previous client's data. **Any screen with a client picker goes through a scope.** |
 | AuditLog | `auditLog.js` | `record(eventType, detail)`, `recent`, `countSince` → Supabase `audit_log`. Every call is try/catch-wrapped and **never throws**. |
 | Integrations | `integrations.js` | `driveGet`, `findFolderByName`, `listAllFilesInFolder`, `downloadDriveFile`, `sendEmailWithAttachment`. All Drive calls append `supportsAllDrives=true&includeItemsFromAllDrives=true`. |
 | WorkbookReader | `workbookReader.js` | Locating figures inside the firm's hand-maintained NFRS workbooks. **Everything is label-driven, never positional — never hardcode a value column.** Node-loadable. |
@@ -267,6 +267,8 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 
 ### Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
+
+**Client switching = `WorkflowEngine.createClientScope`** (§4). Two rules that hold everywhere, scope or not: **always assign** — `el.value = c.x || ''`, never `if (c.x) el.value = c.x`, which leaves the *previous* client's value standing whenever the new one's field is blank — and **a per-client loader must clear before it can return early**, or "nothing saved for this client" leaves the last client's grid on screen under the new name. Both shipped as real bugs across eleven modules (fixed 2026-07-28); see `docs/engines.md`.
 
 ---
 

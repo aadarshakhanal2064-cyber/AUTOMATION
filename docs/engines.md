@@ -19,7 +19,7 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 | DocumentEngine | `documentEngine.js` | `downloadBlob(blob, filename, meta?)` (meta fires an AuditLog event), `getTemplate(url)` (fetch-once cache), `renderWord(buffer, data)` (PizZip+docxtemplater), `previewWordAsHtml(...)` (docx-preview). |
 | SearchEngine | `searchEngine.js` | `attachAutocomplete(inputEl, listEl, config)` / `buildIndex` wrapping Fuse.js. One shared autocomplete (keyboard nav included); supports `normalizeQuery/normalizeItem` for digit-agnostic search. |
 | TableEngine | `tableEngine.js` | `createTable(container, options)` wrapping Tabulator with the app's `.app-table` look. Only the Clients directory uses it (deliberate — don't migrate other tables without cause). |
-| WorkflowEngine | `workflowEngine.js` | `attachFormWatcher`, `createDebouncedRefresh` (staleness-guarded live preview), `createAutosave` (localStorage draft), `updateCompletionIndicator`, `createZoomControl`, `createStatusFlow` (one `transition()` choke point per status-tracked module — badge, persistence, and audit entry can never disagree). |
+| WorkflowEngine | `workflowEngine.js` | `attachFormWatcher`, `createDebouncedRefresh` (staleness-guarded live preview), `createAutosave` (localStorage draft), `updateCompletionIndicator`, `createZoomControl`, `createStatusFlow` (one `transition()` choke point per status-tracked module — badge, persistence, and audit entry can never disagree), `createClientScope` (one choke point per module for "which client is this screen showing?" — see below). |
 | AuditLog | `auditLog.js` | `record(eventType, detail)`, `recent`, `countSince` → Supabase `audit_log`. Every call is try/catch-wrapped and never throws — a logging failure must not break the feature. |
 | Integrations | `integrations.js` | `driveGet`, `findFolderByName`, `listAllFilesInFolder`, `downloadDriveFile`, `sendEmailWithAttachment`. All Drive calls append `supportsAllDrives=true&includeItemsFromAllDrives=true` (Shared Drive visibility). |
 | WorkbookReader | `workbookReader.js` | `num`, `norm`, `grid(ws, XLSX)`, `findSheet(wb, keys)`, `findRowIdx(g, re, from, labelCol)`, `findHeader(g, from)`, `labelValue(...)`, `noteSection(g, titleRe, endRe?)`. Locating figures inside the firm's hand-maintained NFRS workbooks — extracted from `projectionEngine.js` on 2026-07-26 when Financial Statement needed the same locators. **Everything is label-driven, never positional**: `findHeader` finds the literal `particulars` cell and takes the first non-empty non-`notes` column right of it as `valCol`, the second as `prevCol`, which is why SFP→F, Sch-PL→D and Sch-BS→H all work from one function — **never hardcode a value column**. `noteSection` fences a numbered note at the CLOSER of its own Total row and the next numbered note, because not every note has a Total (Sch-BS 3.2 ends at "Current portion", and a Total-only fence read 3.3 and 3.4 as its own). Node-loadable. |
@@ -27,6 +27,57 @@ Feature code **never calls vendor libraries directly** (Tesseract, PizZip, Fuse,
 | ReportExport | `reportExport.js` | `toHtml` / `toPdf` / `toExcel` / `download(model, kind, filename, meta)` over one tabular model (`{title, subtitleLines, columns, rows, landscape, note}`; row styles `section`/`subtle`/`total`/`grand`). Added 2026-07-26 for Party Ledger's 4 views + Final Account's 2 statements — six consumers that would otherwise each have copied the drawing code already sitting twice in `bankBook.js`. It knows nothing about ledgers or firms: callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** — PDF-Lib's standard fonts are WinAnsi and *throw* on any character they can't encode (a true minus `−`, a curly quote, Devanagari), so every string is folded to ASCII/Latin-1 on the way into the PDF. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§10.2). No edits to `tabs.js`.
+
+### `WorkflowEngine.createClientScope({ clear, load })` — client switching
+
+Added 2026-07-28 after the same defect was found in eleven modules at once: every
+`xxSelectClient` only ever *wrote* the newly picked client's values, so anything
+the new client didn't supply kept the previous client's. It surfaced three ways —
+a conditional fill (`if (c.chairman_name) …`) leaving the last company's chairman
+on a signed resolution; a loader returning early ("no saved schedule for this
+client") and leaving the previous client's grid on screen under the new name;
+and module state (`pjSavedId`, `window.foundFile`, an imported workbook)
+outliving the client it belonged to. Two of those were data-integrity bugs, not
+cosmetic: a stale `pjSavedId` made Save **UPDATE the previous client's**
+`projection_reports` row, and a stale `window.foundFile` would have emailed one
+client's document to another's address.
+
+The scope inverts the order so the failure mode is structurally impossible:
+
+```js
+const xxScope = WorkflowEngine.createClientScope({
+  clear(reason) { /* 'client' → identity fields + data; 'context' → data only */ },
+  load(c, reason) { /* fill from the record, then fetch what's saved */ },
+});
+
+xxScope.select(client);   // clear('client')  then load()  — client picked
+xxScope.refresh();        // clear('context') then load()  — FY / scheme changed
+xxScope.invalidate();     // free-typing over the picked name; nothing may save against the old id
+xxScope.reset();          // back to empty
+```
+
+**`clear()` runs unconditionally before every `load()`.** That is the whole
+point: because the surface is already blank when the loader runs, no path
+through it — an early return, a thrown error, a slow network — can leak the
+previous client's data, and `load()` never needs to clear anything itself.
+
+Two rules go with it, and they are what the point-fixes enforce:
+
+1. **Always assign.** `el.value = c.x || ''`, never `if (c.x) el.value = c.x`.
+   Give selects an explicit default rather than leaving them untouched.
+2. **A loader's early returns are safe only because the clear already ran** —
+   don't move clearing back inside the loader.
+
+Consumers: Depreciation (both workings share one scope), Financial Statement,
+Projection, Autobooks, Confirmation Letters. Modules whose picker lives in a
+record-creation drawer (Billing, Bank Entry, Service Memo) reset on form open
+instead and need no scope; Party Ledger and Final Account regenerate their whole
+view every time and are already safe.
+
+**Uploaded workbooks are discarded on a client switch** (user decision,
+2026-07-28) with a status line saying so, rather than kept or guarded by a
+confirm dialog — an import belongs to exactly one client, and re-uploading is
+cheap next to generating a workbook for the wrong one.
 
 ---
 
