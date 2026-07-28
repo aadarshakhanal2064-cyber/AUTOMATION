@@ -504,6 +504,10 @@ function pjxBuildReport() {
   // ── NCA working & Ratio Analysis ──
   const L = ProjectionEngine.LIMITS;
   const tone = ok => ok ? 'pass' : 'fail';
+  // Drawing-power percentage the projection actually used, so the sheet's
+  // label and its live formula both follow what the user entered.
+  const ncaFactorX = (pjResult.meta && pjResult.meta.ncaFactor) || L.ncaFactor;
+  const ncaPctLabel = +(ncaFactorX * 100).toFixed(2);
   sections.push({
     key: 'NCA', title: 'Net Current Assets Working & Ratio Analysis', sheet: 'Ratio Analysis',
     cols: yearCols(y => pjFyDot(y)),
@@ -517,8 +521,8 @@ function pjxBuildReport() {
         xexpr: (R, c, X) => { const t = X('BS', 'clTotal'), s = X('BS', 'stl'); return t ? (s ? `${t}-${s}` : t) : null; } },
       { k: 'nNCA', label: 'E = C-D   Net Current Assets', vals: v(x => x.ratios.nca), kind: 'tot',
         xexpr: (R, c) => `${c}${R.nTot}-${c}${R.nCL}` },
-      { k: 'n70', label: 'F = 70% × E', vals: v(x => x.ratios.nca70), kind: 'item',
-        xexpr: (R, c) => `${c}${R.nNCA}*0.7` },
+      { k: 'n70', label: `F = ${ncaPctLabel}% × E`, vals: v(x => x.ratios.nca70), kind: 'item',
+        xexpr: (R, c) => `${c}${R.nNCA}*${ncaFactorX}` },
       { k: 'nSTL', label: 'Short Term Loan /OD/CC', vals: v(x => x.bs.shortTermLoan), kind: 'item',
         xexpr: (R, c, X) => X('BS', 'stl') },
       { k: 'nPWC', label: 'Permanent WC', vals: v(x => x.bs.permanentWC), kind: 'item',

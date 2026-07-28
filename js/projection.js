@@ -196,6 +196,8 @@ function pjCollectAsm(keepOverrides) {
     includeAudited: pjEl('pj-include-audited').checked,
     growthY1Pct: parseFloat(pjEl('pj-growth1').value) || 0,
     growthRestPct: parseFloat(pjEl('pj-growth-rest').value) || 0,
+    // Drawing-power percentage — entered by the user, never recalculated.
+    ncaPct: Math.min(100, Math.max(1, parseFloat(pjEl('pj-nca-pct').value) || 70)),
     stLoans: pjCollectLoans('st'),
     ltLoans: pjCollectLoans('lt'),
     pwcLoans: pjCollectLoans('pwc'),

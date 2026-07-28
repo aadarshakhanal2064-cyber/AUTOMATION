@@ -318,14 +318,19 @@ const ProjectionEngine = (() => {
     minNca: 100000,        // <30-day step (a) won't push Net Current Assets below this
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
-    ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive")
+    ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive").
+                           // DEFAULT ONLY — the user enters this per report (asm.ncaPct);
+                           // it is never recalculated or overwritten by the engine.
+    minCash: 100000,       // CA rule (2026-07-28): cash may be cut this low — but no lower —
+                           // to buy the NCA room that lets owner capital be given back
     profitGrowth: 1.05,    // CA rule (2026-07-25): Gross Profit AND Net Profit must each
                            // rise ≥5%/yr — purchases is the balancing figure that forces it
     creditorRuleFloor: 1000000,  // rule 3: applies when provisional payable exceeds 10 lakh
     creditorLoPct: 0.75,   // …then projected creditors = provisional × [0.75, 0.80],
     creditorHiPct: 0.80,   //    seeded per client (unique, reproducible)
     expenseGrowth: 1.05,   // every admin line grows 5%/yr (master Pl "×1.05")
-    stockBuffer: 1.15,     // rule 1: yr-1 closing stock ≥ max(STL/0.7×1.15, opening×1.15)
+    stockBuffer: 1.05,     // rule 1 (CA, 2026-07-28): yr-1 closing stock =
+                           // max(STL ÷ NCA% × 1.05, opening × 1.05)
     stockGrowth: 1.05,     // yr-2+ closing stock = opening × 1.05
     creditorDecay: 0.90,   // creditors shrink 10%/yr after yr 1
     cashGrowth: 1.10,      // cash grows 10%/yr after yr 1, rounded to nearest 10
@@ -465,6 +470,11 @@ const ProjectionEngine = (() => {
     const gR = 1 + num(asm.growthRestPct) / 100;
     const autoSolve = asm.autoSolve !== false;
     const overrides = asm.overrides || {};
+    // Drawing-power percentage: entered by the user, defaulting to the master
+    // sheet's 70%. Drives the "x% of NCA" test, the shortfall→capital
+    // conversion AND the year-1 closing-stock floor, so one number means one
+    // thing throughout the report.
+    const ncaFactor = (num(asm.ncaPct) > 0 ? num(asm.ncaPct) / 100 : LIMITS.ncaFactor);
 
     // Term, Permanent-WC and Hire-Purchase loans all amortize on an EMI
     // schedule; only short-term OD/CC carries a flat rate on a constant
@@ -500,20 +510,38 @@ const ProjectionEngine = (() => {
     const gpBase = input.revenue.operations - input.materials.total;
     const npBase = input.profitBeforeTax - input.tax;
 
-    const rng = seededRng(asm.seedKey || 'projection');
-    const seedCash = Math.round(500000 + rng() * 400000);
     // Rule 3 (CA, 2026-07-25): when the provisional/audited trade payable
     // exceeds 10 lakh the projected Sundry Creditor must sit at 75–80% of it —
     // a seeded fraction, so it is unique per client yet reproducible on re-run
     // (and may legitimately repeat for the same client + FY). Smaller payables
     // keep the original 2–8 lakh seeded figure.
     const bigCreditor = input.creditors > LIMITS.creditorRuleFloor;
-    const seedCred = bigCreditor
-      ? Math.round(input.creditors * (LIMITS.creditorLoPct + rng() * (LIMITS.creditorHiPct - LIMITS.creditorLoPct)))
-      : Math.round(200000 + rng() * 600000);
     // avoid suspiciously round seeded figures
     const deRound = EM.deRound;
 
+    // ── Owner capital is a LAST RESORT, and one constant figure ──────────
+    //  (CA rules, 2026-07-28.) `runAll` projects every year at a given level
+    //  of Director/Partner/Proprietor Additional Capital:
+    //    · pinnedCap === null → the old behaviour: each year injects whatever
+    //      it needs. Used once, only to get an upper bound.
+    //    · pinnedCap = a number → that same figure stands in EVERY year and
+    //      may not be added to. A year that falls short must instead reduce
+    //      cash (to `LIMITS.minCash`) and then closing stock; if it still
+    //      cannot satisfy its tests the level is infeasible and the caller
+    //      raises it.
+    //  Every test capital can fix is monotone in it — more capital raises
+    //  debtors, NCA, current ratio and debtor-days, and lowers debt-equity —
+    //  so the smallest workable figure can be found by binary search.
+    const runAll = (pinnedCap) => {
+    // The seeded generator is created PER RUN. It used to live outside, so
+    // every re-run drew further down the stream and produced different
+    // creditor and cash figures — which both broke the "reproducible per
+    // client" guarantee and made the search below compare unlike runs.
+    const rng = seededRng(asm.seedKey || 'projection');
+    const seedCash = Math.round(500000 + rng() * 400000);
+    const seedCred = bigCreditor
+      ? Math.round(input.creditors * (LIMITS.creditorLoPct + rng() * (LIMITS.creditorHiPct - LIMITS.creditorLoPct)))
+      : Math.round(200000 + rng() * 600000);
     const years = [];
     let prev = null;
 
@@ -545,7 +573,7 @@ const ProjectionEngine = (() => {
 
       const openingStock = y === 1 ? input.inventory.closing : prev.pl.closingStock;
       const baseClosingStock = y === 1
-        ? Math.max(stlTotal / LIMITS.ncaFactor * LIMITS.stockBuffer, openingStock * LIMITS.stockBuffer)
+        ? Math.max(stlTotal / ncaFactor * LIMITS.stockBuffer, openingStock * LIMITS.stockBuffer)
         : openingStock * LIMITS.stockGrowth;
 
       // ── Bottom-up profit (CA rule 2026-07-25) ──
@@ -585,14 +613,22 @@ const ProjectionEngine = (() => {
       const tdsPayable = Math.round(salaryProj * 0.01 + auditFee * 0.015);
 
       // ── levers (rules 2–5) — iterate until stable or bounded out ──
-      // Additional capital persists (an injection stays on the balance
-      // sheet), so each year starts from the prior year's level.
-      let addlCap = ov.additionalCapital != null ? num(ov.additionalCapital) : (prev ? prev.bs.additionalCapital : 0);
+      // A manual figure always wins. Otherwise the pinned level stands for
+      // every year (one constant figure); only the unpinned bounding pass
+      // carries the old "inherit from last year and add more" behaviour.
+      const capPinned = ov.additionalCapital == null && pinnedCap != null;
+      let addlCap = ov.additionalCapital != null ? num(ov.additionalCapital)
+        : capPinned ? pinnedCap
+        : (prev ? prev.bs.additionalCapital : 0);
       let dividend = ov.dividend != null ? num(ov.dividend) : 0;
       let stockShift = 0;
+      let cashCut = 0;                               // cash released to raise NCA
       let dividendApplied = ov.dividend != null, stockApplied = ov.closingStock != null;
       let stockFloorHit = ov.closingStock != null;   // <30-day step (a) exhausted?
+      let cashFloorHit = ov.cash != null;            // cash lever exhausted?
+      let capExhausted = false;                      // current assets used up?
       const levers = [];
+      let yearOk = true;
 
       let state = null;
       for (let iter = 0; iter < 15; iter++) {
@@ -606,19 +642,34 @@ const ProjectionEngine = (() => {
         const cl = creditors + provTax + expPayable + tdsPayable + stlTotal;
         const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC;
         const faNet = dep.closing;
-        const debtors = sources - faNet - cash - closingStock + cl;
-        const ca = cash + debtors + closingStock;
+        // Cash is the lever that moves Net Current Assets — NCA works out to
+        // `sources − fixed assets − cash + short-term loan`, independent of
+        // how the balance splits between stock and debtors. Releasing cash is
+        // therefore what buys the room to avoid owner capital.
+        const cashEff = ov.cash != null ? num(ov.cash) : Math.max(0, cash - cashCut);
+        const debtors = sources - faNet - cashEff - closingStock + cl;
+        const ca = cashEff + debtors + closingStock;
         const debt = closingLT + closingPWC + stlTotal;
         const equity = input.shareCapital + addlCap + retainedClosing;
         const days = sales > 0 ? debtors / sales * 365 : 0;
         const currentRatio = cl > 0 ? ca / cl : Infinity;
         const debtEquity = equity > 0 ? debt / equity : Infinity;
         const nca = (closingStock + debtors) - (cl - stlTotal);
-        const nca70 = nca * LIMITS.ncaFactor;
+        const nca70 = nca * ncaFactor;
         const ncaHeadroom = nca70 - (stlTotal + closingPWC);   // must stay positive
 
         state = { closingStock, gp, cogs, directCost, purchases, retainedClosing, provTax, cl, sources, faNet,
-                  cash, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
+                  cash: cashEff, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
+
+        // Does this year stand up at the capital level it has been given?
+        // Only tests that MORE capital would fix count — a >90-day debtor
+        // turnover is handled by dividend/stock and is made worse by capital.
+        yearOk = debtors >= -0.5
+          && nca >= LIMITS.minNca - 0.5
+          && ncaHeadroom >= -0.5
+          && currentRatio >= LIMITS.minCurrentRatio - 0.005
+          && debtEquity <= LIMITS.maxDebtEquity + 0.005
+          && (sales <= 0 || days >= LIMITS.minDebtorDays - 0.5);
 
         if (!autoSolve) break;
 
@@ -627,13 +678,45 @@ const ProjectionEngine = (() => {
         // CA and NCA rupee-for-rupee and equity for debt-equity.
         const needDE  = debtEquity > LIMITS.maxDebtEquity ? debt / LIMITS.maxDebtEquity - equity : 0;
         const needCR  = currentRatio < LIMITS.minCurrentRatio ? LIMITS.minCurrentRatio * cl - ca : 0;
-        const needNCA = ncaHeadroom < 0 ? -ncaHeadroom / LIMITS.ncaFactor : 0;
+        const needNCA = ncaHeadroom < 0 ? -ncaHeadroom / ncaFactor : 0;
         // Debtors can never be negative on a real balance sheet — when uses
         // fall short of sources even at zero debtors, capital must fill the
         // gap (the rule-2 mechanism, same lever).
         const needPos = debtors < 0 ? -debtors : 0;
-        const need = Math.max(needDE, needCR, needNCA, needPos);
-        if (need > 0.5 && ov.additionalCapital == null) {
+        const needNcaFloor = nca < LIMITS.minNca ? LIMITS.minNca - nca : 0;
+        const need = Math.max(needDE, needCR, needNCA, needPos, needNcaFloor);
+
+        // CA rule (2026-07-28) — owner capital is the LAST resort. With the
+        // figure pinned, a shortfall is met from current assets instead, in
+        // the CA's order: cash down to ~1 lakh first (it raises NCA and
+        // debtors), then closing stock (which raises debtors only). If both
+        // are exhausted the year is left failing and the caller raises the
+        // capital level.
+        if (need > 0.5 && capPinned && !capExhausted) {
+          if (!cashFloorHit) {
+            const room = Math.max(0, cashEff - LIMITS.minCash);
+            // Cash only helps the NCA-side tests and negative debtors.
+            const wanted = Math.max(needNCA, needPos, needNcaFloor);
+            const cut = Math.min(room, wanted);
+            if (cut > 0.5) { cashCut += cut; levers.push({ rule: 'avoid', action: 'cash', amount: -cut }); continue; }
+            cashFloorHit = true;
+          }
+          if (!stockFloorHit && needPos > 0.5) {
+            const stockFloor = Math.max(0, openingStock + directCost - cogs);
+            const room = Math.max(0, closingStock - stockFloor);
+            const dec = Math.min(room, needPos);
+            if (dec > 0.5) { stockShift -= dec; levers.push({ rule: 'avoid', action: 'closingStock', amount: -dec }); continue; }
+            stockFloorHit = true;
+          }
+          // Current assets are exhausted. Fall through rather than break, so
+          // the debtor-turnover rules below still run; `yearOk` already
+          // records the shortfall and the caller raises the capital level.
+          capExhausted = true;
+        }
+        // Only the unpinned bounding pass may inject — with a figure pinned,
+        // the shortfall has already been met from current assets above (or
+        // recorded as infeasible so the caller raises the level).
+        if (need > 0.5 && ov.additionalCapital == null && !capPinned) {
           const add = round1000Up(need);
           addlCap += add;
           levers.push({ rule: needDE >= needCR && needDE >= needNCA ? 3 : (needCR >= needNCA ? 4 : 2), action: 'additionalCapital', amount: add });
@@ -648,7 +731,11 @@ const ProjectionEngine = (() => {
           const excess = debtors - target;
           if (!dividendApplied) {
             dividendApplied = true;
-            const cap = Math.max(0, round1000Down(pat) - 1000);
+            // A dividend leaves the company, so it also lowers equity — cap it
+            // so it can never push debt-equity past its limit (it previously
+            // could, which then blocked this very rule from finishing).
+            const deRoom = debt > 0 ? Math.max(0, equity - debt / LIMITS.maxDebtEquity) : Infinity;
+            const cap = Math.min(Math.max(0, round1000Down(pat) - 1000), round1000Down(deRoom));
             const d = Math.min(round1000Down(excess), cap);
             if (d >= 1000) { dividend += d; levers.push({ rule: 5, action: 'dividend', amount: d }); continue; }
           }
@@ -687,7 +774,18 @@ const ProjectionEngine = (() => {
             }
             stockFloorHit = true;
           }
-          // (b) additional capital to cover the remaining shortfall.
+          // (b) cash next — releasing it raises debtors too, and unlike
+          //     capital it costs the client nothing.
+          if (capPinned) {
+            if (!cashFloorHit) {
+              const room = Math.max(0, cashEff - LIMITS.minCash);
+              const cut = Math.min(room, shortfall);
+              if (cut > 0.5) { cashCut += cut; levers.push({ rule: 'avoid', action: 'cash', amount: -cut }); continue; }
+              cashFloorHit = true;
+            }
+            break;                   // capital may not be added — yearOk decides
+          }
+          // (c) only in the unpinned bounding pass: top up with capital.
           if (ov.additionalCapital == null) {
             const add = round1000Up(shortfall);
             addlCap += add;
@@ -776,8 +874,30 @@ const ProjectionEngine = (() => {
       cf.netChange = cf.operating + cf.investing + cf.financing;
       cf.closingCash = cf.openingCash + cf.netChange;
 
-      years.push({ year: y, pl, bs, cf, dep, ratios, levers });
+      years.push({ year: y, pl, bs, cf, dep, ratios, levers, ok: yearOk });
       prev = years[y - 1];
+    }
+    return years;
+    };
+
+    // Pass 1 — let each year inject freely, purely to bound the search.
+    const freeRun = runAll(null);
+    const capCeiling = round1000Up(Math.max(0, ...freeRun.map(y => y.bs.additionalCapital)));
+
+    // Pass 2 — the smallest single figure that works for every year. Zero is
+    // tried first: the CA's objective is to avoid owner capital entirely.
+    const allOk = ys => ys.every(y => y.ok);
+    let years = runAll(0);
+    if (!allOk(years) && capCeiling > 0) {
+      let lo = 0, hi = capCeiling;
+      if (!allOk(runAll(hi))) hi = round1000Up(capCeiling * 2 + 1000000);  // safety net
+      while (hi - lo > 1000) {
+        const mid = round1000Up((lo + hi) / 2);
+        if (mid >= hi) break;
+        if (allOk(runAll(mid))) hi = mid; else lo = mid;
+      }
+      years = runAll(hi);
+      if (!allOk(years)) years = freeRun;      // nothing constant works — fall back
     }
 
     // IRD sheet data: audited column + projected year 1 (master layout).
@@ -808,7 +928,7 @@ const ProjectionEngine = (() => {
       } : null,
     };
 
-    return { years, ird, meta: { N, stlTotal, interestST, ltScheds, pwcScheds, hpScheds, principalAt, seedCash, seedCred, bigCreditor } };
+    return { years, ird, meta: { N, stlTotal, interestST, ltScheds, pwcScheds, hpScheds, principalAt, bigCreditor, ncaFactor } };
   }
 
   // ───────────────────────── validation ─────────────────────────
