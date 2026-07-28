@@ -13,8 +13,12 @@ function selectRepClient(c){
   $rep('rep-entityAddress').value = c.address || '';
   $rep('rep-entityPan').value = c.pan || '';
 
+  // Assign unconditionally. `if (mapped)` left the PREVIOUS client's entity
+  // type standing whenever this one's entity_type isn't in the map (§16 — a
+  // new spelling silently kills auto-fill), which is how the wrong opinion
+  // wording reached a report.
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
-  if (mapped) $rep('rep-entityType').value = mapped;
+  $rep('rep-entityType').value = mapped || 'private_company';
 
   repRefresh();
 }

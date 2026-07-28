@@ -30,7 +30,10 @@ SearchEngine.attachAutocomplete(document.getElementById('ac-companySearch'), doc
 function selectAcClient(c) {
   document.getElementById('ac-companySearch').value = c.name || '';
   document.getElementById('ac-companyName').value = c.name || '';
-  if (c.chairman_name) document.getElementById('ac-chairmanName').value = c.chairman_name;
+  // Unconditional: a company with no chairman on file used to keep the
+  // previously selected company's chairman, and that name goes straight into
+  // the signed resolution.
+  document.getElementById('ac-chairmanName').value = c.chairman_name || '';
   acOnFormChanged();
 }
 

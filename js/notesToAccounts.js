@@ -18,15 +18,18 @@ ModuleRegistry.register({ id: 'notesToAccounts', group: 'main', buttonId: null, 
 
 // Reuses the SAME clientsList already loaded from Supabase (loadClients()),
 // so client search here matches the Clients/Report tabs exactly.
+// Every field this fills is assigned unconditionally: the `if (c.x)` guards
+// this used to carry meant a client with no business nature, no address or an
+// unmapped entity type simply inherited the previously selected client's.
 function selectNtaClient(c){
   $nta('nta-entityName').value = c.name || '';
   $nta('nta-entityAddress').value = c.address || '';
   $nta('nta-entityPan').value = c.pan || '';
-  if (c.business_nature) $nta('nta-businessNature').value = c.business_nature;
-  if (c.address && !$nta('nta-place').value.trim()) $nta('nta-place').value = c.address;
+  $nta('nta-businessNature').value = c.business_nature || '';
+  $nta('nta-place').value = c.address || '';
 
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
-  if (mapped) $nta('nta-entityType').value = mapped;
+  $nta('nta-entityType').value = mapped || 'private_company';
 
   ntaRefresh();
 }
