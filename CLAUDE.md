@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 12 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
 
 ---
 
@@ -39,18 +39,20 @@ This file is loaded into **every** session, so it holds only what protects work 
 
 > Full detail — runtime architecture, the CDN table with per-library rationale, hosting, local dev: **`docs/architecture.md`**.
 
-Everything runs client-side; there is **no server-side code**. The browser talks to **Supabase Postgres** via `supabase-js` (publishable key in `config.js`; RLS enabled on every table, §6) and to **Google Drive (readonly) + Gmail (send)** via the signed-in staff member's own OAuth token. Emails send as the actual staff member, not a service account. State is `window.*` globals — no modules, no state library.
+The app itself runs **entirely client-side**. The browser talks to **Supabase Postgres** via `supabase-js` (publishable key in `config.js`; RLS enabled on every table, §6) and to **Google Drive (readonly) + Gmail (send)** via the signed-in staff member's own OAuth token. Emails send as the actual staff member, not a service account. State is `window.*` globals — no modules, no state library.
+
+**One exception, added 2026-08-01: `ocr_service/`** — a FastAPI + PaddleOCR process backing the OCR Extract module (§5). It is **optional, local-only, and not deployed** (GitHub Pages can't run Python): each staff member starts it on their own machine with `ocr_service/start.ps1` when they want OCR. Nothing else depends on it — if it's stopped, only that one tab is affected. It does not make this a client/server app; treat it as an optional companion process, and don't move other features onto it without asking. Needs **Python 3.10–3.12** (PaddlePaddle publishes no wheel for 3.13/3.14). Detail: `docs/architecture.md` §2.6 and `ocr_service/README.md`.
 
 ### Script load order (load-bearing)
 
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (12 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, logs, vatCompliance,
   billing, sendDocument, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
-  partyLedger, finalAccount, finStatement) → auth.js (LAST — triggers the boot sequence)
+  partyLedger, finalAccount, finStatement, ocrExtract) → auth.js (LAST — triggers the boot sequence)
 ```
 
 - `finStatementEngine.js` before `finStatement.js` and `finStatementExport.js`; all three after `js/core/workbookReader.js` + `engineMath.js` (which `projectionEngine.js` also depends on).
@@ -87,9 +89,11 @@ AUTOMATION AI APP/
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64, stringSimilarity
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, Google sign-in/out, app_users authorization
-│   ├── core/                # 12 reusable engines — §4
+│   ├── core/                # 13 reusable engines — §4
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
+├── ocr_service/             # Optional local FastAPI + PaddleOCR service — §2
+│                            # (venv/ is gitignored; not deployed with the app)
 ├── docs/                    # On-demand documentation — §17
 │   ├── architecture.md, database.md, engines.md
 │   ├── modules/             # One doc per module group
@@ -118,6 +122,7 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | WorkbookReader | `workbookReader.js` | Locating figures inside the firm's hand-maintained NFRS workbooks. **Everything is label-driven, never positional — never hardcode a value column.** Node-loadable. |
 | EngineMath | `engineMath.js` | `seededRng(key)`, `round1000Up/Down`, `deRound`. What makes the "unique per case" figures **reproducible per client**. Node-loadable. |
 | ReportExport | `reportExport.js` | `toHtml`/`toPdf`/`toExcel`/`download` over one tabular model. Knows nothing about ledgers — callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** (PDF-Lib standard fonts throw on non-WinAnsi characters). |
+| OcrEngine | `ocrEngine.js` | `checkHealth`, `extractText(file)` against the local OCR service (`ocr_service/`, §2). Translates a dead-port `fetch()` rejection into an actionable "service not running" message while preserving the API's own error text. Base URL is `window.OCR_SERVICE_URL`. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§9). No edits to `tabs.js`.
 
@@ -149,6 +154,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Generate Report | Automation Hub | `report.js` | `rep-` | *(none)* | [documents](docs/modules/documents.md) |
 | Notes to Accounts | Automation Hub | `notesToAccounts.js` | `nta-` | *(none)* | [documents](docs/modules/documents.md) |
 | Autobooks | Automation Hub | `salesPurchaseBook.js` | `spb-` | *(none)* | [autobooks](docs/modules/autobooks.md) |
+| OCR Extract | Automation Hub | `ocrExtract.js` | `ocr-` | *(none)* | [documents](docs/modules/documents.md) |
 
 ### Two modules were renamed — display name only
 
@@ -263,7 +269,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `bb-` | Bank Book (Bank Entry) | | `pj-` | Projection Report |
 | `pl-` | Party Ledger | | `fa-` | Final Account |
 | `fs-` | Financial Statement | | `cp-` | Company Profile |
-| `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | | |
+| `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | `ocr-` | OCR Extract |
 
 ### Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
@@ -368,7 +374,9 @@ The established pattern — **investigate with real evidence → implement only 
 - **Autobooks' "As Per VAT Return" figures are typed by the user, never derived** — filed figures genuinely differ from book, and are truncated to whole rupees.
 - **Autobooks never auto-merges parties on PAN** — one PAN spanned two unrelated companies, and one name spanned two real entities.
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
-- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.)
+- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
+- **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
+- **The OCR service is deliberately standalone** — no client picker, no `clients` row, no document pipeline. That's what keeps it optional: a stopped service breaks one tab, nothing else. Don't make another module depend on it without asking.
 
 ---
 
@@ -399,7 +407,8 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
 | `docs/database.md` | On demand | All 17 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, Drive/Gmail, doc-generation detail. |
-| `docs/engines.md` | On demand | The 12 engines in full. |
+| `docs/engines.md` | On demand | The 13 engines in full. |
+| `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |
 | Memory (`~/.claude/projects/.../memory/`) | Index every session | Cross-session behavioural conventions. Module facts live in `docs/`, not here. |

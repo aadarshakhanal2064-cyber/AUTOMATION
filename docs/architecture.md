@@ -70,6 +70,39 @@ All pinned CDN deps carry Subresource Integrity (`sha384`) + `crossorigin` hashe
 - **Real Google OAuth cannot run in the sandbox.** Established testing pattern: bypass the auth wall via direct DOM manipulation and, where needed, mock Drive/Gmail calls.
 - **Microsoft Word / LibreOffice are not installed** in the dev environment. Generated `.docx` verification is structural (XML-level) only; the user does the final visual check in Word.
 
+### 2.6 The OCR service (`ocr_service/`) — the one process that isn't the browser
+
+The **only** server-side code in the project, added 2026-08-01 for the OCR Extract
+module (§5). It is a FastAPI app wrapping PaddleOCR: `POST /ocr` takes a PDF or
+image upload and returns the extracted text as JSON, `GET /health` is a liveness
+check. Full setup and endpoint reference: [`ocr_service/README.md`](../ocr_service/README.md).
+
+**It runs locally, per staff member, and is not deployed.** GitHub Pages serves
+static files only — it cannot host Python. So the service is started on demand
+(`ocr_service/start.ps1`, or `start.sh`) on whichever machine wants OCR, in the
+same spirit as each staff member's browser holding their own Google OAuth token.
+Nothing else in the app depends on it: if it isn't running, the OCR Extract tab
+says so and every other module is unaffected.
+
+This does **not** change the app's architecture. The browser is still the whole
+application; this is a separate optional process it can talk to, not a backend
+the app now requires.
+
+Three things make the browser→service call work, and all three must agree:
+
+| Piece | Where | Note |
+|---|---|---|
+| Service URL | `window.OCR_SERVICE_URL` in `js/config.js` | Defaults to `http://127.0.0.1:8000` |
+| CSP `connect-src` | the meta tag in `index.html` | Lists **both** `127.0.0.1:8000` and `localhost:8000` — distinct origins to a browser. Without this the fetch is blocked before it leaves the page. |
+| CORS allow-list | `ALLOWED_ORIGINS` in `ocr_service/config.py` | The two dev-server ports plus the GitHub Pages origin |
+
+Changing the port means changing all three.
+
+**Python 3.10–3.12 is required** — PaddlePaddle publishes no wheel for 3.13/3.14
+(`pip install paddlepaddle` fails outright with `No matching distribution found`).
+The start scripts look for 3.12 explicitly rather than using whatever `python`
+points at, and say what to install if they can't find one.
+
 ---
 
 

@@ -31,3 +31,35 @@ Bulk-generates "Confirmation of Account Balance & Transaction" letters — one p
 - **Template** (`assets/templates/confirmation-letter.docx`) is tokenized from a real firm letter: the per-party body (To/Subject/table/signature) is wrapped in a docxtemplater loop `{{#letters}}...{{/letters}}` with a `{{^last}}`-guarded page break, so **one render function (`clRenderLetters`) serves both outputs** — a combined multi-page `.docx` (all selected letters) and a ZIP of individual `.docx` files (JSZip), one call per party with a single-item array.
 - **Fixed a wording bug present in every real sample** (including the firm's own blank master): the Subject line and the paragraph below it referenced fiscal years one year apart. The template uses one `{{fyLabel}}` token in both places. Also corrected the firm's baked-in "Conformation" → "Confirmation" typo.
 
+### 5.19 OCR Extract (`js/ocrExtract.js`, `ocr-` prefix)
+
+Added 2026-08-01. Upload a scanned PDF or an image, get its text back — copy it
+or download it as `.txt`. Automation Hub tab.
+
+- **It is the only module backed by a server process.** All the OCR work happens
+  in `ocr_service/` (FastAPI + PaddleOCR), which each staff member runs locally;
+  see `docs/architecture.md` §2.6 and `ocr_service/README.md`. The browser side
+  is deliberately thin — file picking, calling the service, rendering text.
+- **`js/core/ocrEngine.js` owns the transport**, not this module. Its one real job
+  is telling *"the service isn't running"* apart from *"OCR failed"*: a `fetch()`
+  to a dead loopback port rejects with a bare "Failed to fetch", which tells the
+  user nothing, so the engine rewrites it into an actionable message naming the
+  start script. `ocrInit()` calls `/health` on every tab open so that message
+  appears **before** the user picks a file rather than after they wait on an
+  upload.
+- **Deliberately not wired to anything** — no client picker, no `clients` row, no
+  document pipeline. It extracts text and hands it over. This keeps the service's
+  availability a local concern: if it's stopped, only this tab is affected.
+- **Nepali (Devanagari) text is not handled today.** The service runs the English
+  model (`OCR_LANG=en`). PaddleOCR ships Devanagari models, so this is a config
+  change plus real-document calibration, not a rewrite — but it has **not** been
+  tested against the firm's Nepali documents, so don't assume it works.
+- **Expect ~10–20 seconds per page** on CPU. The status box says so during a run;
+  the Extract button disables while `ocrBusy` is set so a slow page can't be
+  double-submitted.
+- This is **not** a revival of the removed VAT Return OCR module (see
+  `modules/registrar.md` §5.11) — that was in-browser, digit-only, Tesseract-based,
+  and wired into the VAT workbook. This is a general-purpose text extractor with a
+  different engine and no VAT coupling. The 2026-07-14 decision to drop the VAT
+  module still stands.
+

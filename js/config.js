@@ -10,6 +10,12 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googl
 // invoice tax line (and any future consumer), so the figure can't drift.
 window.VAT_STANDARD_RATE = 0.13;
 
+// The local PaddleOCR service (ocr_service/). It runs on each staff member's own
+// machine — GitHub Pages can't host Python — so this is loopback, not a server.
+// Changing the port means updating ocr_service/config.py and the CSP
+// connect-src in index.html to match, or the browser blocks the call.
+window.OCR_SERVICE_URL = localStorage.getItem('ocrServiceUrl') || 'http://127.0.0.1:8000';
+
 // ── Mutable app state (window.* for global access) ──
 window.CLIENT_ID        = localStorage.getItem('gClientId') || '';
 window.tokenClient      = undefined;
