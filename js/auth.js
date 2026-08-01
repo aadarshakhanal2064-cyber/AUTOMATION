@@ -4,8 +4,16 @@
 window.addEventListener('load', () => {
   const showSignInScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('recovery-wrap').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'flex';
     document.getElementById('auth-email').focus();
+  };
+
+  const showRecoveryScreen = () => {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('auth-section-wrap').style.display = 'none';
+    document.getElementById('recovery-wrap').style.display = 'flex';
+    document.getElementById('recovery-password').focus();
   };
 
   // Supabase Auth owns session state now — onAuthStateChange fires once on
@@ -18,6 +26,13 @@ window.addEventListener('load', () => {
       session ? afterSupabaseSignIn(session) : showSignInScreen();
     } else if (event === 'SIGNED_IN') {
       afterSupabaseSignIn(session);
+    } else if (event === 'PASSWORD_RECOVERY') {
+      // Fires instead of SIGNED_IN when the URL carries a recovery token —
+      // clicking the "Send password recovery" link an admin sent from the
+      // Supabase dashboard. The session is real but must not be used to enter
+      // the app until a password is actually set (submitNewPassword() below
+      // is what calls afterSupabaseSignIn once that's done).
+      showRecoveryScreen();
     } else if (event === 'SIGNED_OUT') {
       // Skip if the Access Denied screen is up — that sign-out is ours
       // (afterSupabaseSignIn rejecting a non-member) and the denial message
@@ -49,9 +64,11 @@ window.addEventListener('load', () => {
 //  app_users membership check below is what actually grants access.
 //
 //  Accounts are created by an admin in the Supabase dashboard — signup is
-//  disabled there on purpose. There is no self-serve password reset: the
-//  firm has a handful of staff and Supabase's built-in SMTP is rate-limited
-//  to a few mails an hour, so an admin resets it instead.
+//  disabled there on purpose. There is no self-serve "Forgot password?" link
+//  in the app: the firm has a handful of staff and Supabase's built-in SMTP
+//  is rate-limited to a few mails an hour, so an admin triggers the reset
+//  (Authentication → Users → Send password recovery) and the user completes
+//  it on the "Set a new password" screen below (submitNewPassword()).
 // ════════════════════════════════════════════
 function authStatus(msg, type) { showStatus(msg, type, 'auth-status'); }
 
@@ -71,6 +88,39 @@ async function signIn() {
     btn.disabled = false;
     authStatus('❌ ' + escHtml(error.message), 'error');
   }
+}
+
+function recoveryStatus(msg, type) { showStatus(msg, type, 'recovery-status'); }
+
+// The other half of "Accounts are admin-created" (see the block comment
+// above): an admin can't type a password into the Supabase dashboard for an
+// existing user, only trigger a recovery email — so this screen is what
+// actually lets someone set one. Reached only via the PASSWORD_RECOVERY
+// event above, never by direct navigation.
+async function submitNewPassword() {
+  const pw  = document.getElementById('recovery-password').value;
+  const pw2 = document.getElementById('recovery-password-confirm').value;
+  if (pw.length < 8) return recoveryStatus('Password must be at least 8 characters.', 'info');
+  if (pw !== pw2) return recoveryStatus("Passwords don't match.", 'info');
+
+  const btn = document.getElementById('recovery-submit');
+  btn.disabled = true;
+  recoveryStatus('<span class="spinner spinner-navy"></span> Setting password…', 'searching');
+
+  const { data, error } = await window.sb.auth.updateUser({ password: pw });
+  if (error) {
+    btn.disabled = false;
+    recoveryStatus('❌ ' + escHtml(error.message), 'error');
+    return;
+  }
+
+  // updateUser() doesn't itself fire SIGNED_IN, so the recovery session
+  // established by the link would otherwise leave the user stuck on this
+  // screen with a valid session and nowhere to go. Route in directly —
+  // afterSupabaseSignIn only ever reads session.user, and data.user here is
+  // the same full User object a real session would carry.
+  document.getElementById('recovery-form').reset();
+  await afterSupabaseSignIn({ user: data.user });
 }
 
 function signOut() {

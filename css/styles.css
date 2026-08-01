@@ -315,22 +315,28 @@ main {
 .card-title { font-size: 16px; font-weight: 700; color: var(--brand-navy); }
 .card-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 
-/* ── AUTH SECTION ── */
-html:has(#auth-section-wrap:not([style*="display: none"])) body { background: radial-gradient(ellipse at top left, #e6ecfb 0%, var(--bg-app) 45%), radial-gradient(ellipse at bottom right, #e3e8fa 0%, var(--bg-app) 50%); }
-#auth-section-wrap { min-height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 40px 20px; position:relative; }
-#auth-section {
+/* ── AUTH SECTION ──
+   Shared between the sign-in card (#auth-section-wrap) and the password-
+   recovery landing card (#recovery-wrap) — same layout, same card, different
+   content, so the rules are written against both ids/classes together. */
+html:has(#auth-section-wrap:not([style*="display: none"])) body,
+html:has(#recovery-wrap:not([style*="display: none"])) body { background: radial-gradient(ellipse at top left, #e6ecfb 0%, var(--bg-app) 45%), radial-gradient(ellipse at bottom right, #e3e8fa 0%, var(--bg-app) 50%); }
+#auth-section-wrap, #recovery-wrap { min-height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 40px 20px; position:relative; }
+#auth-section, #recovery-section {
   max-width: 460px; width:100%; text-align: center; position:relative; z-index:2;
   border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
 }
-#auth-section .brand { border:none; padding:0 0 22px 0; }
-#auth-section .brand img { max-height: 96px; }
-#auth-section h2 { font-size: 26px; color: var(--brand-navy); margin-bottom: 8px; font-weight:700; letter-spacing:-0.3px; }
-#auth-section p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
-/* The sign-in form reuses .form-group/.btn-primary; it only needs its labels
-   left-aligned inside this otherwise centred card, and room above the button. */
-#auth-form .form-group { margin-bottom: 16px; }
-#auth-form #auth-submit { margin-top: 6px; padding: 12px 24px; }
-#auth-status:not(:empty) { margin-top: 16px; text-align: left; }
+#auth-section .brand, #recovery-section .brand { border:none; padding:0 0 22px 0; }
+#auth-section .brand img, #recovery-section .brand img { max-height: 96px; }
+#auth-section h2, #recovery-section h2 { font-size: 26px; color: var(--brand-navy); margin-bottom: 8px; font-weight:700; letter-spacing:-0.3px; }
+#auth-section p, #recovery-section p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+/* Both forms reuse .form-group/.btn-primary; .auth-card-form only needs its
+   labels left-aligned inside an otherwise centred card, and room above the
+   submit button. .auth-inline-status is the shared error/spinner line under
+   either form (fed by showStatus()). */
+.auth-card-form .form-group { margin-bottom: 16px; }
+.auth-card-form button[type="submit"] { margin-top: 6px; padding: 12px 24px; }
+.auth-inline-status:not(:empty) { margin-top: 16px; text-align: left; }
 .auth-footer-trust {
   display:flex; align-items:center; justify-content:center; gap:8px;
   margin-top: 28px; font-size: 12.5px; color: var(--text-faint); font-weight: 500;

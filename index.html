@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608021200">
+<link rel="stylesheet" href="css/styles.css?v=202608021415">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -197,7 +197,7 @@ function cropLoginLogoIcon(img) {
 
       <!-- A real <form> so Enter submits; onsubmit returns false to stop the
            page navigating (signIn() drives everything through Supabase). -->
-      <form id="auth-form" onsubmit="signIn(); return false;" autocomplete="on">
+      <form id="auth-form" class="auth-card-form" onsubmit="signIn(); return false;" autocomplete="on">
         <div class="form-group" style="text-align:left;">
           <label for="auth-email">Email</label>
           <input type="email" id="auth-email" name="email" autocomplete="username"
@@ -212,15 +212,45 @@ function cropLoginLogoIcon(img) {
           Sign in
         </button>
       </form>
-      <div id="auth-status"></div>
+      <div id="auth-status" class="auth-inline-status"></div>
 
       <p style="margin-top:24px; font-size:12.5px; border-top:1px solid var(--border); padding-top:22px; color:var(--text-muted);">
-        Forgot your password? Ask an admin to reset it in Supabase.
+        Forgot your password? Ask an admin to send you a reset link from Supabase.
       </p>
     </div>
     <div class="auth-footer-trust">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
       Secure. Compliant. Confidential.
+    </div>
+  </div>
+
+  <!-- SET NEW PASSWORD — where a Supabase password-recovery link lands.
+       auth.js shows this on the PASSWORD_RECOVERY auth event; it is never
+       reached by typing a URL, only by following a real recovery email. -->
+  <div id="recovery-wrap" style="display:none;">
+    <div id="recovery-section" class="card" style="padding:48px 40px;">
+      <div class="brand">
+        <img src="assets/logo.jpeg" alt="Shailesh &amp; Associates Logo" onerror="logoFallback(this, 34)" onload="cropLoginLogoIcon(this)">
+      </div>
+      <h2>Set a new password</h2>
+      <p>You followed a password reset link. Choose a new password to finish signing in.</p>
+
+      <form id="recovery-form" class="auth-card-form" onsubmit="submitNewPassword(); return false;" autocomplete="off">
+        <div class="form-group" style="text-align:left;">
+          <label for="recovery-password">New password</label>
+          <input type="password" id="recovery-password" name="new-password" autocomplete="new-password"
+                 placeholder="At least 8 characters" minlength="8" required />
+        </div>
+        <div class="form-group" style="text-align:left;">
+          <label for="recovery-password-confirm">Confirm password</label>
+          <input type="password" id="recovery-password-confirm" name="new-password-confirm" autocomplete="new-password"
+                 placeholder="Type it again" minlength="8" required />
+        </div>
+        <button type="submit" class="btn btn-primary" id="recovery-submit" style="width:100%; justify-content:center;">
+          Set password &amp; sign in
+        </button>
+      </form>
+      <div id="recovery-status" class="auth-inline-status"></div>
     </div>
   </div>
 
@@ -3093,49 +3123,49 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608021200"></script>
-<script src="js/utils.js?v=202608021200"></script>
-<script src="js/core/moduleRegistry.js?v=202608021200"></script>
-<script src="js/core/statusBox.js?v=202608021200"></script>
-<script src="js/core/nepaliLocale.js?v=202608021200"></script>
-<script src="js/core/documentEngine.js?v=202608021200"></script>
-<script src="js/core/searchEngine.js?v=202608021200"></script>
-<script src="js/core/tableEngine.js?v=202608021200"></script>
-<script src="js/core/workflowEngine.js?v=202608021200"></script>
-<script src="js/core/auditLog.js?v=202608021200"></script>
-<script src="js/core/reportExport.js?v=202608021200"></script>
-<script src="js/core/workbookReader.js?v=202608021200"></script>
-<script src="js/core/engineMath.js?v=202608021200"></script>
-<script src="js/core/ocrEngine.js?v=202608021200"></script>
-<script src="js/core/dataCache.js?v=202608021200"></script>
-<script src="js/tabs.js?v=202608021200"></script>
-<script src="js/dashboard.js?v=202608021200"></script>
-<script src="js/registrar.js?v=202608021200"></script>
-<script src="js/clients.js?v=202608021200"></script>
-<script src="js/vatCompliance.js?v=202608021200"></script>
-<script src="js/billing.js?v=202608021200"></script>
-<script src="js/serviceMemo.js?v=202608021200"></script>
-<script src="js/report.js?v=202608021200"></script>
-<script src="js/notesToAccounts.js?v=202608021200"></script>
-<script src="js/depreciation.js?v=202608021200"></script>
-<script src="js/depreciationSlm.js?v=202608021200"></script>
-<script src="js/bmAgmMinutes.js?v=202608021200"></script>
-<script src="js/auditorChange.js?v=202608021200"></script>
-<script src="js/companyProfile.js?v=202608021200"></script>
-<script src="js/salesPurchaseBook.js?v=202608021200"></script>
-<script src="js/confirmationLetters.js?v=202608021200"></script>
-<script src="js/bankBook.js?v=202608021200"></script>
-<script src="js/partyLedger.js?v=202608021200"></script>
-<script src="js/finalAccount.js?v=202608021200"></script>
-<script src="js/projectionEngine.js?v=202608021200"></script>
-<script src="js/projection.js?v=202608021200"></script>
-<script src="js/projectionExport.js?v=202608021200"></script>
-<script src="js/finStatementEngine.js?v=202608021200"></script>
-<script src="js/finStatement.js?v=202608021200"></script>
-<script src="js/finStatementExport.js?v=202608021200"></script>
-<script src="js/ocrExtract.js?v=202608021200"></script>
-<script src="js/fileManagement.js?v=202608021200"></script>
-<script src="js/auth.js?v=202608021200"></script>
+<script src="js/config.js?v=202608021415"></script>
+<script src="js/utils.js?v=202608021415"></script>
+<script src="js/core/moduleRegistry.js?v=202608021415"></script>
+<script src="js/core/statusBox.js?v=202608021415"></script>
+<script src="js/core/nepaliLocale.js?v=202608021415"></script>
+<script src="js/core/documentEngine.js?v=202608021415"></script>
+<script src="js/core/searchEngine.js?v=202608021415"></script>
+<script src="js/core/tableEngine.js?v=202608021415"></script>
+<script src="js/core/workflowEngine.js?v=202608021415"></script>
+<script src="js/core/auditLog.js?v=202608021415"></script>
+<script src="js/core/reportExport.js?v=202608021415"></script>
+<script src="js/core/workbookReader.js?v=202608021415"></script>
+<script src="js/core/engineMath.js?v=202608021415"></script>
+<script src="js/core/ocrEngine.js?v=202608021415"></script>
+<script src="js/core/dataCache.js?v=202608021415"></script>
+<script src="js/tabs.js?v=202608021415"></script>
+<script src="js/dashboard.js?v=202608021415"></script>
+<script src="js/registrar.js?v=202608021415"></script>
+<script src="js/clients.js?v=202608021415"></script>
+<script src="js/vatCompliance.js?v=202608021415"></script>
+<script src="js/billing.js?v=202608021415"></script>
+<script src="js/serviceMemo.js?v=202608021415"></script>
+<script src="js/report.js?v=202608021415"></script>
+<script src="js/notesToAccounts.js?v=202608021415"></script>
+<script src="js/depreciation.js?v=202608021415"></script>
+<script src="js/depreciationSlm.js?v=202608021415"></script>
+<script src="js/bmAgmMinutes.js?v=202608021415"></script>
+<script src="js/auditorChange.js?v=202608021415"></script>
+<script src="js/companyProfile.js?v=202608021415"></script>
+<script src="js/salesPurchaseBook.js?v=202608021415"></script>
+<script src="js/confirmationLetters.js?v=202608021415"></script>
+<script src="js/bankBook.js?v=202608021415"></script>
+<script src="js/partyLedger.js?v=202608021415"></script>
+<script src="js/finalAccount.js?v=202608021415"></script>
+<script src="js/projectionEngine.js?v=202608021415"></script>
+<script src="js/projection.js?v=202608021415"></script>
+<script src="js/projectionExport.js?v=202608021415"></script>
+<script src="js/finStatementEngine.js?v=202608021415"></script>
+<script src="js/finStatement.js?v=202608021415"></script>
+<script src="js/finStatementExport.js?v=202608021415"></script>
+<script src="js/ocrExtract.js?v=202608021415"></script>
+<script src="js/fileManagement.js?v=202608021415"></script>
+<script src="js/auth.js?v=202608021415"></script>
 
 </body>
 </html>
