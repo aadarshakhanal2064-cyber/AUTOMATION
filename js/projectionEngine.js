@@ -333,6 +333,10 @@ const ProjectionEngine = (() => {
                            // max(STL ÷ NCA% × 1.05, opening × 1.05)
     stockGrowth: 1.05,     // yr-2+ closing stock = opening × 1.05
     creditorDecay: 0.90,   // creditors shrink 10%/yr after yr 1
+    minPurchasePct: 0.50,  // CA rule (2026-07-29): closing stock may be cut to avoid
+                           // owner capital, but never so far that Goods Purchase falls
+                           // below half the provisional year's — a trading company that
+                           // appears to buy nothing would not survive a bank's reading
     cashGrowth: 1.10,      // cash grows 10%/yr after yr 1, rounded to nearest 10
   };
 
@@ -701,10 +705,20 @@ const ProjectionEngine = (() => {
             if (cut > 0.5) { cashCut += cut; levers.push({ rule: 'avoid', action: 'cash', amount: -cut }); continue; }
             cashFloorHit = true;
           }
-          if (!stockFloorHit && needPos > 0.5) {
-            const stockFloor = Math.max(0, openingStock + directCost - cogs);
+          // Then closing stock, with purchases re-balancing so profit is held
+          // (CA rule 2026-07-29). Every rupee taken out of stock lands in the
+          // balancing debtors, so this covers BOTH a negative debtor balance
+          // and the 30-day turnover floor — which is what lets the capital
+          // level keep falling. Bounded so stock and purchases stay ≥ 0.
+          if (!stockFloorHit) {
+            const dTarget = sales > 0 ? sales * LIMITS.minDebtorDays / 365 : 0;
+            const debtorShort = Math.max(needPos, dTarget - debtors);
+            // Purchases = COGS − opening − direct + closing, so the stock floor
+            // is whatever keeps purchases at their minimum plausible level.
+            const purchMin = LIMITS.minPurchasePct * input.materials.purchases;
+            const stockFloor = Math.max(0, openingStock + directCost - cogs + purchMin);
             const room = Math.max(0, closingStock - stockFloor);
-            const dec = Math.min(room, needPos);
+            const dec = Math.min(room, debtorShort);
             if (dec > 0.5) { stockShift -= dec; levers.push({ rule: 'avoid', action: 'closingStock', amount: -dec }); continue; }
             stockFloorHit = true;
           }
@@ -756,7 +770,10 @@ const ProjectionEngine = (() => {
         //   (b) only if (a) can't reach 30 days, raise debtors the rest of the
         //       way by injecting Director/Partner/Proprietor additional capital
         //       (rounded up to '000).
-        if (days > 0 && days < LIMITS.minDebtorDays - 0.01) {
+        // `days` can be negative when debtors are — the old `days > 0` guard
+        // skipped the whole fix in exactly that case, leaving stock room
+        // unused and forcing owner capital in instead.
+        if (sales > 0 && days < LIMITS.minDebtorDays - 0.01) {
           const targetDebtors = sales * LIMITS.minDebtorDays / 365;
           const shortfall = targetDebtors - debtors;             // > 0
           // (a) closing-stock reduction. Under profit-held the NCA working
@@ -767,7 +784,10 @@ const ProjectionEngine = (() => {
           //     (= cogs − opening − direct + closing) ≥ 0.
           if (!stockFloorHit) {
             if (nca >= LIMITS.minNca) {
-              const stockFloor = Math.max(0, openingStock + directCost - cogs);
+              // Same bound as the capital-avoidance step: keep Goods Purchase
+              // at a plausible level rather than driving it to nil.
+              const stockFloor = Math.max(0,
+                openingStock + directCost - cogs + LIMITS.minPurchasePct * input.materials.purchases);
               const room = Math.max(0, closingStock - stockFloor);
               const dec = Math.min(shortfall, room);
               if (dec > 0.5) { stockShift -= dec; levers.push({ rule: 'a', action: 'closingStock', amount: -dec }); continue; }
