@@ -76,6 +76,9 @@ async function signIn() {
 function signOut() {
   window.currentUser = null;
   window.clientsList = [];
+  // Cached ledger rows are this user's data as much as clientsList is — they
+  // must not survive into the next person's session on a shared machine.
+  DataCache.invalidateAll();
 
   window.sb.auth.signOut();
 

@@ -15,6 +15,29 @@ window.VAT_STANDARD_RATE = 0.13;
 // connect-src in index.html to match, or the browser blocks the call.
 window.OCR_SERVICE_URL = localStorage.getItem('ocrServiceUrl') || 'http://127.0.0.1:8000';
 
+// ── Shared DataCache keys for the ledger tables ──
+// Bank Entry, Party Ledger and Final Account read the same rows; caching them
+// under shared keys is what stops three consecutive tab opens from downloading
+// bank_transactions three times.
+//
+// A key spells out the ORDER BY, not just the table, and that is load-bearing:
+// Bank Entry sorts bank_accounts by (sort_order, account_name) while Party
+// Ledger uses (sort_order, id), and Final Account renders that array in order —
+// one shared key would silently reorder its bank list. bank_accounts is a
+// handful of rows, so two keys cost nothing; bank_transactions is the big one
+// and its query is byte-identical in both modules, so it genuinely shares.
+//
+// These live here rather than in a module because they are cross-module by
+// definition, and config.js loads before every feature file.
+window.LEDGER_KEYS = {
+  txns:        'bank_transactions@txn_date,id',        // Bank Entry + Party Ledger
+  accountsBb:  'bank_accounts@sort_order,account_name',// Bank Entry
+  accountsPl:  'bank_accounts@sort_order,id',          // Party Ledger + Final Account
+  memosPl:     'service_memos@memo_date,id',           // Party Ledger + Final Account
+  memosSm:     'service_memos@created_at_desc+clients',// Service Memo (joins clients)
+  openings:    'party_opening_balances@id',
+};
+
 // ── Mutable app state (window.* for global access) ──
 window.currentUser      = null;   // { email, role }
 window.clientsList      = [];     // loaded from Supabase

@@ -75,14 +75,21 @@ function plInit() {
   plRefresh();
 }
 
+// Cache keys are shared with Bank Entry and defined in config.js
+// (window.LEDGER_KEYS) — see the comment there for why a key carries its
+// ORDER BY. Final Account calls plRefresh() too, so this one function is the
+// single load path for both modules.
+//
+// Like bbRefresh(), this must never invalidate: plReload() below is the write
+// path.
 async function plRefresh() {
   plStatus('<span class="spinner spinner-navy"></span> Loading ledger data…', 'searching');
   try {
     [plMemos, plTxns, plAccounts, plOpenings] = await Promise.all([
-      sbFetchAll(() => window.sb.from('service_memos').select('*').order('memo_date').order('id')),
-      sbFetchAll(() => window.sb.from('bank_transactions').select('*').order('txn_date').order('id')),
-      sbFetchAll(() => window.sb.from('bank_accounts').select('*').order('sort_order').order('id')),
-      sbFetchAll(() => window.sb.from('party_opening_balances').select('*').order('id')),
+      DataCache.get(window.LEDGER_KEYS.memosPl,    () => sbFetchAll(() => window.sb.from('service_memos').select('*').order('memo_date').order('id'))),
+      DataCache.get(window.LEDGER_KEYS.txns,       () => sbFetchAll(() => window.sb.from('bank_transactions').select('*').order('txn_date').order('id'))),
+      DataCache.get(window.LEDGER_KEYS.accountsPl, () => sbFetchAll(() => window.sb.from('bank_accounts').select('*').order('sort_order').order('id'))),
+      DataCache.get(window.LEDGER_KEYS.openings,   () => sbFetchAll(() => window.sb.from('party_opening_balances').select('*').order('id'))),
     ]);
     plPopulateExpenseNames();
     document.getElementById('pl-status-area').innerHTML = '';
@@ -343,7 +350,11 @@ async function plSaveOpening() {
       .upsert({ ...payload, created_by: plUserEmail() }, { onConflict: 'client_id,firm_key,fiscal_year' });
     if (error) throw error;
     AuditLog.record('party_opening_saved', { module: 'partyLedger', clientName: plSelectedClient.name, detail: { fy, firm: payload.firm_key } });
-    plOpenings = await sbFetchAll(() => window.sb.from('party_opening_balances').select('*').order('id'));
+    // Drop the cached copy before re-reading, or the row just written would be
+    // served from cache and the save would look like it did nothing.
+    DataCache.invalidate(window.LEDGER_KEYS.openings);
+    plOpenings = await DataCache.get(window.LEDGER_KEYS.openings,
+      () => sbFetchAll(() => window.sb.from('party_opening_balances').select('*').order('id')));
     plStatus('✅ Opening balance saved.', 'success');
     plGenerate();
   } catch (e) {

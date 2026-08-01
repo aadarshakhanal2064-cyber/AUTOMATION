@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 12 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
 
 ---
 
@@ -48,7 +48,7 @@ The app itself runs **entirely client-side**, and **Supabase is now its only bac
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (12 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, vatCompliance,
   billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
@@ -86,10 +86,10 @@ AUTOMATION AI APP/
 ├── js/
 │   ├── config.js            # Constants, window.* state, Supabase init,
 │   │                        # REP_FIRMS/REP_ENTITY_PROFILES/NTA_*/IMPORT_FIELDS
-│   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64
+│   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, fmtAmount
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, email/password sign-in/out, app_users authorization
-│   ├── core/                # 12 reusable engines — §4
+│   ├── core/                # 13 reusable engines — §4
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
 ├── ocr_service/             # Optional local FastAPI + PaddleOCR service — §2
@@ -121,6 +121,7 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | WorkbookReader | `workbookReader.js` | Locating figures inside the firm's hand-maintained NFRS workbooks. **Everything is label-driven, never positional — never hardcode a value column.** Node-loadable. |
 | EngineMath | `engineMath.js` | `seededRng(key)`, `round1000Up/Down`, `deRound`. What makes the "unique per case" figures **reproducible per client**. Node-loadable. |
 | ReportExport | `reportExport.js` | `toHtml`/`toPdf`/`toExcel`/`download` over one tabular model. Knows nothing about ledgers — callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** (PDF-Lib standard fonts throw on non-WinAnsi characters). |
+| DataCache | `dataCache.js` | `get(key, loader)` / `invalidate(...keys)` / `invalidateAll()`. 60s TTL in front of the shared full-table ledger loads. Caches the **promise**, so concurrent opens share one round-trip; a rejected load is never cached. **Keys live in `config.js` as `window.LEDGER_KEYS` and encode the ORDER BY, not just the table** — Bank Entry and Party Ledger sort `bank_accounts` differently and Final Account renders that array in order. Write paths call a module's `xxReload()` (invalidate + refresh); `xxRefresh()` must never invalidate. |
 | OcrEngine | `ocrEngine.js` | `checkHealth`, `extractText(file)` against the local OCR service (`ocr_service/`, §2). Translates a dead-port `fetch()` rejection into an actionable "service not running" message while preserving the API's own error text. Base URL is `window.OCR_SERVICE_URL`. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§9). No edits to `tabs.js`.
@@ -191,7 +192,9 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 ### Query rules
 
-PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 314 and growing.
+PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 314 and growing (`loadClients()` was a bare `.select()` until 2026-08-01 — it would have truncated silently, never errored).
+
+**The shared ledger tables go through `DataCache` (§4)**, not a bare `sbFetchAll`: `bank_transactions`, `bank_accounts`, `service_memos` and `party_opening_balances` are read by Bank Entry, Party Ledger *and* Final Account, and `tabs.js` re-runs a module's init on every open. Any new write path to those four tables **must invalidate its key** or the save won't show until the TTL expires.
 
 ### Migration workflow
 
@@ -376,6 +379,8 @@ The established pattern — **investigate with real evidence → implement only 
 - **Projection excludes non-operating income and out-of-note SOI expense rows** — matches the CA's real delivered sample.
 - **Autobooks' "As Per VAT Return" figures are typed by the user, never derived** — filed figures genuinely differ from book, and are truncated to whole rupees.
 - **Autobooks never auto-merges parties on PAN** — one PAN spanned two unrelated companies, and one name spanned two real entities.
+- **Depreciation's grid is built once per scheme, not per tab open** (2026-08-01) — `depBuildGrid()` writes fresh EMPTY inputs, so the old unguarded `depInit()` wiped figures a user had typed and navigated away from. The guard is the `tbody.dataset.scheme` stamp it already sets. A scheme switch still rebuilds, which is the point.
+- **`xxRefresh()` never invalidates the DataCache; `xxReload()` does** (§4) — they look interchangeable and are not. Refresh-invalidates would make the cache a no-op; reload-forgets makes saves invisible.
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
 - **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
@@ -413,7 +418,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
 | `docs/database.md` | On demand | All 17 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
-| `docs/engines.md` | On demand | The 12 engines in full. |
+| `docs/engines.md` | On demand | The 13 engines in full. |
 | `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |

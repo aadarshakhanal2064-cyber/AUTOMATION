@@ -108,11 +108,24 @@ function depCompute(p, inp) {
 }
 
 // ── Build the editable grid for the active scheme ──
+// openModule() calls this on EVERY open, so everything here has to be
+// idempotent-or-guarded. depBuildGrid() is neither: it writes fresh, EMPTY
+// inputs, so re-running it silently discarded figures the user had typed and
+// then navigated away from — a data-loss bug, not just wasted work. The
+// tbody.dataset.scheme stamp it already sets is the right guard: rebuild only
+// when the grid on screen belongs to a different scheme, which is exactly what
+// depSetScheme() (the other caller) wants.
 function depInit() {
-  depBuildGrid();
+  const tbody = document.getElementById('dep-tbody');
+  if (!tbody || tbody.dataset.scheme !== depScheme) depBuildGrid();
   depBuildFyOptions();
-  if (typeof depSlmInit === 'function') depSlmInit();
+  // depSlmRender() rebuilds from depSlmRows, so it loses nothing — but it is a
+  // full innerHTML rebuild of a wide input grid plus a recalc, and the rows
+  // haven't changed just because the tab was reopened. Its own edit paths
+  // (add/remove/import/reset) call depSlmRender() directly.
+  if (!depSlmBuilt && typeof depSlmInit === 'function') { depSlmInit(); depSlmBuilt = true; }
 }
+let depSlmBuilt = false;
 
 // ── Method toggle (Income Tax pools ⇄ Accounting-Standard SLM) ──
 // Swaps the whole working shown in the panel. The Client/PAN/Fiscal-Year

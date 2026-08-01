@@ -60,3 +60,28 @@ The firm's own **Income Statement** and **Balance Sheet** for a period. Financia
 - **`Net Difference` is the point of the module.** `Net Income − Bank − Receivables − Sapati`, labelled "always zero", green at zero and red otherwise. It proves the four modules agree. It is **shown, never forced**: a party opening balance carried in from an earlier period has no matching income or bank movement inside the period, so it surfaces here as a difference of exactly that amount. Verified: with no carried-in opening the figure is exactly `0.00`; with a 2,500 opening it is exactly `−2,500`. Don't "fix" that by hiding it.
 - Exports **PDF + Excel** via `ReportExport`, plus **Print** (a standalone print window, the sheet's "Save/Print" — which is why the proof row's colours are literal hex, not CSS variables).
 
+
+---
+
+## Shared ledger data is cached (2026-08-01)
+
+Bank Entry, Party Ledger and Final Account read the same four tables, and
+`tabs.js` re-runs a module's init on **every** tab open. Opening the three in a
+row used to download `bank_transactions` in full three times; measured after
+the change, that sequence is 5 round-trips instead of 10.
+
+All four loads now go through `DataCache` (`docs/engines.md`), keyed by
+`window.LEDGER_KEYS` in `config.js`. Two rules matter when editing these
+modules:
+
+- **`plRefresh()` / `bbRefresh()` / `smRefresh()` read only — they must never
+  invalidate.** Invalidating there would make opening a tab discard the cache
+  it is supposed to be using.
+- **Every write path calls `bbReload()` / `smReload()`** (invalidate + refresh),
+  and those drop the *other* module's keys for the same table too. A Service
+  Memo write drops Party Ledger's `service_memos` key as well as its own,
+  because the two read that table under different queries; without it a new
+  memo wouldn't reach the ledger until the 60s TTL expired.
+
+Party Ledger's opening-balance save invalidates `openings` before re-reading,
+for the same reason.

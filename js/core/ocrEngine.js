@@ -42,8 +42,21 @@ window.OcrEngine = (function () {
 
   // Resolves with the service's health payload, or throws NOT_RUNNING. Used to
   // tell the user up front rather than on their first failed upload.
+  //
+  // Timed out deliberately: this runs on every OCR tab open, and a dead port
+  // normally rejects instantly — but a firewall that drops SYNs instead of
+  // refusing leaves the fetch hanging, and the tab sits on a spinner with no
+  // way out. 2s is far longer than a local health check ever needs.
+  // No timeout on extractText(): OCR of a multi-page scan legitimately takes
+  // a while, and cutting that off would be a bug, not a safeguard.
   async function checkHealth() {
-    return request('/health', { method: 'GET' });
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2000);
+    try {
+      return await request('/health', { method: 'GET', signal: ctl.signal });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // `file` is a File/Blob from an <input type="file">. Returns the service's

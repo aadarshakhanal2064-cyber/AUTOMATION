@@ -97,12 +97,25 @@ function bbInit() {
   bbRefresh();
 }
 
+// Every write path calls bbReload(), never bbRefresh() directly. It drops
+// Party Ledger's keys as well as its own: those modules read the same rows, and
+// a saved transaction that showed up only in Bank Entry would be worse than no
+// cache at all. bbRefresh() itself must NEVER invalidate — opening the tab
+// would then defeat the very cache it is meant to be using.
+async function bbReload() {
+  DataCache.invalidate(
+    window.LEDGER_KEYS.accountsBb, window.LEDGER_KEYS.txns,
+    window.LEDGER_KEYS.accountsPl,
+  );
+  await bbRefresh();
+}
+
 async function bbRefresh() {
   bbStatus('<span class="spinner spinner-navy"></span> Loading bank book…', 'searching');
   try {
     [bbAccounts, bbTxns] = await Promise.all([
-      sbFetchAll(() => window.sb.from('bank_accounts').select('*').order('sort_order').order('account_name')),
-      sbFetchAll(() => window.sb.from('bank_transactions').select('*').order('txn_date').order('id')),
+      DataCache.get(window.LEDGER_KEYS.accountsBb, () => sbFetchAll(() => window.sb.from('bank_accounts').select('*').order('sort_order').order('account_name'))),
+      DataCache.get(window.LEDGER_KEYS.txns,       () => sbFetchAll(() => window.sb.from('bank_transactions').select('*').order('txn_date').order('id'))),
     ]);
     bbPopulateAccountSelects();
     bbPopulateExpenseNames();
@@ -270,7 +283,7 @@ async function bbSaveAccount() {
       AuditLog.record('bank_account_created', { module: 'bankBook', clientName: name, recordRef: data.id });
     }
     bbCloseAccount();
-    await bbRefresh();
+    await bbReload();
     bbStatus('✅ Account saved.', 'success');
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', errEl);
@@ -287,7 +300,7 @@ async function bbDeleteAccount(row) {
       if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
       AuditLog.record('bank_account_deactivated', { module: 'bankBook', clientName: row.account_name, recordRef: row.id });
       bbCloseAccount();
-      await bbRefresh();
+      await bbReload();
       bbStatus('✅ Account deactivated.', 'success');
     }
     return;
@@ -297,7 +310,7 @@ async function bbDeleteAccount(row) {
   if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
   AuditLog.record('bank_account_deleted', { module: 'bankBook', clientName: row.account_name, recordRef: row.id });
   bbCloseAccount();
-  await bbRefresh();
+  await bbReload();
   bbStatus('✅ Account deleted.', 'success');
 }
 
@@ -517,7 +530,7 @@ async function bbSaveTxn() {
       AuditLog.record('bank_txn_created', { module: 'bankBook', clientName: counterpartyName || '', recordRef: data.id });
     }
     bbCloseTxn();
-    await bbRefresh();
+    await bbReload();
     bbStatus('✅ Transaction saved.', 'success');
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'bb-txn-drawer-status');
@@ -571,7 +584,7 @@ async function bbSaveTransfer(srcAccount, date, amount) {
       AuditLog.record('bank_transfer_created', { module: 'bankBook', detail: { groupId, from: fromId, to: toId } });
     }
     bbCloseTxn();
-    await bbRefresh();
+    await bbReload();
     bbStatus('✅ Transfer saved (recorded on both accounts).', 'success');
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'bb-txn-drawer-status');
@@ -593,7 +606,7 @@ async function bbDeleteTxn(row) {
     if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
     AuditLog.record('bank_txn_deleted', { module: 'bankBook', clientName: row.counterparty_name || '', recordRef: row.id });
   }
-  await bbRefresh();
+  await bbReload();
 }
 async function bbDeleteTxnFromDrawer() {
   if (!bbEditingTxn) return;

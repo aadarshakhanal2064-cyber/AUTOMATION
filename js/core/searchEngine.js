@@ -27,6 +27,25 @@ window.SearchEngine = (function () {
   function attachAutocomplete(inputEl, listEl, config) {
     let selectedIdx = -1;
     let currentMatches = [];
+    // Fuse index cache. Building one is O(list) — over 314 clients, per
+    // keystroke, in each of the ~17 autocompletes, that was the single
+    // hottest path in the app. Keyed on the *identity* of the array getList()
+    // returns: loadClients() replaces window.clientsList wholesale rather
+    // than mutating it, so a new reference is an exact "the data changed"
+    // signal. Length is checked too, so a caller that does mutate in place
+    // still gets a rebuild in the common case.
+    let cachedFuse = null, cachedSrc = null, cachedLen = -1;
+
+    function indexFor(list) {
+      if (cachedFuse && list === cachedSrc && list.length === cachedLen) return cachedFuse;
+      const indexList = config.normalizeItem
+        ? list.map(item => Object.assign(config.normalizeItem(item), { __orig: item }))
+        : list;
+      cachedFuse = buildIndex(indexList, config.keys, config.fuseOptions);
+      cachedSrc = list;
+      cachedLen = list.length;
+      return cachedFuse;
+    }
 
     function hide() {
       listEl.style.display = 'none';
@@ -55,11 +74,7 @@ window.SearchEngine = (function () {
       const list = config.getList();
       if (!Array.isArray(list) || !list.length) { hide(); return; }
 
-      const indexList = config.normalizeItem
-        ? list.map(item => Object.assign(config.normalizeItem(item), { __orig: item }))
-        : list;
-      const fuse = buildIndex(indexList, config.keys, config.fuseOptions);
-      const matches = fuse.search(val).slice(0, config.maxResults || 8)
+      const matches = indexFor(list).search(val).slice(0, config.maxResults || 8)
         .map(r => config.normalizeItem ? r.item.__orig : r.item);
 
       if (!matches.length) { hide(); return; }

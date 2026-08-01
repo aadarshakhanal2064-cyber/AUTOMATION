@@ -2,13 +2,14 @@
 //  SUPABASE: LOAD CLIENTS
 // ════════════════════════════════════════════
 async function loadClients() {
-  const { data, error } = await window.sb
-    .from('clients')
-    .select('*')
-    .order('name');
-
-  if (error) {
-    console.error('Failed to load clients:', error.message);
+  // sbFetchAll, not a bare .select() — PostgREST caps one select at 1000 rows
+  // and this table is at 314 and growing (CLAUDE.md §6). A plain select would
+  // silently truncate rather than error, which is the worst failure mode.
+  let data;
+  try {
+    data = await sbFetchAll(() => window.sb.from('clients').select('*').order('name'));
+  } catch (e) {
+    console.error('Failed to load clients:', e.message);
     document.getElementById('clients-table-wrap').innerHTML =
       '<div class="log-empty" style="color:var(--red);">Failed to load clients. Check your Supabase table and RLS policies.</div>';
     return;
@@ -322,6 +323,18 @@ function populateClientFilters(list) {
 function clientFiltersChanged() {
   window.clientShowAll = false;
   applyClientFilters();
+}
+
+// The dropdowns above call clientFiltersChanged() directly — one click, one
+// rebuild, and it should feel instant. Typing is different: applyClientFilters()
+// destroys and rebuilds the whole Tabulator (deliberately, see renderClientsTable),
+// so firing it per keystroke made the search bar drop characters on a fast typist.
+// 180ms is below the threshold where the delay reads as lag, and it collapses a
+// burst of keystrokes into one rebuild.
+let clientSearchTimer = null;
+function clientSearchChanged() {
+  clearTimeout(clientSearchTimer);
+  clientSearchTimer = setTimeout(clientFiltersChanged, 180);
 }
 
 function applyClientFilters() {

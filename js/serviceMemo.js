@@ -60,11 +60,21 @@ async function loadServiceMemo() {
   await smRefresh();
 }
 
+// Write paths call smReload(); smRefresh() only reads, so opening the tab
+// doesn't throw away a cache it could have used. Party Ledger and Final Account
+// read service_memos too — under a different key, since this query joins
+// clients and orders by created_at — so a memo write has to drop theirs as
+// well, or a new memo wouldn't appear on the ledger.
+async function smReload() {
+  DataCache.invalidate(window.LEDGER_KEYS.memosSm, window.LEDGER_KEYS.memosPl);
+  await smRefresh();
+}
+
 async function smRefresh() {
   smStatusMsg('<span class="spinner spinner-navy"></span> Loading service memos…', 'searching');
   try {
-    smMemos = await sbFetchAll(() => window.sb.from('service_memos')
-      .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false }));
+    smMemos = await DataCache.get(window.LEDGER_KEYS.memosSm, () => sbFetchAll(() => window.sb.from('service_memos')
+      .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false })));
     smRenderRecent();
     smRenderTable();
     document.getElementById('sm-status-area').innerHTML = '';
@@ -330,7 +340,7 @@ async function smSaveMemo() {
       AuditLog.record('service_memo_created', { module: 'serviceMemo', clientName, recordRef: data.id });
     }
     smCloseCreate();
-    await smRefresh();
+    await smReload();
     smStatusMsg('✅ Service memo saved.', 'success');
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'sm-drawer-status');
@@ -342,7 +352,7 @@ async function smDeleteMemo(row) {
   const { error } = await window.sb.from('service_memos').delete().eq('id', row.id);
   if (error) { smStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
   AuditLog.record('service_memo_deleted', { module: 'serviceMemo', clientName: row.client_name, recordRef: row.id });
-  await smRefresh();
+  await smReload();
 }
 
 // ── PDF (formal Service Memo — reuses the PDF-Lib approach of billing.js) ──
