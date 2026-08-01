@@ -94,7 +94,7 @@ All optional, set as environment variables before starting:
 | `OCR_HOST` | `127.0.0.1` | Bind address — loopback only by default |
 | `OCR_ALLOWED_ORIGINS` | dev servers + the GitHub Pages origin | Comma-separated CORS allow-list |
 | `OCR_MAX_FILE_MB` | `25` | Upload size cap |
-| `OCR_LANG` | `en` | PaddleOCR language model |
+| `OCR_LANG` | `ne` | PaddleOCR language model — Nepali (Devanagari). Verified 2026-08-01 to also read plain Latin/English text correctly, so one model serves both. **Do not switch this to `en`**: the English model has no Devanagari support at all — a Nepali page comes back as confident-looking garbage, not an error, which is easy to miss. `ne` costs roughly 2x latency (~40s/page vs ~20s under load; ~13-15s/page on an idle machine) because its detection model is a larger tier. |
 
 Changing `OCR_PORT` also means updating `OCR_SERVICE_URL` in `js/config.js` and
 the `connect-src` entry in `index.html`'s CSP.

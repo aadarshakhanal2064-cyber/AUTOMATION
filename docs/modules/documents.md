@@ -50,12 +50,16 @@ or download it as `.txt`. Automation Hub tab.
 - **Deliberately not wired to anything** — no client picker, no `clients` row, no
   document pipeline. It extracts text and hands it over. This keeps the service's
   availability a local concern: if it's stopped, only this tab is affected.
-- **Nepali (Devanagari) text is not handled today.** The service runs the English
-  model (`OCR_LANG=en`). PaddleOCR ships Devanagari models, so this is a config
-  change plus real-document calibration, not a rewrite — but it has **not** been
-  tested against the firm's Nepali documents, so don't assume it works.
-- **Expect ~10–20 seconds per page** on CPU. The status box says so during a run;
-  the Extract button disables while `ocrBusy` is set so a slow page can't be
+- **Nepali (Devanagari) text is handled by default** — the service runs
+  `OCR_LANG=ne`, verified 2026-08-01 to read both Devanagari and plain
+  Latin/English text correctly from one model. Do not point this at `en`: it has
+  no Devanagari support and silently returns confident-looking garbage instead
+  of an error (see `docs/architecture.md` §2.6 for a real before/after example).
+- **Expect ~15–40 seconds per page** on CPU (Devanagari's detection model is a
+  larger tier than the English-only one, and CPU contention from other running
+  processes matters a lot — a busy machine can push this well past a minute).
+  The status box says so during a run; the Extract button disables while
+  `ocrBusy` is set so a slow page can't be
   double-submitted.
 - This is **not** a revival of the removed VAT Return OCR module (see
   `modules/registrar.md` §5.11) — that was in-browser, digit-only, Tesseract-based,

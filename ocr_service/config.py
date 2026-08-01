@@ -23,7 +23,12 @@ ALLOWED_ORIGINS = _csv_env(
 MAX_FILE_MB = int(os.getenv("OCR_MAX_FILE_MB", "25"))
 MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
 
-OCR_LANG = os.getenv("OCR_LANG", "en")
+# "ne" (Nepali/Devanagari) rather than "en": verified 2026-08-01 to read both
+# Devanagari and Latin-script text correctly under one model, whereas "en" reads
+# Devanagari as unrelated Latin glyphs (garbage output, not just lower accuracy).
+# Costs roughly 2x latency per page (~40s vs ~20s) — a bigger detection model
+# backs the Devanagari pipeline. See docs/architecture.md §2.6.
+OCR_LANG = os.getenv("OCR_LANG", "ne")
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff"}
 PDF_EXTENSIONS = {".pdf"}

@@ -103,6 +103,14 @@ Changing the port means changing all three.
 The start scripts look for 3.12 explicitly rather than using whatever `python`
 points at, and say what to install if they can't find one.
 
+**Runs the Nepali (Devanagari) model, not English** (`OCR_LANG=ne` in
+`ocr_service/config.py`) — verified 2026-08-01 to read plain Latin/English text
+correctly too, so one model covers both. This matters because the failure mode
+of the wrong setting is silent: pointed at the English model, a Devanagari page
+doesn't error, it returns confident-looking garbage (real example:
+`'R US RRRH'` for शैलेश एण्ड एसोसिएट्स, scores ~0.5–0.8 vs ~0.95+ for a correct
+read). `ne` costs roughly double the latency of `en` per page.
+
 ---
 
 

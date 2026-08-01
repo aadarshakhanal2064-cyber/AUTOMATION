@@ -377,6 +377,7 @@ The established pattern — **investigate with real evidence → implement only 
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
 - **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
 - **The OCR service is deliberately standalone** — no client picker, no `clients` row, no document pipeline. That's what keeps it optional: a stopped service breaks one tab, nothing else. Don't make another module depend on it without asking.
+- **`OCR_LANG` defaults to `ne` (Nepali/Devanagari), not `en`** — verified 2026-08-01 to read plain English correctly too, so one model serves both. This isn't a preference: `en` has no Devanagari support and returns confident-looking garbage on a Nepali page instead of erroring, which is easy to miss. Don't "optimize" it back to `en` for speed.
 
 ---
 
