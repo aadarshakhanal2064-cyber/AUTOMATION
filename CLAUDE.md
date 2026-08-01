@@ -52,7 +52,7 @@ CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, logs, vatCompliance,
   billing, sendDocument, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
-  partyLedger, finalAccount, finStatement, ocrExtract) → auth.js (LAST — triggers the boot sequence)
+  partyLedger, finalAccount, finStatement, ocrExtract, fileManagement) → auth.js (LAST — triggers the boot sequence)
 ```
 
 - `finStatementEngine.js` before `finStatement.js` and `finStatementExport.js`; all three after `js/core/workbookReader.js` + `engineMath.js` (which `projectionEngine.js` also depends on).
@@ -140,6 +140,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | VAT Compliance | Sidebar | `vatCompliance.js` | `vatc-` | `vat_filings` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Send Document | Sidebar *(default tab)* | `sendDocument.js` | — | `send_logs` | [documents](docs/modules/documents.md) |
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
+| File Management | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
 | Send Logs | Sidebar | `logs.js` | — | `send_logs` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Company Registrar *(6 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `st-` `ic-` `cr-` `pr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
@@ -175,13 +176,14 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**17 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports`.
+**18 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register`.
 
 ### Trigger-owned logic (never replicate in JS)
 
 - `sync_invoice_payment_totals()` — recomputes `invoices.amount_paid`/`status` from `invoice_payments` on every insert/update/delete.
 - `set_invoice_number` — AFTER INSERT, assigns `{SA|DC}-{id padded}`; **re-fetch the row after insert**, it isn't in INSERT's RETURNING.
 - `set_service_memo_number` — AFTER INSERT on `service_memos`, assigns `{memo_prefix}-{id padded}`; same re-fetch gotcha.
+- `set_document_register_number` — AFTER INSERT on `document_register`, assigns `FM-{id padded}`; same re-fetch gotcha.
 
 ### Data conventions
 
@@ -198,7 +200,7 @@ PostgREST caps a single select at **1000 rows** — any query that can grow past
 
 Show the SQL (annotated migration + rollback as files under `db/`) → apply via Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
 
-### RLS — ENABLED on all 17 tables (since 2026-07-16)
+### RLS — ENABLED on all 18 tables (since 2026-07-16)
 
 **Membership, not authentication, grants access.** Any Google account can hold an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE is admin-only; `send_logs`/`audit_log` are immutable; **`firm_bank_details` writes are admin-only** (payment-fraud target).
 
@@ -270,6 +272,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `pl-` | Party Ledger | | `fa-` | Final Account |
 | `fs-` | Financial Statement | | `cp-` | Company Profile |
 | `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | `ocr-` | OCR Extract |
+| `fm-` | File Management (Document Register) | | | |
 
 ### Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
@@ -376,6 +379,8 @@ The established pattern — **investigate with real evidence → implement only 
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
 - **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
+- **File Management is one row per visit, updated in place on handover** (2026-08-01) — an intake and its return are the same physical custody, so there is no paired "returns" row. `Reopen` clears the collector details rather than keeping them: the documents are physically back, and stale details would be read as fact. Don't add a second write path around `fmFlow`.
+- **File Management is deliberately not linked to Drive or the document pipeline** — it tracks the paper the firm is physically holding, which a digital copy doesn't substitute for. It also has no fiscal-year field on purpose; add one only if the firm asks.
 - **The OCR service is deliberately standalone** — no client picker, no `clients` row, no document pipeline. That's what keeps it optional: a stopped service breaks one tab, nothing else. Don't make another module depend on it without asking.
 - **`OCR_LANG` defaults to `ne` (Nepali/Devanagari), not `en`** — verified 2026-08-01 to read plain English correctly too, so one model serves both. This isn't a preference: `en` has no Devanagari support and returns confident-looking garbage on a Nepali page instead of erroring, which is easy to miss. Don't "optimize" it back to `en` for speed.
 

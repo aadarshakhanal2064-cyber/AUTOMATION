@@ -33,7 +33,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608010900">
+<link rel="stylesheet" href="css/styles.css?v=202608011500">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -160,6 +160,10 @@ function cropLoginLogoIcon(img) {
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
       Clients
+    </button>
+    <button class="nav-item" onclick="switchTab('fileManagement'); fmInit();" id="nav-fileManagement">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      File Management
     </button>
     <button class="nav-item" onclick="switchTab('logs')" id="nav-logs">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
@@ -2520,6 +2524,48 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: FILE MANAGEMENT (Document Register) ── -->
+    <div id="tab-fileManagement-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">File Management</span></div>
+          <h2 class="page-title">File Management</h2>
+          <p class="page-subtitle">Register of physical documents clients hand over — what came in, who brought it, and who collected it back.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="fmRefresh()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+          </button>
+          <button class="btn btn-primary" onclick="fmOpenEntry()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Record Intake
+          </button>
+        </div>
+      </div>
+
+      <div class="stat-grid compact" id="fm-stat-grid"></div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+          <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+            <span class="sb-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input type="text" class="search-bar" id="fm-search" placeholder="Search ref #, client, PAN, person, phone…" oninput="fmApplyFilters()" />
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:16px;">
+          <div class="form-group" style="margin:0;"><label>Document Type</label><select id="fm-filter-doctype" onchange="fmOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Received From</label><input type="date" id="fm-filter-from" onchange="fmOnFilterChange()" /></div>
+          <div class="form-group" style="margin:0;"><label>Received To</label><input type="date" id="fm-filter-to" onchange="fmOnFilterChange()" /></div>
+        </div>
+        <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="fmClearFilters()">Clear Filters</button></div>
+        <div id="fm-status-area"></div>
+        <div id="fm-table-wrap"><div class="log-empty">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- ── TAB: LOGS ── -->
     <div id="tab-logs-panel" class="tab-panel">
       <div class="page-header">
@@ -2717,6 +2763,100 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
       <div id="sm-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- FILE MANAGEMENT — DOCUMENT INTAKE DRAWER -->
+<div class="modal-overlay drawer-right" id="fm-entry-drawer">
+  <div class="modal drawer-panel" style="width:600px;">
+    <div class="modal-header">
+      <h3 id="fm-drawer-title">Record Document Intake</h3>
+      <button class="modal-close" onclick="fmCloseEntry()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full">
+          <label>Client (search by name or PAN)</label>
+          <input type="text" id="fm-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="autocomplete-list" id="fm-client-autocomplete" style="display:none;"></div>
+        </div>
+        <div class="form-group">
+          <label>Client PAN</label>
+          <input type="text" id="fm-client-pan" placeholder="Auto-filled on select" />
+        </div>
+        <div class="form-group">
+          <label>Date Received</label>
+          <input type="date" id="fm-date-received" />
+        </div>
+      </div>
+
+      <div class="form-group full" style="margin-top:8px;">
+        <label>Documents Brought</label>
+        <div id="fm-doc-types" style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:4px;"></div>
+      </div>
+      <div class="form-group full" id="fm-doc-other-group" style="display:none;">
+        <label>Specify (Others)</label>
+        <input type="text" id="fm-doc-other" placeholder="Describe the document" />
+      </div>
+
+      <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-top:8px;">
+        <div class="form-group">
+          <label>Brought By (name)</label>
+          <input type="text" id="fm-brought-name" placeholder="e.g. Ram Bahadur Thapa" />
+        </div>
+        <div class="form-group">
+          <label>Phone Number</label>
+          <input type="text" id="fm-brought-phone" placeholder="e.g. 98XXXXXXXX" />
+        </div>
+      </div>
+
+      <div class="form-group full" style="margin-top:8px;">
+        <label>Remarks</label>
+        <textarea id="fm-remarks" placeholder="e.g. 3 files + 1 bound ledger, kept in the front cabinet."></textarea>
+      </div>
+
+      <div class="action-row" style="justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="fmCloseEntry()">Cancel</button>
+        <button class="btn btn-primary" onclick="fmSaveEntry()">Save Intake</button>
+      </div>
+      <div id="fm-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- FILE MANAGEMENT — HANDOVER MODAL -->
+<div class="modal-overlay" id="fm-return-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h3>Hand Over Documents</h3>
+      <button class="modal-close" onclick="fmCloseReturn()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; font-size:13.5px; margin-bottom:18px;" id="fm-return-summary"></div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group">
+          <label>Date Returned</label>
+          <input type="date" id="fm-return-date" />
+        </div>
+        <div class="form-group">
+          <label>Collected By (name)</label>
+          <input type="text" id="fm-return-name" placeholder="Who took them back" />
+        </div>
+        <div class="form-group full">
+          <label>Phone Number</label>
+          <input type="text" id="fm-return-phone" placeholder="e.g. 98XXXXXXXX" />
+        </div>
+        <div class="form-group full">
+          <label>Remarks</label>
+          <input type="text" id="fm-return-remarks" placeholder="Optional — e.g. ledger retained, rest returned" />
+        </div>
+      </div>
+      <div class="action-row" style="justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="fmCloseReturn()">Cancel</button>
+        <button class="btn btn-primary" onclick="fmConfirmReturn()">Confirm Handover</button>
+      </div>
+      <div id="fm-return-status"></div>
     </div>
   </div>
 </div>
@@ -3090,50 +3230,51 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608010900"></script>
-<script src="js/utils.js?v=202608010900"></script>
-<script src="js/core/moduleRegistry.js?v=202608010900"></script>
-<script src="js/core/statusBox.js?v=202608010900"></script>
-<script src="js/core/nepaliLocale.js?v=202608010900"></script>
-<script src="js/core/documentEngine.js?v=202608010900"></script>
-<script src="js/core/searchEngine.js?v=202608010900"></script>
-<script src="js/core/tableEngine.js?v=202608010900"></script>
-<script src="js/core/workflowEngine.js?v=202608010900"></script>
-<script src="js/core/auditLog.js?v=202608010900"></script>
-<script src="js/core/integrations.js?v=202608010900"></script>
-<script src="js/core/reportExport.js?v=202608010900"></script>
-<script src="js/core/workbookReader.js?v=202608010900"></script>
-<script src="js/core/engineMath.js?v=202608010900"></script>
-<script src="js/core/ocrEngine.js?v=202608010900"></script>
-<script src="js/tabs.js?v=202608010900"></script>
-<script src="js/dashboard.js?v=202608010900"></script>
-<script src="js/registrar.js?v=202608010900"></script>
-<script src="js/clients.js?v=202608010900"></script>
-<script src="js/logs.js?v=202608010900"></script>
-<script src="js/vatCompliance.js?v=202608010900"></script>
-<script src="js/billing.js?v=202608010900"></script>
-<script src="js/serviceMemo.js?v=202608010900"></script>
-<script src="js/sendDocument.js?v=202608010900"></script>
-<script src="js/report.js?v=202608010900"></script>
-<script src="js/notesToAccounts.js?v=202608010900"></script>
-<script src="js/depreciation.js?v=202608010900"></script>
-<script src="js/depreciationSlm.js?v=202608010900"></script>
-<script src="js/bmAgmMinutes.js?v=202608010900"></script>
-<script src="js/auditorChange.js?v=202608010900"></script>
-<script src="js/companyProfile.js?v=202608010900"></script>
-<script src="js/salesPurchaseBook.js?v=202608010900"></script>
-<script src="js/confirmationLetters.js?v=202608010900"></script>
-<script src="js/bankBook.js?v=202608010900"></script>
-<script src="js/partyLedger.js?v=202608010900"></script>
-<script src="js/finalAccount.js?v=202608010900"></script>
-<script src="js/projectionEngine.js?v=202608010900"></script>
-<script src="js/projection.js?v=202608010900"></script>
-<script src="js/projectionExport.js?v=202608010900"></script>
-<script src="js/finStatementEngine.js?v=202608010900"></script>
-<script src="js/finStatement.js?v=202608010900"></script>
-<script src="js/finStatementExport.js?v=202608010900"></script>
-<script src="js/ocrExtract.js?v=202608010900"></script>
-<script src="js/auth.js?v=202608010900"></script>
+<script src="js/config.js?v=202608011500"></script>
+<script src="js/utils.js?v=202608011500"></script>
+<script src="js/core/moduleRegistry.js?v=202608011500"></script>
+<script src="js/core/statusBox.js?v=202608011500"></script>
+<script src="js/core/nepaliLocale.js?v=202608011500"></script>
+<script src="js/core/documentEngine.js?v=202608011500"></script>
+<script src="js/core/searchEngine.js?v=202608011500"></script>
+<script src="js/core/tableEngine.js?v=202608011500"></script>
+<script src="js/core/workflowEngine.js?v=202608011500"></script>
+<script src="js/core/auditLog.js?v=202608011500"></script>
+<script src="js/core/integrations.js?v=202608011500"></script>
+<script src="js/core/reportExport.js?v=202608011500"></script>
+<script src="js/core/workbookReader.js?v=202608011500"></script>
+<script src="js/core/engineMath.js?v=202608011500"></script>
+<script src="js/core/ocrEngine.js?v=202608011500"></script>
+<script src="js/tabs.js?v=202608011500"></script>
+<script src="js/dashboard.js?v=202608011500"></script>
+<script src="js/registrar.js?v=202608011500"></script>
+<script src="js/clients.js?v=202608011500"></script>
+<script src="js/logs.js?v=202608011500"></script>
+<script src="js/vatCompliance.js?v=202608011500"></script>
+<script src="js/billing.js?v=202608011500"></script>
+<script src="js/serviceMemo.js?v=202608011500"></script>
+<script src="js/sendDocument.js?v=202608011500"></script>
+<script src="js/report.js?v=202608011500"></script>
+<script src="js/notesToAccounts.js?v=202608011500"></script>
+<script src="js/depreciation.js?v=202608011500"></script>
+<script src="js/depreciationSlm.js?v=202608011500"></script>
+<script src="js/bmAgmMinutes.js?v=202608011500"></script>
+<script src="js/auditorChange.js?v=202608011500"></script>
+<script src="js/companyProfile.js?v=202608011500"></script>
+<script src="js/salesPurchaseBook.js?v=202608011500"></script>
+<script src="js/confirmationLetters.js?v=202608011500"></script>
+<script src="js/bankBook.js?v=202608011500"></script>
+<script src="js/partyLedger.js?v=202608011500"></script>
+<script src="js/finalAccount.js?v=202608011500"></script>
+<script src="js/projectionEngine.js?v=202608011500"></script>
+<script src="js/projection.js?v=202608011500"></script>
+<script src="js/projectionExport.js?v=202608011500"></script>
+<script src="js/finStatementEngine.js?v=202608011500"></script>
+<script src="js/finStatement.js?v=202608011500"></script>
+<script src="js/finStatementExport.js?v=202608011500"></script>
+<script src="js/ocrExtract.js?v=202608011500"></script>
+<script src="js/fileManagement.js?v=202608011500"></script>
+<script src="js/auth.js?v=202608011500"></script>
 
 </body>
 </html>

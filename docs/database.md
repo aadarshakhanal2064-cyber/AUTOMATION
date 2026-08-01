@@ -14,7 +14,7 @@
 
 Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-26** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (17)
+### 6.1 Tables (18)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -34,6 +34,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `bank_transactions` | Bank Book receipts & payments (§5.14). `account_id` FK → bank_accounts (**on delete restrict**), `txn_type` CHECK (`receipt`/`payment`), `txn_date` (B.S. text), `particular` CHECK (`fee_receipt`/`for_tax`/`expenses`/`tax_payment`/`sapati`/`inter_bank_transfer`), `amount` numeric (>0), `counterparty_name` snapshot, `client_id` (nullable FK — set for all three client particulars), `counterparty_account_id` (nullable FK, transfer's other leg), `transfer_group_id` uuid (pairs the two legs of a transfer), `fiscal_year` (dash). Member-CRUD RLS. Same migrations. |
 | `party_opening_balances` | Per-client opening balance for the Party Ledger (§5.16) — the only figure in that ledger that is stored rather than derived. `client_id` FK (cascade), `firm_key`, `fiscal_year` (dash), `as_on_date` (B.S. text), `opening_amount` numeric, `client_name` snapshot. Unique on `(client_id, firm_key, fiscal_year)`. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_suite.sql`. |
 | `financial_statements` | Saved statement workings (§5.18). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year` (dash), `basis` CHECK (`provisional`/`audited`), `return_type` (free text like `clients.it_return_type`), `entity_type`, `inputs` jsonb (figures A–N + levers + PPE movement + the parsed prior year — everything needed to re-run `build()` identically), `computed` jsonb (the solved statements, COI computation, proofs), `created_by`. Unique on `(client_id, fiscal_year, basis)` where client_id is not null — `basis` is part of the key because a client legitimately holds both a provisional and an audited set for one year, and it decides both the titles and what gets taxed. Member-CRUD RLS + shared `set_updated_at`. `db/2026-07-26_financial_statements.sql`. |
+| `document_register` | Physical document custody log (File Management, §5.20). `register_no` (trigger-assigned `FM-{id padded}` — re-fetch after insert), `client_id` (**nullable** FK → clients, on delete set null) + `client_name`/`client_pan` snapshots, `date_received`, `doc_types` **jsonb array** of the `FM_DOC_TYPES` picklist + `doc_other` free text, `brought_by_name` (NOT NULL)/`brought_by_phone`, `remarks`, `status` CHECK (`pending`/`returned`), and the handover set `date_returned`/`returned_to_name`/`returned_to_phone`/`return_remarks` (all null until returned, **cleared again on reopen**). One row per visit, updated in place on handover — never a paired returns row. Member-CRUD RLS + `set_document_register_number` AFTER INSERT trigger + shared `set_updated_at`. `db/2026-08-01_document_register.sql`. |
 | `projection_reports` | Saved Projection Report workings (§5.15). `client_id` (nullable FK, on delete set null), `company_name`/`pan` snapshots, `fiscal_year_base` (dash), `years` (1–10 CHECK), `inputs` jsonb (parsed statement model + assumptions — everything needed to re-run the engine exactly), `computed` jsonb (full engine output: statements/ratios/levers per year), `created_by`. Member-CRUD RLS. `db/2026-07-22_projection_reports.sql`. |
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
@@ -41,6 +42,7 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 - `sync_invoice_payment_totals()` — recomputes `invoices.amount_paid`/`status` from `invoice_payments` on every insert/update/delete.
 - `set_invoice_number` — AFTER INSERT, assigns `{SA|DC}-{id padded}`; re-fetch the row after insert.
 - `set_service_memo_number` — AFTER INSERT on `service_memos`, assigns `{memo_prefix}-{id padded}` (prefix sent from JS config); re-fetch after insert (§5.13).
+- `set_document_register_number` — AFTER INSERT on `document_register`, assigns `FM-{id padded}`; re-fetch after insert (§5.20).
 
 ### 6.3 Data conventions
 
@@ -59,7 +61,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
-All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions`, `projection_reports` and `financial_statements` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql`, `db/2026-07-22_projection_reports.sql` and `db/2026-07-26_financial_statements.sql`). The permission model:
+All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions`, `projection_reports` and `financial_statements` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql`, `db/2026-07-22_projection_reports.sql`, `db/2026-07-26_financial_statements.sql` and `db/2026-08-01_document_register.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).

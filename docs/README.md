@@ -18,7 +18,7 @@ module detail irrelevant to whatever the session was actually doing.
 | File | Covers | Was |
 |---|---|---|
 | [`architecture.md`](architecture.md) | Runtime architecture, script load order, CDN pins + SRI, hosting, local dev, the auth lifecycle, Google Drive/Gmail integration, and the three document-generation paths | CLAUDE.md §2, §7, §8, §9.1–9.4 |
-| [`database.md`](database.md) | All 17 tables column by column, trigger-owned logic, data conventions, query rules, migration workflow, the full RLS model | CLAUDE.md §6 |
+| [`database.md`](database.md) | All 18 tables column by column, trigger-owned logic, data conventions, query rules, migration workflow, the full RLS model | CLAUDE.md §6 |
 | [`engines.md`](engines.md) | The 12 `js/core/` engines in full — responsibilities, key APIs, and the load-bearing implementation notes | CLAUDE.md §4 |
 
 ## Modules
@@ -34,6 +34,7 @@ module detail irrelevant to whatever the session was actually doing.
 | [`modules/autobooks.md`](modules/autobooks.md) | Autobooks (called Sales & Purchase Book everywhere in code) | `spb-` |
 | [`modules/projection.md`](modules/projection.md) | Projection Report — the constraint solver, its 10 master rules, and its exports | `pj-` |
 | [`modules/financial-statement.md`](modules/financial-statement.md) | Financial Statement — the NFRS statement-set builder | `fs-` |
+| [`modules/file-management.md`](modules/file-management.md) | File Management — the physical document custody register | `fm-` |
 
 The four Financial Management modules share one file on purpose: they read each
 other's state (`finalAccount.js` calls `partyLedger.js`'s functions, and the

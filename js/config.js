@@ -218,6 +218,22 @@ window.BANK_PAYMENT_TYPES = [
 // fee_receipt/for_tax reduce what the client owes, tax_payment increases it.
 window.BANK_CLIENT_PARTICULARS = ['fee_receipt', 'for_tax', 'tax_payment'];
 
+// ── File Management (Document Register) module data ──
+// Document kinds a client physically hands over. One intake can carry several,
+// so these are checkboxes, stored as a jsonb array in document_register.doc_types.
+// 'Others' reveals a free-text field (document_register.doc_other), mirroring the
+// SERVICE_MEMO_TASKS "Others" pattern. Adding a kind here needs no migration.
+window.FM_DOC_TYPES = [
+  'Purchase & Sales Files',
+  'Ledger',
+  'Confirmation',
+  'Interest Certificate',
+  'Bank Statement',
+  'Cheque Book / Vouchers',
+  'Tax Documents',
+  'Others',
+];
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },
