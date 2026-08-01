@@ -1,13 +1,16 @@
 # Document Builders
 
 > Loaded on demand, not in every session. The always-loaded index is **CLAUDE.md §5**;
-> this file holds the detail for Send Document, Audit Report Builder, Notes to Accounts and Confirmation Letters.
+> this file holds the detail for the Audit Report Builder, Notes to Accounts, Confirmation Letters and OCR Extract.
 > Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
 
 ---
 
-### 5.4 Send Document (`js/sendDocument.js`)
-Finds a client's document in Drive and emails it. Drive folder walk: `My Drive → "Audit Data" → <fiscal year folder, e.g. 2081.082> → "Scan" → <doc-type folder or "Tax clearance">`, matching hardcoded name-variant lists. File matching is tiered fuzzy (exact substring → all-words-present → Levenshtein via `stringSimilarity`), with a low-confidence `_warning` surfaced to the user. Sends raw multipart MIME via Gmail as the signed-in user; every send is logged to `send_logs`.
+### 5.4 Send Document — REMOVED 2026-08-01
+Deleted by user decision along with the Send Logs viewer (5.10). It searched Google Drive
+for a client's document and emailed it via Gmail, and was the app's only Drive consumer.
+The `send_logs` table was kept, not dropped — see `docs/database.md`. Removing it is what
+made dropping Google OAuth possible; don't restore it without revisiting that.
 
 ### 5.5 Audit Report Builder (`js/report.js`, `rep-` namespace)
 Full Independent Auditor's Report generator. Client search auto-fills from `clientsList`; `entity_type` free text maps to a report profile via `CLIENT_ENTITY_TO_REP_PROFILE`.

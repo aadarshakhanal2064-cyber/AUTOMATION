@@ -37,11 +37,12 @@ the new client didn't supply kept the previous client's. It surfaced three ways 
 a conditional fill (`if (c.chairman_name) …`) leaving the last company's chairman
 on a signed resolution; a loader returning early ("no saved schedule for this
 client") and leaving the previous client's grid on screen under the new name;
-and module state (`pjSavedId`, `window.foundFile`, an imported workbook)
-outliving the client it belonged to. Two of those were data-integrity bugs, not
+and module state (`pjSavedId`, Send Document's `window.foundFile`, an imported
+workbook) outliving the client it belonged to. Two of those were data-integrity bugs, not
 cosmetic: a stale `pjSavedId` made Save **UPDATE the previous client's**
 `projection_reports` row, and a stale `window.foundFile` would have emailed one
-client's document to another's address.
+client's document to another's address. (Send Document was removed 2026-08-01,
+so that second example is historical — the lesson it taught is not.)
 
 The scope inverts the order so the failure mode is structurally impossible:
 

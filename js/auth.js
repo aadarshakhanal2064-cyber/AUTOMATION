@@ -125,7 +125,6 @@ function signOut() {
   window.accessToken = null;
   window.currentUser = null;
   window.clientsList = [];
-  window.allLogs     = [];
 
   if (window.tokenClient && tokenToRevoke) google.accounts.oauth2.revoke(tokenToRevoke, () => {});
   window.sb.auth.signOut();
@@ -187,7 +186,6 @@ async function afterSupabaseSignIn(session) {
   if (window.currentUser.role === 'admin') {
     document.getElementById('add-client-btn').style.display = 'inline-flex';
     document.getElementById('import-client-btn').style.display = 'inline-flex';
-    document.getElementById('log-filter-sender').style.display = 'block';
   }
 
   // Show app
@@ -195,9 +193,11 @@ async function afterSupabaseSignIn(session) {
   document.getElementById('auth-section-wrap').style.display = 'none';
   document.getElementById('app-section').style.display  = 'block';
 
-  // Load data - assuming loadClients and loadLogs are defined in other scripts
+  // Dashboard is the landing tab, so its data has to be pulled here — the
+  // nav button's onclick (which is what loads it for every later visit)
+  // never fires on boot.
   await loadClients();
-  await loadLogs();
+  await loadDashboard();
   await loadSidebarStorageUsage();
 }
 

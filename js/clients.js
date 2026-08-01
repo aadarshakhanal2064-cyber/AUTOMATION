@@ -1,27 +1,4 @@
 // ════════════════════════════════════════════
-//  CLIENT AUTOCOMPLETE
-// ════════════════════════════════════════════
-// These two fields are the Send Document tab's client picker. Changing the
-// client has to drop the file found for the PREVIOUS one — otherwise the
-// preview still shows it and Send would mail that file to the new client's
-// address. sendDocument.js owns the reset; it loads after this file.
-function selectClient(c) {
-  document.getElementById('clientName').value  = c.name;
-  document.getElementById('clientEmail').value = c.email || '';
-  if (typeof sdClearFoundFile === 'function') sdClearFoundFile();
-}
-
-SearchEngine.attachAutocomplete(document.getElementById('clientName'), document.getElementById('autocomplete-list'), {
-  getList: () => window.clientsList,
-  keys: ['name', 'email'],
-  renderItem: c => `
-    <div class="ac-name">${escHtml(c.name)}</div>
-    <div class="ac-email">${escHtml(c.email || 'No email on file')}</div>
-  `,
-  onSelect: selectClient,
-});
-
-// ════════════════════════════════════════════
 //  SUPABASE: LOAD CLIENTS
 // ════════════════════════════════════════════
 async function loadClients() {

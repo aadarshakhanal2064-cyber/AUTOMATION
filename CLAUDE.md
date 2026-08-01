@@ -49,8 +49,8 @@ Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
 CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
-→ feature modules (dashboard, registrar, clients, logs, vatCompliance,
-  billing, sendDocument, report, notesToAccounts, depreciation,
+→ feature modules (dashboard, registrar, clients, vatCompliance,
+  billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
   partyLedger, finalAccount, finStatement, ocrExtract, fileManagement) → auth.js (LAST — triggers the boot sequence)
 ```
@@ -86,7 +86,7 @@ AUTOMATION AI APP/
 ├── js/
 │   ├── config.js            # Constants, window.* state, Supabase init,
 │   │                        # REP_FIRMS/REP_ENTITY_PROFILES/NTA_*/IMPORT_FIELDS
-│   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64, stringSimilarity
+│   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, Google sign-in/out, app_users authorization
 │   ├── core/                # 13 reusable engines — §4
@@ -136,12 +136,10 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 
 | Module | Where | File(s) | Prefix | Table(s) | Doc |
 |---|---|---|---|---|---|
-| Dashboard | Sidebar | `dashboard.js` | `dash-` | *(reads `audit_log`)* | [compliance-billing](docs/modules/compliance-billing.md) |
+| Dashboard | Sidebar *(default tab)* | `dashboard.js` | `dash-` | *(reads `audit_log`)* | [compliance-billing](docs/modules/compliance-billing.md) |
 | VAT Compliance | Sidebar | `vatCompliance.js` | `vatc-` | `vat_filings` | [compliance-billing](docs/modules/compliance-billing.md) |
-| Send Document | Sidebar *(default tab)* | `sendDocument.js` | — | `send_logs` | [documents](docs/modules/documents.md) |
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
 | File Management | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
-| Send Logs | Sidebar | `logs.js` | — | `send_logs` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Company Registrar *(6 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `st-` `ic-` `cr-` `pr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Billing | Financial Management | `billing.js` | `billing-` | `invoices`, `invoice_items`, `invoice_payments`, `firm_bank_details` | [compliance-billing](docs/modules/compliance-billing.md) |
@@ -363,7 +361,7 @@ The established pattern — **investigate with real evidence → implement only 
 - **The 7 statutory registration fields stay on `clients`** (2026-07-27) — only their editing surface moved to Company Registrar → Company Profile. Never re-add them to the general Add/Edit Client form, and never have `saveClient()` send those keys (even as null) from that form.
 - **`tax_registration_type` (VAT/PAN) is not `vat_status`** — one is a client property, the other is whether the firm files that client's monthly VAT return. Don't merge them.
 - **Entity Type on the client form is exactly 8 values** (`CLIENT_ENTITY_TYPES`) — the 7 `Partnership Firm` clients are a deliberate exception preserved via injection; don't add a 9th option.
-- **Dashboard is not the default landing tab** — Send Document stays default.
+- **Dashboard is the default landing tab** (2026-08-01, user decision) — it took that role when Send Document was removed. This supersedes the earlier "Dashboard is not the default" decision; `afterSupabaseSignIn()` calls `loadDashboard()` on boot because the nav button's `onclick` never fires on the landing tab.
 - **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
 - **Service Memo records work, not collection** (2026-07-26) — its payment columns were dropped deliberately. A payment is recorded once, in Bank Entry, and netted by the Party Ledger. Never re-add payment fields to the memo.
 - **Financial Statement's cash is seeded, and Trade Receivables is the plug** (2026-07-26, user decision) — the spec asks for cash "unique on Each case", so it is seeded from client identity to stay reproducible, and receivables absorbs the balance. A negative plug raises a Director/Proprietor loan; it is never fixed by nudging cash.

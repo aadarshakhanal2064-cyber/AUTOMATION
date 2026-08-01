@@ -596,14 +596,10 @@ textarea { resize: vertical; min-height: 100px; }
 .status-error     { background: var(--red-bg); color: var(--red-dk); border: 1px solid var(--red-border); }
 .status-info      { background: var(--yellow-bg); color: var(--yellow-dk); border: 1px solid var(--yellow-border); }
 
-/* ── FILE PREVIEW ── */
-#file-preview { display: none; background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-top: 20px; align-items: center; gap: 16px; }
-#file-preview .file-icon { font-size: 30px; display:flex; }
-#file-preview .file-info { flex: 1; }
-#file-preview .file-name { font-weight: 600; font-size: 14px; color: var(--brand-navy); }
-#file-preview .file-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-
-/* ── LOGS ── */
+/* ── LOG-STYLE LISTS ──
+   Named for the Send Logs tab that first used them; that module is gone but
+   Dashboard activity, Service Memo and VAT Compliance all render through
+   these, so the class names stay as-is rather than churning three modules. */
 .log-item { display: flex; align-items: flex-start; gap: 16px; padding: 16px; border-bottom: 1px solid var(--border-soft); font-size: 14px; }
 .log-item:last-child { border-bottom: none; }
 .log-item:hover { background: #fafbfe; }
@@ -619,8 +615,6 @@ textarea { resize: vertical; min-height: 100px; }
 .log-client { font-weight: 600; color: var(--text-main); margin-bottom:4px; }
 .log-sub { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
 .log-time { color: var(--text-muted); font-size: 12px; white-space: nowrap; font-weight:500; }
-.log-filters { display: flex; gap: 12px; margin-bottom: 20px; }
-.log-filters select, .log-filters input { flex: 1; min-width: 150px; }
 .log-empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 14px; font-weight: 500; }
 
 /* ── MODALS ── */

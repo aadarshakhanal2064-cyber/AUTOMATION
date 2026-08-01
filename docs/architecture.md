@@ -24,8 +24,8 @@ Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
 CDN libraries → config.js → utils.js → js/core/* (12 engines) → tabs.js
-→ feature modules (dashboard, registrar, clients, logs, vatCompliance,
-  billing, sendDocument, report, notesToAccounts, depreciation,
+→ feature modules (dashboard, registrar, clients, vatCompliance,
+  billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
   partyLedger, finalAccount, finStatement) → auth.js (LAST — triggers the boot sequence)
 ```

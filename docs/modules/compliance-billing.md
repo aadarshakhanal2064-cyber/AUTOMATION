@@ -1,13 +1,13 @@
-# Dashboard, VAT Compliance, Billing & Send Logs
+# Dashboard, VAT Compliance & Billing
 
 > Loaded on demand, not in every session. The always-loaded index is **CLAUDE.md §5**;
-> this file holds the detail for the Dashboard, the VAT filing tracker, client invoicing and the send audit trail.
+> this file holds the detail for the Dashboard, the VAT filing tracker and client invoicing.
 > Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
 
 ---
 
 ### 5.1 Dashboard (`js/dashboard.js`)
-Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. Not the default landing tab (deliberate — Send Document stays default). First self-registering module; the pattern model.
+Stat cards (client count, documents this month, OCR jobs this month — the OCR card only reflects historical `audit_log` rows now that the VAT Return module is removed), recent-activity feed, Chart.js doughnut of documents by module — all fed by `AuditLog.recent()/countSince()`. **The default landing tab since 2026-08-01**, when Send Document was removed — which is why `afterSupabaseSignIn()` calls `loadDashboard()` directly; the nav button's `onclick` never fires for the tab you land on. First self-registering module; the pattern model.
 
 ### 5.2 VAT Compliance (`js/vatCompliance.js`, table `vat_filings`)
 Portfolio-wide tracker of monthly VAT filing status per client. `VAT_MONTH_ORDER` (fiscal-order month names, index 1 = Shrawan) lives at the top of this file.
@@ -25,6 +25,8 @@ Tracks money clients owe **the firm** for services. Invoice PDF built with PDF-L
 - `firm_bank_details` upserts must always re-send `invoice_prefix` (NOT-NULL is validated before ON CONFLICT resolution — omitting it 400s).
 - Fiscal year format here is **dash**: `2082-83`.
 
-### 5.10 Send Logs (`js/logs.js`)
-Audit trail of sent documents from `send_logs`. Staff see only their own sends; admins see all with a staff filter. Client name/email are snapshots, intentionally not FK'd.
+### 5.10 Send Logs — REMOVED 2026-08-01
+Deleted with Send Document (`docs/modules/documents.md` 5.4), which was its only writer —
+keeping the viewer would have meant a tab that could never gain a row. The `send_logs`
+table itself was kept; read it via the Supabase dashboard if the history is ever needed.
 

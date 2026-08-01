@@ -20,10 +20,8 @@ window.OCR_SERVICE_URL = localStorage.getItem('ocrServiceUrl') || 'http://127.0.
 window.CLIENT_ID        = localStorage.getItem('gClientId') || '';
 window.tokenClient      = undefined;
 window.accessToken      = null;
-window.foundFile        = null;
 window.currentUser      = null;   // { email, role }
 window.clientsList      = [];     // loaded from Supabase
-window.allLogs          = [];     // loaded from Supabase
 window.editingClientId  = null;
 
 // ── Supabase client ──

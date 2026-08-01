@@ -33,7 +33,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608011500">
+<link rel="stylesheet" href="css/styles.css?v=202608020900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -145,17 +145,13 @@ function cropLoginLogoIcon(img) {
 <aside id="sidebar" style="display:none;">
   <nav class="nav-menu">
     <div class="nav-section-label">Core modules</div>
-    <button class="nav-item" onclick="switchTab('dashboard'); loadDashboard();" id="nav-dashboard">
+    <button class="nav-item active" onclick="switchTab('dashboard'); loadDashboard();" id="nav-dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
       Dashboard
     </button>
     <button class="nav-item" onclick="switchTab('vatCompliance'); loadVatCompliance();" id="nav-vatCompliance">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
       VAT Compliance
-    </button>
-    <button class="nav-item active" onclick="switchTab('send')" id="nav-send">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-      Send Document
     </button>
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -164,10 +160,6 @@ function cropLoginLogoIcon(img) {
     <button class="nav-item" onclick="switchTab('fileManagement'); fmInit();" id="nav-fileManagement">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
       File Management
-    </button>
-    <button class="nav-item" onclick="switchTab('logs')" id="nav-logs">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-      Send Logs
     </button>
   </nav>
 
@@ -230,7 +222,7 @@ function cropLoginLogoIcon(img) {
   <div id="app-section" style="display:none;">
 
     <!-- ── TAB: DASHBOARD ── -->
-    <div id="tab-dashboard-panel" class="tab-panel">
+    <div id="tab-dashboard-panel" class="tab-panel active">
       <div class="page-header">
         <div class="ph-text">
           <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Dashboard</span></div>
@@ -242,9 +234,9 @@ function cropLoginLogoIcon(img) {
       <div class="table-wrap" style="padding:24px;">
         <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Quick Actions</h3>
         <div class="quick-actions-grid">
-          <button class="quick-action-btn" onclick="switchTab('send')">
-            <div class="qa-icon blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
-            Send Document
+          <button class="quick-action-btn" onclick="switchTab('fileManagement'); fmInit();">
+            <div class="qa-icon blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
+            File Management
           </button>
           <button class="quick-action-btn" onclick="switchTab('report')">
             <div class="qa-icon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>
@@ -452,73 +444,6 @@ function cropLoginLogoIcon(img) {
         <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="smClearFilters()">Clear Filters</button></div>
         <div id="sm-status-area"></div>
         <div id="sm-table-wrap"><div class="log-empty">Loading…</div></div>
-      </div>
-    </div>
-
-    <!-- ── TAB: SEND ── -->
-    <div id="tab-send" class="tab-panel active">
-      <div class="page-header">
-        <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Send Document</span></div>
-          <h2 class="page-title">Send Document to Client</h2>
-          <p class="page-subtitle">Search Google Drive and email attachments directly to clients.</p>
-        </div>
-      </div>
-      <div class="card">
-        <div class="form-grid">
-          <div class="form-group" id="clientName-group">
-            <label>Client Name</label>
-            <input type="text" id="clientName" placeholder="Start typing to search clients…" autocomplete="off" />
-            <div class="autocomplete-list" id="autocomplete-list" style="display:none;"></div>
-          </div>
-          <div class="form-group">
-            <label>Document Type</label>
-            <select id="docType">
-              <option value="">Select document...</option>
-              <option value="Tax Clearance">Tax Clearance</option>
-              <option value="Audit Report">Audit Report</option>
-              <option value="Financial Statements">Financial Statements</option>
-              <option value="VAT Returns">VAT Returns</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Fiscal Year</label>
-            <input type="text" id="fiscalYear" placeholder="e.g. 2081-82" />
-          </div>
-          <div class="form-group">
-            <label>Client Email</label>
-            <input type="email" id="clientEmail" placeholder="auto-filled when you pick a client" />
-          </div>
-          <div class="form-group full">
-            <label>Email Message (optional)</label>
-            <textarea id="emailMessage" placeholder="Leave blank to use the default professional message..."></textarea>
-          </div>
-        </div>
-
-        <div id="file-preview">
-          <div class="file-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--brand-navy);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>
-          <div class="file-info">
-            <div class="file-name" id="preview-name">—</div>
-            <div class="file-meta" id="preview-meta">—</div>
-          </div>
-          <button class="btn btn-outline btn-sm" onclick="clearFile()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            Wrong file
-          </button>
-        </div>
-
-        <div class="action-row">
-          <button class="btn btn-primary" id="searchBtn" onclick="findDocument()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            Find Document in Drive
-          </button>
-          <button class="btn btn-primary" id="sendBtn" onclick="sendFoundDocument()" style="display:none; background:#10b981; border-color:#10b981;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-            Send to Client
-          </button>
-          <button class="btn btn-outline" onclick="clearForm()">Clear Form</button>
-        </div>
-        <div id="status-area"></div>
       </div>
     </div>
 
@@ -2566,41 +2491,6 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
-    <!-- ── TAB: LOGS ── -->
-    <div id="tab-logs-panel" class="tab-panel">
-      <div class="page-header">
-        <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Send Logs</span></div>
-          <h2 class="page-title">Send Logs</h2>
-          <p class="page-subtitle">Track documents emailed to clients.</p>
-        </div>
-        <div class="page-header-actions">
-          <button class="btn btn-outline" onclick="loadLogs()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <div class="table-wrap" style="padding:24px;">
-        <div class="log-filters">
-          <input type="text" id="log-filter-client" placeholder="Filter by client name…" oninput="applyLogFilters()" style="flex:2;" />
-          <select id="log-filter-status" onchange="applyLogFilters()">
-            <option value="">All statuses</option>
-            <option value="sent">Sent only</option>
-            <option value="error">Errors only</option>
-          </select>
-          <select id="log-filter-sender" onchange="applyLogFilters()" style="display:none;">
-            <option value="">All staff</option>
-          </select>
-        </div>
-
-        <div id="logs-list" style="border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
-          <div class="log-empty">Loading logs…</div>
-        </div>
-      </div>
-    </div>
-
   </div><!-- /app-section -->
 </main>
 
@@ -3230,51 +3120,49 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608011500"></script>
-<script src="js/utils.js?v=202608011500"></script>
-<script src="js/core/moduleRegistry.js?v=202608011500"></script>
-<script src="js/core/statusBox.js?v=202608011500"></script>
-<script src="js/core/nepaliLocale.js?v=202608011500"></script>
-<script src="js/core/documentEngine.js?v=202608011500"></script>
-<script src="js/core/searchEngine.js?v=202608011500"></script>
-<script src="js/core/tableEngine.js?v=202608011500"></script>
-<script src="js/core/workflowEngine.js?v=202608011500"></script>
-<script src="js/core/auditLog.js?v=202608011500"></script>
-<script src="js/core/integrations.js?v=202608011500"></script>
-<script src="js/core/reportExport.js?v=202608011500"></script>
-<script src="js/core/workbookReader.js?v=202608011500"></script>
-<script src="js/core/engineMath.js?v=202608011500"></script>
-<script src="js/core/ocrEngine.js?v=202608011500"></script>
-<script src="js/tabs.js?v=202608011500"></script>
-<script src="js/dashboard.js?v=202608011500"></script>
-<script src="js/registrar.js?v=202608011500"></script>
-<script src="js/clients.js?v=202608011500"></script>
-<script src="js/logs.js?v=202608011500"></script>
-<script src="js/vatCompliance.js?v=202608011500"></script>
-<script src="js/billing.js?v=202608011500"></script>
-<script src="js/serviceMemo.js?v=202608011500"></script>
-<script src="js/sendDocument.js?v=202608011500"></script>
-<script src="js/report.js?v=202608011500"></script>
-<script src="js/notesToAccounts.js?v=202608011500"></script>
-<script src="js/depreciation.js?v=202608011500"></script>
-<script src="js/depreciationSlm.js?v=202608011500"></script>
-<script src="js/bmAgmMinutes.js?v=202608011500"></script>
-<script src="js/auditorChange.js?v=202608011500"></script>
-<script src="js/companyProfile.js?v=202608011500"></script>
-<script src="js/salesPurchaseBook.js?v=202608011500"></script>
-<script src="js/confirmationLetters.js?v=202608011500"></script>
-<script src="js/bankBook.js?v=202608011500"></script>
-<script src="js/partyLedger.js?v=202608011500"></script>
-<script src="js/finalAccount.js?v=202608011500"></script>
-<script src="js/projectionEngine.js?v=202608011500"></script>
-<script src="js/projection.js?v=202608011500"></script>
-<script src="js/projectionExport.js?v=202608011500"></script>
-<script src="js/finStatementEngine.js?v=202608011500"></script>
-<script src="js/finStatement.js?v=202608011500"></script>
-<script src="js/finStatementExport.js?v=202608011500"></script>
-<script src="js/ocrExtract.js?v=202608011500"></script>
-<script src="js/fileManagement.js?v=202608011500"></script>
-<script src="js/auth.js?v=202608011500"></script>
+<script src="js/config.js?v=202608020900"></script>
+<script src="js/utils.js?v=202608020900"></script>
+<script src="js/core/moduleRegistry.js?v=202608020900"></script>
+<script src="js/core/statusBox.js?v=202608020900"></script>
+<script src="js/core/nepaliLocale.js?v=202608020900"></script>
+<script src="js/core/documentEngine.js?v=202608020900"></script>
+<script src="js/core/searchEngine.js?v=202608020900"></script>
+<script src="js/core/tableEngine.js?v=202608020900"></script>
+<script src="js/core/workflowEngine.js?v=202608020900"></script>
+<script src="js/core/auditLog.js?v=202608020900"></script>
+<script src="js/core/integrations.js?v=202608020900"></script>
+<script src="js/core/reportExport.js?v=202608020900"></script>
+<script src="js/core/workbookReader.js?v=202608020900"></script>
+<script src="js/core/engineMath.js?v=202608020900"></script>
+<script src="js/core/ocrEngine.js?v=202608020900"></script>
+<script src="js/tabs.js?v=202608020900"></script>
+<script src="js/dashboard.js?v=202608020900"></script>
+<script src="js/registrar.js?v=202608020900"></script>
+<script src="js/clients.js?v=202608020900"></script>
+<script src="js/vatCompliance.js?v=202608020900"></script>
+<script src="js/billing.js?v=202608020900"></script>
+<script src="js/serviceMemo.js?v=202608020900"></script>
+<script src="js/report.js?v=202608020900"></script>
+<script src="js/notesToAccounts.js?v=202608020900"></script>
+<script src="js/depreciation.js?v=202608020900"></script>
+<script src="js/depreciationSlm.js?v=202608020900"></script>
+<script src="js/bmAgmMinutes.js?v=202608020900"></script>
+<script src="js/auditorChange.js?v=202608020900"></script>
+<script src="js/companyProfile.js?v=202608020900"></script>
+<script src="js/salesPurchaseBook.js?v=202608020900"></script>
+<script src="js/confirmationLetters.js?v=202608020900"></script>
+<script src="js/bankBook.js?v=202608020900"></script>
+<script src="js/partyLedger.js?v=202608020900"></script>
+<script src="js/finalAccount.js?v=202608020900"></script>
+<script src="js/projectionEngine.js?v=202608020900"></script>
+<script src="js/projection.js?v=202608020900"></script>
+<script src="js/projectionExport.js?v=202608020900"></script>
+<script src="js/finStatementEngine.js?v=202608020900"></script>
+<script src="js/finStatement.js?v=202608020900"></script>
+<script src="js/finStatementExport.js?v=202608020900"></script>
+<script src="js/ocrExtract.js?v=202608020900"></script>
+<script src="js/fileManagement.js?v=202608020900"></script>
+<script src="js/auth.js?v=202608020900"></script>
 
 </body>
 </html>
