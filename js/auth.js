@@ -5,6 +5,7 @@ window.addEventListener('load', () => {
   const showSignInScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'flex';
+    document.getElementById('auth-email').focus();
   };
 
   // Supabase Auth owns session state now — onAuthStateChange fires once on
@@ -33,100 +34,49 @@ window.addEventListener('load', () => {
 });
 
 // ════════════════════════════════════════════
-//  SETUP MODAL
-//  Only needed for the GIS silent-renewal calls below now — Supabase Auth
-//  owns the login flow itself and doesn't need this app to know a client_id.
-// ════════════════════════════════════════════
-function showSetup() {
-  document.getElementById('setup-modal').classList.add('open');
-  if (window.CLIENT_ID) document.getElementById('clientIdInput').value = window.CLIENT_ID;
-}
-function closeSetup() { document.getElementById('setup-modal').classList.remove('open'); }
-function saveClientId() {
-  const val = document.getElementById('clientIdInput').value.trim();
-  if (!val) return alert('Please paste your Client ID first.');
-  window.CLIENT_ID = val;
-  localStorage.setItem('gClientId', val);
-  closeSetup();
-  alert('✅ Client ID saved! It will be used to silently renew your Drive/Gmail access.');
-}
-
-// ════════════════════════════════════════════
-//  GOOGLE AUTH (via Supabase Auth) + DRIVE/GMAIL TOKEN RENEWAL (via GIS)
+//  AUTHENTICATION — Supabase Auth, email + password
 //
-//  Login and the Drive/Gmail access token come from ONE Google consent
-//  screen: signInWithOAuth() requests the Drive/Gmail scopes alongside
-//  login, and Supabase hands back session.provider_token — Google's raw
-//  access token, usable exactly like before. Google ties a consent grant to
-//  (user, client_id, scope, origin) regardless of which SDK asked for it, so
-//  GIS's silent renewal (same Google Cloud OAuth Client ID, configured via
-//  the Setup modal) can keep reissuing that token afterward without a
-//  second prompt. Supabase itself does NOT auto-refresh provider_token, so
-//  this renewal loop (carried over from the earlier silent-refresh change)
-//  is still what keeps Drive/Gmail working hour after hour.
+//  Google OAuth was dropped on 2026-08-01. It had only ever been the
+//  identity provider plus the source of session.provider_token, the raw
+//  Drive/Gmail access token; once Send Document was removed and Billing
+//  switched to a PDF download, nothing called a Google API at all, and a
+//  whole GIS silent-renewal loop plus a Client ID setup modal existed to
+//  keep a token alive that no longer had a consumer.
+//
+//  RLS did not have to change: private.jwt_email() reads
+//  auth.jwt() ->> 'email', which an email/password session carries exactly
+//  the same way a Google one did. The provider is interchangeable; the
+//  app_users membership check below is what actually grants access.
+//
+//  Accounts are created by an admin in the Supabase dashboard — signup is
+//  disabled there on purpose. There is no self-serve password reset: the
+//  firm has a handful of staff and Supabase's built-in SMTP is rate-limited
+//  to a few mails an hour, so an admin resets it instead.
 // ════════════════════════════════════════════
-const TOKEN_LIFETIME_MS = 55 * 60 * 1000; // Google tokens last 60m; match existing cache margin
-const RENEW_BEFORE_MS   = 5  * 60 * 1000; // silently renew 5 min before that mark
+function authStatus(msg, type) { showStatus(msg, type, 'auth-status'); }
 
-function handleTokenResponse(resp) {
-  const isSilent = window._silentRenewalInFlight;
-  window._silentRenewalInFlight = false;
+async function signIn() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if (!email || !password) return authStatus('Enter your email and password.', 'info');
 
-  if (resp.error) {
-    if (isSilent) {
-      // Google session/cookie is gone — stop trying; Drive/Gmail calls will
-      // fail until the next sign-in, same fallback as before this existed.
-      clearTimeout(window._renewalTimer);
-      window.accessToken = null;
-      return;
-    }
-    return; // interactive GIS calls aren't used anymore; nothing else to do
+  const btn = document.getElementById('auth-submit');
+  btn.disabled = true;
+  authStatus('<span class="spinner spinner-navy"></span> Signing in…', 'searching');
+
+  // Only the failure path is handled here — on success onAuthStateChange
+  // fires SIGNED_IN and afterSupabaseSignIn() takes over the whole screen.
+  const { error } = await window.sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    btn.disabled = false;
+    authStatus('❌ ' + escHtml(error.message), 'error');
   }
-
-  window.accessToken = resp.access_token;
-  scheduleTokenRenewal(Date.now() + TOKEN_LIFETIME_MS);
-}
-
-function ensureTokenClient() {
-  if (window.tokenClient) return;
-  window.tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: window.CLIENT_ID,
-    scope: SCOPES,
-    callback: handleTokenResponse,
-  });
-}
-
-function scheduleTokenRenewal(expiresAt) {
-  clearTimeout(window._renewalTimer);
-  const delay = Math.max(expiresAt - Date.now() - RENEW_BEFORE_MS, 10000);
-  window._renewalTimer = setTimeout(renewTokenSilently, delay);
-}
-
-function renewTokenSilently() {
-  if (!window.CLIENT_ID) return; // Setup modal never configured — nothing to renew with
-  ensureTokenClient();
-  window._silentRenewalInFlight = true;
-  window.tokenClient.requestAccessToken({ prompt: '' });
-}
-
-function signIn() {
-  window.sb.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      scopes: SCOPES,
-      redirectTo: window.location.origin + window.location.pathname,
-    },
-  });
 }
 
 function signOut() {
-  clearTimeout(window._renewalTimer);
-  const tokenToRevoke = window.accessToken;
-  window.accessToken = null;
   window.currentUser = null;
   window.clientsList = [];
 
-  if (window.tokenClient && tokenToRevoke) google.accounts.oauth2.revoke(tokenToRevoke, () => {});
   window.sb.auth.signOut();
 
   document.getElementById('topbar').style.display       = 'none';
@@ -134,23 +84,25 @@ function signOut() {
   document.getElementById('app-section').style.display  = 'none';
   document.getElementById('access-denied-wrap').style.display = 'none';
   document.getElementById('auth-section-wrap').style.display  = 'flex';
+
+  // Clear the form so the next person doesn't land on the last one's email,
+  // and re-enable the button signIn() disabled on its way out.
+  const form = document.getElementById('auth-form');
+  if (form) form.reset();
+  document.getElementById('auth-submit').disabled = false;
+  document.getElementById('auth-status').innerHTML = '';
 }
 
 async function afterSupabaseSignIn(session) {
   const email = session.user.email || '';
 
-  // Seed the Drive/Gmail token from this same sign-in's OAuth grant, then
-  // hand off to the renewal loop above for everything after.
-  if (session.provider_token) {
-    window.accessToken = session.provider_token;
-    scheduleTokenRenewal(Date.now() + TOKEN_LIFETIME_MS);
-  }
-
-  // Check app_users table in Supabase
+  // Membership check — ilike, not eq. private.jwt_email() lowercases before
+  // matching, so a mixed-case address passes RLS; a case-sensitive lookup
+  // here would reject that same user and the two layers would disagree.
   const { data, error } = await window.sb
     .from('app_users')
     .select('email, role')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle();
 
   if (error || !data) {
@@ -212,9 +164,4 @@ async function loadSidebarStorageUsage() {
   const pct = Math.min(100, Math.round((usedMb / FREE_TIER_LIMIT_MB) * 100));
   document.getElementById('pu-bar-fill').style.width = pct + '%';
   document.getElementById('pu-storage-text').textContent = `${usedMb.toFixed(1)} MB of ${FREE_TIER_LIMIT_MB} MB used`;
-}
-
-function showAuthError(msg) {
-  document.getElementById('auth-section-wrap').style.display = 'flex';
-  alert('❌ ' + msg);
 }

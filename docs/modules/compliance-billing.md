@@ -18,7 +18,8 @@ Portfolio-wide tracker of monthly VAT filing status per client. `VAT_MONTH_ORDER
 - Fiscal year format here is **slash**: `2083/84` (`vatcFyLabel`).
 
 ### 5.3 Billing (`js/billing.js`, tables `invoices`/`invoice_items`/`invoice_payments`/`firm_bank_details`)
-Tracks money clients owe **the firm** for services. Invoice PDF built with PDF-Lib (firm bank details + payment QR), optionally emailed via Integrations/Gmail, reconciled against recorded payments.
+Tracks money clients owe **the firm** for services. Invoice PDF built with PDF-Lib (firm bank details + payment QR), downloaded for the staff member to attach to their own email, reconciled against recorded payments.
+- **There is no in-app emailing** (since 2026-08-01). `billingEmailInvoice()` was the app's last Gmail caller and went with Google auth; marking a draft "sent" now downloads the PDF via the pre-existing `billingDownloadInvoice()` and says so in the status line. Don't re-add a send button without first re-reading `docs/architecture.md` §7.
 - **Status is DB-trigger-derived** (§6.2): app code only sets `draft→sent` and `→void` via `billingFlow`; never write `paid`/`partially_paid` from JS.
 - Invoice numbers `SA-00001`/`DC-00001` assigned by an AFTER INSERT trigger — re-fetch the row, never trust INSERT's RETURNING.
 - Bank QR is a **static uploaded image** (`firm_bank_details.qr_image`, starts NULL); the PDF draws a dashed placeholder until uploaded. Never seed a fake QR that looks scannable.

@@ -11,20 +11,23 @@
   app uses inline onclick= handlers throughout and the print/PDF windows are
   self-contained blob documents with an inline print() script; this CSP
   therefore does NOT stop inline-script XSS (see the escHtml audit for that),
-  but it does contain everything else. The allow-listed Google origins are all
-  required by Supabase-Auth sign-in and the GIS Drive/Gmail token renewal. The
-  two loopback entries in connect-src are the local OCR service (ocr_service/),
+  but it does contain everything else. Every Google origin was removed on
+  2026-08-01 when sign-in moved to Supabase email/password — the app no longer
+  loads, calls or frames anything of Google's, so allowing those hosts would
+  only widen the exfiltration surface for nothing. fonts.googleapis.com /
+  fonts.gstatic.com are the Inter webfont and unrelated to auth. The two
+  loopback entries in connect-src are the local OCR service (ocr_service/),
   which runs as a separate process on the staff member's own machine; both
   spellings are listed because 127.0.0.1 and localhost are distinct origins.
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://apis.google.com https://accounts.google.com;
+  script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;
   style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com;
   font-src 'self' data: https://fonts.gstatic.com;
   img-src 'self' data: blob:;
-  connect-src 'self' https://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://apis.google.com https://content.googleapis.com http://127.0.0.1:8000 http://localhost:8000;
-  frame-src blob: https://accounts.google.com https://apis.google.com https://content.googleapis.com;
+  connect-src 'self' https://*.supabase.co http://127.0.0.1:8000 http://localhost:8000;
+  frame-src blob:;
   object-src 'none';
   base-uri 'self';
   form-action 'self';
@@ -33,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608020900">
+<link rel="stylesheet" href="css/styles.css?v=202608021030">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -190,14 +193,29 @@ function cropLoginLogoIcon(img) {
         <img src="assets/logo.jpeg" alt="Shailesh &amp; Associates Logo" onerror="logoFallback(this, 34)" onload="cropLoginLogoIcon(this)">
       </div>
       <h2>Welcome back</h2>
-      <p>Sign in with your authorized Google workspace account to access the firm's tools.</p>
-      <button class="btn btn-google" onclick="signIn()">
-        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.8 0 6.9 5.4 3 13.3l7.8 6C12.7 13.1 17.9 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.8 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7L2.5 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.7l8.3-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.1 0-11.3-3.6-13.2-9.2l-7.8 6C6.9 42.6 14.8 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
-        Sign in with Google
-      </button>
+      <p>Sign in with your firm email address to access the firm's tools.</p>
 
-      <p style="margin-top:24px; font-size:12.5px; border-top:1px solid var(--border); padding-top:22px;">
-        <a href="#" onclick="showSetup()" style="color:var(--text-muted); text-decoration:underline;">Developer Setup</a>
+      <!-- A real <form> so Enter submits; onsubmit returns false to stop the
+           page navigating (signIn() drives everything through Supabase). -->
+      <form id="auth-form" onsubmit="signIn(); return false;" autocomplete="on">
+        <div class="form-group" style="text-align:left;">
+          <label for="auth-email">Email</label>
+          <input type="email" id="auth-email" name="email" autocomplete="username"
+                 placeholder="you@example.com" required />
+        </div>
+        <div class="form-group" style="text-align:left;">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" name="password" autocomplete="current-password"
+                 placeholder="Your password" required />
+        </div>
+        <button type="submit" class="btn btn-primary" id="auth-submit" style="width:100%; justify-content:center;">
+          Sign in
+        </button>
+      </form>
+      <div id="auth-status"></div>
+
+      <p style="margin-top:24px; font-size:12.5px; border-top:1px solid var(--border); padding-top:22px; color:var(--text-muted);">
+        Forgot your password? Ask an admin to reset it in Supabase.
       </p>
     </div>
     <div class="auth-footer-trust">
@@ -213,7 +231,7 @@ function cropLoginLogoIcon(img) {
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
       </div>
       <h2 style="color:var(--red); font-size:22px; margin-bottom:12px; font-weight:700;">Access Denied</h2>
-      <p id="access-denied-msg" style="color:var(--text-muted); margin-bottom:24px; line-height:1.6; font-size:14px;">Your Google account is not registered as an authorised user.</p>
+      <p id="access-denied-msg" style="color:var(--text-muted); margin-bottom:24px; line-height:1.6; font-size:14px;">This account is not registered as an authorised user.</p>
       <button class="btn btn-outline" onclick="signOut()">Sign out and try a different account</button>
     </div>
   </div>
@@ -2516,49 +2534,6 @@ function cropLoginLogoIcon(img) {
   </div>
 
 
-<!-- SETUP MODAL -->
-<div class="modal-overlay" id="setup-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>First-Time Google Cloud Setup</h3>
-      <button class="modal-close" onclick="closeSetup()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-content">
-          <h4>Go to Google Cloud Console</h4>
-          <p>Open <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> and sign in with your company Google account.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-content">
-          <h4>Create a New Project</h4>
-          <p>Click the project dropdown → <strong>New Project</strong> → Name it <code>Audit Doc Sender</code> → Click <strong>Create</strong>.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <div class="step-content">
-          <h4>Enable APIs</h4>
-          <p>Go to <strong>APIs &amp; Services → Library</strong>. Enable both <strong>Google Drive API</strong> and <strong>Gmail API</strong>.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-content">
-          <h4>Paste Your Client ID</h4>
-          <p>Copy the <strong>Client ID</strong> and paste below:</p>
-          <div style="margin-top:10px; display:flex; gap:8px;">
-            <input type="text" id="clientIdInput" placeholder="Paste your Client ID here…" style="flex:1;" />
-            <button class="btn btn-primary" onclick="saveClientId()">Save</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- IMPORT MODAL -->
 <!-- BILLING — CREATE / EDIT INVOICE DRAWER -->
 <!-- SERVICE MEMO — CREATE / EDIT DRAWER -->
@@ -3100,13 +3075,11 @@ function cropLoginLogoIcon(img) {
 </div>
 
 <!-- Scripts -->
-<!-- Google's api.js / gsi client are dynamic loaders (their bytes change and
-     they pull further code at runtime) so they can't carry a fixed SRI hash —
-     accepted, and constrained by the CSP script-src allow-list instead. Every
-     other CDN dependency is version-pinned with a Subresource Integrity hash,
-     so a tampered or swapped CDN file simply won't execute. -->
-<script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client"></script>
+<!-- Every CDN dependency is version-pinned with a Subresource Integrity hash,
+     so a tampered or swapped CDN file simply won't execute. The two Google
+     loaders that used to sit here (api.js, gsi/client) were the only
+     unpinnable ones; both went with Google auth on 2026-08-01. api.js had in
+     fact been dead for a long time — nothing ever referenced `gapi`. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7/dist/umd/supabase.js" integrity="sha384-hazsLVND17GNLVdtV19te6qbFT2YuLgl8SamcF+QR5eIOC+W4dGKrUNMxU1jH1zD" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js" integrity="sha384-3mvYicTS7UKJFuQYjm4TLHd0AEsGqivIvpOz05D1WC6EY0wjrdMXxlwRAdckMW73" crossorigin="anonymous"></script>
@@ -3120,49 +3093,48 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608020900"></script>
-<script src="js/utils.js?v=202608020900"></script>
-<script src="js/core/moduleRegistry.js?v=202608020900"></script>
-<script src="js/core/statusBox.js?v=202608020900"></script>
-<script src="js/core/nepaliLocale.js?v=202608020900"></script>
-<script src="js/core/documentEngine.js?v=202608020900"></script>
-<script src="js/core/searchEngine.js?v=202608020900"></script>
-<script src="js/core/tableEngine.js?v=202608020900"></script>
-<script src="js/core/workflowEngine.js?v=202608020900"></script>
-<script src="js/core/auditLog.js?v=202608020900"></script>
-<script src="js/core/integrations.js?v=202608020900"></script>
-<script src="js/core/reportExport.js?v=202608020900"></script>
-<script src="js/core/workbookReader.js?v=202608020900"></script>
-<script src="js/core/engineMath.js?v=202608020900"></script>
-<script src="js/core/ocrEngine.js?v=202608020900"></script>
-<script src="js/tabs.js?v=202608020900"></script>
-<script src="js/dashboard.js?v=202608020900"></script>
-<script src="js/registrar.js?v=202608020900"></script>
-<script src="js/clients.js?v=202608020900"></script>
-<script src="js/vatCompliance.js?v=202608020900"></script>
-<script src="js/billing.js?v=202608020900"></script>
-<script src="js/serviceMemo.js?v=202608020900"></script>
-<script src="js/report.js?v=202608020900"></script>
-<script src="js/notesToAccounts.js?v=202608020900"></script>
-<script src="js/depreciation.js?v=202608020900"></script>
-<script src="js/depreciationSlm.js?v=202608020900"></script>
-<script src="js/bmAgmMinutes.js?v=202608020900"></script>
-<script src="js/auditorChange.js?v=202608020900"></script>
-<script src="js/companyProfile.js?v=202608020900"></script>
-<script src="js/salesPurchaseBook.js?v=202608020900"></script>
-<script src="js/confirmationLetters.js?v=202608020900"></script>
-<script src="js/bankBook.js?v=202608020900"></script>
-<script src="js/partyLedger.js?v=202608020900"></script>
-<script src="js/finalAccount.js?v=202608020900"></script>
-<script src="js/projectionEngine.js?v=202608020900"></script>
-<script src="js/projection.js?v=202608020900"></script>
-<script src="js/projectionExport.js?v=202608020900"></script>
-<script src="js/finStatementEngine.js?v=202608020900"></script>
-<script src="js/finStatement.js?v=202608020900"></script>
-<script src="js/finStatementExport.js?v=202608020900"></script>
-<script src="js/ocrExtract.js?v=202608020900"></script>
-<script src="js/fileManagement.js?v=202608020900"></script>
-<script src="js/auth.js?v=202608020900"></script>
+<script src="js/config.js?v=202608021030"></script>
+<script src="js/utils.js?v=202608021030"></script>
+<script src="js/core/moduleRegistry.js?v=202608021030"></script>
+<script src="js/core/statusBox.js?v=202608021030"></script>
+<script src="js/core/nepaliLocale.js?v=202608021030"></script>
+<script src="js/core/documentEngine.js?v=202608021030"></script>
+<script src="js/core/searchEngine.js?v=202608021030"></script>
+<script src="js/core/tableEngine.js?v=202608021030"></script>
+<script src="js/core/workflowEngine.js?v=202608021030"></script>
+<script src="js/core/auditLog.js?v=202608021030"></script>
+<script src="js/core/reportExport.js?v=202608021030"></script>
+<script src="js/core/workbookReader.js?v=202608021030"></script>
+<script src="js/core/engineMath.js?v=202608021030"></script>
+<script src="js/core/ocrEngine.js?v=202608021030"></script>
+<script src="js/tabs.js?v=202608021030"></script>
+<script src="js/dashboard.js?v=202608021030"></script>
+<script src="js/registrar.js?v=202608021030"></script>
+<script src="js/clients.js?v=202608021030"></script>
+<script src="js/vatCompliance.js?v=202608021030"></script>
+<script src="js/billing.js?v=202608021030"></script>
+<script src="js/serviceMemo.js?v=202608021030"></script>
+<script src="js/report.js?v=202608021030"></script>
+<script src="js/notesToAccounts.js?v=202608021030"></script>
+<script src="js/depreciation.js?v=202608021030"></script>
+<script src="js/depreciationSlm.js?v=202608021030"></script>
+<script src="js/bmAgmMinutes.js?v=202608021030"></script>
+<script src="js/auditorChange.js?v=202608021030"></script>
+<script src="js/companyProfile.js?v=202608021030"></script>
+<script src="js/salesPurchaseBook.js?v=202608021030"></script>
+<script src="js/confirmationLetters.js?v=202608021030"></script>
+<script src="js/bankBook.js?v=202608021030"></script>
+<script src="js/partyLedger.js?v=202608021030"></script>
+<script src="js/finalAccount.js?v=202608021030"></script>
+<script src="js/projectionEngine.js?v=202608021030"></script>
+<script src="js/projection.js?v=202608021030"></script>
+<script src="js/projectionExport.js?v=202608021030"></script>
+<script src="js/finStatementEngine.js?v=202608021030"></script>
+<script src="js/finStatement.js?v=202608021030"></script>
+<script src="js/finStatementExport.js?v=202608021030"></script>
+<script src="js/ocrExtract.js?v=202608021030"></script>
+<script src="js/fileManagement.js?v=202608021030"></script>
+<script src="js/auth.js?v=202608021030"></script>
 
 </body>
 </html>

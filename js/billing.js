@@ -4,8 +4,9 @@
 //  prep, registration work, ...) — separate from VAT Compliance, which
 //  tracks CLIENTS' VAT filing obligations to IRD, not money owed to the
 //  firm. Invoices are created here, rendered to PDF (PDF-Lib) with the
-//  firm's bank details + payment QR, optionally emailed via Gmail
-//  (Integrations), and reconciled against payments recorded here — Supabase
+//  firm's bank details + payment QR, downloaded for the staff member to
+//  attach to their own email (Gmail sending went with Google auth on
+//  2026-08-01), and reconciled against payments recorded here — Supabase
 //  triggers keep invoices.amount_paid/status in sync with invoice_payments,
 //  so "amount due" can never drift between the two tables.
 // ════════════════════════════════════════════
@@ -190,7 +191,6 @@ function billingRenderTable(invoices) {
           else if (action === 'send') billingSendDraft(row);
           else if (action === 'delete') billingDeleteDraft(row);
           else if (action === 'download') billingDownloadInvoice(row);
-          else if (action === 'email') billingEmailInvoice(row);
           else if (action === 'payment') billingOpenPayment(row);
           else if (action === 'void') billingVoidInvoice(row);
         } },
@@ -200,9 +200,9 @@ function billingRenderTable(invoices) {
 
 function billingRowActions(row) {
   const btn = (action, label, title) => `<button class="btn btn-outline btn-sm" data-action="${action}" title="${title || label}">${label}</button>`;
-  if (row.status === 'draft') return `<div class="client-actions">${btn('edit', 'Edit')}${btn('send', 'Send', 'Generate PDF & send/mark sent')}${btn('delete', 'Delete')}</div>`;
+  if (row.status === 'draft') return `<div class="client-actions">${btn('edit', 'Edit')}${btn('send', 'Send', 'Generate PDF & mark sent')}${btn('delete', 'Delete')}</div>`;
   if (row.status === 'void') return `<div class="client-actions">${btn('download', 'Download')}</div>`;
-  const common = `${btn('download', 'PDF')}${btn('email', 'Email')}`;
+  const common = btn('download', 'PDF', 'Download the invoice PDF to attach to your own email');
   const paymentBtn = row.status !== 'paid' ? btn('payment', '💰 Payment', 'Record Payment') : '';
   return `<div class="client-actions">${common}${paymentBtn}${btn('void', 'Void')}</div>`;
 }
@@ -403,10 +403,12 @@ async function billingSaveInvoice(targetStatus) {
     await billingRefresh();
 
     if (targetStatus === 'sent') {
+      // Marking an invoice "sent" downloads the PDF for the staff member to
+      // attach themselves. It used to also email it through Gmail; that was
+      // the app's last Google API call, and it went when Google auth did.
       const fresh = billingInvoices.find(i => i.id === invoiceRow.id) || invoiceRow;
       await billingDownloadInvoice(fresh);
-      if (billingSelectedClient.email) await billingEmailInvoice(fresh);
-      billingStatusMsg(`✅ Invoice ${escHtml(fresh.invoice_number || '')} sent.${billingSelectedClient.email ? '' : ' (No email on file — PDF downloaded for you to send manually.)'}`, 'success');
+      billingStatusMsg(`✅ Invoice ${escHtml(fresh.invoice_number || '')} marked sent — PDF downloaded, attach it to your email.`, 'success');
     } else {
       billingStatusMsg('✅ Draft saved.', 'success');
     }
@@ -587,25 +589,6 @@ async function billingDownloadInvoice(row) {
     }
   } catch (e) {
     billingStatusMsg('❌ Failed to generate PDF: ' + escHtml(e.message || String(e)), 'error');
-  }
-}
-
-async function billingEmailInvoice(row) {
-  const client = row.clients || {};
-  if (!client.email) {
-    billingStatusMsg(`⚠️ ${escHtml(client.name || 'This client')} has no email on file — add one in the Clients tab, or download and send the PDF manually.`, 'error');
-    return;
-  }
-  try {
-    billingStatusMsg('<span class="spinner spinner-navy"></span> Sending…', 'searching');
-    const blob = await billingInvoiceBlob(row);
-    const fname = `Invoice ${row.invoice_number || row.id}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
-    const bodyText = `Dear ${client.name},\n\nPlease find attached invoice ${row.invoice_number || ''} for Rs. ${Number(row.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}${row.due_date ? ', due by ' + row.due_date : ''}.\n\nIf you have any questions, please do not hesitate to contact us.\n\nBest regards,\n${(window.REP_FIRMS[row.firm_key] || {}).name || 'Audit Team'}`;
-    await Integrations.sendEmailWithBlobAttachment({ blob, filename: fname, mimeType: 'application/pdf', toEmail: client.email, subject: `Invoice ${row.invoice_number || ''} — ${client.name}`, bodyText });
-    AuditLog.record('invoice_emailed', { module: 'billing', clientName: client.name, recordRef: row.id, toEmail: client.email });
-    billingStatusMsg(`✅ Invoice emailed to ${escHtml(client.email)}.`, 'success');
-  } catch (e) {
-    billingStatusMsg('❌ Failed to send email: ' + escHtml(e.message || String(e)), 'error');
   }
 }
 

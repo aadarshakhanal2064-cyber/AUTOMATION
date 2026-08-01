@@ -4,7 +4,6 @@
 
 const SUPABASE_URL = 'https://rennqzmwyhkdsizvlqwd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send email profile';
 
 // Nepal's standard VAT rate — the one source for the Billing module's
 // invoice tax line (and any future consumer), so the figure can't drift.
@@ -17,9 +16,6 @@ window.VAT_STANDARD_RATE = 0.13;
 window.OCR_SERVICE_URL = localStorage.getItem('ocrServiceUrl') || 'http://127.0.0.1:8000';
 
 // ── Mutable app state (window.* for global access) ──
-window.CLIENT_ID        = localStorage.getItem('gClientId') || '';
-window.tokenClient      = undefined;
-window.accessToken      = null;
 window.currentUser      = null;   // { email, role }
 window.clientsList      = [];     // loaded from Supabase
 window.editingClientId  = null;

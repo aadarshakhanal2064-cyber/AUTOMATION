@@ -13,8 +13,9 @@
 
 Everything runs client-side in the browser; there is **no server-side code**. The browser talks to:
 
-- **Supabase Postgres** via `supabase-js` with the publishable key in `config.js`. No Supabase Auth; RLS is currently disabled on every table (§6.6, §15).
-- **Google Drive (readonly) + Gmail (send)** via the signed-in staff member's own OAuth access token (Google Identity Services). Emails are sent as the actual staff member, not a service account.
+- **Supabase Postgres** via `supabase-js` with the publishable key in `config.js`, and **Supabase Auth** (email + password) for sign-in. RLS is enabled on every table (§6).
+
+That is the entire list. Google Drive/Gmail were removed on 2026-08-01 with Google auth (§7), so **Supabase is the only external service the app talks to** — apart from the optional local OCR service on loopback (§2.6).
 
 State is `window.*` globals (`window.clientsList`, `window.currentUser`, …) — no modules, no state library. Functions attach implicitly to `window`.
 
@@ -43,7 +44,6 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 
 | Library | Version | Used for / notes |
 |---|---|---|
-| Google API + GSI clients | (Google-hosted) | OAuth token client, Drive/Gmail |
 | `@supabase/supabase-js` | `2.110.7` (pinned + SRI, UMD build) | Postgres REST client + Supabase Auth |
 | `xlsx` (SheetJS) | 0.18.5 full build | Excel/CSV/**ODS** *import* (full build needed for ODS). Read-only — its free build can't write styles/merges/formats. |
 | `exceljs` | 4.4.0 | Excel *generation* with faithful merges/borders/number-formats/formulas (Depreciation). SheetJS can't do this on write. |
@@ -56,7 +56,7 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 | `chart.js` | 4.4.0 | Dashboard doughnut chart |
 | `html-docx-js` | 0.3.1 | HTML → OOXML .docx export (Report, Notes to Accounts) |
 
-All pinned CDN deps carry Subresource Integrity (`sha384`) + `crossorigin` hashes (added 2026-07-16). The two Google loaders (`apis.google.com/js/api.js`, `accounts.google.com/gsi/client`) are dynamic and can't be SRI-pinned — constrained by the CSP `script-src` allow-list instead. When bumping any pinned version, recompute its hash (`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`) and update the tag, or the file won't load.
+**Every** CDN dep carries Subresource Integrity (`sha384`) + `crossorigin` (added 2026-07-16). The two Google loaders were the only exceptions — dynamic, therefore unpinnable — and both went with Google auth on 2026-08-01, so there is no longer an un-SRI'd script tag in the app. When bumping any pinned version, recompute its hash (`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`) and update the tag, or the file won't load.
 
 ### 2.4 Hosting & deployment
 
@@ -67,7 +67,7 @@ All pinned CDN deps carry Subresource Integrity (`sha384`) + `crossorigin` hashe
 ### 2.5 Local development
 
 - Dev server: `.claude/launch.json` defines `static-site` (`npx serve -l 5173 .`). Use the browser-preview tooling, never Bash, to run it.
-- **Real Google OAuth cannot run in the sandbox.** Established testing pattern: bypass the auth wall via direct DOM manipulation and, where needed, mock Drive/Gmail calls.
+- **Sign-in needs a real Supabase account.** To test anything past the login screen, bypass the auth wall via direct DOM manipulation — set `window.currentUser = {email, role}`, hide `#loading-screen`/`#auth-section-wrap`, show `#app-section`/`#topbar`/`#sidebar`, and seed `window.clientsList` by hand (RLS returns nothing without a session).
 - **Microsoft Word / LibreOffice are not installed** in the dev environment. Generated `.docx` verification is structural (XML-level) only; the user does the final visual check in Word.
 
 ### 2.6 The OCR service (`ocr_service/`) — the one process that isn't the browser
@@ -80,7 +80,7 @@ check. Full setup and endpoint reference: [`ocr_service/README.md`](../ocr_servi
 **It runs locally, per staff member, and is not deployed.** GitHub Pages serves
 static files only — it cannot host Python. So the service is started on demand
 (`ocr_service/start.ps1`, or `start.sh`) on whichever machine wants OCR, in the
-same spirit as each staff member's browser holding their own Google OAuth token.
+same spirit as each staff member's browser holding their own Supabase session.
 Nothing else in the app depends on it: if it isn't running, the OCR Extract tab
 says so and every other module is unaffected.
 
@@ -118,24 +118,35 @@ read). `ne` costs roughly double the latency of `en` per page.
 
 ## 7. Authentication & Authorization
 
-Login and the Drive/Gmail access token come from **one** Google consent screen, brokered by Supabase Auth — but Supabase and Google Identity Services (GIS) each own a different half of the lifecycle:
+**Supabase Auth, email + password.** Google OAuth was removed on 2026-08-01; see the end of this section for what went with it.
 
-1. Sign-in screen → `signIn()` calls `window.sb.auth.signInWithOAuth({ provider: 'google', options: { scopes: SCOPES, redirectTo } })` — a full-page redirect (not a popup), requesting the Drive/Gmail scopes alongside login itself. Supabase's Google provider is configured with its own Client ID + Secret in the Supabase Dashboard (Authentication → Providers), reusing the **same Google Cloud OAuth Client** GIS uses.
-2. On load and after the redirect back, `window.sb.auth.onAuthStateChange()` fires (`INITIAL_SESSION` / `SIGNED_IN` / `SIGNED_OUT`) and routes into `afterSupabaseSignIn(session)`. `session.user.email` is already Google-verified by Supabase — no separate userinfo fetch needed.
-3. `afterSupabaseSignIn()` looks the email up in `app_users`. Not found → Access Denied. Found → `window.currentUser = {email, role}`, admin-only UI shown conditionally, `loadClients()` + `loadLogs()` run. `session.provider_token` (Google's raw access token) seeds `window.accessToken` for Drive/Gmail calls.
-4. **Supabase does not auto-refresh `provider_token`** — that's a Google limitation, not a Supabase one. GIS's silent-renewal loop (`ensureTokenClient`/`scheduleTokenRenewal`/`renewTokenSilently`, using `requestAccessToken({ prompt: '' })`) keeps reissuing that same token every ~50 min without a visible prompt, because Google ties a consent grant to (user, client_id, scope, origin) — not to which SDK asked for it. This requires `window.CLIENT_ID` to still be configured via the "Developer Setup" modal (`gClientId` in `localStorage`) even though it's no longer needed to log in.
-5. Sign-out calls both `window.sb.auth.signOut()` and revokes the Google token, then clears state.
+1. Sign-in screen → `signIn()` reads `#auth-email`/`#auth-password` and calls `window.sb.auth.signInWithPassword({ email, password })`. The submit button disables while in flight and re-enables only on failure; the error text lands in `#auth-status`. There is no redirect — the whole flow is one XHR.
+2. `window.sb.auth.onAuthStateChange()` fires (`INITIAL_SESSION` / `SIGNED_IN` / `SIGNED_OUT`) and routes into `afterSupabaseSignIn(session)`. `INITIAL_SESSION` is what restores a session across a page reload. `SIGNED_OUT` is skipped while the Access Denied screen is up, because that sign-out is the app's own.
+3. `afterSupabaseSignIn()` looks the email up in `app_users` with **`.ilike()`** — `private.jwt_email()` lowercases before matching, so `.eq()` would reject a mixed-case address that RLS accepts. Not found → Access Denied **and** `sb.auth.signOut()`, so a rejected user keeps no session. Found → `window.currentUser = {email, role}`, admin-only UI shown conditionally, then `loadClients()` + `loadDashboard()` + `loadSidebarStorageUsage()`.
+4. Sign-out clears `currentUser`/`clientsList`, calls `sb.auth.signOut()`, resets the form and re-enables the submit button.
 
-**Google OAuth is identity for Drive/Gmail only — it is not what gates access.** Authorization is client-side UI gating from the `app_users` lookup; with RLS off there is no server-side enforcement (§6.6) — moving login onto Supabase Auth is groundwork for eventually enabling RLS (a real `auth.uid()` to write policies against), not a fix for it by itself. `role` affects UI visibility (admin sections, all-staff logs), nothing more.
+**Account management is manual and admin-only, in the Supabase dashboard:**
+
+- Authentication → Providers → Email: enabled, with **"Allow new users to sign up" OFF**. Left on, anyone could self-register; RLS would give them no rows, but they'd still hold a valid session.
+- Authentication → Users → Add user, with "Auto Confirm User" so no confirmation mail is needed.
+- **Adding a staff member takes two steps** — an `auth.users` entry *and* an `app_users` row. One without the other means they authenticate and are then denied.
+- No self-serve password reset: the firm has a handful of users and Supabase's built-in SMTP is rate-limited to a few mails an hour, so an admin resets it instead. The login screen says so.
+
+**Authentication is identity — RLS is what gates data** (§6). `role` drives UI visibility only (admin-only buttons, bank-detail editing) and protects nothing on its own.
+
+### What the Google removal took with it (2026-08-01)
+
+`signInWithOAuth` → `signInWithPassword`; `session.provider_token`; the GIS silent-renewal loop (`handleTokenResponse`/`ensureTokenClient`/`scheduleTokenRenewal`/`renewTokenSilently`); `window.accessToken`, `window.tokenClient`, `window.CLIENT_ID`, `SCOPES`; the "Developer Setup" modal and its `gClientId` localStorage key; the `Integrations` engine (`js/core/integrations.js`, deleted) and `blobToBase64`; both Google script tags; and every Google origin from the CSP's `script-src`, `connect-src` and `frame-src`.
+
+**No database migration was required.** RLS gates on `auth.jwt() ->> 'email'` via `private.jwt_email()`, which is provider-independent — an email/password JWT carries `email` exactly as a Google one did. That is the single fact that made the swap cheap, and it is worth remembering before anyone proposes changing provider again.
+
+The trigger was removing Send Document, which was the only Drive consumer. Billing's "Email Invoice" button was the last Gmail caller; it now downloads the PDF for the staff member to attach themselves (`billingDownloadInvoice`, which already existed).
 
 ---
 
-## 8. Google API Integrations
+## 8. External integrations
 
-- All Drive/Gmail calls go through `Integrations` (§4). Every Drive request includes `supportsAllDrives=true&includeItemsFromAllDrives=true` — required for Shared Drive visibility.
-- Folder resolution matches against name-variant lists (real-world folder naming is inconsistent); each step has a specific, user-actionable error message.
-- Email: attachment downloaded from Drive as blob → base64 → raw multipart MIME → `gmail/v1/users/me/messages/send`. **No CRLF/header-injection sanitization on To/Subject yet** (known debt, §15).
-- Not integrated: Google Calendar, Google Sheets API.
+**None.** Supabase is the only remote service the app calls; the optional local OCR service (§2.6) runs on loopback. This is enforced, not just conventional — the CSP's `connect-src` is `'self' https://*.supabase.co http://127.0.0.1:8000 http://localhost:8000`, so adding an integration to a new host means widening it there first or the call is simply blocked.
 
 ---
 

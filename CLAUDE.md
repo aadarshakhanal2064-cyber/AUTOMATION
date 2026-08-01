@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Guide
 
-Internal workflow-automation platform for **Shailesh & Associates** (Chartered Accountants) and **Dallakoti & Company** (Registered Auditors) — two affiliated audit firms in Chitwan, Nepal. Max 8 users, all staff. It automates document generation (audit reports, statutory minutes, registrar filings, invoices), VAT return preparation and tracking, client management, and Drive/Gmail document delivery.
+Internal workflow-automation platform for **Shailesh & Associates** (Chartered Accountants) and **Dallakoti & Company** (Registered Auditors) — two affiliated audit firms in Chitwan, Nepal. Max 8 users, all staff. It automates document generation (audit reports, statutory minutes, registrar filings, invoices), VAT return preparation and tracking, client management, and document delivery.
 
 ---
 
@@ -19,7 +19,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 
 ## 1. Quick Orientation
 
-**Stack in one line:** static HTML/CSS/vanilla-JS single-page app (no framework, no build step, no bundler), talking directly to Supabase Postgres (publishable key, no Supabase Auth) and Google Drive/Gmail APIs (user's own OAuth token), hosted on GitHub Pages.
+**Stack in one line:** static HTML/CSS/vanilla-JS single-page app (no framework, no build step, no bundler), talking directly to Supabase Postgres (publishable key) and Supabase Auth (email + password), hosted on GitHub Pages. **No third-party APIs at all** since Google auth was dropped 2026-08-01.
 
 **Hard rules that must never be broken:**
 
@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 12 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
 
 ---
 
@@ -39,7 +39,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 
 > Full detail — runtime architecture, the CDN table with per-library rationale, hosting, local dev: **`docs/architecture.md`**.
 
-The app itself runs **entirely client-side**. The browser talks to **Supabase Postgres** via `supabase-js` (publishable key in `config.js`; RLS enabled on every table, §6) and to **Google Drive (readonly) + Gmail (send)** via the signed-in staff member's own OAuth token. Emails send as the actual staff member, not a service account. State is `window.*` globals — no modules, no state library.
+The app itself runs **entirely client-side**, and **Supabase is now its only backend** — `supabase-js` for Postgres (publishable key in `config.js`; RLS enabled on every table, §6) and Supabase Auth for sign-in. Google Drive/Gmail were removed 2026-08-01 along with Google OAuth (§7). State is `window.*` globals — no modules, no state library.
 
 **One exception, added 2026-08-01: `ocr_service/`** — a FastAPI + PaddleOCR process backing the OCR Extract module (§5). It is **optional, local-only, and not deployed** (GitHub Pages can't run Python): each staff member starts it on their own machine with `ocr_service/start.ps1` when they want OCR. Nothing else depends on it — if it's stopped, only that one tab is affected. It does not make this a client/server app; treat it as an optional companion process, and don't move other features onto it without asking. Needs **Python 3.10–3.12** (PaddlePaddle publishes no wheel for 3.13/3.14). Detail: `docs/architecture.md` §2.6 and `ocr_service/README.md`.
 
@@ -48,7 +48,7 @@ The app itself runs **entirely client-side**. The browser talks to **Supabase Po
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (12 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, vatCompliance,
   billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
@@ -60,7 +60,7 @@ CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
 
 ### CDN dependencies
 
-No `package.json`, no npm at the app level — all libraries are `<script>` tags. Pinned: `@supabase/supabase-js` 2.110.7 · `xlsx` (SheetJS) 0.18.5 full build (import only, read-only) · `exceljs` 4.4.0 (generation) · `pizzip` 3.1.7 + `docxtemplater` 3.50.0 · `jszip` 3.10.1 · `docx-preview` 0.3.7 · `fuse.js` 7.0.0 · `pdf-lib` 1.17.1 · `tabulator-tables` 6.3.0 · `chart.js` 4.4.0 · `html-docx-js` 0.3.1. Plus the two Google loaders (dynamic, can't be SRI-pinned — constrained by CSP `script-src` instead).
+No `package.json`, no npm at the app level — all libraries are `<script>` tags. Pinned: `@supabase/supabase-js` 2.110.7 · `xlsx` (SheetJS) 0.18.5 full build (import only, read-only) · `exceljs` 4.4.0 (generation) · `pizzip` 3.1.7 + `docxtemplater` 3.50.0 · `jszip` 3.10.1 · `docx-preview` 0.3.7 · `fuse.js` 7.0.0 · `pdf-lib` 1.17.1 · `tabulator-tables` 6.3.0 · `chart.js` 4.4.0 · `html-docx-js` 0.3.1. **Every script tag now carries SRI** — the two Google loaders were the only unpinnable ones and both went with Google auth.
 
 **Every pinned dep carries SRI (`sha384`) + `crossorigin`.** When bumping a version, recompute the hash (`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`) or the file silently won't load.
 
@@ -68,7 +68,7 @@ No `package.json`, no npm at the app level — all libraries are `<script>` tags
 
 - Remote `https://github.com/aadarshakhanal2064-cyber/AUTOMATION`, branch `main` only. GitHub Pages auto-deploys on push; `.nojekyll` is required.
 - Dev server: `.claude/launch.json` defines `static-site`. Use the browser-preview tooling, never Bash.
-- **Real Google OAuth cannot run in the sandbox** — bypass the auth wall via DOM manipulation, mock Drive/Gmail where needed.
+- **Sign-in needs a real Supabase account** — for anything other than the login screen itself, bypass the auth wall via DOM manipulation (set `window.currentUser`, unhide `#app-section`/`#topbar`/`#sidebar`) and seed `window.clientsList` by hand; RLS returns nothing without a session.
 - **Word / LibreOffice are not installed** — `.docx` verification is structural (XML-level) only; the user does the final visual check.
 
 ---
@@ -88,8 +88,8 @@ AUTOMATION AI APP/
 │   │                        # REP_FIRMS/REP_ENTITY_PROFILES/NTA_*/IMPORT_FIELDS
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, blobToBase64
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
-│   ├── auth.js              # Boot sequence, Google sign-in/out, app_users authorization
-│   ├── core/                # 13 reusable engines — §4
+│   ├── auth.js              # Boot sequence, email/password sign-in/out, app_users authorization
+│   ├── core/                # 12 reusable engines — §4
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
 ├── ocr_service/             # Optional local FastAPI + PaddleOCR service — §2
@@ -118,7 +118,6 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | TableEngine | `tableEngine.js` | `createTable(container, options)` over Tabulator. **Only the Clients directory uses it** — deliberate. |
 | WorkflowEngine | `workflowEngine.js` | Form watchers, debounced live preview, localStorage autosave, completion indicator, zoom, `createStatusFlow` — one `transition()` choke point per status-tracked module so badge, persistence and audit entry can never disagree — and `createClientScope`, the same idea for client switching: `clear()` runs unconditionally before every `load()`, so no loader path can leak the previous client's data. **Any screen with a client picker goes through a scope.** |
 | AuditLog | `auditLog.js` | `record(eventType, detail)`, `recent`, `countSince` → Supabase `audit_log`. Every call is try/catch-wrapped and **never throws**. |
-| Integrations | `integrations.js` | `driveGet`, `findFolderByName`, `listAllFilesInFolder`, `downloadDriveFile`, `sendEmailWithAttachment`. All Drive calls append `supportsAllDrives=true&includeItemsFromAllDrives=true`. |
 | WorkbookReader | `workbookReader.js` | Locating figures inside the firm's hand-maintained NFRS workbooks. **Everything is label-driven, never positional — never hardcode a value column.** Node-loadable. |
 | EngineMath | `engineMath.js` | `seededRng(key)`, `round1000Up/Down`, `deRound`. What makes the "unique per case" figures **reproducible per client**. Node-loadable. |
 | ReportExport | `reportExport.js` | `toHtml`/`toPdf`/`toExcel`/`download` over one tabular model. Knows nothing about ledgers — callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** (PDF-Lib standard fonts throw on non-WinAnsi characters). |
@@ -200,23 +199,25 @@ Show the SQL (annotated migration + rollback as files under `db/`) → apply via
 
 ### RLS — ENABLED on all 18 tables (since 2026-07-16)
 
-**Membership, not authentication, grants access.** Any Google account can hold an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE is admin-only; `send_logs`/`audit_log` are immutable; **`firm_bank_details` writes are admin-only** (payment-fraud target).
+**Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE is admin-only; `send_logs`/`audit_log` are immutable; **`firm_bank_details` writes are admin-only** (payment-fraud target).
 
 **When adding a new table: enable RLS + add membership policies in the same migration, or the app can't read it at all.**
 
 ---
 
-## 7. Authentication & Google APIs
+## 7. Authentication
 
-> Full lifecycle and folder-walk detail: **`docs/architecture.md`**.
+> Full lifecycle detail: **`docs/architecture.md`**.
 
-Login and the Drive/Gmail token come from **one** Google consent screen brokered by Supabase Auth (`signInWithOAuth`, full-page redirect, Drive/Gmail scopes requested alongside login). `onAuthStateChange` routes into `afterSupabaseSignIn(session)`, which looks the email up in `app_users` — not found = Access Denied. `session.provider_token` seeds `window.accessToken`.
+**Supabase Auth, email + password** (since 2026-08-01). `signIn()` calls `signInWithPassword`; `onAuthStateChange` routes `INITIAL_SESSION`/`SIGNED_IN` into `afterSupabaseSignIn(session)`, which looks the email up in `app_users` — not found = Access Denied **and** the session is ended.
 
-**Supabase does not auto-refresh `provider_token`** (a Google limitation). GIS's silent-renewal loop reissues it every ~50 min, which is why `window.CLIENT_ID` must still be configured via the Developer Setup modal even though it is no longer needed to log in.
+**Accounts are admin-created in the Supabase dashboard.** Signup is disabled there deliberately; there is no self-serve password reset (a handful of staff, and Supabase's built-in SMTP is rate-limited to a few mails an hour) — an admin resets it instead. Adding a user means **two** steps: an `auth.users` entry *and* an `app_users` row, or they authenticate and are then denied.
 
-**Google OAuth is identity for Drive/Gmail — RLS is what gates data** (§6). `role` affects UI visibility only.
+**The membership lookup uses `.ilike()`, not `.eq()`** — `private.jwt_email()` lowercases before matching, so a case-sensitive lookup here would reject a mixed-case address that RLS accepts, and the two layers would disagree.
 
-All Drive/Gmail calls go through `Integrations` (§4). Folder resolution matches name-variant lists (real folder naming is inconsistent), each step with a specific, user-actionable error.
+**Authentication is identity — RLS is what gates data** (§6). `role` affects UI visibility only, and is deliberately *not* what protects anything.
+
+**Google OAuth was removed 2026-08-01** — with it went `provider_token`, the GIS silent-renewal loop, `window.CLIENT_ID`, the Developer Setup modal, the `Integrations` engine, both Google script loaders and every Google origin in the CSP. **No database migration was needed**: RLS gates on `auth.jwt() ->> 'email'`, which is provider-independent. Don't reintroduce a Google dependency without re-reading §15.
 
 ---
 
@@ -322,12 +323,10 @@ The established pattern — **investigate with real evidence → implement only 
 ## 13. Security Practices
 
 - **RLS is the server-side enforcement layer** (§6) — enabled on all 17 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
-- `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers. Google Drive filenames are untrusted.
-- **Email raw-MIME construction is sanitized** — `Integrations.sendRawEmailWithBlob` CRLF-strips every header value and RFC 2047-encodes Subject/filename. Don't reintroduce raw interpolation.
-- **Drive `q` strings are escaped** via `escDriveQuery` — keep using it for any interpolated name.
-- **CSP** (meta tag in `index.html`) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
-- OAuth/Supabase tokens live in `localStorage` — readable by any successful XSS (residual risk).
-- No secrets in this repo beyond the publishable key. The Google **Client Secret** lives only in the Supabase Dashboard.
+- `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
+- **CSP** (meta tag in `index.html`; `connect-src` is now just Supabase + the OCR loopback — every Google origin was removed 2026-08-01) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
+- Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk).
+- No secrets in this repo beyond the publishable key. User passwords are Supabase's to store — the app never persists one.
 
 ---
 
@@ -338,6 +337,7 @@ The established pattern — **investigate with real evidence → implement only 
 | BM/AGM template-build tooling never committed | High | Exists only as prose in `docs/history/HANDOFF.md`. Any template rebuild starts by recreating it. |
 | CSP keeps `'unsafe-inline'` for scripts | Medium | Full fix = refactoring hundreds of inline `onclick=` handlers off inline script; a separate project. escHtml audit is the mitigation. |
 | No automated tests | Medium | All verification is manual/ad-hoc per §12. |
+| No self-serve password reset | Low | Deliberate for a handful of users (§15) — an admin resets in the Supabase dashboard. Revisit if staff count grows or resets get frequent; needs custom SMTP, since Supabase's built-in sender is rate-limited. |
 | 4 Company Registrar stubs | Feature gap | UI-only, `moduleComingSoon()`. |
 | Financial Statement per-class depreciation is allocated, not per-asset | Low | A helper allocates figure `M` by opening balance and warns on disagreement; reading the per-class split from the SLM schedule's `pools` jsonb would be exact. |
 | Section 51 "collected amount" in BM/AGM template is static sample text | Low | Known, deliberate cap during tokenization. |
@@ -346,6 +346,8 @@ The established pattern — **investigate with real evidence → implement only 
 
 ## 15. Deliberate Decisions — Do NOT "Fix"
 
+- **Auth is Supabase email + password, and the app has no Google dependency at all** (2026-08-01, user decision) — see §7. Accounts are admin-created with signup disabled; there is deliberately no self-serve password reset. Don't reintroduce Google OAuth, Drive, Gmail, the `Integrations` engine or any Google origin in the CSP without an explicit ask.
+- **Billing does not email invoices** (2026-08-01) — it downloads the PDF for the staff member to attach. That was the last Gmail caller. Never re-add a send button as a "convenience"; it drags the whole OAuth stack back in.
 - **Preeti → Mangal (Unicode) template conversion** — explicit user decision. Never revert to Preeti.
 - **Billing QR is a static uploaded image** — never add a QR-generation library or a scannable-looking placeholder.
 - **Invoice status is trigger-owned** — never set `paid`/`partially_paid` from JS.
@@ -410,8 +412,8 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/README.md` | On demand | Map of the docs tree and the rule for what goes where. |
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
 | `docs/database.md` | On demand | All 17 tables column by column, triggers, the full RLS matrix. |
-| `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, Drive/Gmail, doc-generation detail. |
-| `docs/engines.md` | On demand | The 13 engines in full. |
+| `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
+| `docs/engines.md` | On demand | The 12 engines in full. |
 | `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |
