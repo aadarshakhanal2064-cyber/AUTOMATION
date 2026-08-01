@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608021415">
+<link rel="stylesheet" href="css/styles.css?v=202608021600">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -135,11 +135,23 @@ function cropLoginLogoIcon(img) {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
       <span class="dot" id="tb-notif-count">3</span>
     </div>
-    <div class="tb-user">
-      <div class="avatar" id="tb-user-avatar" style="width:32px;height:32px;font-size:12.5px;">?</div>
-      <span class="tb-email" id="tb-user-email">Loading...</span>
-      <span class="tb-role-pill" id="tb-role-badge">User</span>
-      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    <div class="app-tag-dropdown">
+      <div class="tb-user" id="topbar-user-trigger" onclick="toggleTopbarMenu(event, 'user')" role="button" tabindex="0">
+        <div class="avatar" id="tb-user-avatar" style="width:32px;height:32px;font-size:12.5px;">?</div>
+        <span class="tb-email" id="tb-user-email">Loading...</span>
+        <span class="tb-role-pill" id="tb-role-badge">User</span>
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <!-- This chevron/menu was styled but never wired up (2026-08-01 fix)
+           — the only sign-out was a small icon button in the sidebar, easy
+           to miss. Reuses the same toggleTopbarMenu/closeTopbarMenus
+           mechanic as the Registrar/Financial/Automation menus. -->
+      <div class="topbar-dropdown-menu topbar-dropdown-menu-right" id="topbar-user-menu">
+        <button class="topbar-dropdown-item topbar-dropdown-item-danger" onclick="signOut()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px; margin-right:6px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          Sign out
+        </button>
+      </div>
     </div>
   </div>
 </header>
@@ -3123,49 +3135,49 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608021415"></script>
-<script src="js/utils.js?v=202608021415"></script>
-<script src="js/core/moduleRegistry.js?v=202608021415"></script>
-<script src="js/core/statusBox.js?v=202608021415"></script>
-<script src="js/core/nepaliLocale.js?v=202608021415"></script>
-<script src="js/core/documentEngine.js?v=202608021415"></script>
-<script src="js/core/searchEngine.js?v=202608021415"></script>
-<script src="js/core/tableEngine.js?v=202608021415"></script>
-<script src="js/core/workflowEngine.js?v=202608021415"></script>
-<script src="js/core/auditLog.js?v=202608021415"></script>
-<script src="js/core/reportExport.js?v=202608021415"></script>
-<script src="js/core/workbookReader.js?v=202608021415"></script>
-<script src="js/core/engineMath.js?v=202608021415"></script>
-<script src="js/core/ocrEngine.js?v=202608021415"></script>
-<script src="js/core/dataCache.js?v=202608021415"></script>
-<script src="js/tabs.js?v=202608021415"></script>
-<script src="js/dashboard.js?v=202608021415"></script>
-<script src="js/registrar.js?v=202608021415"></script>
-<script src="js/clients.js?v=202608021415"></script>
-<script src="js/vatCompliance.js?v=202608021415"></script>
-<script src="js/billing.js?v=202608021415"></script>
-<script src="js/serviceMemo.js?v=202608021415"></script>
-<script src="js/report.js?v=202608021415"></script>
-<script src="js/notesToAccounts.js?v=202608021415"></script>
-<script src="js/depreciation.js?v=202608021415"></script>
-<script src="js/depreciationSlm.js?v=202608021415"></script>
-<script src="js/bmAgmMinutes.js?v=202608021415"></script>
-<script src="js/auditorChange.js?v=202608021415"></script>
-<script src="js/companyProfile.js?v=202608021415"></script>
-<script src="js/salesPurchaseBook.js?v=202608021415"></script>
-<script src="js/confirmationLetters.js?v=202608021415"></script>
-<script src="js/bankBook.js?v=202608021415"></script>
-<script src="js/partyLedger.js?v=202608021415"></script>
-<script src="js/finalAccount.js?v=202608021415"></script>
-<script src="js/projectionEngine.js?v=202608021415"></script>
-<script src="js/projection.js?v=202608021415"></script>
-<script src="js/projectionExport.js?v=202608021415"></script>
-<script src="js/finStatementEngine.js?v=202608021415"></script>
-<script src="js/finStatement.js?v=202608021415"></script>
-<script src="js/finStatementExport.js?v=202608021415"></script>
-<script src="js/ocrExtract.js?v=202608021415"></script>
-<script src="js/fileManagement.js?v=202608021415"></script>
-<script src="js/auth.js?v=202608021415"></script>
+<script src="js/config.js?v=202608021600"></script>
+<script src="js/utils.js?v=202608021600"></script>
+<script src="js/core/moduleRegistry.js?v=202608021600"></script>
+<script src="js/core/statusBox.js?v=202608021600"></script>
+<script src="js/core/nepaliLocale.js?v=202608021600"></script>
+<script src="js/core/documentEngine.js?v=202608021600"></script>
+<script src="js/core/searchEngine.js?v=202608021600"></script>
+<script src="js/core/tableEngine.js?v=202608021600"></script>
+<script src="js/core/workflowEngine.js?v=202608021600"></script>
+<script src="js/core/auditLog.js?v=202608021600"></script>
+<script src="js/core/reportExport.js?v=202608021600"></script>
+<script src="js/core/workbookReader.js?v=202608021600"></script>
+<script src="js/core/engineMath.js?v=202608021600"></script>
+<script src="js/core/ocrEngine.js?v=202608021600"></script>
+<script src="js/core/dataCache.js?v=202608021600"></script>
+<script src="js/tabs.js?v=202608021600"></script>
+<script src="js/dashboard.js?v=202608021600"></script>
+<script src="js/registrar.js?v=202608021600"></script>
+<script src="js/clients.js?v=202608021600"></script>
+<script src="js/vatCompliance.js?v=202608021600"></script>
+<script src="js/billing.js?v=202608021600"></script>
+<script src="js/serviceMemo.js?v=202608021600"></script>
+<script src="js/report.js?v=202608021600"></script>
+<script src="js/notesToAccounts.js?v=202608021600"></script>
+<script src="js/depreciation.js?v=202608021600"></script>
+<script src="js/depreciationSlm.js?v=202608021600"></script>
+<script src="js/bmAgmMinutes.js?v=202608021600"></script>
+<script src="js/auditorChange.js?v=202608021600"></script>
+<script src="js/companyProfile.js?v=202608021600"></script>
+<script src="js/salesPurchaseBook.js?v=202608021600"></script>
+<script src="js/confirmationLetters.js?v=202608021600"></script>
+<script src="js/bankBook.js?v=202608021600"></script>
+<script src="js/partyLedger.js?v=202608021600"></script>
+<script src="js/finalAccount.js?v=202608021600"></script>
+<script src="js/projectionEngine.js?v=202608021600"></script>
+<script src="js/projection.js?v=202608021600"></script>
+<script src="js/projectionExport.js?v=202608021600"></script>
+<script src="js/finStatementEngine.js?v=202608021600"></script>
+<script src="js/finStatement.js?v=202608021600"></script>
+<script src="js/finStatementExport.js?v=202608021600"></script>
+<script src="js/ocrExtract.js?v=202608021600"></script>
+<script src="js/fileManagement.js?v=202608021600"></script>
+<script src="js/auth.js?v=202608021600"></script>
 
 </body>
 </html>

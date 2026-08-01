@@ -2,6 +2,18 @@
 //  CONFIG — constants, global state, Supabase init
 // ════════════════════════════════════════════
 
+// Captured before anything else runs, especially before createClient() below
+// — Supabase begins processing (and eventually clearing) a recovery/magic-
+// link URL as part of client init, and auth.js's onAuthStateChange
+// subscription happens much later (it's deliberately the LAST script, §2), so
+// by the time it runs the URL may already be scrubbed. auth.js reads this
+// instead of window.location directly, so "was this visit a recovery link"
+// survives regardless of exactly when Supabase gets to the URL.
+window.AUTH_URL_PARAMS = {
+  hash:  new URLSearchParams(window.location.hash.replace(/^#/, '')),
+  query: new URLSearchParams(window.location.search),
+};
+
 const SUPABASE_URL = 'https://rennqzmwyhkdsizvlqwd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
 

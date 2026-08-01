@@ -111,12 +111,18 @@ body {
   box-shadow: var(--shadow-lg); padding: 6px; flex-direction: column; gap: 2px;
 }
 .topbar-dropdown-menu.open { display: flex; }
+/* The user menu hangs off the right-most item in the topbar — left:0 (the
+   default, right for Registrar/Financial/Automation near the left edge)
+   would push it partly off-screen here. */
+.topbar-dropdown-menu-right { left: auto; right: 0; min-width: 160px; }
 .topbar-dropdown-item {
   display: block; width: 100%; padding: 11px 14px; border-radius: var(--radius);
   border: none; background: transparent; font-family: 'Inter', sans-serif; font-size: 14px;
   font-weight: 500; color: var(--text-main); text-align: left; cursor: pointer; transition: background 0.15s;
 }
 .topbar-dropdown-item:hover { background: var(--bg-app); color: var(--brand-navy); }
+.topbar-dropdown-item-danger { color: var(--red); }
+.topbar-dropdown-item-danger:hover { background: var(--red-bg); color: var(--red); }
 
 .topbar-right { display: flex; align-items: center; gap: 18px; }
 .tb-bell { position: relative; color: var(--text-muted); cursor: pointer; display:flex; }

@@ -12,9 +12,28 @@ window.addEventListener('load', () => {
   const showRecoveryScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'none';
+    // Belt and braces: if a stale session from this browser was already
+    // shown before the recovery session took over, don't leave the app
+    // visible underneath.
+    document.getElementById('app-section').style.display = 'none';
     document.getElementById('recovery-wrap').style.display = 'flex';
     document.getElementById('recovery-password').focus();
   };
+
+  // A recovery link's session reliably reaches us — but usually relabelled as
+  // a plain INITIAL_SESSION, not the PASSWORD_RECOVERY event Supabase's docs
+  // describe. Reason: auth.js is deliberately the LAST script to run (§2),
+  // long after config.js's createClient() already kicked off Supabase's own
+  // URL processing, and onAuthStateChange only guarantees a synthetic
+  // INITIAL_SESSION to each NEW subscriber — not a replay of whichever event
+  // originally fired before we were listening. (This is exactly what
+  // happened live: a recovery link opened straight into the app.) So the URL
+  // itself decides, not the event name — read from window.AUTH_URL_PARAMS
+  // (config.js), captured before Supabase could touch it.
+  let isRecoveryLink = window.AUTH_URL_PARAMS.hash.get('type') === 'recovery'
+                     || window.AUTH_URL_PARAMS.query.get('type') === 'recovery';
+  const linkErrorDesc = window.AUTH_URL_PARAMS.hash.get('error_description')
+                     || window.AUTH_URL_PARAMS.query.get('error_description');
 
   // Supabase Auth owns session state now — onAuthStateChange fires once on
   // load with whatever session it restored (INITIAL_SESSION), then again on
@@ -22,16 +41,23 @@ window.addEventListener('load', () => {
   // refresh) is intentionally ignored here — the app is already initialized
   // by that point, nothing to redo.
   window.sb.auth.onAuthStateChange((event, session) => {
+    if (linkErrorDesc) {
+      // An expired or already-used recovery/magic link redirects here with
+      // an error instead of a session — surface it once instead of silently
+      // showing a blank sign-in form with no explanation.
+      showSignInScreen();
+      authStatus('❌ ' + decodeURIComponent(linkErrorDesc.replace(/\+/g, ' ')), 'error');
+      return;
+    }
+    if (isRecoveryLink && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY')) {
+      session ? showRecoveryScreen() : showSignInScreen();
+      return;
+    }
     if (event === 'INITIAL_SESSION') {
       session ? afterSupabaseSignIn(session) : showSignInScreen();
     } else if (event === 'SIGNED_IN') {
       afterSupabaseSignIn(session);
     } else if (event === 'PASSWORD_RECOVERY') {
-      // Fires instead of SIGNED_IN when the URL carries a recovery token —
-      // clicking the "Send password recovery" link an admin sent from the
-      // Supabase dashboard. The session is real but must not be used to enter
-      // the app until a password is actually set (submitNewPassword() below
-      // is what calls afterSupabaseSignIn once that's done).
       showRecoveryScreen();
     } else if (event === 'SIGNED_OUT') {
       // Skip if the Access Denied screen is up — that sign-out is ours
@@ -40,6 +66,13 @@ window.addEventListener('load', () => {
       if (document.getElementById('access-denied-wrap').style.display !== 'flex') showSignInScreen();
     }
   });
+
+  // submitNewPassword() calls this once the password is actually set —
+  // without it, isRecoveryLink would still read true for the rest of this
+  // page load (the URL doesn't change), and a later event (a token refresh,
+  // a manual reload of the SPA state) would bounce the user right back to
+  // this screen even after they're done with it.
+  window._clearRecoveryLinkFlag = () => { isRecoveryLink = false; };
 
   // Safety timeout — if Supabase's client never resolves a session state
   // (e.g. network issue), fall back to the sign-in screen rather than hang.
@@ -120,6 +153,7 @@ async function submitNewPassword() {
   // afterSupabaseSignIn only ever reads session.user, and data.user here is
   // the same full User object a real session would carry.
   document.getElementById('recovery-form').reset();
+  if (window._clearRecoveryLinkFlag) window._clearRecoveryLinkFlag();
   await afterSupabaseSignIn({ user: data.user });
 }
 
