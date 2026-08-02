@@ -290,6 +290,7 @@ function pjRenderValidation() {
 
 function pjRenderRatioStrip() {
   const L = ProjectionEngine.LIMITS;
+  const pct = Math.round(((pjResult.meta && pjResult.meta.ncaFactor) || L.ncaFactor) * 100);
   const chip = (ok, label, value) =>
     `<span class="log-badge ${ok ? 'badge-sent' : 'badge-error'}" style="margin:2px 4px 2px 0;">${escHtml(label)}: ${escHtml(value)}</span>`;
   pjEl('pj-ratio-strip').innerHTML = pjResult.years.map(yr => {
@@ -297,9 +298,9 @@ function pjRenderRatioStrip() {
     return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border-light);">
       <strong style="font-size:12.5px; width:90px;">F.Y. ${escHtml(pjFyLabel(yr.year))}</strong>
       ${chip(r.debtorDays >= L.minDebtorDays - 0.5 && r.debtorDays <= L.maxDebtorDays + 0.5, 'Debtor days', r.debtorDays.toFixed(0) + ' (' + L.minDebtorDays + '–' + L.maxDebtorDays + ')')}
-      ${chip(r.currentRatio >= L.minCurrentRatio - 0.005, 'Current ratio', r.currentRatio.toFixed(2) + ' ≥ ' + L.minCurrentRatio)}
-      ${chip(r.debtEquity <= L.maxDebtEquity + 0.005, 'Debt-equity', r.debtEquity.toFixed(2) + ' ≤ ' + L.maxDebtEquity)}
-      ${chip(r.ncaHeadroom >= -0.5, '70% NCA headroom', pjAmt(r.ncaHeadroom))}
+      ${chip(r.currentRatio >= L.minCurrentRatio - L.ratioEps, 'Current ratio', r.currentRatio.toFixed(2) + ' ≥ ' + L.minCurrentRatio)}
+      ${chip(r.debtEquity <= L.maxDebtEquity + L.ratioEps, 'Debt-equity', r.debtEquity.toFixed(2) + ' ≤ ' + L.maxDebtEquity)}
+      ${chip(r.ncaHeadroom >= L.minNcaHeadroom - 0.5, `${pct}% NCA headroom (H)`, pjAmt(r.ncaHeadroom) + ' ≥ ' + pjAmt(L.minNcaHeadroom))}
       ${chip(Math.abs(yr.bs.totalSources - yr.bs.totalUses) <= 1, 'Balance', 'ties')}
     </div>`;
   }).join('');
@@ -339,6 +340,39 @@ function pjRenderOverrides() {
     </tbody></table></div>`;
 }
 
+// Why is there owner capital on this balance sheet, and what would remove it?
+// The solver already drives the figure to the smallest constant that works, so
+// when one survives, the only useful thing left to show is WHICH bank test is
+// the wall — cash and closing stock cannot touch the current ratio or the
+// debt-equity ratio at all (Current Assets = Sources − Fixed Assets + Current
+// Liabilities, so both cancel out), and when one of those binds, the loan
+// structure is the only remaining lever. The engine never restructures the
+// loans itself: how a facility is classified is a fact about the client.
+function pjCapitalNote() {
+  const d = pjResult.capitalDriver;
+  if (!d) {
+    return '<div class="status-box status-success" style="margin-bottom:10px;">'
+      + 'No Additional Capital is required — every ratio is satisfied on the client\'s own funds.</div>';
+  }
+  const cannotMove = d.test === 'currentRatio' || d.test === 'debtEquity';
+  let html = `<div class="status-box status-info" style="margin-bottom:10px;">`
+    + `<strong>Additional Capital of Rs ${escHtml(pjAmt(d.amount))}</strong> is the smallest single figure that works for every year. `
+    + `It is forced by the <strong>${escHtml(d.label)}</strong> in F.Y. ${escHtml(pjFyLabel(d.year))}`
+    + (cannotMove
+        ? ' — a test that cash and closing stock cannot move at all, because both cancel out of Current Assets = Sources − Fixed Assets + Current Liabilities.'
+        : ' — the cash and closing-stock levers are already at their limits.');
+  let sug = null;
+  try { sug = ProjectionEngine.suggestReclass(pjModel, pjResult.asm, { years: 5 }); } catch (e) { console.error(e); }
+  if (sug && sug.feasible) {
+    html += ` <br><br>Showing <strong>Rs ${escHtml(pjAmt(sug.amount))}</strong> of the short-term facility as a `
+      + `${escHtml(String(sug.years))}-year term loan at ${escHtml(sug.ratePct.toFixed(2))}% instead would bring Additional Capital to <strong>nil</strong> `
+      + `— it leaves Current Liabilities and joins Sources. Enter it that way in Step 2 if that matches the client's actual facility.`;
+  } else if (sug) {
+    html += ` Reclassifying the short-term facility as a term loan would not remove it either.`;
+  }
+  return html + '</div>';
+}
+
 function pjRenderLevers() {
   const applied = [];
   const describe = (l) => {
@@ -349,9 +383,9 @@ function pjRenderLevers() {
   const ruleLabel = (r) => (r === 'a' || r === 'b') ? `debtor-floor step (${r})` : `rule ${r}`;
   pjResult.years.forEach(yr => yr.levers.forEach(l => applied.push(
     `F.Y. ${pjFyLabel(yr.year)} — ${ruleLabel(l.rule)}: ${describe(l)} of Rs ${pjAmt(Math.abs(l.amount))}`)));
-  pjEl('pj-levers').innerHTML = applied.length
+  pjEl('pj-levers').innerHTML = pjCapitalNote() + (applied.length
     ? `<div style="font-size:12.5px; color:var(--text-muted);"><strong>Auto-solver decisions:</strong><ul style="margin:6px 0 0 18px;">${applied.map(a => `<li>${escHtml(a)}</li>`).join('')}</ul></div>`
-    : '<div style="font-size:12.5px; color:var(--text-muted);">No rule adjustments were needed — the projection satisfies every constraint as computed.</div>';
+    : '<div style="font-size:12.5px; color:var(--text-muted);">No rule adjustments were needed — the projection satisfies every constraint as computed.</div>');
 }
 
 function pjShowStatement(view) {

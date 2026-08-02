@@ -376,6 +376,7 @@ The established pattern — **investigate with real evidence → implement only 
 - **Final Account's `Net Difference` is shown, not forced** — a non-zero figure is a real finding, not a rendering bug to suppress.
 - **Party List carries Opening + Tax Paid columns the department head's sheet didn't draw** (user-approved) so the Balance foots on screen. Don't trim it back to five columns.
 - **Projection's master-workbook bugs are deliberately corrected** (year-3 Dep block, CF operating total, BS year-1 WDV reference, non-cumulative retained earnings) — don't "fix" them back.
+- **Projection never restructures the client's loans to avoid owner capital** (2026-08-02, user decision) — when the current ratio or debt-equity forces Additional Capital, the review panel *states* how much of the short-term facility would have to be shown as a term loan to bring it to nil, and the user re-enters it in Step 2. How a facility is classified is a fact about the client, not a lever the report may pull. Don't make `suggestReclass()` self-applying.
 - **Projection excludes non-operating income and out-of-note SOI expense rows** — matches the CA's real delivered sample.
 - **Autobooks' "As Per VAT Return" figures are typed by the user, never derived** — filed figures genuinely differ from book, and are truncated to whole rupees.
 - **Autobooks never auto-merges parties on PAN** — one PAN spanned two unrelated companies, and one name spanned two real entities.

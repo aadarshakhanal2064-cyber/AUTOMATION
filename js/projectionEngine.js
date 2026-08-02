@@ -337,8 +337,16 @@ const ProjectionEngine = (() => {
     minDebtorDays: 30,     // CA rule (2026-07-22): a collection cycle under 30
                            // days reads as fabricated to a bank — flag + auto-lift
     minNca: 100000,        // <30-day step (a) won't push Net Current Assets below this
+    minNcaHeadroom: 100000, // CA rule (2026-08-02): the NCA working's closing line
+                           // H = F − G ("Difference (always positive)") must clear
+                           // 1 lakh, not merely be positive — a drawing power that
+                           // only just covers the facility leaves the bank no margin
     minCurrentRatio: 1.5,  // rule 4
     maxDebtEquity: 2.33,   // rule 3
+    // Ratio tests are solved STRICTLY. This was ±0.005, which let a year settle
+    // at a true current ratio of 1.4950 and print as "1.50 ≥ 1.5" — the export
+    // shows two decimals, so the slack was invisible in the delivered report.
+    ratioEps: 1e-6,
     ncaFactor: 0.70,       // bank drawing power = 70% of NCA (rule 2 / "Always Positive").
                            // DEFAULT ONLY — the user enters this per report (asm.ncaPct);
                            // it is never recalculated or overwritten by the engine.
@@ -358,6 +366,11 @@ const ProjectionEngine = (() => {
                            // owner capital, but never so far that Goods Purchase falls
                            // below half the provisional year's — a trading company that
                            // appears to buy nothing would not survive a bank's reading
+    maxStockCutPct: 0.25,  // CA rule (2026-08-02): and never more than a quarter below
+                           // the figure the stock rules themselves produced. The
+                           // purchases bound alone is not enough — on a file with low
+                           // purchases relative to inventory it still allows a collapse
+                           // in closing stock that no bank would read as genuine.
     cashGrowth: 1.10,      // cash grows 10%/yr after yr 1, rounded to nearest 10
   };
 
@@ -601,6 +614,18 @@ const ProjectionEngine = (() => {
         ? Math.max(stlTotal / ncaFactor * LIMITS.stockBuffer, openingStock * LIMITS.stockBuffer)
         : openingStock * LIMITS.stockGrowth;
 
+      // The floor under every closing-stock reduction, shared by the
+      // capital-avoidance lever and the 30-day debtor-floor step (a) so the two
+      // can never disagree. Two independent believability tests, whichever
+      // binds first: Goods Purchase may not fall below half the provisional
+      // year's, and closing stock may not fall more than a quarter below the
+      // figure the stock rules themselves produced (CA rule 2026-08-02).
+      const stockFloorFor = (cogs, directCost) => Math.max(
+        0,
+        baseClosingStock * (1 - LIMITS.maxStockCutPct),
+        openingStock + directCost - cogs + LIMITS.minPurchasePct * input.materials.purchases,
+      );
+
       // ── Bottom-up profit (CA rule 2026-07-25) ──
       // Gross Profit and Net Profit must EACH rise ≥5% on the prior year
       // (provisional figures for year 1). Deductions are already fixed above,
@@ -654,6 +679,7 @@ const ProjectionEngine = (() => {
       let capExhausted = false;                      // current assets used up?
       const levers = [];
       let yearOk = true;
+      let failed = [];               // which bank tests this year does not meet
 
       let state = null;
       for (let iter = 0; iter < 15; iter++) {
@@ -689,12 +715,14 @@ const ProjectionEngine = (() => {
         // Does this year stand up at the capital level it has been given?
         // Only tests that MORE capital would fix count — a >90-day debtor
         // turnover is handled by dividend/stock and is made worse by capital.
-        yearOk = debtors >= -0.5
-          && nca >= LIMITS.minNca - 0.5
-          && ncaHeadroom >= -0.5
-          && currentRatio >= LIMITS.minCurrentRatio - 0.005
-          && debtEquity <= LIMITS.maxDebtEquity + 0.005
-          && (sales <= 0 || days >= LIMITS.minDebtorDays - 0.5);
+        failed = [];
+        if (!(debtors >= -0.5))                                          failed.push('debtors');
+        if (!(nca >= LIMITS.minNca - 0.5))                               failed.push('ncaFloor');
+        if (!(ncaHeadroom >= LIMITS.minNcaHeadroom - 0.5))               failed.push('ncaHeadroom');
+        if (!(currentRatio >= LIMITS.minCurrentRatio - LIMITS.ratioEps)) failed.push('currentRatio');
+        if (!(debtEquity <= LIMITS.maxDebtEquity + LIMITS.ratioEps))     failed.push('debtEquity');
+        if (!(sales <= 0 || days >= LIMITS.minDebtorDays - 0.5))         failed.push('debtorDays');
+        yearOk = failed.length === 0;
 
         if (!autoSolve) break;
 
@@ -703,7 +731,8 @@ const ProjectionEngine = (() => {
         // CA and NCA rupee-for-rupee and equity for debt-equity.
         const needDE  = debtEquity > LIMITS.maxDebtEquity ? debt / LIMITS.maxDebtEquity - equity : 0;
         const needCR  = currentRatio < LIMITS.minCurrentRatio ? LIMITS.minCurrentRatio * cl - ca : 0;
-        const needNCA = ncaHeadroom < 0 ? -ncaHeadroom / ncaFactor : 0;
+        const needNCA = ncaHeadroom < LIMITS.minNcaHeadroom
+          ? (LIMITS.minNcaHeadroom - ncaHeadroom) / ncaFactor : 0;
         // Debtors can never be negative on a real balance sheet — when uses
         // fall short of sources even at zero debtors, capital must fill the
         // gap (the rule-2 mechanism, same lever).
@@ -734,11 +763,7 @@ const ProjectionEngine = (() => {
           if (!stockFloorHit) {
             const dTarget = sales > 0 ? sales * LIMITS.minDebtorDays / 365 : 0;
             const debtorShort = Math.max(needPos, dTarget - debtors);
-            // Purchases = COGS − opening − direct + closing, so the stock floor
-            // is whatever keeps purchases at their minimum plausible level.
-            const purchMin = LIMITS.minPurchasePct * input.materials.purchases;
-            const stockFloor = Math.max(0, openingStock + directCost - cogs + purchMin);
-            const room = Math.max(0, closingStock - stockFloor);
+            const room = Math.max(0, closingStock - stockFloorFor(cogs, directCost));
             const dec = Math.min(room, debtorShort);
             if (dec > 0.5) { stockShift -= dec; levers.push({ rule: 'avoid', action: 'closingStock', amount: -dec }); continue; }
             stockFloorHit = true;
@@ -805,11 +830,7 @@ const ProjectionEngine = (() => {
           //     (= cogs − opening − direct + closing) ≥ 0.
           if (!stockFloorHit) {
             if (nca >= LIMITS.minNca) {
-              // Same bound as the capital-avoidance step: keep Goods Purchase
-              // at a plausible level rather than driving it to nil.
-              const stockFloor = Math.max(0,
-                openingStock + directCost - cogs + LIMITS.minPurchasePct * input.materials.purchases);
-              const room = Math.max(0, closingStock - stockFloor);
+              const room = Math.max(0, closingStock - stockFloorFor(cogs, directCost));
               const dec = Math.min(shortfall, room);
               if (dec > 0.5) { stockShift -= dec; levers.push({ rule: 'a', action: 'closingStock', amount: -dec }); continue; }
             }
@@ -861,6 +882,20 @@ const ProjectionEngine = (() => {
         grossMarginPct: sales ? state.gp / sales * 100 : 0,
         netMarginPct: sales ? pbt / sales * 100 : 0,
       };
+
+      // Each bank test's slack, expressed in RUPEES OF OWNER CAPITAL so they
+      // sit on one scale — capital moves every one of them roughly one-for-one
+      // (it lands in the balancing debtors, so a rupee of capital is a rupee of
+      // current assets, of net current assets and of equity).
+      const slack = {
+        currentRatio: state.ca - LIMITS.minCurrentRatio * state.cl,
+        debtEquity:   state.equity - (state.debt > 0 ? state.debt / LIMITS.maxDebtEquity : 0),
+        ncaHeadroom:  (state.ncaHeadroom - LIMITS.minNcaHeadroom) / ncaFactor,
+        ncaFloor:     state.nca - LIMITS.minNca,
+        debtors:      state.debtors,
+        debtorDays:   sales > 0 ? state.debtors - sales * LIMITS.minDebtorDays / 365 : Infinity,
+      };
+      const tightest = (keys) => keys.reduce((a, b) => (slack[a] <= slack[b] ? a : b));
 
       // ── Cash flow (indirect). Ties to the BS by construction; year 1
       // liquidates any audited non-current investments/receivables (the
@@ -915,7 +950,9 @@ const ProjectionEngine = (() => {
       cf.netChange = cf.operating + cf.investing + cf.financing;
       cf.closingCash = cf.openingCash + cf.netChange;
 
-      years.push({ year: y, pl, bs, cf, dep, ratios, levers, ok: yearOk });
+      const binding = failed.length ? tightest(failed) : tightest(Object.keys(slack));
+      years.push({ year: y, pl, bs, cf, dep, ratios, levers, ok: yearOk, failed,
+                   binding: { test: binding, slack: slack[binding], all: slack } });
       prev = years[y - 1];
     }
     return years;
@@ -939,6 +976,25 @@ const ProjectionEngine = (() => {
       }
       years = runAll(hi);
       if (!allOk(years)) years = freeRun;      // nothing constant works — fall back
+    }
+
+    // If owner capital could not be avoided, say which test forced it — the
+    // review panel otherwise shows a large figure with no way to tell whether
+    // cash, closing stock or the loan structure caused it, and only the last of
+    // those can be acted on.
+    //
+    // Determined EMPIRICALLY, by re-solving a notch below the answer and seeing
+    // what breaks. Picking the tightest ratio at the solution instead gives the
+    // wrong test: the cash and stock levers drive debtor-days and drawing power
+    // to sit exactly on their limits, so they always look binding even when the
+    // real wall is a current ratio those levers cannot touch at all.
+    const addlCapFinal = years.length ? years[0].bs.additionalCapital : 0;
+    const constant = years.every(y => y.bs.additionalCapital === addlCapFinal);
+    let capitalDriver = null;
+    if (addlCapFinal > 0 && constant) {
+      const probe = runAll(Math.max(0, addlCapFinal - 1000)).find(y => !y.ok);
+      const test = probe ? probe.binding.test : null;
+      if (test) capitalDriver = { amount: addlCapFinal, year: probe.year, test, label: BINDING_LABELS[test] };
     }
 
     // IRD sheet data: audited column + projected year 1 (master layout).
@@ -969,7 +1025,74 @@ const ProjectionEngine = (() => {
       } : null,
     };
 
-    return { years, ird, meta: { N, stlTotal, interestST, ltScheds, pwcScheds, hpScheds, principalAt, bigCreditor, ncaFactor } };
+    return { years, ird, capitalDriver,
+             meta: { N, stlTotal, interestST, ltScheds, pwcScheds, hpScheds, principalAt, bigCreditor, ncaFactor } };
+  }
+
+  // Human labels for `year.binding.test` / `result.capitalDriver.test`. The
+  // review panel and the exported Validation sheet both name the binding
+  // constraint, so the wording lives here once.
+  const BINDING_LABELS = {
+    currentRatio: 'current ratio',
+    debtEquity:   'debt-equity ratio',
+    ncaHeadroom:  'drawing power (H = F − G)',
+    ncaFloor:     'minimum net current assets',
+    debtors:      'Sundry Debtors cannot be negative',
+    debtorDays:   'minimum 30-day debtor turnover',
+  };
+
+  // What-if: how much of the short-term facility would have to be shown as a
+  // TERM loan for owner capital to fall away entirely? Returns null when there
+  // is nothing to recommend (capital is already nil, or there is no short-term
+  // borrowing to move).
+  //
+  // Answered by RE-SOLVING rather than by algebra. A rupee moved out of current
+  // liabilities relieves the current-ratio test by about 1.5 rupees of capital,
+  // but the drawing-power test takes over partway down and relieves it by far
+  // less — so a closed-form answer is wrong exactly at the crossover, which is
+  // where the recommendation lands.
+  //
+  // The engine never applies this itself (CA decision, 2026-08-02): how a loan
+  // is classified is a fact about the client, not a lever the report may pull.
+  function suggestReclass(input, asm, opts) {
+    const o = opts || {};
+    const stl = (asm.stLoans || []).filter(l => num(l.amount) > 0);
+    const total = stl.reduce((s, l) => s + num(l.amount), 0);
+    if (!(total > 0)) return null;
+    const ratePct = num(o.ratePct) > 0 ? num(o.ratePct)
+      : stl.reduce((s, l) => s + num(l.amount) * num(l.ratePct), 0) / total;
+    const tenor = Math.max(1, Math.round(num(o.years) || 5));
+    // A pinned Additional Capital would make the search meaningless; every
+    // other manual lever is kept so the what-if matches the report on screen.
+    const overrides = {};
+    Object.entries(asm.overrides || {}).forEach(([yr, v]) => {
+      const rest = { ...v }; delete rest.additionalCapital; overrides[yr] = rest;
+    });
+    const asmWith = (x) => {
+      let left = x;
+      const rows = stl.slice().sort((a, b) => num(b.amount) - num(a.amount)).map(l => {
+        const cut = Math.min(left, num(l.amount)); left -= cut;
+        return { ...l, amount: num(l.amount) - cut };
+      }).filter(l => l.amount > 0);
+      return { ...asm, overrides, autoSolve: true, stLoans: rows,
+               ltLoans: (asm.ltLoans || []).concat([{ amount: x, ratePct, years: tenor }]) };
+    };
+    const capAt = (x) => {
+      const r = project(input, asmWith(x));
+      return r.years.every(y => y.ok) ? Math.max(...r.years.map(y => y.bs.additionalCapital)) : Infinity;
+    };
+    if (capAt(0) === 0) return null;
+    if (capAt(total) !== 0) return { feasible: false, ratePct, years: tenor };
+    let lo = 0, hi = total;
+    for (let i = 0; i < 24 && hi - lo > 10000; i++) {
+      const mid = Math.round((lo + hi) / 2 / 10000) * 10000;
+      if (mid <= lo || mid >= hi) break;
+      if (capAt(mid) === 0) hi = mid; else lo = mid;
+    }
+    const amount = round1000Up(hi);
+    return capAt(amount) === 0
+      ? { feasible: true, amount, ratePct, years: tenor }
+      : { feasible: false, ratePct, years: tenor };
   }
 
   // ───────────────────────── validation ─────────────────────────
@@ -997,14 +1120,14 @@ const ProjectionEngine = (() => {
       if (yr.ratios.debtorDays < LIMITS.minDebtorDays - 0.5) {
         push('warn', y, 'days', `Year ${y}: Debtor turnover ${yr.ratios.debtorDays.toFixed(0)} days is below ${LIMITS.minDebtorDays} — raise Sundry Debtors (reduce cash/creditors or stock) so the collection cycle stays believable.`);
       }
-      if (yr.ratios.currentRatio < LIMITS.minCurrentRatio - 0.005) {
-        push('warn', y, 'current', `Year ${y}: Current ratio ${yr.ratios.currentRatio.toFixed(2)} is below ${LIMITS.minCurrentRatio} (rule 4).`);
+      if (yr.ratios.currentRatio < LIMITS.minCurrentRatio - LIMITS.ratioEps) {
+        push('warn', y, 'current', `Year ${y}: Current ratio ${yr.ratios.currentRatio.toFixed(3)} is below ${LIMITS.minCurrentRatio} (rule 4).`);
       }
-      if (yr.ratios.debtEquity > LIMITS.maxDebtEquity + 0.005) {
-        push('warn', y, 'de', `Year ${y}: Debt-equity ${yr.ratios.debtEquity.toFixed(2)} exceeds ${LIMITS.maxDebtEquity} (rule 3).`);
+      if (yr.ratios.debtEquity > LIMITS.maxDebtEquity + LIMITS.ratioEps) {
+        push('warn', y, 'de', `Year ${y}: Debt-equity ${yr.ratios.debtEquity.toFixed(3)} exceeds ${LIMITS.maxDebtEquity} (rule 3).`);
       }
-      if (yr.ratios.ncaHeadroom < -0.5) {
-        push('warn', y, 'nca', `Year ${y}: 70% of Net Current Assets is below total working-capital loans (rule 2) by ${fmt(-yr.ratios.ncaHeadroom)}.`);
+      if (yr.ratios.ncaHeadroom < LIMITS.minNcaHeadroom - 0.5) {
+        push('warn', y, 'nca', `Year ${y}: the NCA working's H = F − G is ${fmt(yr.ratios.ncaHeadroom)} — it must clear ${fmt(LIMITS.minNcaHeadroom)} above total working-capital loans (rule 2).`);
       }
       // Rule 1 (CA, 2026-07-25): profit after tax must cover the year's term +
       // permanent-WC loan repayment, or the projection can't service its debt.
@@ -1029,8 +1152,10 @@ const ProjectionEngine = (() => {
     DEP_POOLS,
     LIMITS,
     TAX_SLABS,
+    BINDING_LABELS,
     parseStatement,
     project,
+    suggestReclass,
     validate,
     emiSchedule,
     taxFor,
