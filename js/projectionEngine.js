@@ -33,7 +33,11 @@ const ProjectionEngine = (() => {
   const DEP_POOLS = [
     { key: 'land',      name: 'Land',                          rate: 0,    kw: ['land'] },
     { key: 'building',  name: 'Building & Structure',          rate: 0.05, kw: ['building', 'structure'] },
-    { key: 'plant',     name: 'Plant Machinery & other Assets',rate: 0.15, kw: ['plant', 'machin', 'other asset'] },
+    // 'other ass' rather than 'other asset': real statements spell this column
+    // "Other Assects" / "Other Assests" as often as correctly, and an unmatched
+    // column is silently dropped from the schedule (see the residual
+    // reconciliation below, which is the real guard).
+    { key: 'plant',     name: 'Plant Machinery & other Assets',rate: 0.15, kw: ['plant', 'machin', 'other ass'] },
     { key: 'office',    name: 'Office Equipment',              rate: 0.25, kw: ['office', 'equipment', 'computer', 'furniture', 'fixture'] },
     { key: 'vehicle',   name: 'Vehicles',                      rate: 0.20, kw: ['vehicle'] },
     { key: 'software',  name: 'Software',                      rate: 0.15, kw: ['software'] },
@@ -289,13 +293,30 @@ const ProjectionEngine = (() => {
           for (const [c, pool] of Object.entries(colPool)) {
             model.ppe[pool] = (model.ppe[pool] || 0) + num(gPP[closingRow][c]);
           }
-          const sum = Object.values(model.ppe).reduce((s, v) => s + v, 0);
-          if (model.ppeTotal && Math.abs(sum - model.ppeTotal) > 1) {
-            warn(`PPE pools (${sum.toFixed(2)}) do not sum to the SFP PPE total (${model.ppeTotal.toFixed(2)}).`);
-          }
         } else warn('3.1 PPE: carrying-amount closing row not found.');
       } else warn('3.1 PPE: header row not found.');
     } else warn('3.1 PPE sheet not found — depreciation pools will start empty.');
+
+    // The pools MUST sum to the SFP fixed-asset total. Working the year-1 cash
+    // flow through algebraically, every term cancels except one:
+    //     CF closing cash − BS cash  =  Σ(pools) − ppeTotal
+    // so a single unrecognised column in Note 3.1 breaks the cash-flow tie by
+    // exactly its carrying amount and nothing else in the report shows why.
+    // (This shipped: a column headed "Other Assects" matched no pool keyword
+    // and took 7,69,636 with it.) Booking the residual keeps the tie true for
+    // any input file, however the note is spelled or laid out — the pool is
+    // "Plant, Machinery & other Assets", which is also the correct Income Tax
+    // Act 2058 block for assets the note does not otherwise classify.
+    {
+      const sum = Object.values(model.ppe).reduce((s, v) => s + v, 0);
+      const residual = model.ppeTotal - sum;
+      if (Math.abs(residual) > 1) {
+        model.ppe.plant = (model.ppe.plant || 0) + residual;
+        warn(`Note 3.1 accounts for ${sum.toFixed(2)} of the ${model.ppeTotal.toFixed(2)} fixed assets on the balance sheet; `
+           + `the unmatched ${residual.toFixed(2)} has been booked to "Plant Machinery & other Assets" (15%) so the `
+           + `depreciation schedule and cash flow still tie. Check the column headings in Note 3.1 if this looks wrong.`);
+      }
+    }
 
     // Cross-check: inventory in SFP vs Note 3.12 closing balance.
     if (model.materials.closing && model.inventory.closing &&
