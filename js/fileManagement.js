@@ -58,6 +58,9 @@ let fmTable = null;
 let fmSelectedClient = null;
 let fmEditingId = null;
 let fmOuttakingRow = null;
+let fmDetailRow = null;
+let fmClientReportClient = null;
+let fmClientReportModel = null;
 let fmActiveFilter = 'all';
 let fmInitDone = false;
 let fmFilters = { ...FM_FILTERS_EMPTY };
@@ -173,6 +176,96 @@ function fmReceivedCell(row) {
   return `🧍 ${escHtml(row.brought_by_name || '—')}` + (row.brought_by_phone ? `<br><span style="color:var(--text-faint); font-size:12px;">${escHtml(row.brought_by_phone)}</span>` : '');
 }
 
+// ── Plain-text variants for Print/PDF/Excel (ReportExport cells are text
+// only — no HTML — so these can't reuse the *Cell() renderers above) ──
+function fmReceivedCellText(row) {
+  if (row.mode_received === 'online') return `Online: ${row.email_received || '—'}`;
+  return `Physical: ${row.brought_by_name || '—'}${row.brought_by_phone ? ' (' + row.brought_by_phone + ')' : ''}`;
+}
+function fmRemainingCellText(row) {
+  if (row.status === 'pending') return 'Full set still with us';
+  if (row.status === 'returned') return 'All returned';
+  const remaining = fmRemainingByType(row);
+  const parts = Object.keys(remaining).filter(k => remaining[k] > 0).map(k => `${k} x${remaining[k]}`);
+  return parts.join(', ') || '—';
+}
+function fmOuttakeHistoryText(row) {
+  const outtakes = Array.isArray(row.outtakes) ? row.outtakes : [];
+  if (!outtakes.length) return '—';
+  return outtakes.map(o => {
+    const items = (Array.isArray(o.items) ? o.items : []).map(it => `${it.type} x${it.qty}`).join(', ');
+    const who = o.mode === 'online' ? `Online: ${o.email || '—'}` : `Physical: ${o.name || '—'}${o.phone ? ' (' + o.phone + ')' : ''}`;
+    return `${o.date || '—'} - ${who} - ${items || '—'}`;
+  }).join('  |  ');
+}
+
+// One tabular model (ReportExport, §4) backs the register-wide export, the
+// per-entry Print, and the Client Report export — one row per
+// document_register row, so all three can never show different data for the
+// same rows. "Complete information" means every column below, not a
+// flattened summary — Outtake History and Remaining are full text, not a
+// truncated preview.
+function fmBuildRegisterModel(rows, titleSuffix) {
+  return {
+    title: 'File In Out — Document Register' + (titleSuffix ? ' — ' + titleSuffix : ''),
+    subtitleLines: [`Generated ${fmToday()}`],
+    landscape: true,
+    columns: [
+      { label: 'Ref #', w: 0.8 }, { label: 'FY', w: 0.7 }, { label: 'Received', w: 0.85 },
+      { label: 'Client', w: 1.6 }, { label: 'PAN', w: 0.9 },
+      { label: 'Documents Received', w: 1.8 }, { label: 'Received From', w: 1.6 },
+      { label: 'Status', w: 0.95 }, { label: 'Remaining', w: 1.7 },
+      { label: 'Outtake History', w: 2.6 }, { label: 'Days', w: 0.5, align: 'r' }, { label: 'Remarks', w: 1.3 },
+    ],
+    rows: rows.map(r => ({ cells: [
+      r.register_no, r.fiscal_year, r.date_received, r.client_name, r.client_pan,
+      fmDocSummary(r), fmReceivedCellText(r), (FM_STATUSES[r.status] || {}).label || r.status,
+      fmRemainingCellText(r), fmOuttakeHistoryText(r), String(fmDaysHeld(r)), r.remarks,
+    ] })),
+    _filename: 'File In Out' + (titleSuffix ? ' - ' + titleSuffix : ''),
+  };
+}
+
+// Opens a plain print window over the same model the Excel/PDF export uses
+// (ReportExport.toHtml), so Preview and a PDF export can never show
+// different data — same idiom as Audit Checklist / Audit Report Finalization.
+function fmOpenPrintWindow(model) {
+  const w = window.open('', '_blank');
+  if (!w) { fmStatusMsg('Allow pop-ups to print.', 'info'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>${escHtml(model.title)}</title>
+    <style>body{font-family:Inter,Arial,sans-serif;margin:28px;color:#1a202c;}
+    table{border-collapse:collapse;width:100%;font-size:10.5px;}
+    th,td{border:1px solid #d9dce5;padding:5px 7px;vertical-align:top;}
+    th{background:#f3f5fb;color:#0b1f3d;}
+    @page{size:A4 landscape;margin:12mm;}</style></head>
+    <body>${ReportExport.toHtml(model)}</body></html>`);
+  w.document.close();
+  // The browser's own print dialog's "Save as PDF" is the actual
+  // preview-to-PDF path — no separate feature to build for that.
+  setTimeout(() => w.print(), 300);
+  AuditLog.record('document_register_printed', { module: 'fileManagement' });
+}
+
+function fmPreviewAll() {
+  const rows = fmFilteredRows();
+  if (!rows.length) { fmStatusMsg('Nothing to preview for the current filters.', 'info'); return; }
+  fmOpenPrintWindow(fmBuildRegisterModel(rows));
+}
+
+async function fmExport(kind) {
+  const rows = fmFilteredRows();
+  if (!rows.length) { fmStatusMsg('Nothing to export for the current filters.', 'info'); return; }
+  const model = fmBuildRegisterModel(rows);
+  try {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
+      module: 'fileManagement', clientName: 'Filtered Records', sheetName: 'File In Out',
+    });
+  } catch (e) {
+    fmStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+  }
+}
+
 // Every status change — recording an outtake, undoing the last one — goes
 // through this one flow, which persists the row and writes the audit entry
 // together. `to` is computed by the caller (fmDeriveStatus), not fixed.
@@ -200,6 +293,18 @@ function fmInit() {
       keys: ['name', 'pan'],
       renderItem: c => `<div class="ac-name">${escHtml(c.name)}</div><div class="ac-email">PAN ${escHtml(c.pan || '—')}</div>`,
       onSelect: fmSelectClient,
+    });
+    SearchEngine.attachAutocomplete(document.getElementById('fm-outtake-picker-search'), document.getElementById('fm-outtake-picker-autocomplete'), {
+      getList: () => window.clientsList,
+      keys: ['name', 'pan'],
+      renderItem: c => `<div class="ac-name">${escHtml(c.name)}</div><div class="ac-email">PAN ${escHtml(c.pan || '—')}</div>`,
+      onSelect: fmOuttakePickerSelect,
+    });
+    SearchEngine.attachAutocomplete(document.getElementById('fm-cr-search'), document.getElementById('fm-cr-autocomplete'), {
+      getList: () => window.clientsList,
+      keys: ['name', 'pan'],
+      renderItem: c => `<div class="ac-name">${escHtml(c.name)}</div><div class="ac-email">PAN ${escHtml(c.pan || '—')}</div>`,
+      onSelect: fmSelectClientReport,
     });
     fmPopulateDocTypes();
     fmInitDone = true;
@@ -277,7 +382,8 @@ function fmRenderTable() {
           const btn = e.target.closest('[data-action]');
           if (!btn) return;
           const row = cell.getRow().getData();
-          if (btn.dataset.action === 'edit') fmOpenEntry(row);
+          if (btn.dataset.action === 'view') fmOpenDetail(row);
+          else if (btn.dataset.action === 'edit') fmOpenEntry(row);
           else if (btn.dataset.action === 'outtake') fmOpenOuttake(row);
           else if (btn.dataset.action === 'undo') fmUndoLastOuttake(row);
           else if (btn.dataset.action === 'delete') fmDeleteEntry(row);
@@ -290,11 +396,161 @@ function fmRenderTable() {
 function fmRowActions(row) {
   const btn = (a, label, title) => `<button class="btn btn-outline btn-sm" data-action="${a}" title="${title || label}">${label}</button>`;
   const outtakes = Array.isArray(row.outtakes) ? row.outtakes : [];
-  const parts = [btn('edit', 'Edit')];
+  const parts = [btn('view', 'View', 'See everything received, given out, and still remaining'), btn('edit', 'Edit')];
   if (row.status !== 'returned') parts.push(btn('outtake', 'Outtake', 'Send some or all documents back to the client'));
   if (outtakes.length) parts.push(btn('undo', 'Undo Last Outtake', 'Undo the most recent outtake only'));
   parts.push(btn('delete', 'Delete'));
   return `<div class="client-actions">${parts.join('')}</div>`;
+}
+
+// ── View Details — the clear Received / Given / Remaining breakdown that
+// the table's narrow cells can't show at a glance. Also the entry point for
+// a single-entry Print. ──
+function fmOpenDetail(row) {
+  fmDetailRow = row;
+  document.getElementById('fm-detail-title').textContent = `${row.register_no || 'Entry'} — ${row.client_name || ''}`;
+
+  const received = fmReceivedByType(row);
+  const remaining = fmRemainingByType(row);
+  const rowsOf = obj => Object.keys(obj).map(k => `<tr><td>${escHtml(k)}</td><td style="text-align:right; font-weight:600;">${obj[k]}</td></tr>`).join('');
+  const remainingKeys = Object.keys(remaining).filter(k => remaining[k] > 0);
+
+  const outtakes = Array.isArray(row.outtakes) ? row.outtakes : [];
+  const outtakesHtml = outtakes.length ? outtakes.map((o, i) => `
+    <div class="fm-detail-outtake-card">
+      <div class="fm-detail-outtake-head"><strong>Outtake ${i + 1}</strong><span>${escHtml(o.date || '—')}</span></div>
+      <div>${fmOuttakeContactLine(o)}</div>
+      <div style="color:var(--text-muted); font-size:12.5px; margin-top:4px;">${escHtml((o.items || []).map(it => `${it.type} ×${it.qty}`).join(', ') || '—')}</div>
+      ${o.remarks ? `<div style="color:var(--text-faint); font-size:12px; margin-top:4px;">"${escHtml(o.remarks)}"</div>` : ''}
+    </div>`).join('') : '<div class="log-empty">No outtakes recorded yet — everything received is still with us.</div>';
+
+  document.getElementById('fm-detail-body').innerHTML = `
+    <div class="fm-detail-meta">
+      <div><span>Client</span><strong>${escHtml(row.client_name || '—')}</strong></div>
+      <div><span>PAN</span><strong>${escHtml(row.client_pan || '—')}</strong></div>
+      <div><span>Fiscal Year</span><strong>${escHtml(row.fiscal_year || '—')}</strong></div>
+      <div><span>Date Received</span><strong>${escHtml(row.date_received || '—')}</strong></div>
+      <div><span>Received Via</span><strong>${fmReceivedCell(row)}</strong></div>
+      <div><span>Status</span><strong>${fmFlow.badgeHtml(row.status)}</strong></div>
+    </div>
+    <div class="fm-detail-section">
+      <h4>📥 Documents Received</h4>
+      <table class="client-table"><tbody>${rowsOf(received) || '<tr><td colspan="2">—</td></tr>'}</tbody></table>
+    </div>
+    <div class="fm-detail-section">
+      <h4>📤 Outtake History (${outtakes.length})</h4>
+      ${outtakesHtml}
+    </div>
+    <div class="fm-detail-section">
+      <h4>📦 Currently Remaining With Us</h4>
+      ${row.status === 'returned'
+        ? '<div class="log-empty" style="color:var(--green-dk);">✅ Everything has been returned.</div>'
+        : `<table class="client-table"><tbody>${remainingKeys.map(k => `<tr><td>${escHtml(k)}</td><td style="text-align:right; font-weight:600; color:var(--amber-dk);">${remaining[k]}</td></tr>`).join('') || '<tr><td colspan="2">—</td></tr>'}</tbody></table>`}
+    </div>
+  `;
+  document.getElementById('fm-detail-outtake-btn').style.display = row.status === 'returned' ? 'none' : '';
+  document.getElementById('fm-detail-drawer').classList.add('open');
+}
+
+function fmCloseDetail() { document.getElementById('fm-detail-drawer').classList.remove('open'); }
+function fmDetailPrint() { if (fmDetailRow) fmOpenPrintWindow(fmBuildRegisterModel([fmDetailRow], fmDetailRow.client_name)); }
+function fmDetailOuttake() {
+  if (!fmDetailRow || fmDetailRow.status === 'returned') return;
+  const row = fmDetailRow;
+  fmCloseDetail();
+  fmOpenOuttake(row);
+}
+
+// ── Outtake quick picker — the header "Outtake" button beside "Record
+// Intake": find the client first, then jump straight to their open entry
+// (or offer a choice if they have more than one), instead of hunting
+// through the table for a specific row's button. ──
+function fmOpenOuttakePicker() {
+  document.getElementById('fm-outtake-picker-search').value = '';
+  document.getElementById('fm-outtake-picker-results').innerHTML = '';
+  document.getElementById('fm-outtake-picker-modal').classList.add('open');
+}
+function fmCloseOuttakePicker() { document.getElementById('fm-outtake-picker-modal').classList.remove('open'); }
+
+function fmOuttakePickerSelect(client) {
+  document.getElementById('fm-outtake-picker-search').value = client.name;
+  const open = fmEntries.filter(r => r.status !== 'returned' && (r.client_id === client.id || r.client_name === client.name));
+  const resultsEl = document.getElementById('fm-outtake-picker-results');
+  if (!open.length) {
+    resultsEl.innerHTML = '<div class="log-empty">Nothing currently with us for this client — no outtake to record.</div>';
+    return;
+  }
+  if (open.length === 1) { fmCloseOuttakePicker(); fmOpenOuttake(open[0]); return; }
+  resultsEl.innerHTML = `<p style="font-size:12.5px; color:var(--text-muted); margin:4px 0 8px;">This client has ${open.length} open entries — pick one:</p>` +
+    open.map(r => `
+      <div class="fm-picker-row">
+        <div><strong>${escHtml(r.register_no || '—')}</strong> · ${escHtml(r.fiscal_year || '—')} · ${escHtml(fmDocSummary(r))}</div>
+        <button class="btn btn-outline btn-sm" onclick="fmPickOuttakeEntry(${r.id})">Select</button>
+      </div>`).join('');
+}
+function fmPickOuttakeEntry(id) {
+  const row = fmEntries.find(r => r.id === id);
+  if (!row) return;
+  fmCloseOuttakePicker();
+  fmOpenOuttake(row);
+}
+
+// ── Client Report — the "complete information about a client" export.
+// Ignores the table's current filters on purpose: this is a client's whole
+// File In Out history, not a snapshot of what's on screen right now.
+// Reused as-is from the Clients tab (see clients.js fmOpenClientReport
+// calls), so there is exactly one implementation of "show me everything
+// File In Out has on this client". ──
+function fmOpenClientReport(client) {
+  fmClientReportClient = null;
+  fmClientReportModel = null;
+  document.getElementById('fm-cr-search').value = '';
+  document.getElementById('fm-cr-body').innerHTML = '<div class="log-empty">Search for a client above to see their complete File In Out history.</div>';
+  document.getElementById('fm-cr-actions').style.display = 'none';
+  document.getElementById('fm-client-report-modal').classList.add('open');
+  if (client) fmSelectClientReport(client);
+}
+function fmCloseClientReport() { document.getElementById('fm-client-report-modal').classList.remove('open'); }
+
+function fmSelectClientReport(client) {
+  fmClientReportClient = client;
+  document.getElementById('fm-cr-search').value = client.name;
+  fmRenderClientReport();
+}
+
+async function fmRenderClientReport() {
+  if (!fmClientReportClient) return;
+  const bodyEl = document.getElementById('fm-cr-body');
+  bodyEl.innerHTML = '<div class="log-empty"><span class="spinner spinner-navy"></span> Loading…</div>';
+  document.getElementById('fm-cr-actions').style.display = 'none';
+  let rows;
+  try {
+    rows = await sbFetchAll(() => window.sb.from('document_register')
+      .select('*').eq('client_id', fmClientReportClient.id).order('date_received', { ascending: false }));
+  } catch (e) {
+    bodyEl.innerHTML = `<div class="status-box status-error">❌ ${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  if (!rows.length) {
+    bodyEl.innerHTML = '<div class="log-empty">No File In Out records for this client yet.</div>';
+    return;
+  }
+  fmClientReportModel = fmBuildRegisterModel(rows, fmClientReportClient.name);
+  bodyEl.innerHTML = ReportExport.toHtml(fmClientReportModel);
+  document.getElementById('fm-cr-actions').style.display = '';
+}
+
+function fmClientReportPrint() { if (fmClientReportModel) fmOpenPrintWindow(fmClientReportModel); }
+async function fmClientReportExport(kind) {
+  if (!fmClientReportModel || !fmClientReportClient) return;
+  try {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(fmClientReportModel, kind, `${fmClientReportModel._filename}.${ext}`, {
+      module: 'fileManagement', clientName: fmClientReportClient.name, sheetName: 'File In Out',
+    });
+  } catch (e) {
+    document.getElementById('fm-cr-body').insertAdjacentHTML('afterbegin', `<div class="status-box status-error">❌ ${escHtml(e.message || String(e))}</div>`);
+  }
 }
 
 // ── Filters ──
@@ -331,8 +587,9 @@ function fmReadFilters() {
   };
 }
 
-function fmApplyFilters() {
-  if (!fmTable) return;
+// Shared by the table render AND Print/Preview/Export — so "what you see" and
+// "what gets exported" can never disagree (the achk/ARF idiom).
+function fmFilteredRows() {
   const cardTest = FM_FILTERS[fmActiveFilter].test;
   let rows = fmEntries.filter(r => {
     if (!cardTest(r)) return false;
@@ -347,7 +604,12 @@ function fmApplyFilters() {
     const fuse = SearchEngine.buildIndex(rows, ['register_no', 'fiscal_year', 'client_name', 'client_pan', 'brought_by_name', 'brought_by_phone', 'email_received', 'remarks']);
     rows = fuse.search(q).map(r => r.item);
   }
-  fmTable.replaceData(rows);
+  return rows;
+}
+
+function fmApplyFilters() {
+  if (!fmTable) return;
+  fmTable.replaceData(fmFilteredRows());
 }
 
 function fmOnFilterChange() { fmReadFilters(); fmApplyFilters(); }

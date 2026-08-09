@@ -142,6 +142,57 @@ an ever-growing age. Anything still not fully returned past
 "Held 30+ Days" card. That card is the module's actual point: documents
 quietly staying in the office forever is the failure mode being prevented.
 
+## View Details — the answer to "what did I give vs what's still with me"
+
+Third pass, 2026-08-09. The table's cells are necessarily narrow; `fmOpenDetail(row)`
+opens a drawer with three unambiguous sections built from the same
+`fmReceivedByType`/`fmRemainingByType`/`outtakes` data the table cells use:
+**Documents Received** (full per-type table), **Outtake History** (one card
+per event — date, mode/contact, exactly what went out, remarks), and
+**Currently Remaining With Us** (per-type table, amber, or a green "Everything
+has been returned" once `status === 'returned'`). The drawer's Outtake button
+hides once nothing remains. This is also the entry point for **Print This
+Entry** — a single-row pass through `fmBuildRegisterModel`/`fmOpenPrintWindow`,
+not a separate hand-rolled receipt renderer.
+
+## Outtake picker — the header-level "Outtake" button
+
+Beside "Record Intake" in the page header (`fmOpenOuttakePicker`). Finishing a
+job for a client used to mean finding their row and its small per-row button;
+this searches by client first (`fmOuttakePickerSelect`) and:
+- **one open entry** (`status !== 'returned'`) → jumps straight into
+  `fmOpenOuttake` for it;
+- **more than one** → lists them (ref #, FY, documents) to pick from;
+- **none** → says so rather than opening an outtake form with nothing to give.
+
+## Register-wide Print / Preview / Export, and the Client Report
+
+Same `ReportExport` engine (§4) and header-button shape as Audit Checklist /
+Audit Report Finalization — **Print/Preview**, **Export PDF**, **Export
+Excel** all read `fmFilteredRows()` (the exact same predicate the table
+itself renders through, extracted once so the two can't disagree) and build
+through **one** model builder, `fmBuildRegisterModel(rows, titleSuffix)` —
+one row per `document_register` row, with `Outtake History` and `Remaining`
+as full text (`fmOuttakeHistoryText`/`fmRemainingCellText`), not a truncated
+preview. `fmOpenPrintWindow` is the achk/ARF `window.open('', '_blank')` +
+`ReportExport.toHtml` + delayed `.print()` idiom verbatim.
+
+**Client Report** (`fmOpenClientReport`) is the same model builder pointed at
+one client's **entire** history instead — every `document_register` row for
+that `client_id`, fetched fresh from Supabase (not from `fmEntries`, which
+may be filtered, paginated, or simply not loaded if the tab was opened
+elsewhere) and **ignoring the table's current filters on purpose**: this
+answers "what has this client ever brought in and taken out", not "what's on
+screen right now". Rendered on-screen via `ReportExport.toHtml` inside the
+modal itself, plus the same Print/PDF/Excel buttons.
+
+**This one feature serves two entry points, not two implementations.**
+`fmOpenClientReport(client)` is called directly (header "Client Report"
+button, client search, empty by default) and reused by `clients.js`'s
+`cdOpenClientFileInOut(client)` — see [clients.md](clients.md) — so there is
+exactly one "show me everything File In Out has on this client" code path,
+not a File-In-Out-tab version and a separate Clients-tab version.
+
 ## Stat cards are the filters
 
 `FM_FILTERS` (now 5: Total, With Us, Partially Returned, Held 30+ Days,
@@ -183,15 +234,37 @@ are actually present in the loaded rows (`fmPopulateFyFilter()`).
 
 ## Verified
 
-Built and exercised across three 2026-08-09 passes (Fiscal Year/quantities/
-delivery mode, then Outtake/partial-return) in the dev server against an
-in-memory stand-in for the table (the sandbox has no Supabase session, so RLS
-blocks real writes): intake save in both modes, validation rejections
-(including the reduce-below-sent guard), edit round-trip with legacy
-picklist labels correctly falling into the Others slot, status derivation
-across pending → partial → returned and back via undo, the outtake modal's
-remaining-quantity defaults and caps, all 5 stat-card filters, document-type/
-fiscal-year/date/search filters, and a full-tab regression sweep. `AuditLog`
-writes fail in the sandbox (no session) and are swallowed as designed.
-**Not verified:** live Supabase writes under a real signed-in session, or a
-visual screenshot (this sandbox's Browser pane doesn't render one).
+Built and exercised across four 2026-08-09 passes (Fiscal Year/quantities/
+delivery mode → Outtake/partial-return → View Details/Outtake picker/Client
+Report/exports) in the dev server against an in-memory stand-in for the table
+(the sandbox has no Supabase session, so RLS blocks real writes): intake save
+in both modes, validation rejections (including the reduce-below-sent guard),
+edit round-trip with legacy picklist labels correctly falling into the Others
+slot, status derivation across pending → partial → returned and back via
+undo, the outtake modal's remaining-quantity defaults and caps, all 5
+stat-card filters, document-type/fiscal-year/date/search filters, and a
+full-tab regression sweep. `AuditLog` writes fail in the sandbox (no session)
+and are swallowed as designed.
+
+**Fourth-pass additions specifically verified**: `fmOpenDetail` renders
+correct received/remaining per-type tables from a partially-outtaken row
+(spot-checked: 2 received/1 sent → 1 remaining); `fmDetailPrint` opens a
+window whose written HTML contains the register number, client name, the
+outtake's contact name and the plain-text remaining figures; the outtake
+picker's three paths (one open entry jumps straight in, several list for a
+pick, zero says so) all confirmed with fabricated multi-entry data;
+`fmPreviewAll`/`fmExport('pdf'/'excel')` ran to completion without throwing
+over `fmFilteredRows()`; `fmOpenClientReport` correctly degrades to "No File
+In Out records for this client yet" when Supabase returns zero rows (RLS with
+no session denies rows silently rather than erroring, which is real Postgres
+RLS behaviour, not a bug in this pass); a hand-built `ReportExport.toHtml`
+render over two fabricated rows confirmed both appear with correct Outtake
+History and Remaining text.
+
+**Not verified**: the Clients-tab Docs column and `cdOpenClientFileInOut`
+against a live `cdLoadFileInOut()` fetch (RLS blocks the read in this sandbox
+too) — verified instead by directly seeding `window.cdFioSummary` and
+confirming the badge renders and its click opens the shared Client Report
+modal pre-loaded with the right client. Also not verified: live Supabase
+writes under a real signed-in session, or a visual screenshot (this
+sandbox's Browser pane doesn't render one).

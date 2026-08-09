@@ -22,6 +22,43 @@ async function loadClients() {
   applyClientFilters();
   renderClientStats(window.clientsList);
   cdLoadNonFilers(); // not awaited — its own panel shows a loading state and fills in independently
+  cdLoadFileInOut(); // not awaited — the Docs column fills in independently once it resolves
+}
+
+// ── File In Out custody status (2026-08-09) ──
+// Queried directly from document_register, not from fileManagement.js's
+// in-memory fmEntries — that module may never have been opened this session,
+// so its state can't be relied on (same reasoning as cdLoadNonFilers reading
+// audit_report_finalization directly rather than reaching into that module).
+// fmDeriveStatus/fmRemainingByType (js/fileManagement.js) are plain functions
+// of a row, safe to call here regardless of the two files' <script> tag
+// order — by the time this actually RUNS (post sign-in), every module script
+// has already executed and defined its globals, same as finalAccount.js
+// calling partyLedger.js's functions.
+window.cdFioSummary = {};
+async function cdLoadFileInOut() {
+  try {
+    const rows = await sbFetchAll(() => window.sb.from('document_register')
+      .select('client_id, status, doc_types, outtakes').not('client_id', 'is', null));
+    const map = {};
+    (rows || []).forEach(r => {
+      if (r.status === 'returned') return;
+      if (!map[r.client_id]) map[r.client_id] = { pending: 0, partial: 0 };
+      map[r.client_id][r.status] = (map[r.client_id][r.status] || 0) + 1;
+    });
+    window.cdFioSummary = map;
+  } catch (e) {
+    window.cdFioSummary = {};
+    console.error('Failed to load File In Out summary for Clients:', e.message);
+  }
+  if (clientsTable) clientsTable.redraw(true); // reformat the Docs column now the map is populated
+}
+
+// Opens the shared Client Report modal (js/fileManagement.js) pre-loaded for
+// this client — one implementation of "show me this client's File In Out
+// history", reused by both tabs rather than duplicated.
+function cdOpenClientFileInOut(client) {
+  if (window.fmOpenClientReport) fmOpenClientReport(client);
 }
 
 // ════════════════════════════════════════════
@@ -626,6 +663,13 @@ function renderClientsTable(list) {
         } },
       { title: 'Email', field: 'email', minWidth: 170, formatter: cell => escHtml(cell.getValue() || '—') },
       { title: 'Phone', field: 'phone', minWidth: 130, formatter: cell => escHtml(cell.getValue() || '—') },
+      { title: 'Docs', field: 'id', headerSort: false, minWidth: 110, formatter: cell => {
+          const c = cell.getRow().getData();
+          const s = window.cdFioSummary[c.id];
+          const n = s ? (s.pending || 0) + (s.partial || 0) : 0;
+          if (!n) return '<span style="color:var(--text-faint); font-size:12px;">—</span>';
+          return `<span class="log-badge badge-amber" style="cursor:pointer;" title="View this client's File In Out history">📥 ${n} with us</span>`;
+        }, cellClick: (e, cell) => cdOpenClientFileInOut(cell.getRow().getData()) },
       ...(isAdmin ? [{
         title: 'Actions', field: 'id', headerSort: false, minWidth: 150,
         formatter: () => `<div class="client-actions"><button class="btn btn-outline btn-sm" data-action="edit">Edit</button><button class="btn btn-danger btn-sm" data-action="delete">Delete</button></div>`,

@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608092310">
+<link rel="stylesheet" href="css/styles.css?v=202608092330">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2635,6 +2635,26 @@ function cropLoginLogoIcon(img) {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             Refresh
           </button>
+          <button class="btn btn-outline" onclick="fmPreviewAll()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print / Preview
+          </button>
+          <button class="btn btn-outline" onclick="fmExport('pdf')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export PDF
+          </button>
+          <button class="btn btn-outline" onclick="fmExport('excel')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export Excel
+          </button>
+          <button class="btn btn-outline" onclick="fmOpenClientReport()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            Client Report
+          </button>
+          <button class="btn btn-outline" onclick="fmOpenOuttakePicker()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"></path><polyline points="16 11 21 11"></polyline><polyline points="18 8.5 21 11 18 13.5"></polyline></svg>
+            Outtake
+          </button>
           <button class="btn btn-primary" onclick="fmOpenEntry()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             Record Intake
@@ -3265,6 +3285,66 @@ function cropLoginLogoIcon(img) {
   </div>
 </div>
 
+<!-- FILE IN OUT — VIEW DETAILS DRAWER (Received / Outtake History / Remaining) -->
+<div class="modal-overlay drawer-right" id="fm-detail-drawer">
+  <div class="modal drawer-panel" style="width:640px;">
+    <div class="modal-header">
+      <h3 id="fm-detail-title">Document Register Entry</h3>
+      <button class="modal-close" onclick="fmCloseDetail()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="fm-detail-body"></div>
+      <div class="action-row" style="justify-content:flex-end; margin-top:18px;">
+        <button class="btn btn-outline" onclick="fmDetailPrint()">Print This Entry</button>
+        <button class="btn btn-outline" onclick="fmDetailOuttake()" id="fm-detail-outtake-btn">Outtake</button>
+        <button class="btn btn-primary" onclick="fmCloseDetail()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FILE IN OUT — OUTTAKE PICKER (header "Outtake" button: find the client's open entry first) -->
+<div class="modal-overlay" id="fm-outtake-picker-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h3>Record Outtake</h3>
+      <button class="modal-close" onclick="fmCloseOuttakePicker()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group full">
+        <label>Client (search by name or PAN)</label>
+        <input type="text" id="fm-outtake-picker-search" placeholder="Start typing to search clients…" autocomplete="off" />
+        <div class="autocomplete-list" id="fm-outtake-picker-autocomplete" style="display:none;"></div>
+      </div>
+      <div id="fm-outtake-picker-results" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- FILE IN OUT — CLIENT REPORT (complete File In Out history for one client) -->
+<div class="modal-overlay" id="fm-client-report-modal">
+  <div class="modal" style="max-width:900px;">
+    <div class="modal-header">
+      <h3>Client Report — File In Out</h3>
+      <button class="modal-close" onclick="fmCloseClientReport()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group full">
+        <label>Client (search by name or PAN)</label>
+        <input type="text" id="fm-cr-search" placeholder="Start typing to search clients…" autocomplete="off" />
+        <div class="autocomplete-list" id="fm-cr-autocomplete" style="display:none;"></div>
+      </div>
+      <div id="fm-cr-body" style="margin-top:14px; max-height:55vh; overflow-y:auto;"></div>
+      <div class="action-row" id="fm-cr-actions" style="justify-content:flex-end; margin-top:14px; display:none;">
+        <button class="btn btn-outline" onclick="fmClientReportPrint()">Print / Preview</button>
+        <button class="btn btn-outline" onclick="fmClientReportExport('pdf')">Export PDF</button>
+        <button class="btn btn-outline" onclick="fmClientReportExport('excel')">Export Excel</button>
+        <button class="btn btn-primary" onclick="fmCloseClientReport()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- BANK BOOK — ACCOUNT DRAWER -->
 <div class="modal-overlay drawer-right" id="bb-account-drawer">
   <div class="modal drawer-panel" style="width:520px;">
@@ -3651,7 +3731,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/tabs.js?v=202608022300"></script>
 <script src="js/dashboard.js?v=202608022300"></script>
 <script src="js/registrar.js?v=202608022300"></script>
-<script src="js/clients.js?v=202608091900"></script>
+<script src="js/clients.js?v=202608092330"></script>
 <script src="js/vatCompliance.js?v=202608022300"></script>
 <script src="js/billing.js?v=202608022300"></script>
 <script src="js/serviceMemo.js?v=202608022300"></script>
@@ -3674,7 +3754,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
-<script src="js/fileManagement.js?v=202608092320"></script>
+<script src="js/fileManagement.js?v=202608092330"></script>
 <script src="js/auditReportFinalization.js?v=202608092200"></script>
 <script src="js/auditChecklist.js?v=202608092500"></script>
 <script src="js/auth.js?v=202608022300"></script>

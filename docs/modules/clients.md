@@ -43,6 +43,24 @@ CRUD + search over `clients` (Tabulator via TableEngine), plus the Excel/CSV/ODS
 - **Lesson for any future fill-derived field:** when a spreadsheet encodes meaning in colour, find the rows that also carry the value in text and make the rule reproduce those rows exactly, before trusting it on the rest. A rule that contradicts a typed row is wrong no matter how plausible the counts look.
 
 
+**File In Out custody indicator (2026-08-09)** — a "Docs" column (visible to
+every member, not just admins — it sits outside the admin-only Actions
+column) shows `📥 N with us` when a client currently has `document_register`
+rows that aren't fully `returned`, `—` otherwise. `cdLoadFileInOut()` queries
+`document_register` directly (client_id/status only), the same "read the
+other module's table directly rather than reaching into its in-memory state"
+idiom `cdLoadNonFilers()` already uses for `audit_report_finalization` —
+File In Out may never have been opened this session, so its `fmEntries`
+can't be relied on. Not awaited, like its sibling; `clientsTable.redraw(true)`
+re-renders the column once the summary map resolves. Clicking the badge calls
+`cdOpenClientFileInOut(client)`, which just calls
+`fmOpenClientReport(client)` (`js/fileManagement.js`) — **the same Client
+Report modal File In Out's own header button opens**, pre-loaded with this
+client instead of an empty search. One implementation of "show this client's
+complete File In Out history", not two. See
+[file-management.md](file-management.md)'s "Register-wide Print / Preview /
+Export, and the Client Report" section.
+
 ---
 
 The seven statutory registration fields are edited from **Company Registrar → Company Profile** — see [registrar.md](registrar.md) §5.11d.

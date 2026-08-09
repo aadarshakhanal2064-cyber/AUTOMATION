@@ -259,7 +259,7 @@ main {
 .page-header .ph-text {}
 .page-title { font-size: 24px; font-weight: 700; color: var(--brand-navy); margin-bottom: 4px; letter-spacing:-0.2px; }
 .page-subtitle { font-size: 14px; color: var(--text-muted); }
-.page-header-actions { display:flex; gap:10px; }
+.page-header-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; animation: fadeIn 0.25s ease; }
@@ -1244,6 +1244,32 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 .fm-doctype-other input[type=text]{ flex: 1; border: none; background: transparent; padding: 4px 0; }
 .fm-doctype-other input[type=text]:focus{ outline: none; box-shadow: none; }
 @media (max-width: 720px) { .fm-doctype-grid{ grid-template-columns: 1fr; } }
+
+/* ── File In Out — View Details drawer ──
+   Three-part breakdown (Received / Outtake History / Remaining) that the
+   table's narrow cells can't show at a glance. */
+.fm-detail-meta{
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 20px;
+  background: var(--bg-page-alt); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 14px 16px; margin-bottom: 18px;
+}
+.fm-detail-meta > div{ display: flex; flex-direction: column; gap: 2px; }
+.fm-detail-meta span{ font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
+.fm-detail-meta strong{ font-size: 13.5px; color: var(--text-main); font-weight: 600; }
+.fm-detail-section{ margin-bottom: 18px; }
+.fm-detail-section h4{ margin: 0 0 8px; font-size: 13.5px; color: var(--brand-navy); }
+.fm-detail-outtake-card{
+  border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px;
+  margin-bottom: 8px; background: var(--white); font-size: 13px;
+}
+.fm-detail-outtake-head{ display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-muted); margin-bottom: 4px; }
+
+/* ── File In Out — Outtake picker results (header "Outtake" button) ── */
+.fm-picker-row{
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  margin-bottom: 8px; font-size: 13px;
+}
 
 /* Chain strip in the record drawer: where this client stands across all three
    tracks for the chosen year, so what's outstanding is visible while filling
