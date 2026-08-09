@@ -84,7 +84,7 @@ let wdSuppressKeyWatch = false;
 let wdActiveFilter = 'all';
 let wdInitDone = false;
 let wdView = 'records';           // 'records' | 'pending'
-let wdUnreadableFyCount = 0;      // intake rows whose fiscal year couldn't be parsed
+let wdUnknownFyCount = 0;         // intake rows with no readable fiscal year (matched by client instead)
 let wdFilters = { ...WD_FILTERS_EMPTY };
 
 function wdUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
@@ -124,11 +124,42 @@ function wdStatusBadge(row) {
 }
 
 // How many of a record's file-backed work types are still outstanding — the
-// same three rows the Pending List is built from, counted per record so the
-// main table shows the same signal without switching views.
+// same rows the Pending List is built from, counted per record so the main
+// table shows the same signal without switching views.
 function wdRecordPendingCount(row) {
-  const backed = window.WD_WORK_TYPES.filter(t => t.fileLabel).map(t => t.key);
+  const backed = window.WD_WORK_TYPES.filter(t => (t.fileLabels || []).length).map(t => t.key);
   return (row.items || []).filter(i => backed.includes(i.key) && i.state !== 'done').length;
+}
+
+// doc-type label -> the work types it implies. Built from WD_WORK_TYPES rather
+// than hardcoded because one received document can imply more than one job:
+// the firm's real register uses "Purchase & Sales Files" as a single item
+// covering both the sales and the purchase register.
+function wdWorkTypesForLabel(label) {
+  return window.WD_WORK_TYPES.filter(t => (t.fileLabels || []).includes(label));
+}
+
+// Every doc-type entry on an intake row, normalized. Bare strings are the
+// pre-quantities legacy shape fmDocSummary() still handles.
+function wdIntakeDocs(d) {
+  const raw = Array.isArray(d.doc_types) ? d.doc_types : [];
+  return raw
+    .map(t => (typeof t === 'string' ? { type: t, qty: 1 } : t))
+    .filter(t => t && t.type && (t.qty == null || Number(t.qty) > 0));
+}
+
+// Intakes belonging to a client. fiscal_year on document_register is an
+// OPTIONAL free-text box and is in fact null on every row the firm has
+// entered so far, so an unknown year must NOT exclude the intake — it falls
+// back to matching the client across all years. Excluding them is what made
+// the Pending List come up empty against real data (2026-08-10).
+function wdIntakesFor(clientId, startYear) {
+  return wdIntakes.filter(d => {
+    if (d.client_id !== clientId) return false;
+    if (startYear == null) return true;
+    const y = NepaliLocale.fyStartYear(d.fiscal_year);
+    return y == null || y === startYear;   // unknown year matches any
+  });
 }
 
 // ── Init & load ──
@@ -364,40 +395,46 @@ function wdDaysSince(isoDate) {
 // pending case by far is a client whose Work Done record doesn't exist yet, so
 // iterating saved records would miss exactly the rows that matter most.
 function wdPendingRows() {
-  const byFileLabel = {};
-  window.WD_WORK_TYPES.filter(t => t.fileLabel).forEach(t => { byFileLabel[t.fileLabel] = t; });
-
   const agg = new Map();
-  wdUnreadableFyCount = 0;
+  wdUnknownFyCount = 0;
 
   wdIntakes.forEach(d => {
     // Walk-in intakes (client_id null — File In Out allows them, this module
     // doesn't) can't be tied to a client's work record.
     if (d.client_id == null) return;
 
-    const raw = Array.isArray(d.doc_types) ? d.doc_types : [];
-    const backed = raw
-      // Rows saved before quantities existed are bare strings — the same
-      // legacy shape fmDocSummary() still handles.
-      .map(t => (typeof t === 'string' ? { type: t, qty: 1 } : t))
-      .filter(t => t && t.type && byFileLabel[t.type] && (t.qty == null || Number(t.qty) > 0));
-    if (!backed.length) return;
+    // Each received document can imply more than one job.
+    const jobs = [];
+    wdIntakeDocs(d).forEach(t => wdWorkTypesForLabel(t.type).forEach(wt => {
+      if (!jobs.some(j => j.key === wt.key)) jobs.push(wt);
+    }));
+    if (!jobs.length) return;
 
     const startYear = NepaliLocale.fyStartYear(d.fiscal_year);
-    if (startYear == null) { wdUnreadableFyCount += 1; return; }
+    if (startYear == null) wdUnknownFyCount += 1;
 
-    const rec = wdFindRecordByStartYear(d.client_id, startYear);
+    // An intake with no fiscal year is matched against the client's records
+    // across ALL years — the year is unknown, not a reason to hide the file.
+    const recs = startYear == null
+      ? wdRecords.filter(r => r.client_id === d.client_id)
+      : wdRecords.filter(r => r.client_id === d.client_id && NepaliLocale.fyStartYear(r.fiscal_year) === startYear);
 
-    backed.forEach(t => {
-      const wt = byFileLabel[t.type];
-      const item = rec ? (rec.items || []).find(i => i.key === wt.key) : null;
-      const state = (item && item.state) || 'not_started';
+    jobs.forEach(wt => {
+      // Take the most advanced state across matching records: if ANY of the
+      // client's records has this job done, the file isn't waiting on it.
+      let state = 'not_started', staff = '', rec = null;
+      recs.forEach(r => {
+        const it = (r.items || []).find(i => i.key === wt.key);
+        if (!it) return;
+        if (it.state === 'done' || (it.state === 'in_progress' && state !== 'done')) { state = it.state; staff = it.staff || staff; rec = r; }
+        else if (!rec) { rec = r; staff = it.staff || staff; }
+      });
       if (state === 'done') return;
 
       // One entry per (client, fiscal year, work type): a client can bring the
       // same register in across several visits, and three register numbers for
       // one outstanding job is one job, not three.
-      const key = d.client_id + '|' + startYear + '|' + wt.key;
+      const key = d.client_id + '|' + (startYear == null ? '?' : startYear) + '|' + wt.key;
       const existing = agg.get(key);
       if (existing) {
         if (d.register_no) existing.registerNos.add(d.register_no);
@@ -408,11 +445,12 @@ function wdPendingRows() {
           clientId: d.client_id,
           clientName: (rec && rec.client_name) || d.client_name || '—',
           clientPan: (rec && rec.client_pan) || d.client_pan || '',
-          fiscalYear: wdFyLabel(startYear),
+          fiscalYear: startYear == null ? '—' : wdFyLabel(startYear),
+          startYear,
           workKey: wt.key,
           workLabel: wt.label,
           state,
-          staff: (item && item.staff) || '',
+          staff,
           registerNos: new Set(d.register_no ? [d.register_no] : []),
           fmStatuses: new Set(d.status ? [d.status] : []),
           received: d.date_received || '',
@@ -434,13 +472,23 @@ function wdPendingRows() {
 }
 
 // The join is by LABEL TEXT (document_register stores doc_types[].type as the
-// label, not the key), so renaming a document type in FM_DOC_TYPES without
-// updating the matching WD_WORK_TYPES.fileLabel empties this list without any
-// error anywhere. Checked at render time and surfaced, because "nothing
+// label, not the key), so a document type renamed in FM_DOC_TYPES without its
+// spelling being added to WD_WORK_TYPES.fileLabels empties this list without
+// any error anywhere. Checked at render time and surfaced, because "nothing
 // pending" and "the config broke" look identical on screen otherwise.
-function wdBrokenFileLabels() {
+// Reported as INFO, not an error: the live register legitimately holds older
+// vocabulary ("Purchase & Sales Files") that is no longer on today's picklist,
+// and mapping it is the point. What matters is that at least one spelling of
+// each file-backed work type still resolves — a work type whose every label
+// has fallen off the picklist can never appear in the list again.
+function wdOrphanWorkTypes() {
   const fmLabels = (window.FM_DOC_TYPES || []).map(t => t.label);
-  return window.WD_WORK_TYPES.filter(t => t.fileLabel && !fmLabels.includes(t.fileLabel)).map(t => t.fileLabel);
+  const seen = new Set();
+  wdIntakes.forEach(d => wdIntakeDocs(d).forEach(t => seen.add(t.type)));
+  return window.WD_WORK_TYPES
+    .filter(t => (t.fileLabels || []).length)
+    .filter(t => !t.fileLabels.some(l => fmLabels.includes(l) || seen.has(l)))
+    .map(t => t.label);
 }
 
 function wdRenderPending() {
@@ -453,12 +501,12 @@ function wdRenderPending() {
   const note = wdEl('wd-pending-note');
   if (note) {
     let html = '';
-    const broken = wdBrokenFileLabels();
-    if (broken.length) {
-      html += `<div class="status-box status-error">⚠️ Configuration problem: ${escHtml(broken.join(', '))} no longer ${broken.length === 1 ? 'matches a document type' : 'match document types'} in File In Out, so ${broken.length === 1 ? 'that work type' : 'those work types'} can never appear below. Fix <code>WD_WORK_TYPES[].fileLabel</code> in <code>js/config.js</code> to match <code>FM_DOC_TYPES[].label</code>.</div>`;
+    const orphans = wdOrphanWorkTypes();
+    if (orphans.length) {
+      html += `<div class="status-box status-error">⚠️ Configuration problem: none of the document labels mapped to ${escHtml(orphans.join(', '))} exist in File In Out or anywhere in the register, so ${orphans.length === 1 ? 'that work type' : 'those work types'} can never appear below. Add the spelling File In Out actually uses to <code>WD_WORK_TYPES[].fileLabels</code> in <code>js/config.js</code>.</div>`;
     }
-    if (wdUnreadableFyCount) {
-      html += `<div class="status-box status-info">ℹ️ ${wdUnreadableFyCount} File In Out ${wdUnreadableFyCount === 1 ? 'entry has a fiscal year' : 'entries have fiscal years'} that couldn't be read, so ${wdUnreadableFyCount === 1 ? 'it is' : 'they are'} not matched here. Open <strong>File In Out</strong> and set the year (e.g. <em>2082-83</em>) to include ${wdUnreadableFyCount === 1 ? 'it' : 'them'}.</div>`;
+    if (wdUnknownFyCount) {
+      html += `<div class="status-box status-info">ℹ️ ${wdUnknownFyCount} File In Out ${wdUnknownFyCount === 1 ? 'entry has' : 'entries have'} no fiscal year recorded, so ${wdUnknownFyCount === 1 ? 'it is' : 'they are'} matched against the client across all years and shown with <strong>FY —</strong>. Setting the year in <strong>File In Out</strong> will tie ${wdUnknownFyCount === 1 ? 'it' : 'them'} to a specific record.</div>`;
     }
     note.innerHTML = html;
   }
@@ -466,7 +514,13 @@ function wdRenderPending() {
   const wrap = wdEl('wd-pending-wrap');
   if (wdPendingTable) { wdPendingTable.destroy(); wdPendingTable = null; }
   if (!rows.length) {
-    wrap.innerHTML = '<div class="log-empty">Nothing pending — every Sales Register, Purchase Register and Stock Book received in File In Out has its work marked Done.</div>';
+    // Distinguish "nothing is waiting" from "no file-backed document has ever
+    // been logged" — they look identical otherwise, and the second one means
+    // the register simply has nothing this module can act on yet.
+    const anyBacked = wdIntakes.some(d => d.client_id != null && wdIntakeDocs(d).some(t => wdWorkTypesForLabel(t.type).length));
+    wrap.innerHTML = anyBacked
+      ? '<div class="log-empty">Nothing pending — every register and stock book received in File In Out has its work marked Done.</div>'
+      : `<div class="log-empty">No pending work yet. This list fills from <strong>File In Out</strong>: when an intake records a Sales Register, Purchase Register or Stock Book, it appears here until that work is marked Done.${wdIntakes.length ? ` (${wdIntakes.length} intake${wdIntakes.length === 1 ? '' : 's'} on file, none carrying one of those documents.)` : ''}</div>`;
     return;
   }
   wrap.innerHTML = '';
@@ -508,11 +562,18 @@ function wdRenderPending() {
 // One click from "this is late" to "I'm doing it" — opens the client+year's
 // record, seeding a fresh one when it doesn't exist yet.
 function wdOpenFromPending(p) {
-  const existing = wdFindRecord(p.clientId, p.fiscalYear);
-  if (existing) { wdOpenEntry(existing); return; }
+  // An intake with no fiscal year can't say which record it belongs to, so
+  // fall back to the client's only existing record, or the default year.
+  if (p.startYear != null) {
+    const existing = wdFindRecord(p.clientId, p.fiscalYear);
+    if (existing) { wdOpenEntry(existing); return; }
+  } else {
+    const mine = wdRecords.filter(r => r.client_id === p.clientId);
+    if (mine.length === 1) { wdOpenEntry(mine[0]); return; }
+  }
   const client = (window.clientsList || []).find(c => c.id === p.clientId)
     || { id: p.clientId, name: p.clientName, pan: p.clientPan };
-  wdOpenEntry(null, { client, fiscalYear: p.fiscalYear });
+  wdOpenEntry(null, { client, fiscalYear: p.startYear != null ? p.fiscalYear : WD_FY_DEFAULT });
 }
 
 // ── Entry drawer ──
@@ -523,34 +584,56 @@ function wdSelectClient(c) {
   wdOnKeyFieldChange();
 }
 
-function wdFreshItem(t) {
-  return { key: t.key, label: t.label, state: 'not_started', staff: '', remarks: '', done_date: null, custom: false };
+function wdFreshItem(t, auto) {
+  return { key: t.key, label: t.label, state: 'not_started', staff: '', remarks: '', done_date: null, custom: false, auto: !!auto };
 }
 
-// Every client gets the full fixed template, every row explicitly not started.
-function wdBuildFreshItems() {
-  return window.WD_WORK_TYPES.map(wdFreshItem);
+// Sort a working set back into config order, customs last, so adding a row
+// doesn't leave it stranded at the bottom of the wrong group.
+function wdSortItems(items) {
+  const order = {};
+  window.WD_WORK_TYPES.forEach((t, i) => { order[t.key] = i; });
+  const fixed = items.filter(i => !i.custom).sort((a, b) => (order[a.key] ?? 999) - (order[b.key] ?? 999));
+  return fixed.concat(items.filter(i => i.custom));
 }
 
-// Non-destructive merge of a stored items[] against the current config list:
-// stored rows are kept exactly as saved, work types added to WD_WORK_TYPES
-// since the record was written are appended as not-started, and custom rows
-// keep their order at the end. This deliberately differs from Audit
-// Checklist's load-verbatim rule — a work tracker whose list can grow
-// (config-only, no migration) would otherwise never show the new work on any
-// existing record, which is precisely the "forgot whether it was done"
-// problem the module exists to solve. Nothing stored is ever altered or
-// dropped, and the merge only touches the drawer's working copy until save.
-function wdMergeItems(stored) {
+// Which work types File In Out implies for this client+year. THE record does
+// NOT get all 16 rows — the firm doesn't do every job for every client, so a
+// new record starts with only what the received files actually imply, and
+// everything else is added by hand from the picker.
+function wdAutoItemsFor(clientId, fiscalYear) {
+  if (clientId == null) return [];
+  const startYear = NepaliLocale.fyStartYear(fiscalYear);
+  const keys = new Set();
+  wdIntakesFor(clientId, startYear).forEach(d =>
+    wdIntakeDocs(d).forEach(t => wdWorkTypesForLabel(t.type).forEach(wt => keys.add(wt.key))));
+  return window.WD_WORK_TYPES.filter(t => keys.has(t.key)).map(t => wdFreshItem(t, true));
+}
+
+// A brand-new record holds ONLY the work its received files imply — possibly
+// nothing at all, which is the honest starting point for a client whose files
+// haven't arrived yet.
+function wdBuildFreshItems(clientId, fiscalYear) {
+  return wdAutoItemsFor(clientId, fiscalYear);
+}
+
+// Loading an existing record keeps EXACTLY the rows that were saved (labels
+// re-read from config so a wording fix propagates), plus any file-backed work
+// that File In Out has since implied and the record doesn't carry yet.
+//
+// It deliberately does NOT top the record up to the full config list: the row
+// set is the user's own selection of what this client needs, so adding every
+// work type back would undo that choice on every open.
+function wdMergeItems(stored, clientId, fiscalYear) {
   const byKey = {};
-  (stored || []).forEach(i => { if (i && i.key) byKey[i.key] = i; });
-  const fixed = window.WD_WORK_TYPES.map(t => {
-    const s = byKey[t.key];
-    // label re-read from config so a wording fix propagates to old records.
-    return s ? { ...s, label: t.label, custom: false } : wdFreshItem(t);
+  const kept = (stored || []).filter(i => i && i.key).map(i => {
+    const t = window.WD_WORK_TYPES.find(x => x.key === i.key);
+    const merged = { ...i, label: t ? t.label : i.label, custom: !!i.custom };
+    byKey[i.key] = merged;
+    return merged;
   });
-  const customs = (stored || []).filter(i => i && i.custom).map(i => ({ ...i, custom: true }));
-  return fixed.concat(customs);
+  const added = wdAutoItemsFor(clientId, fiscalYear).filter(i => !byKey[i.key]);
+  return wdSortItems(kept.concat(added));
 }
 
 // Client or fiscal year changing means "which record am I on?" needs
@@ -572,11 +655,79 @@ function wdMatchExistingRecord() {
   } else if (wdSelectedClient) {
     wdEditingId = null;
     wdAutoMatched = false;
-    wdItems = wdBuildFreshItems();
+    wdItems = wdBuildFreshItems(wdSelectedClient.id, fy);
     wdRenderItems();
     wdEl('wd-drawer-title').textContent = 'New Work Record';
     wdEl('wd-drawer-status').innerHTML = '';
   }
+  wdRenderReceived();
+}
+
+// ── What File In Out is holding for this client ──
+// Shown in full, including documents that imply no work type, so a staff
+// member can see everything that came in rather than only the mapped subset.
+function wdRenderReceived() {
+  const wrap = wdEl('wd-received');
+  if (!wrap) return;
+  const client = wdSelectedClient;
+  if (!client) { wrap.innerHTML = ''; return; }
+
+  const fy = wdEl('wd-fiscal-year').value;
+  const rows = wdIntakesFor(client.id, NepaliLocale.fyStartYear(fy));
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="wd-received-empty">No files logged in File In Out for this client.</div>';
+    return;
+  }
+  const body = rows.map(d => {
+    const docs = wdIntakeDocs(d).map(t => {
+      const implied = wdWorkTypesForLabel(t.type).length;
+      return `<span class="wd-received-doc${implied ? ' implies' : ''}">${escHtml(t.type)}${t.qty > 1 ? ' ×' + t.qty : ''}</span>`;
+    }).join('');
+    const other = d.doc_other ? `<span class="wd-received-doc">${escHtml(d.doc_other)}</span>` : '';
+    return `<div class="wd-received-row">
+      <span class="wd-received-meta">${escHtml(d.register_no || '—')} · ${escHtml(d.date_received || '—')} · FY ${escHtml(d.fiscal_year || '—')}</span>
+      <span class="wd-received-docs">${docs}${other}</span>
+    </div>`;
+  }).join('');
+  wrap.innerHTML = `<div class="wd-received-head">📁 Received in File In Out<span class="wd-received-hint">highlighted documents add a work row automatically</span></div>${body}`;
+}
+
+// ── Add-work picker ──
+function wdRenderPicker() {
+  const sel = wdEl('wd-add-work');
+  if (!sel) return;
+  const have = new Set(wdItems.map(i => i.key));
+  const groups = {};
+  window.WD_WORK_TYPES.filter(t => !have.has(t.key)).forEach(t => {
+    (groups[t.group] = groups[t.group] || []).push(t);
+  });
+  const opts = Object.entries(groups).map(([g, list]) =>
+    `<optgroup label="${escHtml(g)}">` +
+    list.map(t => `<option value="${escHtml(t.key)}">${escHtml(t.label)}</option>`).join('') +
+    `</optgroup>`).join('');
+  sel.innerHTML = opts
+    ? '<option value="">+ Add work…</option>' + opts
+    : '<option value="">All work types added</option>';
+  sel.disabled = !opts;
+}
+
+function wdAddWorkType(key) {
+  if (!key) return;
+  const t = window.WD_WORK_TYPES.find(x => x.key === key);
+  if (!t || wdItems.some(i => i.key === key)) return;
+  wdItems = wdSortItems(wdItems.concat([wdFreshItem(t, false)]));
+  wdRenderItems();
+}
+
+function wdOnAddWork(sel) {
+  const key = sel.value;
+  sel.value = '';
+  wdAddWorkType(key);
+}
+
+function wdRemoveItem(key) {
+  wdItems = wdItems.filter(i => i.key !== key);
+  wdRenderItems();
 }
 
 // ── Work item rows ──
@@ -605,9 +756,12 @@ function wdItemRowHtml(item) {
     ? `<input type="text" class="wd-item-label-input" value="${escHtml(item.label)}" placeholder="Describe this work" oninput="wdOnCustomLabelChange('${item.key}', this.value)" />`
     : `<span class="wd-item-label">${escHtml(item.label)}</span>`;
 
-  const removeBtn = item.custom
-    ? `<button type="button" class="btn btn-outline btn-sm wd-item-remove" onclick="wdRemoveCustomItem('${item.key}')" title="Remove this work row">🗑</button>`
-    : '<span class="wd-item-remove-spacer"></span>';
+  // Every row is removable now that the row set is the user's own selection —
+  // adding a work type by mistake has to be undoable, not permanent.
+  const removeBtn = `<button type="button" class="btn btn-outline btn-sm wd-item-remove" onclick="wdRemoveItem('${item.key}')" title="Remove this work row">🗑</button>`;
+
+  const autoBadge = item.auto
+    ? '<span class="wd-item-auto" title="Added automatically because File In Out records this file as received">📁</span>' : '';
 
   const doneStamp = item.state === 'done' && item.done_date
     ? `<span class="wd-item-done-date" title="Marked done on this date">${escHtml(item.done_date)}</span>` : '';
@@ -615,7 +769,7 @@ function wdItemRowHtml(item) {
   return `
     <div class="wd-item-row state-${escHtml(item.state || 'not_started')}" data-key="${escHtml(item.key)}">
       <select class="wd-item-state" onchange="wdOnItemStateChange('${item.key}', this.value)">${stateOptions}</select>
-      <div class="wd-item-label-cell">${labelHtml}${doneStamp}</div>
+      <div class="wd-item-label-cell">${autoBadge}${labelHtml}${doneStamp}</div>
       <div class="wd-item-staff">
         <select onchange="wdOnItemStaffChange('${item.key}', this)">${staffOptions}</select>
         <input type="text" class="wd-item-staff-other" style="display:${isOther ? '' : 'none'};" value="${isOther ? escHtml(item.staff) : ''}" placeholder="Type name" oninput="wdOnItemStaffOtherChange('${item.key}', this.value)" />
@@ -628,8 +782,12 @@ function wdItemRowHtml(item) {
 function wdRenderItems() {
   const wrap = wdEl('wd-items-list');
   if (!wrap) return;
+  wdRenderPicker();
   if (!wdItems.length) {
-    wrap.innerHTML = '<div class="log-empty" style="padding:14px;">Pick a client above to load the work list.</div>';
+    wrap.innerHTML = wdSelectedClient
+      ? '<div class="log-empty" style="padding:14px;">No work rows yet — add the work this client needs from <strong>+ Add work…</strong> above. Rows for Sales/Purchase Registers and Stock Books appear here on their own once File In Out records those files.</div>'
+      : '<div class="log-empty" style="padding:14px;">Pick a client above to start.</div>';
+    wdUpdateDrawerProgress();
     return;
   }
   const groupOf = {};
@@ -691,15 +849,10 @@ function wdOnItemStaffOtherChange(key, value) {
 // Fully open-ended, replacing the paper sheet's single "Other Specify" row.
 function wdAddCustomItem() {
   wdCustomSeq += 1;
-  wdItems.push({ key: 'custom-' + Date.now() + '-' + wdCustomSeq, label: '', state: 'not_started', staff: '', remarks: '', done_date: null, custom: true });
+  wdItems.push({ key: 'custom-' + Date.now() + '-' + wdCustomSeq, label: '', state: 'not_started', staff: '', remarks: '', done_date: null, custom: true, auto: false });
   wdRenderItems();
   const inputs = wdEl('wd-items-list').querySelectorAll('.wd-item-label-input');
   if (inputs.length) inputs[inputs.length - 1].focus();
-}
-
-function wdRemoveCustomItem(key) {
-  wdItems = wdItems.filter(i => i.key !== key);
-  wdRenderItems();
 }
 
 // ── Drawer open/close/load ──
@@ -717,8 +870,9 @@ function wdLoadIntoDrawer(existing, keepClientTyped) {
   wdEl('wd-recorded-date').value = existing.recorded_date || wdToday();
   wdEl('wd-remarks').value = existing.remarks || '';
 
-  wdItems = wdMergeItems(existing.items);
+  wdItems = wdMergeItems(existing.items, existing.client_id, existing.fiscal_year);
   wdRenderItems();
+  wdRenderReceived();
   wdSuppressKeyWatch = false;
 }
 
@@ -737,6 +891,7 @@ function wdOpenEntry(existing, preset) {
   wdEl('wd-recorded-date').value = wdToday();
   wdEl('wd-remarks').value = '';
   wdRenderItems();
+  wdRenderReceived();
   wdSuppressKeyWatch = false;
 
   // An explicit Edit is never auto-matched, so changing the fiscal year inside
@@ -779,7 +934,7 @@ async function wdSaveEntry() {
     return;
   }
 
-  if (!wdItems.length) { drawerErr('Nothing to save — pick a client to load the work list.'); return; }
+  if (!wdItems.length) { drawerErr('Add at least one work row before saving — use “+ Add work…” or Add Custom Work.'); return; }
   const blankCustom = wdItems.find(i => i.custom && !(i.label || '').trim());
   if (blankCustom) { drawerErr('Give each custom work row a name, or remove it.'); return; }
 
@@ -798,6 +953,7 @@ async function wdSaveEntry() {
       remarks: (i.remarks || '').trim(),
       done_date: i.state === 'done' ? (i.done_date || wdToday()) : null,
       custom: !!i.custom,
+      auto: !!i.auto,
     })),
     remarks: wdEl('wd-remarks').value.trim() || null,
     updated_by: wdUserEmail(),
@@ -877,8 +1033,8 @@ function wdBuildModel(rows, titleSuffix) {
 
 function wdBuildPendingModel(rows) {
   const subtitles = ['Files received in File In Out whose work is not yet done', `Generated ${wdToday()}`];
-  if (wdUnreadableFyCount) {
-    subtitles.push(`${wdUnreadableFyCount} File In Out entr${wdUnreadableFyCount === 1 ? 'y has a fiscal year' : 'ies have fiscal years'} that could not be read and ${wdUnreadableFyCount === 1 ? 'is' : 'are'} not included`);
+  if (wdUnknownFyCount) {
+    subtitles.push(`${wdUnknownFyCount} File In Out entr${wdUnknownFyCount === 1 ? 'y has' : 'ies have'} no fiscal year recorded and ${wdUnknownFyCount === 1 ? 'is' : 'are'} shown as FY —`);
   }
   return {
     title: 'Work Done — Pending List',

@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608100100">
+<link rel="stylesheet" href="css/styles.css?v=202608101200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -3313,13 +3313,18 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
+      <div id="wd-received" class="wd-received"></div>
+
       <div class="form-group full" style="margin-top:14px; margin-bottom:0;">
         <div class="wd-items-head">
           <label style="margin:0;">Work Performed</label>
           <span id="wd-drawer-progress" class="wd-drawer-progress"></span>
         </div>
         <div id="wd-items-list" class="wd-items"></div>
-        <button type="button" class="btn btn-outline btn-sm" style="margin-top:10px;" onclick="wdAddCustomItem()">+ Add Custom Work</button>
+        <div class="wd-add-row">
+          <select id="wd-add-work" class="wd-add-select" onchange="wdOnAddWork(this)"></select>
+          <button type="button" class="btn btn-outline btn-sm" onclick="wdAddCustomItem()">+ Add Custom Work</button>
+        </div>
       </div>
 
       <div class="form-group full" style="margin-top:16px;">
@@ -3839,7 +3844,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608100100"></script>
+<script src="js/config.js?v=202608101200"></script>
 <script src="js/utils.js?v=202608022300"></script>
 <script src="js/core/moduleRegistry.js?v=202608022300"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3884,7 +3889,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/fileManagement.js?v=202608092330"></script>
 <script src="js/auditReportFinalization.js?v=202608092200"></script>
 <script src="js/auditChecklist.js?v=202608092500"></script>
-<script src="js/workDone.js?v=202608100100"></script>
+<script src="js/workDone.js?v=202608101200"></script>
 <script src="js/auth.js?v=202608022300"></script>
 
 </body>

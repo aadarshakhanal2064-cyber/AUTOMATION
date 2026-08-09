@@ -1344,5 +1344,33 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 .wd-item-staff-other{ width: 110px; margin: 0; flex: 0 0 auto; }
 .wd-item-remarks{ margin: 0; min-width: 0; }
 .wd-item-remove{ padding: 4px 8px; }
-/* Keeps the five columns aligned on rows that have no remove button. */
-.wd-item-remove-spacer{ display: block; }
+.wd-item-auto{ font-size: 12px; flex: 0 0 auto; cursor: help; }
+
+/* Add-work picker — the row set is the user's own selection, so there has to
+   be an obvious way to grow it. */
+.wd-add-row{ display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.wd-add-select{ margin: 0; width: 240px; }
+
+/* "Received in File In Out" panel — shows the WHOLE intake, including
+   documents that imply no work row, so nothing is hidden from the person
+   deciding what work this client needs. */
+.wd-received{
+  margin-top: 14px; padding: 12px 14px; background: var(--bg-soft, #f7f8fb);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.wd-received:empty{ display: none; }
+.wd-received-head{
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 12px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin-bottom: 8px;
+}
+.wd-received-hint{ font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-faint); }
+.wd-received-empty{ font-size: 12.5px; color: var(--text-faint); }
+.wd-received-row{ display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; padding: 4px 0; }
+.wd-received-meta{ font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.wd-received-docs{ display: flex; gap: 6px; flex-wrap: wrap; }
+.wd-received-doc{
+  font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  background: var(--white); border: 1px solid var(--border); color: var(--text-muted);
+}
+.wd-received-doc.implies{ background: var(--green-bg); border-color: var(--green-border); color: var(--green-dk); font-weight: 600; }

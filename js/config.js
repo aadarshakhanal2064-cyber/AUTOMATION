@@ -340,21 +340,26 @@ window.AQC_CHECKLIST_ITEMS = [
 // list (see js/workDone.js), every row 'not_started'. Adding a work type here
 // needs no migration — work_done.items is jsonb.
 //
-// `fileLabel` is the FM_DOC_TYPES label a work type is backed by, and marks
-// the ONLY three rows that can ever appear in the Pending List — exactly as
-// the firm's own sheet specifies ("If file is received and work is not done"
+// `fileLabels` lists the document_register doc-type labels that imply this
+// work, and marks the ONLY rows that can appear in the Pending List — as the
+// firm's own sheet specifies ("If file is received and work is not done"
 // against Sales Register / Purchase Register / Stock Book, and "Do not show
-// in Pending list" against every other row). It must stay spelled
-// IDENTICALLY to the matching FM_DOC_TYPES label: document_register stores
-// doc_types[].type as the label TEXT, not the key, so renaming a document
-// type in File In Out silently empties this module's Pending List.
+// in Pending list" against every other row). These are matched against
+// doc_types[].type, which stores the label TEXT, not the key.
+//
+// It is a LIST, not a single string, for two reasons found in the live data
+// (2026-08-10): the firm's real register uses "Purchase & Sales Files" as ONE
+// combined item covering both registers, and every row written before the
+// 2026-08-09 File In Out picklist rework carries that older vocabulary. A
+// single-label mapping matched none of it and the Pending List came up empty.
+// Add a spelling here rather than editing history when the vocabulary shifts.
 //
 // 'Other Specify' from the paper sheet is deliberately absent — ad-hoc work
 // uses unlimited custom rows instead (the auditChecklist.js mechanism).
 window.WD_WORK_TYPES = [
-  { key: 'sales_register',      label: 'Sales Register',        group: 'Books & Records',      fileLabel: 'Sales Register' },
-  { key: 'purchase_register',   label: 'Purchase Register',     group: 'Books & Records',      fileLabel: 'Purchase Register' },
-  { key: 'stock_book',          label: 'Stock Book',            group: 'Books & Records',      fileLabel: 'Stock Book' },
+  { key: 'sales_register',      label: 'Sales Register',        group: 'Books & Records',      fileLabels: ['Sales Register', 'Purchase & Sales Files', 'Sales Book'] },
+  { key: 'purchase_register',   label: 'Purchase Register',     group: 'Books & Records',      fileLabels: ['Purchase Register', 'Purchase & Sales Files', 'Purchase Book'] },
+  { key: 'stock_book',          label: 'Stock Book',            group: 'Books & Records',      fileLabels: ['Stock Book'] },
   { key: 'sp_as_per_vat',       label: 'S/P as per VAT Return', group: 'VAT & Reconciliation' },
   { key: 'vat_reco',            label: 'VAT Reco',              group: 'VAT & Reconciliation' },
   { key: 'ann_13',              label: 'Ann-13',                group: 'VAT & Reconciliation' },

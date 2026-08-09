@@ -115,23 +115,30 @@ extend the config array.
 
 `document_register` gained a **second reader** on 2026-08-09: the
 [Work Done](work-done.md) module's Pending List answers "is a file received?"
-from this register rather than from a second checkbox of its own. It matches
-on `doc_types[].type`, which stores the **label text**, not the key — so
-`Sales Register`, `Purchase Register` and `Stock Book` are strings two modules
-now agree on.
+from this register rather than from a second checkbox of its own, and its
+drawer shows a client's whole intake history. It matches on
+`doc_types[].type`, which stores the **label text**, not the key — so those
+strings are now shared vocabulary between two modules.
 
-**Renaming any of those three labels silently empties Work Done's Pending
-List** — no error anywhere, it just looks like nothing is pending. Rename them
-only together with the matching `WD_WORK_TYPES[].fileLabel` in `js/config.js`;
-`wdBrokenFileLabels()` exists to surface the mismatch if they ever drift.
-Adding, removing or renaming any *other* document type is unaffected.
+**Renaming a document type can silently empty Work Done's Pending List** — no
+error anywhere, it just looks like nothing is pending. `WD_WORK_TYPES[]` in
+`js/config.js` therefore carries a **`fileLabels` list** per work type rather
+than a single string, holding every spelling that has ever meant that
+document. When renaming here, add the new spelling there; don't replace the
+old one, or historical rows stop matching. `wdOrphanWorkTypes()` surfaces a
+work type whose every spelling has fallen out of use.
 
-Note also that this module's `fiscal_year` is free text while Work Done's is a
-dropdown in slash format, so that join goes through
-`NepaliLocale.fyStartYear()` rather than string equality (see §"Fiscal Year"
-below). Intake rows whose year can't be parsed are reported in Work Done's
-Pending List rather than silently skipped — one more reason to keep the year
-filled in.
+This matters more than it sounds: as of 2026-08-10 the live register contains
+`Purchase & Sales Files` (×4), `Others` (×3), `Ledger` (×3) and
+`Bank Statement` (×2) — **none of today's nine picklist labels**, because every
+row predates the 2026-08-09 rework. `Purchase & Sales Files` is one combined
+item implying *both* the sales and purchase register jobs.
+
+Note also that `fiscal_year` here is **optional free text** and is null on
+every row entered so far, while Work Done's is a required slash-format
+dropdown. That join goes through `NepaliLocale.fyStartYear()`, and an intake
+with no year is matched on the client across all years rather than skipped —
+but filling the year in is what ties a file to a specific work record.
 
 ## Fiscal Year
 

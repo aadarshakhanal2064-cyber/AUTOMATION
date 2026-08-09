@@ -40,10 +40,26 @@ walk-in case like `document_register`.
    "staff": "Kesav", "remarks": "", "done_date": "2026-08-09", "custom": false }]
 ```
 
-`window.WD_WORK_TYPES` (`js/config.js`) is the fixed template — 16 rows in
-five display groups (Books & Records · VAT & Reconciliation · Financial
+`window.WD_WORK_TYPES` (`js/config.js`) is the **catalogue** of work types —
+16, in five display groups (Books & Records · VAT & Reconciliation · Financial
 Statements · Returns & Filing · Review & Advisory). Adding a work type is a
 config-array edit, no migration.
+
+**A record holds only the rows it actually needs, not all 16.** The firm
+doesn't do every job for every client, so seeding all sixteen made every
+record a wall of irrelevant not-started rows and meant "Complete" could never
+fire. Instead:
+
+- **File-backed work is added automatically** from File In Out (below).
+- **Everything else is added by hand** from the `+ Add work…` picker, which
+  lists the grouped work types not already on the record.
+- **Every row is removable**, including auto-added ones — the row set is the
+  user's own selection of what this client needs.
+- Rows carry `auto: true` when they came from a received file, shown as a 📁
+  badge.
+
+Rows are kept in catalogue order regardless of the order they were added
+(`wdSortItems`), so a late addition still lands in its own group.
 
 `state` is `not_started` / `in_progress` / `done` — **three states, not a
 done-tick**, because "I'm on it" is what stops two staff starting the same
@@ -63,20 +79,16 @@ own state/staff/remarks and a remove button — replacing the paper sheet's
 single "Other Specify" line. Same mechanism as Audit Checklist. A blank
 custom label blocks save.
 
-### `wdMergeItems()` — a deliberate difference from Audit Checklist
+### `wdMergeItems()` on load
 
-Audit Checklist loads a stored record **verbatim**. Work Done instead does a
-**non-destructive merge** against the current `WD_WORK_TYPES` on drawer load:
-stored rows are kept exactly as saved, work types added to the config since
-the record was written are appended as not-started, and custom rows keep
-their order at the end. Labels are re-read from config so a wording fix
-propagates.
+Stored rows are kept **exactly as saved** (labels re-read from config so a
+wording fix propagates), plus any file-backed work File In Out has implied
+since that the record doesn't carry yet.
 
-The reason for diverging: this module's whole point is "nobody forgets what's
-outstanding". If the firm adds a work type and every existing record silently
-never shows it, the module reintroduces exactly the problem it was built to
-solve. Nothing stored is ever altered or dropped, and the merge only touches
-the drawer's working copy until the user saves.
+It deliberately does **not** top the record up to the full catalogue — the row
+set is the user's selection, so adding every work type back would undo that
+choice on every open. Records written by the module's first version (which did
+seed all 16) still load all 16 unchanged; nothing is truncated.
 
 ## Status is derived, never stored
 
@@ -99,17 +111,44 @@ The firm's sheet marks exactly three work types as pending-eligible ("If file
 is received and work is not done" against Sales Register / Purchase Register
 / Stock Book, and "Do not show in Pending list" against every other row).
 
-Those three labels are exactly three of the nine `window.FM_DOC_TYPES` that
-File In Out already records against `document_register`. So **"file is
-received" is answered by the document register, not by a second checkbox**.
-Nothing is entered twice and the list cannot go stale.
+Those work types map onto the document types File In Out already records
+against `document_register`. So **"file is received" is answered by the
+document register, not by a second checkbox**. Nothing is entered twice and
+the list cannot go stale.
+
+### What the live register actually contains (checked 2026-08-10)
+
+The first version of this module was written against `FM_DOC_TYPES` and
+verified with **seeded data matching that assumption**. Against the real seven
+rows it returned nothing, for two reasons worth recording:
+
+| Assumption | Reality |
+|---|---|
+| Intakes carry a fiscal year | `fiscal_year` is **null on every row** — it's an optional free-text box |
+| Doc types are spelled as in `FM_DOC_TYPES` | Real values are `Purchase & Sales Files` ×4, `Others` ×3, `Ledger` ×3, `Bank Statement` ×2. **Sales Register / Purchase Register / Stock Book appear nowhere** — every row predates the 2026-08-09 picklist rework |
+
+Both are handled rather than wished away:
+
+- **`fileLabels` is a list, not one string.** The firm's register uses
+  `Purchase & Sales Files` as a *single* item covering both registers, so one
+  received document legitimately implies two jobs. Older vocabulary is mapped
+  alongside current spellings instead of rewriting history.
+- **An intake with no fiscal year is matched on client across all years** and
+  shown as `FY —`, never excluded. The year being unrecorded is not a reason
+  to hide a file that is demonstrably sitting in the office. A note above the
+  list says how many are matched this way.
+
+A document that implies no work type (`Ledger`, `Bank Statement`, `Others`) is
+still **shown in the drawer's received panel** — it just doesn't create a row.
+Nothing about an intake is hidden from the person deciding what work is needed.
 
 `wdPendingRows()` builds the list from `document_register` **outward, never
 from `work_done`** — the commonest pending case by far is a client whose Work
 Done record doesn't exist yet, so iterating saved records would miss exactly
 the rows that matter most. Then:
 
-- Rows with `client_id: null` (File In Out's walk-in case) are skipped.
+- Rows with `client_id: null` (File In Out's walk-in case) are skipped —
+  there's no client record to be pending against.
 - `doc_types` entries that are bare strings (the pre-quantities legacy shape
   `fmDocSummary()` still handles) are read as qty 1; `qty: 0` is ignored.
 - Entries are aggregated to **one row per `(client, fiscal year, work type)`**
@@ -134,17 +173,17 @@ the join normalizes both through **`NepaliLocale.fyStartYear()`** (added with
 this module) rather than comparing strings.
 
 **A string-equality join here matches nothing and fails silently** — the
-Pending List renders empty and looks perfectly correct. Two guards exist
-because of that:
+Pending List renders empty and looks perfectly correct. Three guards exist
+because of that, all of them about making emptiness *explainable*:
 
-1. Intake rows carrying a file-backed type whose fiscal year can't be parsed
-   are **counted and reported** in a note above the list, never dropped
-   quietly.
-2. `wdBrokenFileLabels()` checks every `WD_WORK_TYPES[].fileLabel` still
-   resolves to an `FM_DOC_TYPES[].label` at render time and shows an error
-   box if not. `document_register` stores `doc_types[].type` as the **label
-   text**, not the key, so renaming a document type in File In Out would
-   otherwise empty the list with no error anywhere.
+1. Intakes with no readable fiscal year are **counted and reported** in a note,
+   and matched on client rather than dropped.
+2. `wdOrphanWorkTypes()` flags a work type whose every `fileLabels` spelling
+   has fallen out of both the picklist and the live register — that work type
+   can never appear again, which is a config bug, not an empty list.
+3. The empty state distinguishes **"nothing is waiting"** from **"no
+   file-backed document has ever been logged"**, and in the second case says
+   how many intakes exist. Those two look identical otherwise.
 
 ## Views, filters and export
 
@@ -166,17 +205,16 @@ view is showing, so what you export always matches what you're looking at.
   Started, each `label (staff) — remarks`) rather than one column per type,
   since custom rows make the count vary per record.
 
-## Known limitation
+## Resolved: the "Complete never fires" limitation
 
-With 16 fixed work types and no *Not Applicable* state, **"Complete" will
-rarely fire** — most clients never need Excise Return or ETDS, so those rows
-stay not-started forever and the record reads *In Progress* indefinitely.
+The first version seeded all 16 work types on every record, so most clients
+carried rows they'd never do (Excise Return, ETDS) and the record read *In
+Progress* forever. A fourth `not_applicable` state was offered and declined.
 
-This is acceptable because the module's primary signal is the Pending List,
-which is file-backed and unaffected. A four-state version (adding
-`not_applicable`) was offered and declined in favour of the simpler three; if
-it proves noisy in real use it's a config + one-line-derivation change, no
-migration.
+**Selecting rows instead of seeding all 16 fixed it properly** — progress is
+now over the rows the client actually needs, so a finished record reads
+*Complete*, and the fourth state isn't needed. A row that doesn't apply is
+simply not added.
 
 ## Gotchas
 
@@ -243,7 +281,8 @@ seeded rows (CLAUDE.md §2/§12 — no real Supabase session in this sandbox):
   2.6 KB `.pdf`). Devanagari client names are the expected failure mode to
   watch — PDF-Lib's standard fonts are WinAnsi-only (`pdfSafe()` in
   `reportExport.js`) — and none were in the test set.
-- **The `wdBrokenFileLabels` guard was tested by breaking it**: simulating a
+- **The config guard was tested by breaking it** *(then named
+  `wdBrokenFileLabels`; replaced by `wdOrphanWorkTypes` in the second pass)*: simulating a
   File In Out rename dropped the pending list from 1 row to 0, and the error
   box correctly named the offending label instead of the list just looking
   empty.
@@ -264,3 +303,29 @@ end against Supabase; the delete button's `confirm()` path (skipped to avoid a
 blocking native dialog); and the **visual appearance** — the browser pane
 could not composite a screenshot in this session, so everything above is
 structural. Worth a real save pass and an eyeball check after deploying.
+
+### Second pass (2026-08-10) — real-data corrections
+
+The first pass's Pending List verification used **seeded rows that matched the
+implementation's own assumptions**, so it passed while the feature returned
+nothing against production. Both root causes are documented above. This is the
+exact failure mode CLAUDE.md §12 warns about, and the fix was re-verified
+against a **verbatim copy of all seven live `document_register` rows** pulled
+via the Supabase MCP:
+
+- 8 pending rows now produced from the real register (the four
+  `Purchase & Sales Files` intakes each correctly yielding both a Sales
+  Register and a Purchase Register job), all shown as `FY —` with the
+  match-on-client note; the `Ledger`/`Bank Statement`-only intake, the
+  `Others`-only intake and the `client_id: null` walk-in all correctly absent.
+- A new record for a client with received files opened with **2 auto rows, not
+  16**; a client with no file-backed documents opened with **0** and the
+  guidance empty state. The received panel showed *every* document including
+  the unmapped ones, with only the mapped one highlighted.
+- The picker offered the remaining 14 in 5 groups, additions sorted back into
+  catalogue order, removals worked, and the count tracked.
+- A legacy 16-row record still loaded all 16 with its done row intact
+  (**nothing truncated**), while a hand-picked 2-row record stayed at 2 and
+  derived **Complete**.
+- Layout re-measured (no overflow, chip tints correct) and all 21 modules
+  still switch cleanly.
