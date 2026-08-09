@@ -1196,3 +1196,19 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 .arf-type-option:hover{ background: var(--bg-page-alt); color: var(--brand-navy); }
 .arf-type-option.active{ background: var(--brand-navy); color: #fff; }
 .arf-type-option.active:hover{ background: var(--brand-navy-lt); color: #fff; }
+
+/* Chain strip in the record drawer: where this client stands across all three
+   tracks for the chosen year, so what's outstanding is visible while filling
+   the form. The current track is outlined. */
+.arf-chain{
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-top: 14px; padding: 12px; background: var(--bg-page-alt);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.arf-chain-item{
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+  padding: 8px 10px; background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.arf-chain-item.current{ border-color: var(--accent-blue); box-shadow: 0 0 0 1px var(--accent-blue); }
+.arf-chain-label{ font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; }

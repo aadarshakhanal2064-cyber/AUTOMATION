@@ -388,11 +388,19 @@ function arfFindExisting(clientId, fy, type) {
   return arfRecords.find(r => r.client_id === clientId && r.fiscal_year === fy && r.return_type === type);
 }
 
+// Any key field changing means both "which record am I on?" and "what does
+// this client's chain look like?" need recomputing. The banner renders even
+// while the matcher is suppressed, since it only reads state.
+function arfOnKeyFieldChange() {
+  arfMatchExistingRecord();
+  arfRenderChainBanner();
+}
+
 // Re-evaluated on every key-field change (client, fiscal year, return type),
 // because changing any of the three changes WHICH record you are on. An
 // auto-matched record that no longer matches is released back to a new one,
 // otherwise switching return type would keep editing the previous track's row.
-function arfOnKeyFieldChange() {
+function arfMatchExistingRecord() {
   if (arfSuppressKeyWatch) return;
   if (arfEditingId && !arfAutoMatched) return;   // explicit Edit — leave it alone
 
@@ -475,6 +483,28 @@ function arfSetType(type) {
   arfOnTypeChange();
 }
 
+// Where this client stands across all three tracks for the chosen year — so
+// the person filling the form can see what is already done and what is still
+// outstanding without leaving the drawer.
+function arfRenderChainBanner() {
+  const el = arfEl('arf-chain-banner');
+  if (!el) return;
+  const fy = arfEl('arf-fiscal-year').value;
+  if (!arfSelectedClient || !fy) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+  const current = arfCurrentType();
+  el.innerHTML = window.ARF_RETURN_TYPES.map(t => {
+    const rec = arfFindExisting(arfSelectedClient.id, fy, t.key);
+    const badge = rec
+      ? `<span class="log-badge ${ARF_STATUSES[arfStatusKey(rec)].badgeClass}">${ARF_STATUSES[arfStatusKey(rec)].icon} ${escHtml(arfStatusLabel(rec))}</span>`
+      : '<span class="log-badge badge-neutral">⬜ Not recorded</span>';
+    return `<div class="arf-chain-item${t.key === current ? ' current' : ''}">
+        <span class="arf-chain-label">${escHtml(t.label)}</span>${badge}
+      </div>`;
+  }).join('');
+  el.style.display = '';
+}
+
 function arfLoadIntoDrawer(existing, keepClientTyped) {
   arfSuppressKeyWatch = true;
   arfEditingId = existing.id;
@@ -508,6 +538,7 @@ function arfLoadIntoDrawer(existing, keepClientTyped) {
   arfUpdateDigitHint('arf-it-submission-no');
   arfUpdateDigitHint('arf-estimate-submission-no');
   arfSuppressKeyWatch = false;
+  arfRenderChainBanner();
 }
 
 function arfOpenEntry(existing) {
@@ -547,6 +578,7 @@ function arfOpenEntry(existing) {
   // An explicit Edit is never auto-matched, so switching return type inside it
   // edits THIS record rather than jumping to another one.
   if (existing) arfLoadIntoDrawer(existing, false);
+  else arfRenderChainBanner();
 
   arfEl('arf-entry-drawer').classList.add('open');
 }
@@ -620,9 +652,19 @@ async function arfSaveEntry() {
       if (error) throw error;
       AuditLog.record('arf_created', { module: 'auditReportFinalization', clientName, recordRef: data.id, detail: { fiscalYear, returnType: type } });
     }
+
+    // Verifying an IT return is what makes the follow-on work due (§ the chain).
+    let created = [];
+    if (type === 'it_return' && payload.it_verified === true) {
+      created = await arfCreateFollowOns(payload);
+    }
+
     arfCloseEntry();
     await arfRefresh();
-    arfStatusMsg('✅ Record saved.', 'success');
+    // No trailing period — plenty of client names already end in one ("Pvt. Ltd.").
+    arfStatusMsg(created.length
+      ? `✅ Record saved — ${escHtml(created.join(' and '))} now outstanding for ${escHtml(clientName)}`
+      : '✅ Record saved.', 'success');
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'arf-drawer-status');
   }
@@ -631,6 +673,52 @@ async function arfSaveEntry() {
 function arfReadTriState(selectId) {
   const v = arfEl(selectId).value;
   return v === 'true' ? true : v === 'false' ? false : null;
+}
+
+// ── The finalization chain ──
+// The three tracks are sequential in the firm's real workflow: the estimate
+// return is only verified AFTER the IT return is, and a D-3 filing additionally
+// needs a tax clearance. So verifying an IT return is what makes that follow-on
+// work due — and this opens it as a real record rather than leaving it to
+// memory. The rows are created as explicitly NOT verified / NOT cleared (not
+// merely blank), because that is the honest state: the work is now outstanding.
+//
+// Idempotent by design: a type that already has a record for this client and
+// year is skipped, so re-saving an already-verified IT return creates nothing.
+function arfFollowOnTypes(itReturnType) {
+  const due = ['estimate_return'];
+  if (itReturnType === 'D-3') due.push('tax_clearance');
+  return due;
+}
+
+async function arfCreateFollowOns(base) {
+  const created = [];
+  for (const type of arfFollowOnTypes(base.it_return_type)) {
+    if (arfFindExisting(base.client_id, base.fiscal_year, type)) continue;
+    const payload = {
+      client_id: base.client_id,
+      client_name: base.client_name,
+      client_pan: base.client_pan,
+      fiscal_year: base.fiscal_year,
+      return_type: type,
+      auditor: base.auditor,
+      // Outstanding, not merely unfilled — see the note above.
+      estimate_verified: type === 'estimate_return' ? false : null,
+      tax_clearance: false,
+      created_by: arfUserEmail(),
+      updated_by: arfUserEmail(),
+    };
+    const { data, error } = await window.sb.from('audit_report_finalization')
+      .insert(payload).select('id').single();
+    // 23505 = another staff member created it between our check and this insert.
+    if (error) { if (error.code === '23505') continue; throw error; }
+    created.push(arfTypeLabel(type));
+    AuditLog.record('arf_created', {
+      module: 'auditReportFinalization', clientName: base.client_name, recordRef: data.id,
+      detail: { fiscalYear: base.fiscal_year, returnType: type, autoCreated: true },
+    });
+  }
+  return created;
 }
 
 async function arfDeleteEntry(row) {

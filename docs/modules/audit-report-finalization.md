@@ -44,6 +44,47 @@ drawer performs.
 including changing the type inside an explicit Edit — can reach a raw Postgres
 UNIQUE error.
 
+## The finalization chain
+
+The three tracks are **sequential in the firm's real workflow**: the estimate
+return is only verified *after* the IT return is, and a **D-3** filing
+additionally needs a tax clearance. So verifying an IT return is what makes the
+follow-on work due, and the module opens it as a real record rather than leaving
+it to memory:
+
+| Saving an IT Return as **Verified** | Opens |
+|---|---|
+| `it_return_type = 'D-2'` | Estimate Return |
+| `it_return_type = 'D-3'` | Estimate Return **and** Tax Clearance |
+
+`arfCreateFollowOns()` runs after a successful IT-return save (insert *or*
+update) whenever `it_verified === true`, inheriting the client, PAN, fiscal year
+and auditor.
+
+**The follow-ons are created as explicitly NOT verified / NOT cleared, not
+merely blank.** A blank estimate row would derive to `not_submitted` and would
+not appear under the *Estimate Not Verified* card — but the work genuinely *is*
+outstanding the moment the IT return is verified, so `estimate_verified` is set
+to `false` and `tax_clearance` to `false`. That is what makes the counts line
+up: *N* verified IT returns produce *N* rows under Estimate Not Verified, and
+each verified D-3 produces one under Tax Not Cleared.
+
+**Idempotent by design** — a type that already has a record for that client and
+year is skipped, so re-saving an already-verified IT return creates nothing. A
+`23505` from a concurrent insert by another staff member is caught and ignored
+rather than failing the save.
+
+Un-verifying an IT return afterwards does **not** delete the follow-ons: by then
+they may hold real work. They are opened by the chain, not owned by it.
+
+### The chain banner
+
+`arfRenderChainBanner()` draws a three-up strip in the drawer as soon as a
+client and fiscal year are known, showing where all three tracks stand (with
+"Not recorded" distinguished from "Not Verified") and outlining whichever track
+is currently selected. It re-renders on every key-field change, and reads state
+only — so it renders even while the record matcher is suppressed.
+
 ## Status is derived, never stored
 
 There is no `status` column. `arfStatusKey(row)` computes a 4-key badge state
@@ -173,6 +214,23 @@ sandbox, per CLAUDE.md §2/§12):
 - Regression sweep across Dashboard, VAT Compliance, Clients and File
   Management; no console errors beyond the expected 401 from a deliberate
   unauthenticated-save test.
+
+The finalization chain was exercised against an in-memory stub of the table
+(so inserts could actually land without a session):
+
+- **D-2 verified** → exactly one follow-on, Estimate Return, deriving to
+  `not_verified`. No tax clearance created.
+- **D-3 verified** → both Estimate Return and Tax Clearance, both outstanding.
+- **Idempotency** — re-saving an already-verified IT return created 0 rows.
+- **Not verified** — saving an IT return with `it_verified = false` created no
+  follow-ons at all.
+- Resulting stat cards: 2 IT Verified → 2 Estimate Not Verified, 1 Tax Not
+  Cleared (the single D-3), which is the count relationship the chain is for.
+- Banner: hidden with no client; full three-track chain once client+year are
+  set; the `current` outline follows the selected type; "Not recorded" shown
+  for tracks with no row.
+- `AuditLog` writes failed against real RLS during this test and were swallowed
+  without breaking the save — the documented behaviour, confirmed incidentally.
 
 **Not verified:** a live authenticated write (insert/update/delete succeeding
 end-to-end), and the **visual** appearance of the new chart card and segmented
