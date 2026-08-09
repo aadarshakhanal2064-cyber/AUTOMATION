@@ -257,6 +257,12 @@ window.BANK_CLIENT_PARTICULARS = ['fee_receipt', 'for_tax', 'tax_payment'];
 // (the label next to the quantity input / table cell). Adding a kind here
 // needs no migration. A manually-typed "Others" row (own name + qty) is
 // handled separately in js/fileManagement.js, not part of this picklist.
+// Bank Statement and Bank Loan/Interest Certificate are placed at an even
+// index on purpose — the intake drawer renders this in a 2-column grid, so
+// the two bank-related items land in the same row, side by side. Cheque
+// Book/Vouchers and Tax Documents were removed 2026-08-09 (unused by the
+// firm's actual register; the free-typed "Others" row covers them if
+// ever needed).
 window.FM_DOC_TYPES = [
   { key: 'sales_register',      label: 'Sales Register',                unit: 'Books' },
   { key: 'purchase_register',   label: 'Purchase Register',             unit: 'Books' },
@@ -264,11 +270,9 @@ window.FM_DOC_TYPES = [
   { key: 'purchase_bill',       label: 'Purchase Bill',                 unit: 'Pads' },
   { key: 'stock_book',          label: 'Stock Book',                    unit: 'Books' },
   { key: 'ledger',              label: 'Ledger',                        unit: 'Books' },
-  { key: 'confirmation',        label: 'Confirmation',                  unit: 'No.' },
   { key: 'bank_statement',      label: 'Bank Statement',                unit: 'No.' },
   { key: 'bank_loan_interest',  label: 'Bank Loan / Interest Certificate', unit: 'No.' },
-  { key: 'cheque_vouchers',     label: 'Cheque Book / Vouchers',        unit: 'No.' },
-  { key: 'tax_documents',       label: 'Tax Documents',                 unit: 'No.' },
+  { key: 'confirmation',        label: 'Confirmation',                  unit: 'No.' },
 ];
 
 // ── Audit Report Finalization module data ──

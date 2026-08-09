@@ -3204,57 +3204,63 @@ function cropLoginLogoIcon(img) {
   </div>
 </div>
 
-<!-- FILE IN OUT — HANDOVER MODAL -->
-<div class="modal-overlay" id="fm-return-modal">
-  <div class="modal" style="max-width:560px;">
+<!-- FILE IN OUT — OUTTAKE MODAL (partial or full return) -->
+<div class="modal-overlay" id="fm-outtake-modal">
+  <div class="modal" style="max-width:580px;">
     <div class="modal-header">
-      <h3>Hand Over Documents</h3>
-      <button class="modal-close" onclick="fmCloseReturn()">×</button>
+      <h3>Record Outtake</h3>
+      <button class="modal-close" onclick="fmCloseOuttake()">×</button>
     </div>
     <div class="modal-body">
-      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; font-size:13.5px; margin-bottom:18px;" id="fm-return-summary"></div>
+      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; font-size:13.5px; margin-bottom:18px;" id="fm-outtake-summary"></div>
 
       <div class="form-group full">
-        <label>Returned Via</label>
+        <label>Documents Being Given Out Now</label>
+        <div id="fm-outtake-items" class="fm-doctype-grid"></div>
+        <p style="font-size:12px; color:var(--text-faint); margin:6px 0 0;">Defaults to everything still remaining — reduce a quantity if only part of it is going out this time.</p>
+      </div>
+
+      <div class="form-group full" style="margin-top:14px;">
+        <label>Given Via</label>
         <div class="arf-type-picker">
           <label class="arf-type-option active" data-mode="physical">
-            <input type="radio" name="fm-mode-returned" value="physical" checked onchange="fmOnModeChange('returned')" />
+            <input type="radio" name="fm-mode-outtake" value="physical" checked onchange="fmOnModeChange('outtake')" />
             <span>🧍 Physical</span>
           </label>
           <label class="arf-type-option" data-mode="online">
-            <input type="radio" name="fm-mode-returned" value="online" onchange="fmOnModeChange('returned')" />
+            <input type="radio" name="fm-mode-outtake" value="online" onchange="fmOnModeChange('outtake')" />
             <span>📧 Online</span>
           </label>
         </div>
       </div>
 
-      <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-top:12px;">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-top:10px;">
         <div class="form-group">
-          <label>Date Returned</label>
-          <input type="date" id="fm-return-date" />
+          <label>Date</label>
+          <input type="date" id="fm-outtake-date" />
         </div>
-        <div class="form-group" id="fm-return-physical-name-group">
+        <div class="form-group" id="fm-outtake-physical-name-group">
           <label>Collected By (name)</label>
-          <input type="text" id="fm-return-name" placeholder="Who took them back" />
+          <input type="text" id="fm-outtake-name" placeholder="Who took them back" />
         </div>
-        <div class="form-group full" id="fm-return-physical-phone-group">
+        <div class="form-group full" id="fm-outtake-physical-phone-group">
           <label>Phone Number</label>
-          <input type="text" id="fm-return-phone" placeholder="e.g. 98XXXXXXXX" />
+          <input type="text" id="fm-outtake-phone" placeholder="e.g. 98XXXXXXXX" />
         </div>
-        <div class="form-group full" id="fm-return-online-group" style="display:none;">
+        <div class="form-group full" id="fm-outtake-online-group" style="display:none;">
           <label>Email ID</label>
-          <input type="email" id="fm-return-email" placeholder="e.g. client@example.com" />
+          <input type="email" id="fm-outtake-email" placeholder="e.g. client@example.com" />
         </div>
         <div class="form-group full">
           <label>Remarks</label>
-          <input type="text" id="fm-return-remarks" placeholder="Optional — e.g. ledger retained, rest returned" />
+          <input type="text" id="fm-outtake-remarks" placeholder="Optional — e.g. ledger retained, rest given" />
         </div>
       </div>
       <div class="action-row" style="justify-content:flex-end;">
-        <button class="btn btn-outline" onclick="fmCloseReturn()">Cancel</button>
-        <button class="btn btn-primary" onclick="fmConfirmReturn()">Confirm Handover</button>
+        <button class="btn btn-outline" onclick="fmCloseOuttake()">Cancel</button>
+        <button class="btn btn-primary" onclick="fmConfirmOuttake()">Record Outtake</button>
       </div>
-      <div id="fm-return-status"></div>
+      <div id="fm-outtake-status"></div>
     </div>
   </div>
 </div>
@@ -3626,7 +3632,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608092510"></script>
+<script src="js/config.js?v=202608092520"></script>
 <script src="js/utils.js?v=202608022300"></script>
 <script src="js/core/moduleRegistry.js?v=202608022300"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3668,7 +3674,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
-<script src="js/fileManagement.js?v=202608092310"></script>
+<script src="js/fileManagement.js?v=202608092320"></script>
 <script src="js/auditReportFinalization.js?v=202608092200"></script>
 <script src="js/auditChecklist.js?v=202608092500"></script>
 <script src="js/auth.js?v=202608022300"></script>
