@@ -1,0 +1,220 @@
+# Audit Checklist (§5.22)
+
+**Code:** `js/auditChecklist.js` · **Prefix:** `achk-` · **Table:** `audit_checklists`
+**Where:** sidebar, Core modules (after Audit Report Finalization) · **Registry id:** `auditChecklist`
+
+Digitizes the paper QC sign-off sheet staff filled by hand before an audit
+report is finalized — client identity at the top, then a fixed list of items
+(P.Y figures tallied, bank balances, loan interest, annexures, etc.), each
+ticked off and attributed to whoever checked it. It sits next to **Audit
+Report Finalization** in the workflow — this is the QC pass that happens
+before that module's IT/Estimate/Tax tracks get finalized — and borrows its
+conventions throughout.
+
+## The record model
+
+**One record per `(client_id, fiscal_year)`**, enforced by a UNIQUE
+constraint — a single QC pass per client per year, unlike Audit Report
+Finalization's per-return-type split, because this is one piece of work, not
+three independently-timed ones. `achkMatchExistingRecord()` watches the
+client and fiscal-year fields and loads a matching record for editing the
+moment both are known, so a save never collides with the constraint in normal
+use — the same auto-match-or-fresh idea ARF uses, minus the return-type
+dimension.
+
+`client_id` is **NOT NULL, ON DELETE RESTRICT** — directory clients only, no
+walk-in case like `document_register`.
+
+### Why `items` is a JSONB array, not one column per item
+
+Each record's `items` column holds:
+
+```json
+[{ "key": "py_fig", "label": "P.Y Fig", "checked": false, "checked_by": "", "custom": false }, ...]
+```
+
+A fixed-column schema would need a migration both when the firm's checklist
+grows and for every custom item a client's record happens to need — jsonb
+avoids both. `window.AQC_CHECKLIST_ITEMS` (`js/config.js`) is the fixed
+template, in display order: P.Y Fig · Sales/Purchase with VAT Return
+(**vatOnly**) · Bank Balances · Bank Loan Interest · P.Y VAT Adjustment
+(**vatOnly**) · Overall F.S Check · Ann-1/2 · Ann-10 · Ann-13. Adding a row to
+the firm's checklist is a config-array edit, no migration.
+
+`checked_by` holds a name from `window.AQC_STAFF` — the two **firm** names
+(`Shailesh & Associates`, `Dallakoti & Company`) plus individual staff
+(Aadarsha, Kesav, Dipendra) plus `Other`. Choosing `Other` reveals a
+free-text box whose typed name **replaces** `Other` in the saved value —
+same convention as `audit_report_finalization.auditor`, so there is no
+separate `*_other` field anywhere in `items`.
+
+### VAT gating — omitted, not disabled
+
+The two `vatOnly` items are included in a **new** record's seeded `items`
+array only when the picked client's `vat_status === 'active'` — the same
+field/value VAT Compliance already gates on (`js/vatCompliance.js:622`), and
+the same hand-picked, never-bulk-inferred field CLAUDE.md §15 protects. A
+non-VAT client's checklist is genuinely shorter (7 items, not 9), not a
+9-item list with two rows disabled — a disabled row still has to be
+explained to whoever's filling it in, and a shorter honest list doesn't.
+
+**Editing an existing record loads exactly what's stored, unchanged.** If a
+client's `vat_status` changes after a checklist was created, that checklist
+is not retroactively rewritten — `achkBuildFreshItems()` (the seeding
+function) only ever runs for a brand-new client+year combination with no
+existing row.
+
+### Custom items — fully open-ended
+
+The paper form's generic "Others" tick plus two hardcoded blank "Specify
+others" slots (with a "+" that did nothing on paper) are replaced by one
+mechanism: **+ Add Custom Item** appends a row with an editable label, no
+cap, each with its own remove button. This is the one deliberate improvement
+over the paper form (confirmed with the user, not assumed).
+
+## Status is derived, never stored
+
+There is no `status` column. `achkStatusKey(row)` reads `items[].checked`
+every time it's needed — for the table badge, the stat cards/filters and the
+export text — so none of them can drift from what was actually saved:
+
+| Key | Badge | Condition |
+|---|---|---|
+| `not_started` | `badge-neutral` ⬜ | zero items checked (or no items at all) |
+| `in_progress` | `badge-amber` 🟡 | some but not all items checked |
+| `complete` | `badge-sent` ✅ | every item checked |
+
+`achkProgress(row)` returns `{checked, total}`, shown in the table as a plain
+`7/9` fraction rather than a new progress-bar widget — the status badge's
+colour already carries the "how far along" signal, so a new visual
+component wasn't needed.
+
+## Stat cards clear the filters
+
+Four cards — Total Checklists · Complete · In Progress · Not Started —
+driven by one `ACHK_FILTERS` definition that feeds both the counts and the
+table filtering (the ARF/File Management idiom). **Clicking a card clears
+every other filter first**, so its number always matches what's shown.
+
+## The form
+
+- Client search (`SearchEngine.attachAutocomplete`, keys `['name','pan']`,
+  literally ARF's pattern) fills Name + read-only PAN.
+- Fiscal Year select (`achkFyOptions()`, slash format, default `2082/83` —
+  same range and format as Audit Report Finalization, confirmed with the
+  user rather than assumed, since CLAUDE.md §8 treats fiscal-year format as a
+  deliberate per-module choice).
+- Date Recorded (defaults to today, editable) — same reasoning as ARF's
+  `recorded_date`: separate from the immutable `created_at`, drives the
+  From/To range filter, exists because staff log work on a different day than
+  they did it.
+- The checklist itself, rendered into `#achk-items-list` from the in-memory
+  `achkItems` working array (not the DOM) — each item is a row with a
+  checkbox, a label (static for fixed items, an editable text input for
+  custom ones), a "Checked by" select + Other box, and a remove button on
+  custom rows only.
+- Remarks, then Save.
+
+Picking a client with no existing checklist for the selected year seeds
+`achkItems` fresh via `achkBuildFreshItems()` (VAT-gated, all unchecked).
+Picking a client+year that already has a row loads it via
+`achkLoadIntoDrawer()` instead — the auto-match releases back to a fresh
+seed the moment the combination stops matching, exactly the ARF bug class
+("switching client keeps editing the previous client's record") that a
+`achkAutoMatched` flag exists specifically to prevent.
+
+## Gotchas
+
+- Saving uses an explicit `if (achkEditingId) update else insert`, **not**
+  `upsert` — an upsert would silently overwrite `created_by` on every edit
+  (same reasoning as ARF).
+- A custom item with a blank label blocks save (`Give each custom item a
+  name, or remove it`) — an unlabeled custom row would be indistinguishable
+  from a mistake on reload.
+- `achkOnCustomLabelChange` / `achkOnItemStaffOtherChange` update the
+  in-memory item **without** re-rendering the list, so typing in either box
+  doesn't steal its own focus; every other item mutation (`toggle`,
+  `staff select`, `add`, `remove`) does re-render, since none of those are
+  free-text inputs mid-keystroke.
+- The table's "Progress" and "Status" columns both key off `field: 'id'`
+  with `headerSort: false` (like ARF's Status column) — neither is sortable
+  on a real column, so this avoids Tabulator logging a sort warning.
+
+## Deliberate scope limits
+
+- **Directory clients only** — no walk-in case, matching Audit Report
+  Finalization rather than File Management's nullable `client_id`.
+- **No overview chart** — a single client+year status doesn't need one; ARF's
+  three-track grouped bar chart exists because it compares three tracks at
+  once, which doesn't apply here.
+- **No single-record printable sheet** — only a table-level Excel export
+  (`ReportExport`, matching ARF's table export). The digital checklist itself
+  is the paper form's real replacement; a printable copy can be added later
+  if the firm still wants one after using the module.
+- **Export flattens `items` into two text cells** (`Completed Items` /
+  `Pending Items`, each `label (checked_by)` joined with `; `) rather than one
+  column per item — the item list's length varies per client (VAT gating,
+  custom items), so a fixed-column export isn't possible without either
+  truncating data or one column per *possible* item across every record.
+
+## Verified
+
+Migration applied and checked live via the Supabase MCP (columns, defaults
+and all 4 RLS policies confirmed against the actual Postgres catalog before
+any JS was written against it). Exercised in the dev server with the auth
+wall bypassed via DOM manipulation and two hand-seeded clients — one
+`vat_status: 'active'`, one `'not_registered'` — per CLAUDE.md §2/§12 (no real
+Supabase session in this sandbox):
+
+- VAT-active client seeds exactly 9 items including both VAT-only rows;
+  non-VAT client seeds exactly 7, both VAT-only rows omitted entirely.
+- **Found and fixed a real bug during this pass**: selecting "Other" on a
+  checklist item's staff picker cleared `checked_by` to let the name be
+  typed, but the free-text box's visibility was (re)computed from
+  `checked_by`'s content on every re-render — so it collapsed shut the
+  instant it appeared, because the value that would have proven "this is
+  Other" had just been cleared. Fixed by tracking `item._other` as an
+  explicit transient UI flag (stripped before save, never persisted) instead
+  of inferring the reveal from the resolved value. Re-verified after the fix:
+  the box now stays open, the typed name is captured, and it round-trips
+  correctly through a save→reload→edit cycle (a name not in the fixed list
+  re-shows in the Other box, matching `arfFillStaffField`'s behaviour).
+- Add Custom Item / Remove Custom Item both verified: adding appends a
+  labeled, checkable row with a remove button that fixed rows never get;
+  removing drops exactly that row and no other.
+- Client-side validation guards fire correctly: no client picked, and a
+  custom item left with a blank label after Add.
+- The ARF bug class specifically re-tested here: with an existing record
+  auto-matched into the drawer, changing the fiscal year to one with no
+  match released it back to a **fresh, unchecked** seed for the current
+  client (not the previous record's data). Inside an **explicit** Edit
+  (opened via the table's Edit button), changing the fiscal year left
+  `achkEditingId` untouched — confirmed the explicit-edit guard does not get
+  pulled out from under the user the way the pre-fix ARF bug did.
+- Save reached the real `audit_checklists` insert and failed only on
+  `new row violates row-level security policy` — expected with no
+  authenticated session, and the error surfaced as a clean one-line message
+  in the drawer rather than an unhandled rejection.
+- Stat cards filter correctly (a card showing 0 for a non-matching status
+  renders Tabulator's own "No data" placeholder, same as every other
+  TableEngine-based module) and Clear Filters restores the full set.
+- `achkExport()` ran `ReportExport.download` to completion without throwing;
+  the built model's cells were spot-checked (`Completed Items` /
+  `Pending Items` correctly join `label (checked_by)` and plain labels
+  respectively). The generated `.xlsx` binary itself was not re-read via
+  ExcelJS in this pass.
+- Regression sweep: Dashboard, VAT Compliance, Clients, File Management and
+  Audit Report Finalization all switch and initialize cleanly alongside the
+  new tab; the only console output was the documented AuditLog-swallowed-RLS
+  and 401 pattern that appears throughout this app without a real session —
+  nothing attributable to this module.
+
+**Not verified:** a live authenticated write (insert/update/delete
+succeeding end-to-end against Supabase), the delete button's confirm-dialog
+path (skipped to avoid a blocking native dialog in headless automation — the
+underlying call is `confirm()` + delete, identical to ARF's own shipped
+pattern), and the visual appearance of the item rows / green "checked" tint —
+the browser pane could not composite a screenshot in this session, so layout
+was confirmed structurally (DOM classes, computed `display`, values) rather
+than by eye. Worth a real save pass and a quick eyeball check after
+deploying.

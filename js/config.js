@@ -295,6 +295,33 @@ window.ARF_IT_RETURN_TYPES = ['D-2', 'D-3'];
 // row — none of the staff columns has a separate *_other column.
 window.ARF_STAFF = ['Aadarsha', 'Kesav', 'Dipendra', 'Other'];
 
+// ── Audit Checklist module data ──
+// "Checked by" list for the QC checklist — the two FIRM names (matching
+// REP_FIRMS) plus individual staff, per the CA's own note on the paper form
+// ("Check by Staff list also include Shailesh Dallakoti Name and others").
+// 'Other' reveals a free-text box and the typed name REPLACES 'Other' in the
+// saved row, same convention as ARF_AUDITORS — no separate *_other column.
+window.AQC_STAFF = ['Shailesh & Associates', 'Dallakoti & Company', 'Aadarsha', 'Kesav', 'Dipendra', 'Other'];
+
+// The fixed checklist template, in display order. A new record seeds
+// items[] from this list (see js/auditChecklist.js). vatOnly items are
+// included only when the picked client's vat_status === 'active' (the same
+// field/value VAT Compliance already gates on) — omitted, not just hidden,
+// so a client with no VAT items shows a shorter, honest checklist rather
+// than disabled rows. Add a row here (no migration needed — items is jsonb)
+// when the firm's checklist grows.
+window.AQC_CHECKLIST_ITEMS = [
+  { key: 'py_fig',              label: 'P.Y Fig' },
+  { key: 'sales_purchase_vat',  label: 'Sales/Purchase with VAT Return', vatOnly: true },
+  { key: 'bank_balances',       label: 'Bank Balances' },
+  { key: 'bank_loan_interest',  label: 'Bank Loan Interest' },
+  { key: 'py_vat_adjustment',   label: 'P.Y VAT Adjustment', vatOnly: true },
+  { key: 'fs_overall_check',    label: 'Overall F.S Check' },
+  { key: 'ann_1_2',             label: 'Ann-1/2' },
+  { key: 'ann_10',              label: 'Ann-10' },
+  { key: 'ann_13',              label: 'Ann-13' },
+];
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },

@@ -52,7 +52,8 @@ CDN libraries → config.js → utils.js → js/core/* (14 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, vatCompliance,
   billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
-  partyLedger, finalAccount, finStatement, ocrExtract, fileManagement) → auth.js (LAST — triggers the boot sequence)
+  partyLedger, finalAccount, finStatement, ocrExtract, fileManagement,
+  auditReportFinalization, auditChecklist) → auth.js (LAST — triggers the boot sequence)
 ```
 
 - `finStatementEngine.js` before `finStatement.js` and `finStatementExport.js`; all three after `js/core/workbookReader.js` + `engineMath.js` (which `projectionEngine.js` also depends on).
@@ -143,6 +144,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
 | File Management | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
 | Audit Report Finalization | Sidebar | `auditReportFinalization.js` | `arf-` | `audit_report_finalization` | [audit-report-finalization](docs/modules/audit-report-finalization.md) |
+| Audit Checklist | Sidebar | `auditChecklist.js` | `achk-` | `audit_checklists` | [audit-checklist](docs/modules/audit-checklist.md) |
 | Company Registrar *(6 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `st-` `ic-` `cr-` `pr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Billing | Financial Management | `billing.js` | `billing-` | `invoices`, `invoice_items`, `invoice_payments`, `firm_bank_details` | [compliance-billing](docs/modules/compliance-billing.md) |
@@ -177,7 +179,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**20 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization`.
+**21 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists`.
 
 ### Trigger-owned logic (never replicate in JS)
 

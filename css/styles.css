@@ -1241,3 +1241,21 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 }
 .arf-chain-item.current{ border-color: var(--accent-blue); box-shadow: 0 0 0 1px var(--accent-blue); }
 .arf-chain-label{ font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; }
+
+/* ── Audit Checklist — item rows (tick + label + checked-by) ──
+   One row per checklist item; checked rows tint green so a glance at the
+   list shows how far along a client's QC pass is. */
+.achk-items{ display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.achk-item-row{
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-md);
+  transition: background .15s, border-color .15s;
+}
+.achk-item-row.checked{ background: var(--green-bg); border-color: var(--green-border); }
+.achk-item-check{ margin: 0; }
+.achk-item-label{ flex: 1; font-size: 13.5px; font-weight: 600; color: var(--text-main); }
+.achk-item-label-input{ flex: 1; margin: 0; }
+.achk-item-staff{ display: flex; align-items: center; gap: 8px; flex: 0 0 220px; }
+.achk-item-staff select{ width: 100%; margin: 0; }
+.achk-item-staff-other{ width: 140px; margin: 0; flex: 0 0 auto; }
+.achk-item-remove{ flex: 0 0 auto; padding: 4px 10px; }
