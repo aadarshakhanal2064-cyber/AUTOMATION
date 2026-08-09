@@ -1178,3 +1178,21 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
   .pj-viewer{ height: 96vh; max-height: 96vh; }
   .pj-viewer-stage{ padding: 8px; }
 }
+
+/* ── Audit Report Finalization — Type of Return segmented picker ──
+   Same visual language as .rep-view-btn's Edit/Preview toggle, but as
+   radio labels so exactly one type is always selected. */
+.arf-type-picker{
+  display: flex; gap: 0; border: 1px solid var(--border);
+  border-radius: var(--radius-md); overflow: hidden; background: var(--white);
+}
+.arf-type-option{
+  flex: 1; margin: 0; padding: 10px 14px; text-align: center; cursor: pointer;
+  font-size: 13.5px; font-weight: 600; color: var(--text-muted);
+  background: var(--white); transition: background .15s, color .15s;
+}
+.arf-type-option:not(:last-child){ border-right: 1px solid var(--border); }
+.arf-type-option input{ position: absolute; opacity: 0; pointer-events: none; }
+.arf-type-option:hover{ background: var(--bg-page-alt); color: var(--brand-navy); }
+.arf-type-option.active{ background: var(--brand-navy); color: #fff; }
+.arf-type-option.active:hover{ background: var(--brand-navy-lt); color: #fff; }

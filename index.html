@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608022300">
+<link rel="stylesheet" href="css/styles.css?v=202608091600">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2635,6 +2635,14 @@ function cropLoginLogoIcon(img) {
 
       <div class="stat-grid compact" id="arf-stat-grid"></div>
 
+      <div class="table-wrap" style="padding:20px 24px 24px; margin-bottom:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin:0; font-size:15px; color:var(--brand-navy);">Finalization Overview</h3>
+          <span style="font-size:12.5px; color:var(--text-muted);">Reflects the filters below</span>
+        </div>
+        <div style="height:260px; position:relative;"><canvas id="arf-chart"></canvas></div>
+      </div>
+
       <div class="table-wrap" style="padding:24px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
           <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
@@ -2643,21 +2651,14 @@ function cropLoginLogoIcon(img) {
             </span>
             <input type="text" class="search-bar" id="arf-search" placeholder="Search client, PAN, submission no., remarks…" oninput="arfApplyFilters()" />
           </div>
+          <button class="btn btn-outline btn-sm" onclick="arfClearFilters()">Clear Filters</button>
         </div>
-        <div class="form-grid" style="grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:16px;">
+        <div class="form-grid" style="grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:16px;">
           <div class="form-group" style="margin:0;"><label>Auditor</label><select id="arf-filter-auditor" onchange="arfOnFilterChange()"></select></div>
           <div class="form-group" style="margin:0;"><label>Fiscal Year</label><select id="arf-filter-fy" onchange="arfOnFilterChange()"></select></div>
-          <div class="form-group" style="margin:0;"><label>IT Status</label><select id="arf-filter-it-status" onchange="arfOnFilterChange()"></select></div>
-          <div class="form-group" style="margin:0;"><label>Estimate Status</label><select id="arf-filter-est-status" onchange="arfOnFilterChange()"></select></div>
-          <div class="form-group" style="margin:0;"><label>Tax Clearance</label>
-            <select id="arf-filter-tax-clearance" onchange="arfOnFilterChange()">
-              <option value="">All</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
+          <div class="form-group" style="margin:0;"><label>Type of Return</label><select id="arf-filter-type" onchange="arfOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Status</label><select id="arf-filter-status" onchange="arfOnFilterChange()"></select></div>
         </div>
-        <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="arfClearFilters()">Clear Filters</button></div>
         <div id="arf-status-area"></div>
         <div id="arf-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>
@@ -2864,19 +2865,49 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="form-group">
           <label>Fiscal Year</label>
-          <select id="arf-fiscal-year" onchange="arfOnClientOrFyChange()"></select>
+          <select id="arf-fiscal-year" onchange="arfOnKeyFieldChange()"></select>
         </div>
-        <div class="form-group full">
+        <div class="form-group">
           <label>Auditor</label>
-          <select id="arf-auditor"></select>
+          <select id="arf-auditor" onchange="arfOnStaffChange('arf-auditor','arf-auditor-other-group')"></select>
+        </div>
+        <div class="form-group" id="arf-auditor-other-group" style="display:none;">
+          <label>Specify Auditor</label>
+          <input type="text" id="arf-auditor-other" placeholder="Type the auditor name" />
         </div>
       </div>
 
-      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:16px;">
+      <div class="form-group full" style="margin-top:14px;">
+        <label>Type of Return</label>
+        <div class="arf-type-picker">
+          <label class="arf-type-option active" data-type="it_return">
+            <input type="radio" name="arf-return-type" value="it_return" checked onchange="arfOnTypeChange()" />
+            <span>IT Return</span>
+          </label>
+          <label class="arf-type-option" data-type="estimate_return">
+            <input type="radio" name="arf-return-type" value="estimate_return" onchange="arfOnTypeChange()" />
+            <span>Estimate Return</span>
+          </label>
+          <label class="arf-type-option" data-type="tax_clearance">
+            <input type="radio" name="arf-return-type" value="tax_clearance" onchange="arfOnTypeChange()" />
+            <span>Tax Clearance</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="arf-section-it" style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:14px;">
         <h4 style="margin:0 0 12px; font-size:13.5px; color:var(--brand-navy);">IT Return</h4>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-group">
-            <label>Entered By</label>
+            <label>Type of IT Return</label>
+            <select id="arf-it-return-type"></select>
+          </div>
+          <div class="form-group">
+            <label>IT Submission No. <span id="arf-it-submission-no-hint" style="font-weight:400; color:var(--text-faint);">12 digits</span></label>
+            <input type="text" id="arf-it-submission-no" inputmode="numeric" maxlength="12" placeholder="e.g. 830082233396" />
+          </div>
+          <div class="form-group">
+            <label>Submission Entered By</label>
             <select id="arf-it-entered-by" onchange="arfOnStaffChange('arf-it-entered-by','arf-it-entered-by-other-group')"></select>
           </div>
           <div class="form-group" id="arf-it-entered-by-other-group" style="display:none;">
@@ -2884,8 +2915,12 @@ function cropLoginLogoIcon(img) {
             <input type="text" id="arf-it-entered-by-other" placeholder="Type the staff name" />
           </div>
           <div class="form-group">
-            <label>IT Submission No.</label>
-            <input type="text" id="arf-it-submission-no" placeholder="e.g. IT-2083-00123" />
+            <label>Return Checked By</label>
+            <select id="arf-it-checked-by" onchange="arfOnStaffChange('arf-it-checked-by','arf-it-checked-by-other-group')"></select>
+          </div>
+          <div class="form-group" id="arf-it-checked-by-other-group" style="display:none;">
+            <label>Specify Name</label>
+            <input type="text" id="arf-it-checked-by-other" placeholder="Type the staff name" />
           </div>
           <div class="form-group">
             <label>IT Verified</label>
@@ -2898,19 +2933,23 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
-      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:12px;">
+      <div id="arf-section-estimate" style="display:none; background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:14px;">
         <h4 style="margin:0 0 12px; font-size:13.5px; color:var(--brand-navy);">Estimate Return</h4>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-group">
-            <label>Checked By</label>
-            <select id="arf-estimate-checked-by" onchange="arfOnStaffChange('arf-estimate-checked-by','arf-estimate-checked-by-other-group')"></select>
+            <label>Entered By</label>
+            <select id="arf-estimate-entered-by" onchange="arfOnStaffChange('arf-estimate-entered-by','arf-estimate-entered-by-other-group')"></select>
           </div>
-          <div class="form-group" id="arf-estimate-checked-by-other-group" style="display:none;">
+          <div class="form-group" id="arf-estimate-entered-by-other-group" style="display:none;">
             <label>Specify Name</label>
-            <input type="text" id="arf-estimate-checked-by-other" placeholder="Type the staff name" />
+            <input type="text" id="arf-estimate-entered-by-other" placeholder="Type the staff name" />
           </div>
           <div class="form-group">
-            <label>Estimate Return Verified</label>
+            <label>Estimate Submission No. <span id="arf-estimate-submission-no-hint" style="font-weight:400; color:var(--text-faint);">12 digits</span></label>
+            <input type="text" id="arf-estimate-submission-no" inputmode="numeric" maxlength="12" placeholder="e.g. 830082233396" />
+          </div>
+          <div class="form-group">
+            <label>Verification Status</label>
             <select id="arf-estimate-verified">
               <option value="">— Not Reviewed —</option>
               <option value="true">Yes</option>
@@ -2920,15 +2959,24 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
-      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:12px;">
+      <div id="arf-section-tax" style="display:none; background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:14px;">
         <h4 style="margin:0 0 12px; font-size:13.5px; color:var(--brand-navy);">Tax Clearance</h4>
-        <label class="checkbox-label" style="margin-bottom:10px;">
-          <input type="checkbox" id="arf-tax-clearance" onchange="arfOnTaxClearanceChange()" />
-          Tax clearance obtained
-        </label>
-        <div class="form-group" id="arf-tax-clearance-date-group" style="display:none; margin:0;">
-          <label>Tax Clearance Date</label>
-          <input type="date" id="arf-tax-clearance-date" />
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group">
+            <label>Tax Clearance Obtained</label>
+            <select id="arf-tax-clearance" onchange="arfOnTaxClearanceChange()">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+          <div class="form-group" id="arf-tax-clearance-date-group" style="display:none;">
+            <label>Tax Clearance Date</label>
+            <input type="date" id="arf-tax-clearance-date" />
+          </div>
+          <div class="form-group full" id="arf-tax-reason-group">
+            <label>Reason Not Cleared</label>
+            <textarea id="arf-tax-reason" placeholder="Why has tax clearance not been obtained yet?"></textarea>
+          </div>
         </div>
       </div>
 
@@ -3364,7 +3412,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608091400"></script>
+<script src="js/config.js?v=202608091600"></script>
 <script src="js/utils.js?v=202608022300"></script>
 <script src="js/core/moduleRegistry.js?v=202608022300"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3407,7 +3455,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
 <script src="js/fileManagement.js?v=202608022300"></script>
-<script src="js/auditReportFinalization.js?v=202608091400"></script>
+<script src="js/auditReportFinalization.js?v=202608091600"></script>
 <script src="js/auth.js?v=202608022300"></script>
 
 </body>

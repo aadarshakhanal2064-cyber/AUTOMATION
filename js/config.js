@@ -264,20 +264,35 @@ window.FM_DOC_TYPES = [
 ];
 
 // ── Audit Report Finalization module data ──
-// Fixed 5-auditor list. CHECK-constrained identically in
-// audit_report_finalization.auditor — change both together.
+// The auditor a record is signed under. The first and third entries are the
+// two FIRM names (matching REP_FIRMS above), not partner names — renamed
+// 2026-08-09. 'Other' reveals a free-text box and the typed name replaces it
+// in the saved row, so audit_report_finalization.auditor is deliberately
+// free text with NO check constraint.
 window.ARF_AUDITORS = [
-  'Shailesh Dallakoti',
+  'Shailesh & Associates',
   'Non-Sign',
-  'Devi Prasad Dallakoti',
+  'Dallakoti & Company',
   'Lila Adhikari',
   'Surya Poudel',
+  'Other',
 ];
 
-// Staff selectable as "Entered By" (IT Return) / "Checked By" (Estimate
-// Return). 'Other' reveals a free-text name box; the typed name REPLACES
-// 'Other' in the saved row — it_entered_by/estimate_checked_by have no
-// separate *_other column.
+// A record tracks exactly ONE of these; the form reveals only that track's
+// fields, and one client+fiscal year may hold one record of each type.
+// CHECK-constrained identically in audit_report_finalization.return_type.
+window.ARF_RETURN_TYPES = [
+  { key: 'it_return',       label: 'IT Return' },
+  { key: 'estimate_return', label: 'Estimate Return' },
+  { key: 'tax_clearance',   label: 'Tax Clearance' },
+];
+
+// Which income-tax return form the IT-return record is for.
+window.ARF_IT_RETURN_TYPES = ['D-2', 'D-3'];
+
+// Staff selectable as "Entered By" / "Checked By" on both tracks. 'Other'
+// reveals a free-text name box; the typed name REPLACES 'Other' in the saved
+// row — none of the staff columns has a separate *_other column.
 window.ARF_STAFF = ['Aadarsha', 'Kesav', 'Dipendra', 'Other'];
 
 window.REP_FY_DATES = {

@@ -4,158 +4,178 @@
 **Where:** sidebar, Core modules (after File Management) · **Registry id:** `auditReportFinalization`
 
 A shared status tracker used by multiple staff to record where a client's **IT
-return submission, Estimate return submission, and tax clearance** stand for
-a fiscal year. It answers "what's still outstanding before this client's
-audit report can close out" without relying on people's memory or scattered
-notes. **Not tied to document generation** — pure task-status tracking.
+return, estimate return and tax clearance** stand for a fiscal year. It answers
+"what's still outstanding before this client's audit report can close out"
+without relying on people's memory or scattered notes. **Not tied to document
+generation** — pure task-status tracking.
 
-## The one-evolving-record model
+## The record model
 
-**One row per `(client_id, fiscal_year)`**, enforced by a UNIQUE constraint —
-not a new row per edit. Staff update the same record over the life of a
-filing season as the picture changes (submission filed, then verified, then
-tax clearance obtained).
+**One record per `(client_id, fiscal_year, return_type)`**, enforced by a UNIQUE
+constraint. The three tracks are separate pieces of work, entered by different
+staff at different times, so each gets its own row and its own independent
+status — a client can hold an IT Return record, an Estimate Return record *and*
+a Tax Clearance record for the same year.
 
-Because of the UNIQUE constraint, the form itself guards against creating a
-duplicate: `arfOnClientOrFyChange()` fires the moment both a client and a
-fiscal year are set, looks for an existing record, and — if found — switches
-the drawer into editing that record (with an on-screen notice) instead of
-letting a second "New Record" collide with the constraint on save.
+> Superseded 2026-08-09: v1 used one row per `(client, fiscal year)` covering
+> all three tracks. The migration `db/2026-08-09_arf_v2_return_types.sql`
+> backfilled every existing row to `return_type = 'it_return'`.
 
-`client_id` is **NOT NULL, ON DELETE RESTRICT** — this module tracks
-directory clients only (no walk-in case like `document_register`), and
-deleting a client with tracking history fails loudly rather than silently
-losing it.
+`client_id` is **NOT NULL, ON DELETE RESTRICT** — this module tracks directory
+clients only (no walk-in case like `document_register`), and deleting a client
+with tracking history fails loudly rather than silently losing it.
+
+### The duplicate guard, and why it re-evaluates
+
+`arfOnKeyFieldChange()` watches all three key fields — client, fiscal year and
+**return type** — and loads a matching record for editing rather than letting a
+save collide with the UNIQUE constraint.
+
+The subtlety is that it must **re-evaluate when any of the three changes**, and
+release an auto-matched record when the new combination has no match. `arfAutoMatched`
+distinguishes a record the guard picked (re-evaluate freely) from one the user
+opened with **Edit** (leave alone — they chose it deliberately). Without that
+split, picking a client would latch onto their IT Return row and then switching
+to Estimate Return would keep editing the IT row — a real bug caught in testing.
+`arfSuppressKeyWatch` stops the watcher firing on the writes that populating the
+drawer performs.
+
+`arfSaveEntry()` **also** checks for a collision independently, so no path —
+including changing the type inside an explicit Edit — can reach a raw Postgres
+UNIQUE error.
 
 ## Status is derived, never stored
 
-There is no `status` column for either the IT Return or Estimate Return
-track. `arfItStatusKey(row)` / `arfEstimateStatusKey(row)` compute a 4-key
-badge state from the raw fields every time they're needed — for the table
-badge, the status filter dropdown, and the print/export column text — so the
-three can never disagree with each other or with what was actually saved:
+There is no `status` column. `arfStatusKey(row)` computes a 4-key badge state
+from the raw fields of whichever track the row belongs to, every time it's
+needed — for the table badge, the status filter, the chart and the export text —
+so none of them can drift apart from what was actually saved:
 
-| Key | IT Return label | Estimate Return label | Derived when |
+| Key | Badge | IT Return / Estimate Return | Tax Clearance |
 |---|---|---|---|
-| `not_submitted` | Not Submitted | Not Submitted | Verified flag unset and no submission text/checked-by name |
-| `submitted` | Submitted | Checked | Verified flag unset but submission no./entered-by (IT) or checked-by (Estimate) is present |
-| `verified` | Verified | Verified | Verified flag is `true` |
-| `not_verified` | Not Verified | Not Verified | Verified flag is `false` |
+| `not_submitted` | `badge-neutral` ⬜ | nothing entered yet | *(unreachable)* |
+| `submitted` | `badge-amber` 📤 | submission no. or entered-by present, verified flag still null | *(unreachable)* |
+| `verified` | `badge-sent` ✅ | verified flag is `true` | `tax_clearance` is `true` → **Cleared** |
+| `not_verified` | `badge-error` ❌ | verified flag is `false` | `tax_clearance` is `false` → **Not Cleared** |
 
-`WorkflowEngine.createStatusFlow` (`arfItFlow`/`arfEstimateFlow`) is used
-**only for its `badgeHtml()` mapping** — there's no `.transition()` call
-anywhere in this module. Status isn't a button-driven workflow here; staff
-just fill in the form and save, and the badge is a read of what's already
-there. This mirrors how `billing.js` uses the same engine purely for display
-off a column JS never writes through `transition()` (there it's
-trigger-owned; here it's derived).
+Tax Clearance relabels the two keys it can reach via `ARF_TAX_LABELS`
+("Cleared"/"Not Cleared" — "verified" reads wrong for it) while sharing the same
+badge colours. `WorkflowEngine.createStatusFlow` is used **only** for its badge
+metadata; there is no `.transition()` call, because status here is a read of
+saved fields, not a button-driven workflow.
 
-Tax Clearance is a plain 2-state boolean + conditional date — no tri-state
-"not reviewed" state is needed there (the user's own framing: "yes or no, if
-yes then a date").
+## The form
 
-## Staff pickers — "Other" replaces the value, no `*_other` column
+A segmented **Type of Return** control (`.arf-type-picker`, styled after the
+`.rep-view-btn` Edit/Preview toggle) reveals exactly one section:
 
-`window.ARF_STAFF` (`js/config.js`) is `['Aadarsha', 'Kesav', 'Dipendra',
-'Other']`, used for both **IT Entered By** and **Estimate Checked By**.
-Picking `Other` reveals a free-text box (same show/hide idiom as File
-Management's document-type "Others"), but unlike that module there is **no
-separate `*_other` database column** — the typed name is written directly
-into `it_entered_by`/`estimate_checked_by`, replacing the literal `"Other"`.
-On reload, `arfLoadIntoDrawer()` detects a saved name that isn't one of the
-three fixed staff names and re-shows it in the "Other" text box.
+- **Always:** Client + PAN, Fiscal Year, Auditor (+ Other), Remarks
+- **IT Return:** Type of IT Return (D-2/D-3) · IT Submission No. · Submission
+  Entered By · Return Checked By · IT Verified
+- **Estimate Return:** Entered By · Estimate Submission No. · Verification Status
+- **Tax Clearance:** Obtained Yes/No → **Yes** reveals the date, **No** reveals a
+  "Reason Not Cleared" textarea (`tax_clearance_remarks`). Switching clears the
+  other field, so a stale date can't sit under a "No".
 
-`window.ARF_AUDITORS` (`js/config.js`) is the fixed 5-name list — `Shailesh
-Dallakoti`, `Non-Sign`, `Devi Prasad Dallakoti`, `Lila Adhikari`, `Surya
-Poudel` — CHECK-constrained identically in the database; change both
-together.
+**Submission numbers are exactly 12 digits.** An input handler strips non-digits
+and caps the length as you type, a live hint shows `8/12 digits` → `✓ 12/12`,
+save rejects a partial number with a plain-English message, and a
+`~ '^[0-9]{12}$'` CHECK enforces it in the database too — the UI is not the only
+way in.
 
-## Stat cards, filters, print/export
+**"Other" replaces the value, on every picker.** The auditor list and both staff
+lists end in `Other`, which reveals a free-text box; the typed name is written
+directly into the column, replacing the literal `"Other"`. There is no
+`*_other` column anywhere in this table. On reload, `arfFillStaffField()`
+detects a saved name that isn't one of the fixed options and re-shows it in its
+Other box. This is why **`auditor` has no CHECK constraint** — the list is open.
 
-Four stat cards (`ARF_FILTERS`) double as quick filters, same pattern as
-File Management's `FM_FILTERS`: Total Records / IT Verified / Estimate
-Verified / Tax Cleared. They compose with the Auditor / Fiscal Year / IT
-Status / Estimate Status / Tax Clearance dropdown filters and the fuzzy
-search box (client name, PAN, submission no., remarks).
+## Overview chart
 
-**Print/export has two scopes, using one code path:** the toolbar's Print /
-Preview, Export PDF and Export Excel buttons act on the **currently
-filtered** row-set — so searching or filtering down to one client and then
-exporting *is* the "specific client" scope. Each table row additionally has
-its own **Print** action for a one-click single-record printout. There is no
-separate scope-picker control. Both paths build one `ReportExport` tabular
-model (`arfBuildModel`) — the same 12-column shape whether it's one row or
-the whole filtered portfolio.
+One grouped bar chart above the table (`arfRenderChart`, Chart.js — already
+loaded and pinned in `index.html`): three groups (IT Return / Estimate Return /
+Tax Clearance) × three datasets (Verified/Cleared green, Not Verified/Not
+Cleared red, Pending amber). It reflects the **currently filtered** rows, so it
+answers "how is this auditor doing" as well as the whole portfolio. Tax
+Clearance has no Pending bar by design — it is a two-state field.
+
+Destroy-before-recreate on every render, the `vatCompliance.js` chart idiom.
+
+## Stat cards clear the filters
+
+Seven cards: Total Records · IT Verified · IT Not Verified · Estimate Verified ·
+Estimate Not Verified · Tax Cleared · Tax Not Cleared. `ARF_FILTERS` drives both
+the counts and the filtering from one definition, so they can't disagree.
+
+**Clicking a card clears every dropdown filter and the search box first.** A
+card's number counts the whole portfolio, so leaving stale filters applied would
+show fewer rows than the card advertises — which reads as a bug.
 
 ## Table
 
-Uses `TableEngine` (Tabulator), pagination 25/page — the same choice File
-Management, Service Memo, Bank Book, Billing and VAT Compliance already
-made. (CLAUDE.md §15 used to say only the Clients table uses Tabulator; that
-line was stale by the time this module was built and was corrected in the
-same commit.)
+`TableEngine` (Tabulator), 25/page. Columns: FY · Client (+PAN) · Type (badge,
+with the D-2/D-3 suffix on IT rows) · Auditor · Entered By · Checked By ·
+Submission No. · Status (badge) · Actions. `arfRowEnteredBy`/`arfRowSubmissionNo`
+pick the right column for the row's track, so one column serves both IT and
+Estimate; fields that don't apply to a type render the em-dash.
 
 ## Gotchas
 
-- `it_verified`/`estimate_verified` are **nullable** booleans (`null` = not
-  yet reviewed) — don't default them to `false`, that would make every new
-  record read as "Not Verified" instead of "Not Submitted".
+- `it_verified`/`estimate_verified` are **nullable** booleans (`null` = not yet
+  reviewed). Don't default them to `false` — every new record would read as "Not
+  Verified" instead of "Not Submitted". `tax_clearance` is deliberately NOT NULL
+  and two-state.
 - Saving uses an explicit `if (arfEditingId) update else insert`, **not**
   `upsert` — an upsert would silently overwrite `created_by` on every edit.
-  The duplicate-record guard above is what makes the explicit branch safe.
-- `arf-client-pan` is `readonly` in the drawer — it's always the picked
-  client's PAN, never hand-typed, so there's nothing to reconcile with the
-  hand-typed-name-drops-`client_id` rule that the *name* field follows.
+- Writes to non-applicable tracks are nulled on save: an Estimate Return record
+  never carries IT columns, so a type changed mid-edit can't leave the previous
+  track's data behind.
+- The v2 rollback (`..._rollback.sql`) **cannot** cleanly reverse the auditor
+  rename or per-type rows — read its header before running it.
 
 ## Deliberate scope limits
 
-- **Directory clients only** — unlike File Management's `document_register`,
-  there's no walk-in case; a client not yet in the directory can't get a
-  record here.
+- **Directory clients only** — no walk-in case.
 - **Not linked to document generation or the OCR pipeline** — this tracks
-  status, not documents. A future ask to link a submitted return's actual
-  file is a separate feature, not an extension of this one.
-- **No per-auditor row separation** — one record per client per fiscal year,
-  regardless of how many auditors touch it over the season; reassigning the
-  auditor just edits the existing record's `auditor` field.
+  status, not documents.
+- **The auditor list holds FIRM names, not partner names** (renamed 2026-08-09):
+  `Shailesh & Associates` and `Dallakoti & Company`, matching `REP_FIRMS` in
+  `js/config.js`. `Non-Sign`, `Lila Adhikari` and `Surya Poudel` sit alongside
+  them, plus `Other`.
 
 ## Verified
 
-Built and exercised 2026-08-09 in the dev server with the auth wall bypassed
-via DOM manipulation and a hand-seeded `window.clientsList` (no real Supabase
-session in this sandbox, per CLAUDE.md §2/§12):
+Built 2026-08-09 (v1) and reworked the same day (v2). Exercised in the dev
+server with the auth wall bypassed via DOM manipulation and a hand-seeded
+7-record dataset covering all three types (no real Supabase session in this
+sandbox, per CLAUDE.md §2/§12):
 
-- Client autocomplete + PAN autofill; hand-editing the name after picking a
-  client correctly drops `client_id` and blocks save with "Pick a client
-  from the list".
-- Fiscal-year dropdown: 9 options, `2085/86` → `2077/78`, default `2083/84`.
-- "Other" show/hide on both staff pickers (IT Entered By, Estimate Checked
-  By), including re-detecting a saved custom name as "Other" on edit-load.
-- Tax Clearance checkbox reveal/hide, auto-filling today's date on first
-  reveal and clearing the date when unchecked.
-- `arfItStatusKey`/`arfEstimateStatusKey` verified against 9 input
-  combinations (unset / submission-only / verified true / verified false),
-  all matching the expected 4-key state.
-- The duplicate-record guard (`arfOnClientOrFyChange`): picking a client +
-  fiscal year that already has a record switches the drawer into editing
-  that record with the "editing the existing record" notice, rather than
-  risking a UNIQUE-constraint collision on save.
-- All 4 stat-card filters and all 5 dropdown filters individually, plus the
-  fuzzy search box and Clear Filters resetting everything including the
-  active card — each confirmed against a 3-row seeded dataset (including a
-  Devanagari client name).
-- `arfBuildModel` → `ReportExport.toHtml`/`.toExcel`/`.toPdf` all produce
-  correct output; the exported `.xlsx` was re-read via ExcelJS and its
-  header row + data row matched exactly.
-- A real (expected) RLS rejection was exercised: saving as an unauthenticated
-  request correctly surfaced "new row violates row-level security policy"
-  instead of failing silently or crashing — confirms both the payload path
-  and the RLS policy are working.
+- Migration verified live via the Supabase MCP **before** the JS changed: all 7
+  live rows survived, carry `return_type='it_return'`, and the 6 renamed auditor
+  values read as the new firm names.
+- Type switching reveals exactly one section; the duplicate guard follows the
+  type (IT → id 1, Estimate → id 4, Tax → id 6 for the same client+year) and
+  releases to a blank New Record when the combination has no match. **This is
+  where the auto-match bug was caught and fixed.**
+- Save-time collision check rejects a type change inside an explicit Edit that
+  would collide with an existing record.
+- 12-digit enforcement: letters stripped, length capped at 12, live hint
+  correct, partial number rejected on save.
+- Tax Clearance Yes/No reveals the right field and clears the other.
+- Auditor "Other" round-trips (typed name saves and re-opens in the Other box).
+- All 7 stat cards: counts match a hand count, and each clears all four
+  dropdowns plus the search box on click.
+- Chart datasets match the hand-counted seed exactly and re-render on filter
+  change.
+- Excel export re-read via ExcelJS — all 12 columns correct across all three
+  record types, including "Cleared"/"Not Cleared" and the not-cleared reason
+  landing in Remarks. PDF generates without throwing.
 - Regression sweep across Dashboard, VAT Compliance, Clients and File
-  Management: all switch cleanly, no console errors, File Management's nav
-  position/behavior undisturbed by the new sidebar entry.
+  Management; no console errors beyond the expected 401 from a deliberate
+  unauthenticated-save test.
 
-**Not verified:** a live authenticated Supabase write (insert/update/delete
-succeeding end-to-end), since this sandbox has no real signed-in session —
-same limitation every other module's dev-server verification carries. The
-user should do one real save/edit/delete pass after deploying.
+**Not verified:** a live authenticated write (insert/update/delete succeeding
+end-to-end), and the **visual** appearance of the new chart card and segmented
+picker — the browser pane could not composite a screenshot in this session, so
+layout/spacing was confirmed structurally only. Worth a real save pass and an
+eyeball check after deploying.

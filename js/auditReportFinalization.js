@@ -1,70 +1,82 @@
 // ════════════════════════════════════════════
 //  AUDIT REPORT FINALIZATION
 //  A shared status tracker (sidebar module, own top-level nav item) for
-//  where a client's IT return / Estimate return submission and tax
-//  clearance stand for a fiscal year. NOT tied to document generation —
-//  pure task-status tracking used by multiple staff.
+//  where a client's IT return, estimate return and tax clearance stand for
+//  a fiscal year. NOT tied to document generation — pure task tracking.
 //
-//  ONE EVOLVING RECORD per (client, fiscal year): staff edit the same row
-//  over time as the picture changes, never a new row per edit. The
-//  UNIQUE (client_id, fiscal_year) constraint enforces this in the
-//  database; arfOnClientOrFyChange() detects an existing record the moment
-//  both are picked in the form and routes into edit mode against it, so a
-//  save never collides with the constraint in normal use.
+//  ONE RECORD PER (client, fiscal year, RETURN TYPE). The three tracks are
+//  separate pieces of work entered by different staff at different times,
+//  so each gets its own row and its own independent status; a client can
+//  hold an IT Return record, an Estimate Return record and a Tax Clearance
+//  record for the same year. The UNIQUE constraint enforces the triple, and
+//  arfFindExisting() routes the form into editing a match rather than
+//  letting a save collide with it.
 //
-//  IT/Estimate status is a DERIVED 4-key badge (not_submitted / submitted /
-//  verified / not_verified), never a stored column — arfItStatusKey() /
-//  arfEstimateStatusKey() compute it from the raw fields, and that same
-//  function feeds the badge, the filter dropdown and the print/export
-//  column text, so none of the three can ever disagree.
+//  Status is DERIVED, never stored — arfStatusKey() reads the raw columns
+//  of whichever track the row belongs to, and that one function feeds the
+//  badge, the filters, the chart and the export text, so none of them can
+//  drift apart from what was actually saved.
 // ════════════════════════════════════════════
 ModuleRegistry.register({ id: 'auditReportFinalization', group: 'main', buttonId: 'nav-auditReportFinalization', panelId: 'tab-auditReportFinalization-panel' });
 
-const ARF_IT_STATUSES = {
+const ARF_STATUSES = {
   not_submitted: { label: 'Not Submitted', icon: '⬜', badgeClass: 'badge-neutral' },
   submitted:     { label: 'Submitted',     icon: '📤', badgeClass: 'badge-amber' },
   verified:      { label: 'Verified',      icon: '✅', badgeClass: 'badge-sent' },
   not_verified:  { label: 'Not Verified',  icon: '❌', badgeClass: 'badge-error' },
 };
 
-const ARF_ESTIMATE_STATUSES = {
-  not_submitted: { label: 'Not Submitted', icon: '⬜', badgeClass: 'badge-neutral' },
-  submitted:     { label: 'Checked',       icon: '📤', badgeClass: 'badge-amber' },
-  verified:      { label: 'Verified',      icon: '✅', badgeClass: 'badge-sent' },
-  not_verified:  { label: 'Not Verified',  icon: '❌', badgeClass: 'badge-error' },
-};
+// Tax clearance is obtained or not — "verified" reads wrong for it, so that
+// track relabels the same two keys it can reach.
+const ARF_TAX_LABELS = { verified: 'Cleared', not_verified: 'Not Cleared', not_submitted: 'Not Recorded' };
 
-// Used only for their .badgeHtml() mapping — there's no button-driven
-// .transition() here, status is derived from saved fields (same idea
-// billing.js uses for its trigger-owned status badge).
-const arfItFlow = WorkflowEngine.createStatusFlow({ statuses: ARF_IT_STATUSES, onTransition: r => r });
-const arfEstimateFlow = WorkflowEngine.createStatusFlow({ statuses: ARF_ESTIMATE_STATUSES, onTransition: r => r });
+const arfFlow = WorkflowEngine.createStatusFlow({ statuses: ARF_STATUSES, onTransition: r => r });
+
+const ARF_TYPE_BADGES = {
+  it_return:       'badge-blue',
+  estimate_return: 'badge-purple',
+  tax_clearance:   'badge-yellow',
+};
 
 const ARF_FY_START = 2077;
 const ARF_FY_END = 2085;
 const ARF_FY_DEFAULT = '2083/84';
+const ARF_SUBMISSION_DIGITS = 12;
 
+// Stat cards double as quick filters. Each one clears the dropdown filters
+// before applying, so a card always shows the count it advertises.
 const ARF_FILTERS = {
-  all:              { label: 'Total Records',     test: () => true },
-  itVerified:       { label: 'IT Verified',        test: r => arfItStatusKey(r) === 'verified' },
-  estimateVerified: { label: 'Estimate Verified',  test: r => arfEstimateStatusKey(r) === 'verified' },
-  taxCleared:       { label: 'Tax Cleared',        test: r => r.tax_clearance === true },
+  all:         { label: 'Total Records',          test: () => true },
+  itVerified:  { label: 'IT Verified',            test: r => r.return_type === 'it_return' && arfStatusKey(r) === 'verified' },
+  itNotVer:    { label: 'IT Not Verified',        test: r => r.return_type === 'it_return' && arfStatusKey(r) === 'not_verified' },
+  estVerified: { label: 'Estimate Verified',      test: r => r.return_type === 'estimate_return' && arfStatusKey(r) === 'verified' },
+  estNotVer:   { label: 'Estimate Not Verified',  test: r => r.return_type === 'estimate_return' && arfStatusKey(r) === 'not_verified' },
+  taxCleared:  { label: 'Tax Cleared',            test: r => r.return_type === 'tax_clearance' && r.tax_clearance === true },
+  taxNotClear: { label: 'Tax Not Cleared',        test: r => r.return_type === 'tax_clearance' && r.tax_clearance !== true },
 };
 
-const ARF_FILTERS_EMPTY = { auditor: '', fiscalYear: '', itStatus: '', estStatus: '', taxClearance: '' };
+const ARF_FILTERS_EMPTY = { auditor: '', fiscalYear: '', returnType: '', status: '' };
 
 let arfRecords = [];
 let arfTable = null;
+let arfChart = null;
 let arfSelectedClient = null;
 let arfEditingId = null;
+// True when arfEditingId came from the (client, FY, type) auto-match rather
+// than the user pressing Edit. An auto-match must be re-evaluated whenever a
+// key field changes; an explicit edit must not be pulled out from under them.
+let arfAutoMatched = false;
+// Set while the drawer is being populated, so the key-field watcher doesn't
+// fire on the writes that populating performs.
+let arfSuppressKeyWatch = false;
 let arfActiveFilter = 'all';
 let arfInitDone = false;
 let arfFilters = { ...ARF_FILTERS_EMPTY };
-let arfLastModel = null;
 
 function arfUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
 function arfStatusMsg(html, type) { showStatus(html, type, 'arf-status-area'); }
 function arfToday() { return new Date().toISOString().slice(0, 10); }
+function arfEl(id) { return document.getElementById(id); }
 
 function arfFyLabel(startYear) { return startYear + '/' + String((startYear + 1) % 100).padStart(2, '0'); }
 function arfFyOptions() {
@@ -73,53 +85,111 @@ function arfFyOptions() {
   return opts;
 }
 
+function arfTypeLabel(key) {
+  const t = (window.ARF_RETURN_TYPES || []).find(x => x.key === key);
+  return t ? t.label : (key || '—');
+}
+
 // ── Derived status (never stored — see header note) ──
-function arfItStatusKey(row) {
+function arfStatusKey(row) {
+  if (row.return_type === 'tax_clearance') {
+    return row.tax_clearance === true ? 'verified' : 'not_verified';
+  }
+  if (row.return_type === 'estimate_return') {
+    if (row.estimate_verified === true) return 'verified';
+    if (row.estimate_verified === false) return 'not_verified';
+    if ((row.estimate_submission_no || '').trim() || (row.estimate_entered_by || '').trim()) return 'submitted';
+    return 'not_submitted';
+  }
   if (row.it_verified === true) return 'verified';
   if (row.it_verified === false) return 'not_verified';
   if ((row.it_submission_no || '').trim() || (row.it_entered_by || '').trim()) return 'submitted';
   return 'not_submitted';
 }
-function arfEstimateStatusKey(row) {
-  if (row.estimate_verified === true) return 'verified';
-  if (row.estimate_verified === false) return 'not_verified';
-  if ((row.estimate_checked_by || '').trim()) return 'submitted';
-  return 'not_submitted';
+
+function arfStatusLabel(row) {
+  const key = arfStatusKey(row);
+  if (row.return_type === 'tax_clearance') return ARF_TAX_LABELS[key] || ARF_STATUSES[key].label;
+  return ARF_STATUSES[key].label;
+}
+
+function arfStatusBadge(row) {
+  const key = arfStatusKey(row);
+  const meta = ARF_STATUSES[key];
+  return `<span class="log-badge ${meta.badgeClass}">${meta.icon} ${escHtml(arfStatusLabel(row))}</span>`;
+}
+
+// Whichever of the two staff columns applies to this row's track.
+function arfRowEnteredBy(row) {
+  return row.return_type === 'estimate_return' ? row.estimate_entered_by : row.it_entered_by;
+}
+function arfRowSubmissionNo(row) {
+  return row.return_type === 'estimate_return' ? row.estimate_submission_no : row.it_submission_no;
 }
 
 // ── Init & load ──
 function arfInit() {
   if (!arfInitDone) {
-    SearchEngine.attachAutocomplete(document.getElementById('arf-client-search'), document.getElementById('arf-client-autocomplete'), {
+    SearchEngine.attachAutocomplete(arfEl('arf-client-search'), arfEl('arf-client-autocomplete'), {
       getList: () => window.clientsList,
       keys: ['name', 'pan'],
       renderItem: c => `<div class="ac-name">${escHtml(c.name)}</div><div class="ac-email">PAN ${escHtml(c.pan || '—')}</div>`,
       onSelect: arfSelectClient,
     });
     arfPopulateStaticDropdowns();
+    arfAttachDigitGuards();
     arfInitDone = true;
   }
   arfRefresh();
 }
 
 function arfPopulateStaticDropdowns() {
-  const auditorOpts = '<option value="">Select…</option>' + window.ARF_AUDITORS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
-  document.getElementById('arf-auditor').innerHTML = auditorOpts;
-  document.getElementById('arf-filter-auditor').innerHTML = '<option value="">All Auditors</option>' + window.ARF_AUDITORS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
+  const auditors = window.ARF_AUDITORS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
+  arfEl('arf-auditor').innerHTML = '<option value="">Select…</option>' + auditors;
+  arfEl('arf-filter-auditor').innerHTML = '<option value="">All Auditors</option>' +
+    window.ARF_AUDITORS.filter(a => a !== 'Other').map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
 
-  const staffOpts = window.ARF_STAFF.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
-  document.getElementById('arf-it-entered-by').innerHTML = '<option value="">Select…</option>' + staffOpts;
-  document.getElementById('arf-estimate-checked-by').innerHTML = '<option value="">Select…</option>' + staffOpts;
+  const staff = window.ARF_STAFF.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  ['arf-it-entered-by', 'arf-it-checked-by', 'arf-estimate-entered-by'].forEach(id => {
+    arfEl(id).innerHTML = '<option value="">Select…</option>' + staff;
+  });
+
+  arfEl('arf-it-return-type').innerHTML = '<option value="">Select…</option>' +
+    window.ARF_IT_RETURN_TYPES.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
 
   const fyOpts = arfFyOptions().map(fy => `<option value="${fy}">${fy}</option>`).join('');
-  document.getElementById('arf-fiscal-year').innerHTML = fyOpts;
-  document.getElementById('arf-fiscal-year').value = ARF_FY_DEFAULT;
-  document.getElementById('arf-filter-fy').innerHTML = '<option value="">All Years</option>' + fyOpts;
+  arfEl('arf-fiscal-year').innerHTML = fyOpts;
+  arfEl('arf-fiscal-year').value = ARF_FY_DEFAULT;
+  arfEl('arf-filter-fy').innerHTML = '<option value="">All Years</option>' + fyOpts;
 
-  const itStatusOpts = Object.entries(ARF_IT_STATUSES).map(([k, m]) => `<option value="${k}">${escHtml(m.label)}</option>`).join('');
-  document.getElementById('arf-filter-it-status').innerHTML = '<option value="">All IT Status</option>' + itStatusOpts;
-  const estStatusOpts = Object.entries(ARF_ESTIMATE_STATUSES).map(([k, m]) => `<option value="${k}">${escHtml(m.label)}</option>`).join('');
-  document.getElementById('arf-filter-est-status').innerHTML = '<option value="">All Estimate Status</option>' + estStatusOpts;
+  arfEl('arf-filter-type').innerHTML = '<option value="">All Types</option>' +
+    window.ARF_RETURN_TYPES.map(t => `<option value="${t.key}">${escHtml(t.label)}</option>`).join('');
+  arfEl('arf-filter-status').innerHTML = '<option value="">All Statuses</option>' +
+    Object.entries(ARF_STATUSES).map(([k, m]) => `<option value="${k}">${escHtml(m.label)}</option>`).join('');
+}
+
+// Submission numbers are exactly 12 digits — strip anything else as it's
+// typed rather than letting a bad value reach the DB CHECK and surface as a
+// raw Postgres error.
+function arfAttachDigitGuards() {
+  ['arf-it-submission-no', 'arf-estimate-submission-no'].forEach(id => {
+    arfEl(id).addEventListener('input', e => {
+      const cleaned = e.target.value.replace(/\D/g, '').slice(0, ARF_SUBMISSION_DIGITS);
+      if (e.target.value !== cleaned) e.target.value = cleaned;
+      arfUpdateDigitHint(id);
+    });
+  });
+}
+
+function arfUpdateDigitHint(inputId) {
+  const el = arfEl(inputId);
+  const hint = arfEl(inputId + '-hint');
+  if (!hint) return;
+  const len = (el.value || '').length;
+  if (!len) { hint.textContent = `${ARF_SUBMISSION_DIGITS} digits`; hint.style.color = 'var(--text-faint)'; return; }
+  const ok = len === ARF_SUBMISSION_DIGITS;
+  hint.textContent = ok ? `✓ ${len}/${ARF_SUBMISSION_DIGITS}` : `${len}/${ARF_SUBMISSION_DIGITS} digits`;
+  hint.style.color = ok ? 'var(--green-dk)' : 'var(--red-dk)';
 }
 
 async function arfRefresh() {
@@ -129,7 +199,7 @@ async function arfRefresh() {
       .select('*').order('fiscal_year', { ascending: false }).order('client_name', { ascending: true }));
     arfRenderStats();
     arfRenderTable();
-    document.getElementById('arf-status-area').innerHTML = '';
+    arfEl('arf-status-area').innerHTML = '';
   } catch (e) {
     arfStatusMsg('❌ Failed to load records: ' + escHtml(e.message || String(e)), 'error');
   }
@@ -137,27 +207,69 @@ async function arfRefresh() {
 
 // ── Stat cards (also the quick filters) ──
 function arfRenderStats() {
-  const grid = document.getElementById('arf-stat-grid');
+  const grid = arfEl('arf-stat-grid');
   if (!grid) return;
   grid.innerHTML = Object.entries(ARF_FILTERS).map(([key, f]) => `
-    <div class="stat-card clickable ${arfActiveFilter === key ? 'active-filter' : ''}" onclick="arfSetFilter('${key}')" title="Click to filter the table below">
+    <div class="stat-card clickable ${arfActiveFilter === key ? 'active-filter' : ''}" onclick="arfSetFilter('${key}')" title="Show only these — clears the filters below">
       <div class="stat-num">${arfRecords.filter(f.test).length}</div>
       <div class="stat-label">${f.label}</div>
     </div>`).join('');
 }
 
+// A card is a fresh start: its number counts the whole portfolio, so leaving
+// stale dropdown filters applied would show fewer rows than the card claims.
 function arfSetFilter(key) {
   arfActiveFilter = key;
+  arfResetFilterInputs();
   arfRenderStats();
   arfApplyFilters();
 }
 
+function arfResetFilterInputs() {
+  ['arf-filter-auditor', 'arf-filter-fy', 'arf-filter-type', 'arf-filter-status', 'arf-search'].forEach(id => {
+    const el = arfEl(id); if (el) el.value = '';
+  });
+  arfFilters = { ...ARF_FILTERS_EMPTY };
+}
+
+// ── Overview chart ──
+function arfRenderChart(rows) {
+  const el = arfEl('arf-chart');
+  if (!el || !window.Chart) return;
+  if (arfChart) { arfChart.destroy(); arfChart = null; }
+
+  const bucket = (type, key) => rows.filter(r => r.return_type === type && arfStatusKey(r) === key).length;
+  const pending = type => rows.filter(r => r.return_type === type && ['not_submitted', 'submitted'].includes(arfStatusKey(r))).length;
+
+  arfChart = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: ['IT Return', 'Estimate Return', 'Tax Clearance'],
+      datasets: [
+        { label: 'Verified / Cleared', backgroundColor: '#10b981',
+          data: [bucket('it_return', 'verified'), bucket('estimate_return', 'verified'), bucket('tax_clearance', 'verified')] },
+        { label: 'Not Verified / Not Cleared', backgroundColor: '#ef4444',
+          data: [bucket('it_return', 'not_verified'), bucket('estimate_return', 'not_verified'), bucket('tax_clearance', 'not_verified')] },
+        { label: 'Pending', backgroundColor: '#f59e0b',
+          data: [pending('it_return'), pending('estimate_return'), 0] },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+}
+
 // ── List table ──
 function arfRenderTable() {
-  const wrap = document.getElementById('arf-table-wrap');
+  const wrap = arfEl('arf-table-wrap');
   if (arfTable) { arfTable.destroy(); arfTable = null; }
   if (!arfRecords.length) {
     wrap.innerHTML = '<div class="log-empty">No records yet. Click <strong>New Record</strong> to track a client\'s finalization status.</div>';
+    arfRenderChart([]);
     return;
   }
   wrap.innerHTML = '';
@@ -169,18 +281,21 @@ function arfRenderTable() {
     paginationSizeSelector: [25, 50, 100],
     columns: [
       { title: 'FY', field: 'fiscal_year', width: 90 },
-      { title: 'Client', field: 'client_name', minWidth: 170, formatter: c => {
+      { title: 'Client', field: 'client_name', minWidth: 180, formatter: c => {
           const r = c.getRow().getData();
           return escHtml(r.client_name || '—') + (r.client_pan ? `<br><span style="color:var(--text-faint); font-size:12px;">PAN ${escHtml(r.client_pan)}</span>` : '');
         } },
+      { title: 'Type', field: 'return_type', width: 145, formatter: c => {
+          const r = c.getRow().getData();
+          const extra = r.return_type === 'it_return' && r.it_return_type ? ` ${escHtml(r.it_return_type)}` : '';
+          return `<span class="log-badge ${ARF_TYPE_BADGES[r.return_type] || 'badge-neutral'}">${escHtml(arfTypeLabel(r.return_type))}${extra}</span>`;
+        } },
       { title: 'Auditor', field: 'auditor', minWidth: 160, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'IT Entered By', field: 'it_entered_by', minWidth: 130, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'IT Status', field: 'it_verified', width: 130, headerSort: false, formatter: c => arfItFlow.badgeHtml(arfItStatusKey(c.getRow().getData())) },
-      { title: 'Estimate Checked By', field: 'estimate_checked_by', minWidth: 150, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'Estimate Status', field: 'estimate_verified', width: 130, headerSort: false, formatter: c => arfEstimateFlow.badgeHtml(arfEstimateStatusKey(c.getRow().getData())) },
-      { title: 'Tax Clearance', field: 'tax_clearance', width: 120, formatter: c => c.getValue()
-          ? `<span class="log-badge badge-sent">✅ Yes</span>` : `<span class="log-badge badge-neutral">— No</span>` },
-      { title: 'Actions', field: 'id', headerSort: false, minWidth: 190, formatter: c => arfRowActions(c.getRow().getData()),
+      { title: 'Entered By', field: 'it_entered_by', minWidth: 120, headerSort: false, formatter: c => escHtml(arfRowEnteredBy(c.getRow().getData()) || '—') },
+      { title: 'Checked By', field: 'it_checked_by', minWidth: 120, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Submission No.', field: 'it_submission_no', minWidth: 140, headerSort: false, formatter: c => escHtml(arfRowSubmissionNo(c.getRow().getData()) || '—') },
+      { title: 'Status', field: 'id', width: 140, headerSort: false, formatter: c => arfStatusBadge(c.getRow().getData()) },
+      { title: 'Actions', field: 'id', headerSort: false, minWidth: 190, formatter: c => arfRowActions(),
         cellClick: (e, cell) => {
           const btn = e.target.closest('[data-action]');
           if (!btn) return;
@@ -194,19 +309,18 @@ function arfRenderTable() {
   arfApplyFilters();
 }
 
-function arfRowActions(row) {
-  const btn = (a, label, title) => `<button class="btn btn-outline btn-sm" data-action="${a}" title="${title || label}">${label}</button>`;
+function arfRowActions() {
+  const btn = (a, label) => `<button class="btn btn-outline btn-sm" data-action="${a}" title="${label}">${label}</button>`;
   return `<div class="client-actions">${btn('edit', 'Edit')}${btn('print', 'Print')}${btn('delete', 'Delete')}</div>`;
 }
 
 // ── Filters ──
 function arfReadFilters() {
   arfFilters = {
-    auditor: document.getElementById('arf-filter-auditor').value,
-    fiscalYear: document.getElementById('arf-filter-fy').value,
-    itStatus: document.getElementById('arf-filter-it-status').value,
-    estStatus: document.getElementById('arf-filter-est-status').value,
-    taxClearance: document.getElementById('arf-filter-tax-clearance').value,
+    auditor: arfEl('arf-filter-auditor').value,
+    fiscalYear: arfEl('arf-filter-fy').value,
+    returnType: arfEl('arf-filter-type').value,
+    status: arfEl('arf-filter-status').value,
   };
 }
 
@@ -216,168 +330,281 @@ function arfCurrentFilteredRows() {
     if (!cardTest(r)) return false;
     if (arfFilters.auditor && r.auditor !== arfFilters.auditor) return false;
     if (arfFilters.fiscalYear && r.fiscal_year !== arfFilters.fiscalYear) return false;
-    if (arfFilters.itStatus && arfItStatusKey(r) !== arfFilters.itStatus) return false;
-    if (arfFilters.estStatus && arfEstimateStatusKey(r) !== arfFilters.estStatus) return false;
-    if (arfFilters.taxClearance === 'yes' && r.tax_clearance !== true) return false;
-    if (arfFilters.taxClearance === 'no' && r.tax_clearance === true) return false;
+    if (arfFilters.returnType && r.return_type !== arfFilters.returnType) return false;
+    if (arfFilters.status && arfStatusKey(r) !== arfFilters.status) return false;
     return true;
   });
-  const q = (document.getElementById('arf-search').value || '').trim();
+  const q = (arfEl('arf-search').value || '').trim();
   if (q) {
-    const fuse = SearchEngine.buildIndex(rows, ['client_name', 'client_pan', 'it_submission_no', 'remarks']);
+    const fuse = SearchEngine.buildIndex(rows, ['client_name', 'client_pan', 'it_submission_no', 'estimate_submission_no', 'remarks']);
     rows = fuse.search(q).map(r => r.item);
   }
   return rows;
 }
 
 function arfApplyFilters() {
-  if (!arfTable) return;
-  arfTable.replaceData(arfCurrentFilteredRows());
+  const rows = arfCurrentFilteredRows();
+  arfRenderChart(rows);
+  if (arfTable) arfTable.replaceData(rows);
 }
 
 function arfOnFilterChange() { arfReadFilters(); arfApplyFilters(); }
 
 function arfClearFilters() {
-  ['arf-filter-auditor', 'arf-filter-fy', 'arf-filter-it-status', 'arf-filter-est-status', 'arf-filter-tax-clearance', 'arf-search'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
-  arfFilters = { ...ARF_FILTERS_EMPTY };
+  arfResetFilterInputs();
   arfActiveFilter = 'all';
   arfRenderStats();
   arfApplyFilters();
 }
 
-// ── Entry drawer (create / edit) ──
+// ── Entry drawer ──
 function arfSelectClient(c) {
   arfSelectedClient = c;
-  document.getElementById('arf-client-search').value = c.name;
-  document.getElementById('arf-client-pan').value = c.pan || '';
-  arfOnClientOrFyChange();
+  arfEl('arf-client-search').value = c.name;
+  arfEl('arf-client-pan').value = c.pan || '';
+  arfOnKeyFieldChange();
 }
 
-// One evolving record per (client, fiscal year): the moment both are known,
-// look for an existing row and switch into editing it instead of letting a
-// second save collide with the UNIQUE constraint.
-function arfOnClientOrFyChange() {
-  const fy = document.getElementById('arf-fiscal-year').value;
-  if (!arfSelectedClient || !fy || arfEditingId) return;
-  const existing = arfRecords.find(r => r.client_id === arfSelectedClient.id && r.fiscal_year === fy);
+function arfCurrentType() {
+  const checked = document.querySelector('input[name="arf-return-type"]:checked');
+  return checked ? checked.value : 'it_return';
+}
+
+function arfOnTypeChange() {
+  const type = arfCurrentType();
+  arfEl('arf-section-it').style.display = type === 'it_return' ? '' : 'none';
+  arfEl('arf-section-estimate').style.display = type === 'estimate_return' ? '' : 'none';
+  arfEl('arf-section-tax').style.display = type === 'tax_clearance' ? '' : 'none';
+  document.querySelectorAll('.arf-type-option').forEach(el => {
+    el.classList.toggle('active', el.dataset.type === type);
+  });
+  arfOnKeyFieldChange();
+}
+
+// One record per (client, fiscal year, return type): as soon as all three are
+// known, load a matching record for editing rather than letting a save
+// collide with the UNIQUE constraint.
+function arfFindExisting(clientId, fy, type) {
+  return arfRecords.find(r => r.client_id === clientId && r.fiscal_year === fy && r.return_type === type);
+}
+
+// Re-evaluated on every key-field change (client, fiscal year, return type),
+// because changing any of the three changes WHICH record you are on. An
+// auto-matched record that no longer matches is released back to a new one,
+// otherwise switching return type would keep editing the previous track's row.
+function arfOnKeyFieldChange() {
+  if (arfSuppressKeyWatch) return;
+  if (arfEditingId && !arfAutoMatched) return;   // explicit Edit — leave it alone
+
+  const fy = arfEl('arf-fiscal-year').value;
+  const existing = (arfSelectedClient && fy)
+    ? arfFindExisting(arfSelectedClient.id, fy, arfCurrentType())
+    : null;
+
   if (existing) {
+    if (existing.id === arfEditingId) return;
     arfLoadIntoDrawer(existing, true);
-    showStatus('Editing the existing record for this client and fiscal year.', 'info', 'arf-drawer-status');
+    arfAutoMatched = true;
+    showStatus('Editing this client\'s existing record for that year and return type.', 'info', 'arf-drawer-status');
+  } else if (arfAutoMatched) {
+    arfClearTrackFields();
+    arfEditingId = null;
+    arfAutoMatched = false;
+    arfEl('arf-drawer-title').textContent = 'New Record';
+    arfEl('arf-drawer-status').innerHTML = '';
   }
 }
 
+// The per-track fields plus remarks — everything that belongs to the record
+// rather than to the client/year/auditor selection above it.
+function arfClearTrackFields() {
+  arfSuppressKeyWatch = true;
+  arfEl('arf-it-return-type').value = '';
+  arfEl('arf-it-submission-no').value = '';
+  arfEl('arf-it-verified').value = '';
+  arfEl('arf-estimate-submission-no').value = '';
+  arfEl('arf-estimate-verified').value = '';
+  ['arf-it-entered-by', 'arf-it-checked-by', 'arf-estimate-entered-by'].forEach(id => {
+    arfEl(id).value = '';
+    arfEl(id + '-other').value = '';
+    arfEl(id + '-other-group').style.display = 'none';
+  });
+  arfEl('arf-tax-clearance').value = 'false';
+  arfOnTaxClearanceChange();
+  arfEl('arf-tax-reason').value = '';
+  arfEl('arf-remarks').value = '';
+  arfUpdateDigitHint('arf-it-submission-no');
+  arfUpdateDigitHint('arf-estimate-submission-no');
+  arfSuppressKeyWatch = false;
+}
+
 function arfResolveStaffField(selectId, otherId) {
-  const sel = document.getElementById(selectId).value;
-  if (sel === 'Other') return document.getElementById(otherId).value.trim() || null;
+  const sel = arfEl(selectId).value;
+  if (sel === 'Other') return arfEl(otherId).value.trim() || null;
   return sel || null;
 }
 
 function arfOnStaffChange(selectId, otherGroupId) {
-  const sel = document.getElementById(selectId);
-  document.getElementById(otherGroupId).style.display = sel.value === 'Other' ? '' : 'none';
+  arfEl(otherGroupId).style.display = arfEl(selectId).value === 'Other' ? '' : 'none';
 }
 
 function arfOnTaxClearanceChange() {
-  const on = document.getElementById('arf-tax-clearance').checked;
-  document.getElementById('arf-tax-clearance-date-group').style.display = on ? '' : 'none';
-  const dateEl = document.getElementById('arf-tax-clearance-date');
-  if (on && !dateEl.value) dateEl.value = arfToday();
-  if (!on) dateEl.value = '';
+  const cleared = arfEl('arf-tax-clearance').value === 'true';
+  arfEl('arf-tax-clearance-date-group').style.display = cleared ? '' : 'none';
+  arfEl('arf-tax-reason-group').style.display = cleared ? 'none' : '';
+  if (cleared) {
+    arfEl('arf-tax-reason').value = '';
+    if (!arfEl('arf-tax-clearance-date').value) arfEl('arf-tax-clearance-date').value = arfToday();
+  } else {
+    arfEl('arf-tax-clearance-date').value = '';
+  }
+}
+
+// Re-show a saved name that isn't one of the fixed options in its "Other" box.
+function arfFillStaffField(selectId, otherId, otherGroupId, value, list) {
+  const fixed = list.filter(x => x !== 'Other');
+  const isOther = !!value && !fixed.includes(value);
+  arfEl(selectId).value = isOther ? 'Other' : (value || '');
+  arfEl(otherId).value = isOther ? value : '';
+  arfEl(otherGroupId).style.display = isOther ? '' : 'none';
+}
+
+function arfSetType(type) {
+  const radio = document.querySelector(`input[name="arf-return-type"][value="${type}"]`);
+  if (radio) radio.checked = true;
+  arfOnTypeChange();
 }
 
 function arfLoadIntoDrawer(existing, keepClientTyped) {
+  arfSuppressKeyWatch = true;
   arfEditingId = existing.id;
-  document.getElementById('arf-drawer-title').textContent = `Edit Record — ${existing.client_name}`;
+  arfEl('arf-drawer-title').textContent = `Edit — ${existing.client_name}`;
 
   if (!keepClientTyped) {
-    document.getElementById('arf-client-search').value = existing.client_name || '';
-    document.getElementById('arf-client-pan').value = existing.client_pan || '';
+    arfEl('arf-client-search').value = existing.client_name || '';
+    arfEl('arf-client-pan').value = existing.client_pan || '';
     arfSelectedClient = (window.clientsList || []).find(c => c.id === existing.client_id) || null;
   }
-  document.getElementById('arf-fiscal-year').value = existing.fiscal_year || ARF_FY_DEFAULT;
-  document.getElementById('arf-auditor').value = existing.auditor || '';
+  arfEl('arf-fiscal-year').value = existing.fiscal_year || ARF_FY_DEFAULT;
+  arfFillStaffField('arf-auditor', 'arf-auditor-other', 'arf-auditor-other-group', existing.auditor, window.ARF_AUDITORS);
+  arfSetType(existing.return_type || 'it_return');
 
-  const itIsOther = existing.it_entered_by && !window.ARF_STAFF.slice(0, -1).includes(existing.it_entered_by);
-  document.getElementById('arf-it-entered-by').value = itIsOther ? 'Other' : (existing.it_entered_by || '');
-  document.getElementById('arf-it-entered-by-other').value = itIsOther ? existing.it_entered_by : '';
-  arfOnStaffChange('arf-it-entered-by', 'arf-it-entered-by-other-group');
-  document.getElementById('arf-it-submission-no').value = existing.it_submission_no || '';
-  document.getElementById('arf-it-verified').value = existing.it_verified === true ? 'true' : existing.it_verified === false ? 'false' : '';
+  arfEl('arf-it-return-type').value = existing.it_return_type || '';
+  arfEl('arf-it-submission-no').value = existing.it_submission_no || '';
+  arfFillStaffField('arf-it-entered-by', 'arf-it-entered-by-other', 'arf-it-entered-by-other-group', existing.it_entered_by, window.ARF_STAFF);
+  arfFillStaffField('arf-it-checked-by', 'arf-it-checked-by-other', 'arf-it-checked-by-other-group', existing.it_checked_by, window.ARF_STAFF);
+  arfEl('arf-it-verified').value = existing.it_verified === true ? 'true' : existing.it_verified === false ? 'false' : '';
 
-  const estIsOther = existing.estimate_checked_by && !window.ARF_STAFF.slice(0, -1).includes(existing.estimate_checked_by);
-  document.getElementById('arf-estimate-checked-by').value = estIsOther ? 'Other' : (existing.estimate_checked_by || '');
-  document.getElementById('arf-estimate-checked-by-other').value = estIsOther ? existing.estimate_checked_by : '';
-  arfOnStaffChange('arf-estimate-checked-by', 'arf-estimate-checked-by-other-group');
-  document.getElementById('arf-estimate-verified').value = existing.estimate_verified === true ? 'true' : existing.estimate_verified === false ? 'false' : '';
+  arfEl('arf-estimate-submission-no').value = existing.estimate_submission_no || '';
+  arfFillStaffField('arf-estimate-entered-by', 'arf-estimate-entered-by-other', 'arf-estimate-entered-by-other-group', existing.estimate_entered_by, window.ARF_STAFF);
+  arfEl('arf-estimate-verified').value = existing.estimate_verified === true ? 'true' : existing.estimate_verified === false ? 'false' : '';
 
-  document.getElementById('arf-tax-clearance').checked = !!existing.tax_clearance;
-  document.getElementById('arf-tax-clearance-date').value = existing.tax_clearance_date || '';
+  arfEl('arf-tax-clearance').value = existing.tax_clearance ? 'true' : 'false';
   arfOnTaxClearanceChange();
+  arfEl('arf-tax-clearance-date').value = existing.tax_clearance_date || '';
+  arfEl('arf-tax-reason').value = existing.tax_clearance_remarks || '';
 
-  document.getElementById('arf-remarks').value = existing.remarks || '';
+  arfEl('arf-remarks').value = existing.remarks || '';
+  arfUpdateDigitHint('arf-it-submission-no');
+  arfUpdateDigitHint('arf-estimate-submission-no');
+  arfSuppressKeyWatch = false;
 }
 
 function arfOpenEntry(existing) {
+  arfSuppressKeyWatch = true;
   arfEditingId = null;
+  arfAutoMatched = false;
   arfSelectedClient = null;
-  document.getElementById('arf-drawer-title').textContent = existing ? `Edit Record — ${existing.client_name}` : 'New Record';
-  document.getElementById('arf-drawer-status').innerHTML = '';
+  arfEl('arf-drawer-title').textContent = existing ? `Edit — ${existing.client_name}` : 'New Record';
+  arfEl('arf-drawer-status').innerHTML = '';
 
-  document.getElementById('arf-client-search').value = '';
-  document.getElementById('arf-client-pan').value = '';
-  document.getElementById('arf-fiscal-year').value = ARF_FY_DEFAULT;
-  document.getElementById('arf-auditor').value = '';
-  document.getElementById('arf-it-entered-by').value = '';
-  document.getElementById('arf-it-entered-by-other').value = '';
-  document.getElementById('arf-it-entered-by-other-group').style.display = 'none';
-  document.getElementById('arf-it-submission-no').value = '';
-  document.getElementById('arf-it-verified').value = '';
-  document.getElementById('arf-estimate-checked-by').value = '';
-  document.getElementById('arf-estimate-checked-by-other').value = '';
-  document.getElementById('arf-estimate-checked-by-other-group').style.display = 'none';
-  document.getElementById('arf-estimate-verified').value = '';
-  document.getElementById('arf-tax-clearance').checked = false;
-  document.getElementById('arf-tax-clearance-date').value = '';
-  document.getElementById('arf-tax-clearance-date-group').style.display = 'none';
-  document.getElementById('arf-remarks').value = '';
+  arfEl('arf-client-search').value = '';
+  arfEl('arf-client-pan').value = '';
+  arfEl('arf-fiscal-year').value = ARF_FY_DEFAULT;
+  arfEl('arf-auditor').value = '';
+  arfEl('arf-auditor-other').value = '';
+  arfEl('arf-auditor-other-group').style.display = 'none';
+  arfSetType('it_return');
 
+  arfEl('arf-it-return-type').value = '';
+  arfEl('arf-it-submission-no').value = '';
+  arfEl('arf-it-verified').value = '';
+  arfEl('arf-estimate-submission-no').value = '';
+  arfEl('arf-estimate-verified').value = '';
+  ['arf-it-entered-by', 'arf-it-checked-by', 'arf-estimate-entered-by'].forEach(id => {
+    arfEl(id).value = '';
+    arfEl(id + '-other').value = '';
+    arfEl(id + '-other-group').style.display = 'none';
+  });
+  arfEl('arf-tax-clearance').value = 'false';
+  arfOnTaxClearanceChange();
+  arfEl('arf-tax-reason').value = '';
+  arfEl('arf-remarks').value = '';
+  arfUpdateDigitHint('arf-it-submission-no');
+  arfUpdateDigitHint('arf-estimate-submission-no');
+  arfSuppressKeyWatch = false;
+
+  // An explicit Edit is never auto-matched, so switching return type inside it
+  // edits THIS record rather than jumping to another one.
   if (existing) arfLoadIntoDrawer(existing, false);
 
-  document.getElementById('arf-entry-drawer').classList.add('open');
+  arfEl('arf-entry-drawer').classList.add('open');
 }
 
-function arfCloseEntry() { document.getElementById('arf-entry-drawer').classList.remove('open'); }
+function arfCloseEntry() { arfEl('arf-entry-drawer').classList.remove('open'); }
 
 async function arfSaveEntry() {
   const drawerErr = msg => showStatus(escHtml(msg), 'info', 'arf-drawer-status');
-  const clientName = document.getElementById('arf-client-search').value.trim();
+  const clientName = arfEl('arf-client-search').value.trim();
   if (!clientName) { drawerErr('Enter or select a client.'); return; }
   // Keep client_id only while the typed name still matches the picked client
   // — a hand-edited name means no client_id, and this table requires one.
   const clientId = (arfSelectedClient && arfSelectedClient.name === clientName) ? arfSelectedClient.id : null;
   if (!clientId) { drawerErr('Pick a client from the list — this module only tracks directory clients.'); return; }
-  const fiscalYear = document.getElementById('arf-fiscal-year').value;
+  const fiscalYear = arfEl('arf-fiscal-year').value;
   if (!fiscalYear) { drawerErr('Choose a fiscal year.'); return; }
-  const auditor = document.getElementById('arf-auditor').value;
+  const auditor = arfResolveStaffField('arf-auditor', 'arf-auditor-other');
   if (!auditor) { drawerErr('Choose an auditor.'); return; }
 
+  const type = arfCurrentType();
+  // Catches every path into a UNIQUE (client, fiscal year, return type)
+  // collision — including changing the type while editing an existing record —
+  // so the user sees this instead of a raw Postgres constraint error.
+  const clash = arfFindExisting(clientId, fiscalYear, type);
+  if (clash && clash.id !== arfEditingId) {
+    drawerErr(`${clientName} already has an existing ${arfTypeLabel(type)} record for ${fiscalYear}. Open that record to edit it.`);
+    return;
+  }
+
+  const itNo = arfEl('arf-it-submission-no').value.trim();
+  const estNo = arfEl('arf-estimate-submission-no').value.trim();
+  if (type === 'it_return' && itNo && itNo.length !== ARF_SUBMISSION_DIGITS) {
+    drawerErr(`IT Submission No. must be exactly ${ARF_SUBMISSION_DIGITS} digits.`); return;
+  }
+  if (type === 'estimate_return' && estNo && estNo.length !== ARF_SUBMISSION_DIGITS) {
+    drawerErr(`Estimate Submission No. must be exactly ${ARF_SUBMISSION_DIGITS} digits.`); return;
+  }
+
+  const cleared = arfEl('arf-tax-clearance').value === 'true';
   const payload = {
     client_id: clientId,
     client_name: clientName,
-    client_pan: document.getElementById('arf-client-pan').value.trim() || null,
+    client_pan: arfEl('arf-client-pan').value.trim() || null,
     fiscal_year: fiscalYear,
+    return_type: type,
     auditor,
-    it_entered_by: arfResolveStaffField('arf-it-entered-by', 'arf-it-entered-by-other'),
-    it_submission_no: document.getElementById('arf-it-submission-no').value.trim() || null,
-    it_verified: arfReadTriState('arf-it-verified'),
-    estimate_checked_by: arfResolveStaffField('arf-estimate-checked-by', 'arf-estimate-checked-by-other'),
-    estimate_verified: arfReadTriState('arf-estimate-verified'),
-    tax_clearance: document.getElementById('arf-tax-clearance').checked,
-    tax_clearance_date: document.getElementById('arf-tax-clearance').checked
-      ? (document.getElementById('arf-tax-clearance-date').value || null) : null,
-    remarks: document.getElementById('arf-remarks').value.trim() || null,
+    it_return_type: type === 'it_return' ? (arfEl('arf-it-return-type').value || null) : null,
+    it_submission_no: type === 'it_return' ? (itNo || null) : null,
+    it_entered_by: type === 'it_return' ? arfResolveStaffField('arf-it-entered-by', 'arf-it-entered-by-other') : null,
+    it_checked_by: type === 'it_return' ? arfResolveStaffField('arf-it-checked-by', 'arf-it-checked-by-other') : null,
+    it_verified: type === 'it_return' ? arfReadTriState('arf-it-verified') : null,
+    estimate_submission_no: type === 'estimate_return' ? (estNo || null) : null,
+    estimate_entered_by: type === 'estimate_return' ? arfResolveStaffField('arf-estimate-entered-by', 'arf-estimate-entered-by-other') : null,
+    estimate_verified: type === 'estimate_return' ? arfReadTriState('arf-estimate-verified') : null,
+    tax_clearance: type === 'tax_clearance' ? cleared : false,
+    tax_clearance_date: type === 'tax_clearance' && cleared ? (arfEl('arf-tax-clearance-date').value || null) : null,
+    tax_clearance_remarks: type === 'tax_clearance' && !cleared ? (arfEl('arf-tax-reason').value.trim() || null) : null,
+    remarks: arfEl('arf-remarks').value.trim() || null,
     updated_by: arfUserEmail(),
   };
 
@@ -386,12 +613,12 @@ async function arfSaveEntry() {
     if (arfEditingId) {
       const { error } = await window.sb.from('audit_report_finalization').update(payload).eq('id', arfEditingId);
       if (error) throw error;
-      AuditLog.record('arf_updated', { module: 'auditReportFinalization', clientName, recordRef: arfEditingId, detail: { fiscalYear } });
+      AuditLog.record('arf_updated', { module: 'auditReportFinalization', clientName, recordRef: arfEditingId, detail: { fiscalYear, returnType: type } });
     } else {
       payload.created_by = payload.updated_by;
       const { data, error } = await window.sb.from('audit_report_finalization').insert(payload).select('id').single();
       if (error) throw error;
-      AuditLog.record('arf_created', { module: 'auditReportFinalization', clientName, recordRef: data.id, detail: { fiscalYear } });
+      AuditLog.record('arf_created', { module: 'auditReportFinalization', clientName, recordRef: data.id, detail: { fiscalYear, returnType: type } });
     }
     arfCloseEntry();
     await arfRefresh();
@@ -402,12 +629,12 @@ async function arfSaveEntry() {
 }
 
 function arfReadTriState(selectId) {
-  const v = document.getElementById(selectId).value;
+  const v = arfEl(selectId).value;
   return v === 'true' ? true : v === 'false' ? false : null;
 }
 
 async function arfDeleteEntry(row) {
-  if (!confirm(`Delete the ${row.fiscal_year} record for ${row.client_name || 'this client'}? This cannot be undone.`)) return;
+  if (!confirm(`Delete the ${arfTypeLabel(row.return_type)} record for ${row.client_name || 'this client'} (${row.fiscal_year})? This cannot be undone.`)) return;
   const { error } = await window.sb.from('audit_report_finalization').delete().eq('id', row.id);
   if (error) { arfStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
   AuditLog.record('arf_deleted', { module: 'auditReportFinalization', clientName: row.client_name, recordRef: row.id });
@@ -419,19 +646,19 @@ function arfBuildModel(rows, titleSuffix) {
   return {
     title: 'Audit Report Finalization' + (titleSuffix ? ' — ' + titleSuffix : ''),
     subtitleLines: [`Generated ${arfToday()}`],
+    landscape: true,
     columns: [
-      { label: 'FY', w: 0.9 }, { label: 'Client', w: 2 }, { label: 'PAN', w: 1 },
-      { label: 'Auditor', w: 1.6 }, { label: 'IT Entered By', w: 1.3 }, { label: 'IT Submission No.', w: 1.3 },
-      { label: 'IT Status', w: 1.2 }, { label: 'Estimate Checked By', w: 1.3 }, { label: 'Estimate Status', w: 1.2 },
-      { label: 'Tax Clearance', w: 1 }, { label: 'Tax Clearance Date', w: 1.1 }, { label: 'Remarks', w: 1.8 },
+      { label: 'FY', w: 0.85 }, { label: 'Client', w: 2 }, { label: 'PAN', w: 1 },
+      { label: 'Type', w: 1.2 }, { label: 'IT Form', w: 0.7 }, { label: 'Auditor', w: 1.5 },
+      { label: 'Entered By', w: 1.1 }, { label: 'Checked By', w: 1.1 }, { label: 'Submission No.', w: 1.3 },
+      { label: 'Status', w: 1.1 }, { label: 'Clearance Date', w: 1.1 }, { label: 'Remarks', w: 1.8 },
     ],
     rows: rows.map(r => ({ cells: [
       r.fiscal_year, r.client_name, r.client_pan,
-      r.auditor, r.it_entered_by, r.it_submission_no,
-      ARF_IT_STATUSES[arfItStatusKey(r)].label,
-      r.estimate_checked_by, ARF_ESTIMATE_STATUSES[arfEstimateStatusKey(r)].label,
-      r.tax_clearance ? 'Yes' : 'No', r.tax_clearance_date,
-      r.remarks,
+      arfTypeLabel(r.return_type), r.it_return_type, r.auditor,
+      arfRowEnteredBy(r), r.it_checked_by, arfRowSubmissionNo(r),
+      arfStatusLabel(r), r.tax_clearance_date,
+      r.tax_clearance_remarks || r.remarks,
     ] })),
     _filename: 'Audit Report Finalization' + (titleSuffix ? ' - ' + titleSuffix : ''),
   };
@@ -445,7 +672,7 @@ function arfOpenPrintWindow(model) {
     table{border-collapse:collapse;width:100%;font-size:11px;}
     th,td{border:1px solid #d9dce5;padding:5px 8px;}
     th{background:#f3f5fb;color:#0b1f3d;}
-    @page{size:A4 landscape;margin:14mm;}</style></head>
+    @page{size:A4 landscape;margin:12mm;}</style></head>
     <body>${ReportExport.toHtml(model)}</body></html>`);
   w.document.close();
   setTimeout(() => w.print(), 300);
@@ -454,8 +681,7 @@ function arfOpenPrintWindow(model) {
 
 function arfPreviewAll() {
   arfReadFilters();
-  arfLastModel = arfBuildModel(arfCurrentFilteredRows());
-  arfOpenPrintWindow(arfLastModel);
+  arfOpenPrintWindow(arfBuildModel(arfCurrentFilteredRows()));
 }
 
 function arfPrintOne(row) {
@@ -470,7 +696,7 @@ async function arfExport(kind) {
   try {
     const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
     await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
-      module: 'auditReportFinalization', clientName: 'Filtered Records', sheetName: model.title,
+      module: 'auditReportFinalization', clientName: 'Filtered Records', sheetName: 'Finalization',
     });
   } catch (e) {
     arfStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
