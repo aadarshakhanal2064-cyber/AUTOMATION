@@ -263,6 +263,23 @@ window.FM_DOC_TYPES = [
   'Others',
 ];
 
+// ── Audit Report Finalization module data ──
+// Fixed 5-auditor list. CHECK-constrained identically in
+// audit_report_finalization.auditor — change both together.
+window.ARF_AUDITORS = [
+  'Shailesh Dallakoti',
+  'Non-Sign',
+  'Devi Prasad Dallakoti',
+  'Lila Adhikari',
+  'Surya Poudel',
+];
+
+// Staff selectable as "Entered By" (IT Return) / "Checked By" (Estimate
+// Return). 'Other' reveals a free-text name box; the typed name REPLACES
+// 'Other' in the saved row — it_entered_by/estimate_checked_by have no
+// separate *_other column.
+window.ARF_STAFF = ['Aadarsha', 'Kesav', 'Dipendra', 'Other'];
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },

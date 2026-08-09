@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (19 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (20 tables, §6).
 
 ---
 
@@ -142,6 +142,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | VAT Compliance | Sidebar | `vatCompliance.js` | `vatc-` | `vat_filings` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
 | File Management | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
+| Audit Report Finalization | Sidebar | `auditReportFinalization.js` | `arf-` | `audit_report_finalization` | [audit-report-finalization](docs/modules/audit-report-finalization.md) |
 | Company Registrar *(6 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `st-` `ic-` `cr-` `pr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Billing | Financial Management | `billing.js` | `billing-` | `invoices`, `invoice_items`, `invoice_payments`, `firm_bank_details` | [compliance-billing](docs/modules/compliance-billing.md) |
@@ -176,7 +177,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**19 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents`.
+**20 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization`.
 
 ### Trigger-owned logic (never replicate in JS)
 
@@ -202,7 +203,7 @@ PostgREST caps a single select at **1000 rows** — any query that can grow past
 
 Show the SQL (annotated migration + rollback as files under `db/`) → apply via Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
 
-### RLS — ENABLED on all 19 tables (since 2026-07-16)
+### RLS — ENABLED on all 20 tables (since 2026-07-16)
 
 **Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE is admin-only; `send_logs`/`audit_log` are immutable; **`firm_bank_details` writes are admin-only** (payment-fraud target).
 
@@ -327,7 +328,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 ## 13. Security Practices
 
-- **RLS is the server-side enforcement layer** (§6) — enabled on all 19 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
+- **RLS is the server-side enforcement layer** (§6) — enabled on all 20 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
 - **CSP** (meta tag in `index.html`; `connect-src` is now just Supabase + the OCR loopback — every Google origin was removed 2026-08-01) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
 - Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk).
@@ -369,7 +370,7 @@ The established pattern — **investigate with real evidence → implement only 
 - **`tax_registration_type` (VAT/PAN) is not `vat_status`** — one is a client property, the other is whether the firm files that client's monthly VAT return. Don't merge them.
 - **Entity Type on the client form is exactly 8 values** (`CLIENT_ENTITY_TYPES`) — the 7 `Partnership Firm` clients are a deliberate exception preserved via injection; don't add a 9th option.
 - **Dashboard is the default landing tab** (2026-08-01, user decision) — it took that role when Send Document was removed. This supersedes the earlier "Dashboard is not the default" decision; `afterSupabaseSignIn()` calls `loadDashboard()` on boot because the nav button's `onclick` never fires on the landing tab.
-- **Only the Clients table uses Tabulator** — other tables were deliberately not migrated.
+- **Tabulator (`TableEngine`) is the default for any list-style table** — Clients, Service Memo, Bank Book, Billing, VAT Compliance, File Management and Audit Report Finalization all use it. (This line previously said only the Clients table used it; that was stale by 2026-08-09 and corrected here.)
 - **Service Memo records work, not collection** (2026-07-26) — its payment columns were dropped deliberately. A payment is recorded once, in Bank Entry, and netted by the Party Ledger. Never re-add payment fields to the memo.
 - **Financial Statement's cash is seeded, and Trade Receivables is the plug** (2026-07-26, user decision) — the spec asks for cash "unique on Each case", so it is seeded from client identity to stay reproducible, and receivables absorbs the balance. A negative plug raises a Director/Proprietor loan; it is never fixed by nudging cash.
 - **Financial Statement's three proof rows are shown, not forced** — a non-zero figure is a finding about the inputs, not a rendering bug.
@@ -389,6 +390,7 @@ The established pattern — **investigate with real evidence → implement only 
 - **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
 - **File Management is one row per visit, updated in place on handover** (2026-08-01) — an intake and its return are the same physical custody, so there is no paired "returns" row. `Reopen` clears the collector details rather than keeping them: the documents are physically back, and stale details would be read as fact. Don't add a second write path around `fmFlow`.
 - **File Management is deliberately not linked to Drive or the document pipeline** — it tracks the paper the firm is physically holding, which a digital copy doesn't substitute for. It also has no fiscal-year field on purpose; add one only if the firm asks.
+- **Audit Report Finalization is one evolving record per `(client, fiscal year)`** (2026-08-09) — not a new row per edit. Its IT Return / Estimate Return status is a **derived** 4-key badge computed from raw columns (submission text + a nullable verified flag), never a stored status column, so the badge, the filter and the export text can't drift apart. `client_id` is NOT NULL / ON DELETE RESTRICT — directory clients only, no walk-in case like File Management's. Don't add a stored status column or relax the FK to nullable without asking.
 - **The OCR service is deliberately standalone** — no client picker, no `clients` row, no document pipeline. That's what keeps it optional: a stopped service breaks one tab, nothing else. Don't make another module depend on it without asking.
 - **Saved documents are ONE table with a `module` discriminator** (2026-08-02) — not one table per builder. Every HTML document builder stores the same two things (form state + rendered HTML), so per-module tables would duplicate the schema, the RLS block and the entire save/list/restore UI. Adding a builder means adding one value to the CHECK, not a migration and a drawer.
 - **A saved document stores BOTH its form state and its rendered HTML** — the preview is contenteditable, so the state alone loses every hand-edit, which is exactly the document the firm issued. Don't "simplify" either one away.
@@ -423,7 +425,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `CLAUDE.md` | **Every session** | This file — hard rules, standards, indexes, deliberate decisions. |
 | `docs/README.md` | On demand | Map of the docs tree and the rule for what goes where. |
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
-| `docs/database.md` | On demand | All 19 tables column by column, triggers, the full RLS matrix. |
+| `docs/database.md` | On demand | All 20 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
 | `docs/engines.md` | On demand | The 14 engines in full. |
 | `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |

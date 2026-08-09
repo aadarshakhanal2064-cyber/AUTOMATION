@@ -176,6 +176,10 @@ function cropLoginLogoIcon(img) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
       File Management
     </button>
+    <button class="nav-item" onclick="switchTab('auditReportFinalization'); arfInit();" id="nav-auditReportFinalization">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+      Audit Report Finalization
+    </button>
   </nav>
 
   <div class="plan-usage-box">
@@ -2598,6 +2602,67 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <div id="tab-auditReportFinalization-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Audit Report Finalization</span></div>
+          <h2 class="page-title">Audit Report Finalization</h2>
+          <p class="page-subtitle">Per-client, per-fiscal-year tracker for IT return / Estimate return submission and tax clearance status.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="arfRefresh()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+          </button>
+          <button class="btn btn-outline" onclick="arfPreviewAll()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print / Preview
+          </button>
+          <button class="btn btn-outline" onclick="arfExport('pdf')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export PDF
+          </button>
+          <button class="btn btn-outline" onclick="arfExport('excel')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export Excel
+          </button>
+          <button class="btn btn-primary" onclick="arfOpenEntry()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            New Record
+          </button>
+        </div>
+      </div>
+
+      <div class="stat-grid compact" id="arf-stat-grid"></div>
+
+      <div class="table-wrap" style="padding:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+          <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+            <span class="sb-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input type="text" class="search-bar" id="arf-search" placeholder="Search client, PAN, submission no., remarks…" oninput="arfApplyFilters()" />
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:16px;">
+          <div class="form-group" style="margin:0;"><label>Auditor</label><select id="arf-filter-auditor" onchange="arfOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Fiscal Year</label><select id="arf-filter-fy" onchange="arfOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>IT Status</label><select id="arf-filter-it-status" onchange="arfOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Estimate Status</label><select id="arf-filter-est-status" onchange="arfOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Tax Clearance</label>
+            <select id="arf-filter-tax-clearance" onchange="arfOnFilterChange()">
+              <option value="">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="arfClearFilters()">Clear Filters</button></div>
+        <div id="arf-status-area"></div>
+        <div id="arf-table-wrap"><div class="log-empty">Loading…</div></div>
+      </div>
+    </div>
+
   </div><!-- /app-section -->
 </main>
 
@@ -2775,6 +2840,108 @@ function cropLoginLogoIcon(img) {
         <button class="btn btn-primary" onclick="fmSaveEntry()">Save Intake</button>
       </div>
       <div id="fm-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- AUDIT REPORT FINALIZATION — RECORD DRAWER -->
+<div class="modal-overlay drawer-right" id="arf-entry-drawer">
+  <div class="modal drawer-panel" style="width:640px;">
+    <div class="modal-header">
+      <h3 id="arf-drawer-title">New Record</h3>
+      <button class="modal-close" onclick="arfCloseEntry()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full">
+          <label>Client (search by name or PAN)</label>
+          <input type="text" id="arf-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="autocomplete-list" id="arf-client-autocomplete" style="display:none;"></div>
+        </div>
+        <div class="form-group">
+          <label>Client PAN</label>
+          <input type="text" id="arf-client-pan" placeholder="Auto-filled on select" readonly />
+        </div>
+        <div class="form-group">
+          <label>Fiscal Year</label>
+          <select id="arf-fiscal-year" onchange="arfOnClientOrFyChange()"></select>
+        </div>
+        <div class="form-group full">
+          <label>Auditor</label>
+          <select id="arf-auditor"></select>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:16px;">
+        <h4 style="margin:0 0 12px; font-size:13.5px; color:var(--brand-navy);">IT Return</h4>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group">
+            <label>Entered By</label>
+            <select id="arf-it-entered-by" onchange="arfOnStaffChange('arf-it-entered-by','arf-it-entered-by-other-group')"></select>
+          </div>
+          <div class="form-group" id="arf-it-entered-by-other-group" style="display:none;">
+            <label>Specify Name</label>
+            <input type="text" id="arf-it-entered-by-other" placeholder="Type the staff name" />
+          </div>
+          <div class="form-group">
+            <label>IT Submission No.</label>
+            <input type="text" id="arf-it-submission-no" placeholder="e.g. IT-2083-00123" />
+          </div>
+          <div class="form-group">
+            <label>IT Verified</label>
+            <select id="arf-it-verified">
+              <option value="">— Not Reviewed —</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:12px;">
+        <h4 style="margin:0 0 12px; font-size:13.5px; color:var(--brand-navy);">Estimate Return</h4>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group">
+            <label>Checked By</label>
+            <select id="arf-estimate-checked-by" onchange="arfOnStaffChange('arf-estimate-checked-by','arf-estimate-checked-by-other-group')"></select>
+          </div>
+          <div class="form-group" id="arf-estimate-checked-by-other-group" style="display:none;">
+            <label>Specify Name</label>
+            <input type="text" id="arf-estimate-checked-by-other" placeholder="Type the staff name" />
+          </div>
+          <div class="form-group">
+            <label>Estimate Return Verified</label>
+            <select id="arf-estimate-verified">
+              <option value="">— Not Reviewed —</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 18px; margin-top:12px;">
+        <h4 style="margin:0 0 12px; font-size:13.5px; color:var(--brand-navy);">Tax Clearance</h4>
+        <label class="checkbox-label" style="margin-bottom:10px;">
+          <input type="checkbox" id="arf-tax-clearance" onchange="arfOnTaxClearanceChange()" />
+          Tax clearance obtained
+        </label>
+        <div class="form-group" id="arf-tax-clearance-date-group" style="display:none; margin:0;">
+          <label>Tax Clearance Date</label>
+          <input type="date" id="arf-tax-clearance-date" />
+        </div>
+      </div>
+
+      <div class="form-group full" style="margin-top:16px;">
+        <label>Remarks</label>
+        <textarea id="arf-remarks" placeholder="Optional"></textarea>
+      </div>
+
+      <div class="action-row" style="justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="arfCloseEntry()">Cancel</button>
+        <button class="btn btn-primary" onclick="arfSaveEntry()">Save Record</button>
+      </div>
+      <div id="arf-drawer-status"></div>
     </div>
   </div>
 </div>
@@ -3197,7 +3364,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608022300"></script>
+<script src="js/config.js?v=202608091400"></script>
 <script src="js/utils.js?v=202608022300"></script>
 <script src="js/core/moduleRegistry.js?v=202608022300"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3240,6 +3407,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
 <script src="js/fileManagement.js?v=202608022300"></script>
+<script src="js/auditReportFinalization.js?v=202608091400"></script>
 <script src="js/auth.js?v=202608022300"></script>
 
 </body>
