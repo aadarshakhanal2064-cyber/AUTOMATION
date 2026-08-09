@@ -74,8 +74,32 @@ year is skipped, so re-saving an already-verified IT return creates nothing. A
 `23505` from a concurrent insert by another staff member is caught and ignored
 rather than failing the save.
 
-Un-verifying an IT return afterwards does **not** delete the follow-ons: by then
-they may hold real work. They are opened by the chain, not owned by it.
+### The chain runs in both directions
+
+`arfSyncFollowOns()` reconciles the follow-ons with the IT return's **current**
+state on every IT-return save, so the link is reversible:
+
+| Change to the IT return | Effect |
+|---|---|
+| Verified → **not** verified | Estimate Return *and* Tax Clearance withdrawn — both read **Not recorded** again |
+| **D-3** → **D-2**, still verified | Tax Clearance withdrawn; Estimate Return stays |
+| **D-2** → **D-3**, still verified | Tax Clearance opened alongside the existing Estimate Return |
+| Re-verified after un-verifying | Both open again |
+
+This matters because a follow-on left behind after its trigger was undone
+reports outstanding work the firm does not actually owe.
+
+**A follow-on that anyone has worked on is never removed.**
+`arfIsUntouchedFollowOn()` gates every delete: a submission number, a name, a
+date or a remark is enough to keep the row, and the save message then says it
+was *kept, already has work recorded* rather than dropping it silently. Only a
+row still in the exact state the chain created it — which carries no
+information — can be withdrawn.
+
+One consequence worth knowing: a **manually** created estimate or tax-clearance
+record that is still completely blank is indistinguishable from a chain
+placeholder, so saving an unverified IT return for that client and year will
+withdraw it. Nothing is lost (the row held no data), but it can surprise.
 
 ### The chain banner
 
@@ -251,6 +275,18 @@ The finalization chain was exercised against an in-memory stub of the table
 - **Idempotency** — re-saving an already-verified IT return created 0 rows.
 - **Not verified** — saving an IT return with `it_verified = false` created no
   follow-ons at all.
+
+Reversibility (added after the one-directional version shipped and the gap was
+reported) was verified over a full round trip:
+
+- **Verify → un-verify → re-verify** a D-3: both follow-ons appear, both are
+  withdrawn, both come back; the drawer banner reads **Not recorded** for both
+  tracks while un-verified.
+- **Real work is protected** — with a submission number and staff name on the
+  estimate row, un-verifying withdrew only the untouched Tax Clearance and
+  reported *"Estimate Return kept, already has work recorded"*.
+- **D-3 → D-2 while still verified** withdrew Tax Clearance and left Estimate
+  Return in place.
 - Resulting stat cards: 2 IT Verified → 2 Estimate Not Verified, 1 Tax Not
   Cleared (the single D-3), which is the count relationship the chain is for.
 - Banner: hidden with no client; full three-track chain once client+year are

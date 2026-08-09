@@ -665,18 +665,14 @@ async function arfSaveEntry() {
       AuditLog.record('arf_created', { module: 'auditReportFinalization', clientName, recordRef: data.id, detail: { fiscalYear, returnType: type } });
     }
 
-    // Verifying an IT return is what makes the follow-on work due (§ the chain).
-    let created = [];
-    if (type === 'it_return' && payload.it_verified === true) {
-      created = await arfCreateFollowOns(payload);
-    }
+    // The IT return's state decides what follow-on work is due — in both
+    // directions, so this runs whether it was verified or un-verified.
+    let sync = { created: [], removed: [], kept: [] };
+    if (type === 'it_return') sync = await arfSyncFollowOns(payload);
 
     arfCloseEntry();
     await arfRefresh();
-    // No trailing period — plenty of client names already end in one ("Pvt. Ltd.").
-    arfStatusMsg(created.length
-      ? `✅ Record saved — ${escHtml(created.join(' and '))} now outstanding for ${escHtml(clientName)}`
-      : '✅ Record saved.', 'success');
+    arfStatusMsg(arfChainMessage(sync, clientName), 'success');
   } catch (e) {
     showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'arf-drawer-status');
   }
@@ -690,49 +686,102 @@ function arfReadTriState(selectId) {
 // ── The finalization chain ──
 // The three tracks are sequential in the firm's real workflow: the estimate
 // return is only verified AFTER the IT return is, and a D-3 filing additionally
-// needs a tax clearance. So verifying an IT return is what makes that follow-on
-// work due — and this opens it as a real record rather than leaving it to
-// memory. The rows are created as explicitly NOT verified / NOT cleared (not
-// merely blank), because that is the honest state: the work is now outstanding.
+// needs a tax clearance. So the IT return's own state decides what follow-on
+// work is DUE, and this keeps the follow-on records in step with it — in both
+// directions.
 //
-// Idempotent by design: a type that already has a record for this client and
-// year is skipped, so re-saving an already-verified IT return creates nothing.
+// Due rows are created as explicitly NOT verified / NOT cleared (not merely
+// blank), because that is the honest state: the work is now outstanding.
+//
+// The reverse matters just as much. Un-verifying an IT return, or switching it
+// from D-3 to D-2, means that follow-on work was never actually due — leaving
+// the row behind would report outstanding work the firm doesn't owe. So a row
+// for a no-longer-due track is removed and the chain reads "Not recorded"
+// again.
+//
+// The one thing that is never removed is a follow-on somebody has already
+// worked on: arfIsUntouchedFollowOn() gates every delete, so a submission
+// number, a name, a date or a remark is enough to keep the row. It is then
+// reported back as kept rather than silently ignored.
 function arfFollowOnTypes(itReturnType) {
   const due = ['estimate_return'];
   if (itReturnType === 'D-3') due.push('tax_clearance');
   return due;
 }
 
-async function arfCreateFollowOns(base) {
-  const created = [];
-  for (const type of arfFollowOnTypes(base.it_return_type)) {
-    if (arfFindExisting(base.client_id, base.fiscal_year, type)) continue;
-    const payload = {
-      client_id: base.client_id,
-      client_name: base.client_name,
-      client_pan: base.client_pan,
-      fiscal_year: base.fiscal_year,
-      // The follow-on becomes due today, whatever date the IT return carries.
-      recorded_date: arfToday(),
-      return_type: type,
-      auditor: base.auditor,
-      // Outstanding, not merely unfilled — see the note above.
-      estimate_verified: type === 'estimate_return' ? false : null,
-      tax_clearance: false,
-      created_by: arfUserEmail(),
-      updated_by: arfUserEmail(),
-    };
-    const { data, error } = await window.sb.from('audit_report_finalization')
-      .insert(payload).select('id').single();
-    // 23505 = another staff member created it between our check and this insert.
-    if (error) { if (error.code === '23505') continue; throw error; }
-    created.push(arfTypeLabel(type));
-    AuditLog.record('arf_created', {
-      module: 'auditReportFinalization', clientName: base.client_name, recordRef: data.id,
-      detail: { fiscalYear: base.fiscal_year, returnType: type, autoCreated: true },
-    });
+// Still exactly as the chain created it — no work has been entered, so the row
+// carries no information and is safe to withdraw.
+function arfIsUntouchedFollowOn(row) {
+  if (row.remarks) return false;
+  if (row.return_type === 'estimate_return') {
+    return !row.estimate_submission_no && !row.estimate_entered_by && row.estimate_verified === false;
   }
-  return created;
+  if (row.return_type === 'tax_clearance') {
+    return row.tax_clearance === false && !row.tax_clearance_date && !row.tax_clearance_remarks;
+  }
+  return false;
+}
+
+async function arfSyncFollowOns(base) {
+  const due = base.it_verified === true ? arfFollowOnTypes(base.it_return_type) : [];
+  const created = [], removed = [], kept = [];
+
+  for (const type of ['estimate_return', 'tax_clearance']) {
+    const existing = arfFindExisting(base.client_id, base.fiscal_year, type);
+
+    if (due.includes(type)) {
+      if (existing) continue;                       // already open — idempotent
+      const payload = {
+        client_id: base.client_id,
+        client_name: base.client_name,
+        client_pan: base.client_pan,
+        fiscal_year: base.fiscal_year,
+        // The follow-on becomes due today, whatever date the IT return carries.
+        recorded_date: arfToday(),
+        return_type: type,
+        auditor: base.auditor,
+        // Outstanding, not merely unfilled — see the note above.
+        estimate_verified: type === 'estimate_return' ? false : null,
+        tax_clearance: false,
+        created_by: arfUserEmail(),
+        updated_by: arfUserEmail(),
+      };
+      const { data, error } = await window.sb.from('audit_report_finalization')
+        .insert(payload).select('id').single();
+      // 23505 = another staff member created it between our check and this insert.
+      if (error) { if (error.code === '23505') continue; throw error; }
+      created.push(arfTypeLabel(type));
+      AuditLog.record('arf_created', {
+        module: 'auditReportFinalization', clientName: base.client_name, recordRef: data.id,
+        detail: { fiscalYear: base.fiscal_year, returnType: type, autoCreated: true },
+      });
+
+    } else if (existing) {
+      if (!arfIsUntouchedFollowOn(existing)) { kept.push(arfTypeLabel(type)); continue; }
+      const { error } = await window.sb.from('audit_report_finalization')
+        .delete().eq('id', existing.id);
+      if (error) throw error;
+      removed.push(arfTypeLabel(type));
+      AuditLog.record('arf_deleted', {
+        module: 'auditReportFinalization', clientName: base.client_name, recordRef: existing.id,
+        detail: { fiscalYear: base.fiscal_year, returnType: type, autoRemoved: true },
+      });
+    }
+  }
+  return { created, removed, kept };
+}
+
+// One sentence describing whatever the chain just did, so the outcome is never
+// silent — especially a follow-on kept back because it already holds work.
+function arfChainMessage(sync, clientName) {
+  const parts = [];
+  if (sync.created.length) parts.push(`${sync.created.join(' and ')} now outstanding`);
+  if (sync.removed.length) parts.push(`${sync.removed.join(' and ')} no longer outstanding`);
+  if (sync.kept.length) parts.push(`${sync.kept.join(' and ')} kept, already has work recorded`);
+  if (!parts.length) return '✅ Record saved.';
+  // Client name leads: appending it would attach to whichever clause happens to
+  // land last, which reads as nonsense once two clauses combine.
+  return `✅ Saved — ${escHtml(clientName)}: ${escHtml(parts.join('; '))}`;
 }
 
 async function arfDeleteEntry(row) {
