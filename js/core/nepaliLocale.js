@@ -177,7 +177,21 @@ window.NepaliLocale = (function () {
     return { fy: toDevanagari(fmt(y1)), next: toDevanagari(fmt(y1 + 1)) };
   }
 
+  // Start year of a fiscal year written in ANY of the firm's five formats
+  // (2081-82 · 2081/82 · 2081/082 · 2081.2082 · 2081), Devanagari included.
+  // Those formats differ per module BY DECISION (CLAUDE.md §8) — this is the
+  // boundary normalizer that lets two modules be joined on fiscal year
+  // without unifying how either one displays it. Work Done's Pending List
+  // joins document_register (free text, dash) to work_done (dropdown, slash)
+  // through this; comparing the raw strings would match nothing and fail
+  // silently. Returns null when no 4-digit year is present, so callers can
+  // report unmatchable rows rather than dropping them unnoticed.
+  function fyStartYear(value) {
+    const m = toEnglishDigits(String(value == null ? '' : value)).match(/(\d{4})/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
   return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
            bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy,
-           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, adToBs, bsToStr };
+           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, adToBs, bsToStr, fyStartYear };
 })();
