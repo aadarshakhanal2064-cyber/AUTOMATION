@@ -669,6 +669,35 @@ textarea { resize: vertical; min-height: 100px; }
 .cd-count { font-size: 12px; color: var(--text-faint); font-weight: 500; white-space: nowrap; }
 .cd-bars, .cd-meters { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 11px; }
 
+/* Non-Filers List — a small glance-widget top-right of the page header
+   (button styled as a card, not a nav control) that opens #cd-nf-modal for
+   the full list + export. Kept out of the cd-grid dashboard entirely so it
+   doesn't compete for space with the breakdown panels below it. */
+.cd-nf-widget {
+  display: flex; flex-direction: column; gap: 6px; text-align: left;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 14px; cursor: pointer; font-family: 'Inter', sans-serif; box-shadow: var(--shadow-xs);
+  transition: box-shadow 0.15s, border-color 0.15s; min-width: 240px;
+}
+.cd-nf-widget:hover { box-shadow: var(--shadow-md); border-color: var(--accent-blue); }
+.cd-nf-widget-title { font-size: 12.5px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cd-nf-widget-fy { font-size: 11px; font-weight: 500; color: var(--text-faint); }
+.cd-nf-widget-counts { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.cd-nf-widget-counts strong { font-size: 14px; color: var(--text-main); margin-right: 3px; }
+.cd-nf-widget-counts .good strong { color: var(--green-dk); }
+.cd-nf-widget-counts .bad strong { color: var(--red-dk); }
+
+/* Non-Filers List modal body (#cd-nf-modal) — the full, unpaginated version
+   of the widget's two tables, plus export actions. */
+.cd-nf-modal-stats { margin-bottom: 16px; }
+.cd-nf-modal-actions { display: flex; gap: 10px; margin-bottom: 20px; }
+.cd-nf-group-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text-main); margin: 0 0 4px; }
+.cd-nf-group-title span { font-size: 12px; font-weight: 700; color: var(--text-faint); background: var(--bg-page-alt); border-radius: 999px; padding: 1px 8px; }
+.cd-nf-group-title.cd-nf-group-flagged { color: var(--red-dk); }
+.cd-nf-group-title.cd-nf-group-flagged span { color: var(--red-dk); background: var(--red-bg); }
+.cd-nf-group-sub { font-size: 12px; color: var(--text-faint); margin: 0 0 10px; }
+#cd-nf-notverified-table { margin-bottom: 20px; }
+
 .cd-bar-row { display: grid; grid-template-columns: minmax(0, 132px) 1fr auto; gap: 12px; align-items: center; }
 .cd-bar-label { font-size: 12.5px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cd-bar-track { height: 8px; background: var(--bg-page-alt); border-radius: 999px; overflow: hidden; }

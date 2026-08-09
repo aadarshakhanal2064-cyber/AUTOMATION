@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608091800">
+<link rel="stylesheet" href="css/styles.css?v=202608091900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2373,6 +2373,20 @@ function cropLoginLogoIcon(img) {
           <h2 class="page-title">Clients</h2>
           <p class="page-subtitle">Manage your client directory. Add, edit, and organize client information.</p>
         </div>
+        <div class="page-header-actions">
+          <!-- Non-Filers List widget — deliberately small, top-right: a
+               glance at IT Return audit progress (Audit Report Finalization,
+               it_return track) without the full dashboard below competing
+               for space. Click opens the full list + PDF/Excel export. -->
+          <button type="button" class="cd-nf-widget" id="cd-nf-widget" onclick="cdOpenNonFilerModal()">
+            <div class="cd-nf-widget-title">Non-Filers List <span class="cd-nf-widget-fy">FY <span id="cd-nf-fy">—</span></span></div>
+            <div class="cd-nf-widget-counts">
+              <span><strong id="cd-nf-total">0</strong> Total</span>
+              <span class="good"><strong id="cd-nf-verified">0</strong> Verified</span>
+              <span class="bad"><strong id="cd-nf-notverified">0</strong> Not Verified</span>
+            </div>
+          </button>
+        </div>
       </div>
 
       <!-- Client portfolio dashboard. Every figure is derived from
@@ -2557,6 +2571,50 @@ function cropLoginLogoIcon(img) {
           <button type="button" class="cd-modal-close" onclick="cdCloseModal()" aria-label="Close">&times;</button>
         </div>
         <div class="cd-modal-body" id="cd-modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Non-Filers List modal — the full, unpaginated IT Return audit-status
+         list plus Print/PDF/Excel export (ReportExport engine, §4). Built
+         fresh on open (cdOpenNonFilerModal → cdRenderNfTables), never
+         eagerly — a Tabulator table sized against a display:none container
+         measures zero width. -->
+    <div class="modal-overlay" id="cd-nf-modal">
+      <div class="modal" style="max-width:960px;">
+        <div class="modal-header">
+          <h3>Non-Filers List — IT Return, FY <span id="cd-nf-modal-fy">—</span></h3>
+          <button class="modal-close" onclick="cdCloseNonFilerModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="stat-grid compact cd-nf-modal-stats">
+            <div class="stat-card">
+              <div class="stat-num" id="cd-nf-modal-total">0</div>
+              <div class="stat-label">Total Clients</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="cd-nf-modal-verified">0</div>
+              <div class="stat-label">IT Verified</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="cd-nf-modal-notverified">0</div>
+              <div class="stat-label">IT Not Verified</div>
+            </div>
+          </div>
+
+          <div class="cd-nf-modal-actions">
+            <button class="btn btn-outline" onclick="cdNfPrint()">Print</button>
+            <button class="btn btn-outline" onclick="cdNfExport('pdf')">Download PDF</button>
+            <button class="btn btn-primary" onclick="cdNfExport('excel')">Download Excel</button>
+          </div>
+
+          <h4 class="cd-nf-group-title cd-nf-group-flagged">❌ Not Verified <span id="cd-nf-notverified-count">0</span></h4>
+          <p class="cd-nf-group-sub">Submitted and reviewed, then flagged not verified — needs follow-up before the audit report can close.</p>
+          <div id="cd-nf-notverified-table"></div>
+
+          <h4 class="cd-nf-group-title">⬜ Not Yet Filed / Pending Review <span id="cd-nf-pending-count">0</span></h4>
+          <p class="cd-nf-group-sub">No IT return record on file yet for this fiscal year, or submitted and still awaiting review.</p>
+          <div id="cd-nf-pending-table"></div>
+        </div>
       </div>
     </div>
 
@@ -3439,7 +3497,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/tabs.js?v=202608022300"></script>
 <script src="js/dashboard.js?v=202608022300"></script>
 <script src="js/registrar.js?v=202608022300"></script>
-<script src="js/clients.js?v=202608022300"></script>
+<script src="js/clients.js?v=202608091900"></script>
 <script src="js/vatCompliance.js?v=202608022300"></script>
 <script src="js/billing.js?v=202608022300"></script>
 <script src="js/serviceMemo.js?v=202608022300"></script>

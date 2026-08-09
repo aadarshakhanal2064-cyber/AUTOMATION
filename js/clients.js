@@ -21,6 +21,7 @@ async function loadClients() {
   renderNatureCategoryStrip(window.clientsList);
   applyClientFilters();
   renderClientStats(window.clientsList);
+  cdLoadNonFilers(); // not awaited — its own panel shows a loading state and fills in independently
 }
 
 // ════════════════════════════════════════════
@@ -153,6 +154,202 @@ function renderClientStats(list) {
   cdRenderBars('cd-district-bars', 'cd-district-count', cdGroup(list, c => c.district),    'district', 'district');
   cdRenderBars('cd-nature-bars',   'cd-nature-count',   cdGroup(list, c => nbCategorize(c.business_nature)), 'category', 'nature');
   cdRenderCompleteness(list);
+}
+
+// ════════════════════════════════════════════
+//  NON-FILERS LIST — IT Return audit progress
+// ════════════════════════════════════════════
+// Sourced from audit_report_finalization (Audit Report Finalization module,
+// docs/modules/audit-report-finalization.md), it_return track only. Reads
+// that table directly rather than depending on any of its JS — clients.js
+// loads BEFORE auditReportFinalization.js (index.html script order), and
+// this only needs the raw columns, not arfStatusKey()'s full 4-key
+// derivation (tax-clearance labels etc. don't apply to the IT track).
+//
+// UI is a small widget top-right of the page header (button styled as a
+// card) showing just the three counts, plus a modal (#cd-nf-modal) for the
+// full unpaginated list and Print/PDF/Excel export — kept out of the cd-grid
+// dashboard entirely so it doesn't compete for space with the breakdown
+// panels below it.
+const CD_NF_FY = '2082/83'; // keep in sync with ARF_FY_DEFAULT in auditReportFinalization.js
+window.cdNonFilerRecords = new Map(); // client_id -> that client's it_return row for CD_NF_FY, if any
+window.cdNfGroups = { notVerified: [], pending: [] }; // filled by cdRenderNonFilers, read by the modal + export
+
+async function cdLoadNonFilers() {
+  [document.getElementById('cd-nf-fy'), document.getElementById('cd-nf-modal-fy')]
+    .forEach(el => { if (el) el.textContent = CD_NF_FY; });
+  try {
+    const rows = await sbFetchAll(() => window.sb.from('audit_report_finalization')
+      .select('client_id, it_submission_no, it_entered_by, it_checked_by, it_verified, it_return_type')
+      .eq('return_type', 'it_return').eq('fiscal_year', CD_NF_FY).order('client_id'));
+    window.cdNonFilerRecords = new Map((rows || []).map(r => [r.client_id, r]));
+  } catch (e) {
+    window.cdNonFilerRecords = new Map();
+    console.error('Failed to load audit finalization records for Non-Filers List:', e.message);
+  }
+  cdRenderNonFilers(window.clientsList || []);
+}
+
+// Mirrors just the it_return slice of arfStatusKey() (auditReportFinalization.js)
+// — a record that's never been created is 'no_record' (arfStatusKey would call
+// this 'not_submitted' since it always has a row to read; here "no row at all"
+// is itself informative, so it gets its own key).
+function cdNfStatus(arfRow) {
+  if (!arfRow) return 'no_record';
+  if (arfRow.it_verified === false) return 'not_verified';
+  if (arfRow.it_verified === true) return 'verified';
+  return ((arfRow.it_submission_no || '').trim() || (arfRow.it_entered_by || '').trim()) ? 'submitted' : 'no_record';
+}
+
+const CD_NF_STATUS_META = {
+  not_verified: ['badge-error',   '❌ Not Verified'],
+  submitted:    ['badge-amber',   '📤 Submitted'],
+  no_record:    ['badge-neutral', '⬜ Not Submitted'],
+  verified:     ['badge-sent',    '✅ Verified'],
+};
+
+// Only updates counts (widget + modal header) and recomputes the two groups
+// — never touches the modal's tables, which are built lazily on open (see
+// cdOpenNonFilerModal) since a Tabulator sized against a display:none
+// container measures zero width.
+function cdRenderNonFilers(list) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const withStatus = list.map(c => {
+    const arf = window.cdNonFilerRecords.get(c.id);
+    return { client: c, arf, status: cdNfStatus(arf) };
+  });
+
+  const verifiedCount = withStatus.filter(x => x.status === 'verified').length;
+  ['cd-nf-total', 'cd-nf-modal-total'].forEach(id => set(id, list.length));
+  ['cd-nf-verified', 'cd-nf-modal-verified'].forEach(id => set(id, verifiedCount));
+  ['cd-nf-notverified', 'cd-nf-modal-notverified'].forEach(id => set(id, list.length - verifiedCount));
+
+  // "Not Verified" is kept apart from "Not Yet Filed / Pending" on purpose —
+  // a return the firm checked and flagged is a different problem (needs
+  // follow-up with the client) from one nobody has started yet.
+  window.cdNfGroups = {
+    notVerified: withStatus.filter(x => x.status === 'not_verified'),
+    pending:     withStatus.filter(x => x.status === 'submitted' || x.status === 'no_record'),
+  };
+
+  set('cd-nf-notverified-count', window.cdNfGroups.notVerified.length);
+  set('cd-nf-pending-count', window.cdNfGroups.pending.length);
+
+  // If the modal happens to already be open (e.g. an admin reloads clients
+  // from another tab action while it's up), keep its tables in sync too.
+  if (document.getElementById('cd-nf-modal').classList.contains('open')) cdRenderNfTables();
+}
+
+let cdNfTables = { notVerified: null, pending: null };
+function cdRenderNfTable(elId, rows, key, emptyMsg) {
+  const wrap = document.getElementById(elId);
+  if (!wrap) return;
+  if (cdNfTables[key]) { cdNfTables[key].destroy(); cdNfTables[key] = null; }
+
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="log-empty">${escHtml(emptyMsg)}</div>`;
+    return;
+  }
+
+  wrap.innerHTML = '';
+  cdNfTables[key] = TableEngine.createTable(wrap, {
+    data: rows,
+    // No pagination here — this view exists specifically so staff can see
+    // the WHOLE list at once; the modal itself scrolls.
+    columns: [
+      { title: 'Client Name', field: 'client.name', minWidth: 190, formatter: cell => {
+          const c = cell.getRow().getData().client;
+          return `<div class="client-name-row"><div class="client-avatar">${escHtml(clientInitials(c.name))}</div><div class="client-name-cell">${escHtml(c.name)}</div></div>`;
+        } },
+      { title: 'PAN', field: 'client.pan', minWidth: 100, formatter: cell => escHtml(cell.getRow().getData().client.pan || '—') },
+      { title: 'Entity Type', field: 'client.entity_type', minWidth: 140, formatter: cell => escHtml(cell.getRow().getData().client.entity_type || '—') },
+      { title: 'District', field: 'client.district', minWidth: 100, formatter: cell => escHtml(cell.getRow().getData().client.district || '—') },
+      { title: 'IT Return Type', field: 'client.it_return_type', minWidth: 110, formatter: cell => escHtml(cell.getRow().getData().client.it_return_type || '—') },
+      { title: 'Status', field: 'status', minWidth: 140, formatter: cell => {
+          const meta = CD_NF_STATUS_META[cell.getValue()] || CD_NF_STATUS_META.no_record;
+          return `<span class="log-badge ${meta[0]}">${meta[1]}</span>`;
+        } },
+      { title: 'Submission No.', field: 'arf.it_submission_no', minWidth: 120, formatter: cell => {
+          const arf = cell.getRow().getData().arf;
+          return escHtml((arf && arf.it_submission_no) || '—');
+        } },
+    ],
+  });
+}
+
+function cdRenderNfTables() {
+  cdRenderNfTable('cd-nf-notverified-table', window.cdNfGroups.notVerified, 'notVerified',
+    'No IT returns are currently flagged Not Verified.');
+  cdRenderNfTable('cd-nf-pending-table', window.cdNfGroups.pending, 'pending',
+    'Every client has an IT return on file for this fiscal year.');
+}
+
+function cdOpenNonFilerModal() {
+  cdRenderNfTables();
+  document.getElementById('cd-nf-modal').classList.add('open');
+}
+function cdCloseNonFilerModal() {
+  document.getElementById('cd-nf-modal').classList.remove('open');
+}
+
+// ── Print / Export (ReportExport engine, §4 — same shape as
+//    arfBuildModel/arfExport in auditReportFinalization.js) ──
+function cdNfBuildModel() {
+  const rowOf = x => ({ cells: [
+    x.client.name, x.client.pan, x.client.entity_type, x.client.district,
+    x.client.it_return_type, CD_NF_STATUS_META[x.status][1].replace(/^\S+\s/, ''),
+    (x.arf && x.arf.it_submission_no) || null,
+  ] });
+  const rows = [
+    { cells: [`Not Verified (${window.cdNfGroups.notVerified.length})`], style: 'section' },
+    ...window.cdNfGroups.notVerified.map(rowOf),
+    { cells: [`Not Yet Filed / Pending Review (${window.cdNfGroups.pending.length})`], style: 'section' },
+    ...window.cdNfGroups.pending.map(rowOf),
+  ];
+  return {
+    title: 'Non-Filers List — IT Return',
+    subtitleLines: [`Fiscal Year ${CD_NF_FY}`, `Generated ${new Date().toISOString().slice(0, 10)}`],
+    landscape: true,
+    columns: [
+      { label: 'Client Name', w: 1.8 }, { label: 'PAN', w: 1 }, { label: 'Entity Type', w: 1.4 },
+      { label: 'District', w: 1 }, { label: 'IT Return Type', w: 1 }, { label: 'Status', w: 1 },
+      { label: 'Submission No.', w: 1.2 },
+    ],
+    rows,
+    _filename: `Non-Filers List - IT Return - FY ${CD_NF_FY}`.replace(/\//g, '-'),
+  };
+}
+
+function cdNfPrint() {
+  const model = cdNfBuildModel();
+  const w = window.open('', '_blank');
+  if (!w) { alert('Allow pop-ups to print.'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>${escHtml(model.title)}</title>
+    <style>body{font-family:Inter,Arial,sans-serif;margin:28px;color:#1a202c;}
+    table{border-collapse:collapse;width:100%;font-size:11px;}
+    th,td{border:1px solid #d9dce5;padding:5px 8px;}
+    th{background:#f3f5fb;color:#0b1f3d;}
+    @page{size:A4 landscape;margin:12mm;}</style></head>
+    <body>${ReportExport.toHtml(model)}</body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 300);
+  AuditLog.record('clients_nonfilers_printed', { module: 'clients' });
+}
+
+async function cdNfExport(kind) {
+  const model = cdNfBuildModel();
+  if (!window.cdNfGroups.notVerified.length && !window.cdNfGroups.pending.length) {
+    alert('Nothing to export — every client is IT Verified for this fiscal year.');
+    return;
+  }
+  try {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
+      module: 'clients', clientName: 'Non-Filers List', sheetName: 'Non-Filers',
+    });
+  } catch (e) {
+    alert('Failed to export: ' + (e.message || String(e)));
+  }
 }
 
 // ════════════════════════════════════════════
