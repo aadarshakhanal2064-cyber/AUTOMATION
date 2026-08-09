@@ -36,10 +36,11 @@ Each record's `items` column holds:
 A fixed-column schema would need a migration both when the firm's checklist
 grows and for every custom item a client's record happens to need — jsonb
 avoids both. `window.AQC_CHECKLIST_ITEMS` (`js/config.js`) is the fixed
-template, in display order: P.Y Fig · Sales/Purchase with VAT Return
-(**vatOnly**) · Bank Balances · Bank Loan Interest · P.Y VAT Adjustment
-(**vatOnly**) · Overall F.S Check · Ann-1/2 · Ann-10 · Ann-13. Adding a row to
-the firm's checklist is a config-array edit, no migration.
+template, in display order: P.Y Fig · Sales/Purchase with VAT Return · Bank
+Balances · Bank Loan Interest · P.Y VAT Adjustment · Overall F.S Check ·
+Ann-1/2 · Ann-10 · Ann-13 — the same 9 items for every client, every one
+unchecked on a brand-new record. Adding a row to the firm's checklist is a
+config-array edit, no migration.
 
 `checked_by` holds a name from `window.AQC_STAFF` — the two **firm** names
 (`Shailesh & Associates`, `Dallakoti & Company`) plus individual staff
@@ -48,21 +49,19 @@ free-text box whose typed name **replaces** `Other` in the saved value —
 same convention as `audit_report_finalization.auditor`, so there is no
 separate `*_other` field anywhere in `items`.
 
-### VAT gating — omitted, not disabled
+**Tried and dropped: gating the two VAT items on `clients.vat_status`.** The
+first version only seeded "Sales/Purchase with VAT Return" and "P.Y VAT
+Adjustment" for VAT-active clients, mirroring the paper form's "Display this
+only in case of vat" note literally. In practice `vat_status: 'active'` is a
+small hand-picked subset (CLAUDE.md §15) — most clients aren't marked
+active — so most checklists silently lost two rows the CA still wanted on
+every checklist. Reverted to a flat, always-9-item list per explicit
+instruction after seeing it in use.
 
-The two `vatOnly` items are included in a **new** record's seeded `items`
-array only when the picked client's `vat_status === 'active'` — the same
-field/value VAT Compliance already gates on (`js/vatCompliance.js:622`), and
-the same hand-picked, never-bulk-inferred field CLAUDE.md §15 protects. A
-non-VAT client's checklist is genuinely shorter (7 items, not 9), not a
-9-item list with two rows disabled — a disabled row still has to be
-explained to whoever's filling it in, and a shorter honest list doesn't.
-
-**Editing an existing record loads exactly what's stored, unchanged.** If a
-client's `vat_status` changes after a checklist was created, that checklist
-is not retroactively rewritten — `achkBuildFreshItems()` (the seeding
-function) only ever runs for a brand-new client+year combination with no
-existing row.
+**Editing an existing record loads exactly what's stored, unchanged** —
+`achkBuildFreshItems()` (the seeding function) only ever runs for a
+brand-new client+year combination with no existing row, so it can't
+retroactively rewrite a checklist someone already filled in.
 
 ### Custom items — fully open-ended
 
@@ -116,8 +115,8 @@ every other filter first**, so its number always matches what's shown.
 - Remarks, then Save.
 
 Picking a client with no existing checklist for the selected year seeds
-`achkItems` fresh via `achkBuildFreshItems()` (VAT-gated, all unchecked).
-Picking a client+year that already has a row loads it via
+`achkItems` fresh via `achkBuildFreshItems()` — the full fixed template,
+every item unchecked. Picking a client+year that already has a row loads it via
 `achkLoadIntoDrawer()` instead — the auto-match releases back to a fresh
 seed the moment the combination stops matching, exactly the ARF bug class
 ("switching client keeps editing the previous client's record") that a
@@ -171,9 +170,9 @@ browser's print dialog already offers it.
   once, which doesn't apply here.
 - **Export flattens `items` into two text cells** (`Completed Items` /
   `Pending Items`, each `label (checked_by)` joined with `; `) rather than one
-  column per item — the item list's length varies per client (VAT gating,
-  custom items), so a fixed-column export isn't possible without either
-  truncating data or one column per *possible* item across every record.
+  column per item — the item count still varies per record because of custom
+  items, so a fixed-column export isn't possible without either truncating
+  data or one column per *possible* item across every record.
 
 ## Verified
 
@@ -184,8 +183,11 @@ wall bypassed via DOM manipulation and two hand-seeded clients — one
 `vat_status: 'active'`, one `'not_registered'` — per CLAUDE.md §2/§12 (no real
 Supabase session in this sandbox):
 
-- VAT-active client seeds exactly 9 items including both VAT-only rows;
-  non-VAT client seeds exactly 7, both VAT-only rows omitted entirely.
+- *(First pass, since superseded — see the VAT-gating note above)* VAT-active
+  client seeded exactly 9 items including both VAT-only rows; non-VAT client
+  seeded exactly 7, both VAT-only rows omitted. Re-verified after the revert:
+  **both** clients now seed the same 9 items, all unchecked, regardless of
+  `vat_status`.
 - **Found and fixed a real bug during this pass**: selecting "Other" on a
   checklist item's staff picker cleared `checked_by` to let the name be
   typed, but the free-text box's visibility was (re)computed from

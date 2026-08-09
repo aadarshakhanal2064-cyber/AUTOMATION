@@ -16,10 +16,10 @@
 //
 //  items IS A JSONB ARRAY, not one column per checklist item — the fixed
 //  list can grow without a migration, and user-added custom items are
-//  inherently variable-shape. Two fixed items are VAT-only and are simply
-//  omitted from a NEW record's items array when the client isn't VAT-active
-//  (clients.vat_status — the same field VAT Compliance already gates on);
-//  editing an existing record leaves its stored items untouched.
+//  inherently variable-shape. Every client gets the full fixed list, every
+//  item unchecked, on a brand-new record — a VAT-only subset was tried and
+//  dropped (see achkBuildFreshItems) since most clients aren't VAT-active
+//  and would never have seen those two items at all.
 //
 //  Status (Not Started / In Progress / Complete) is DERIVED from items[]
 //  in achkStatusKey() — never stored — so the table badge, the stat cards
@@ -263,13 +263,10 @@ function achkFindExisting(clientId, fy) {
   return achkRecords.find(r => r.client_id === clientId && r.fiscal_year === fy);
 }
 
-// The fixed template, filtered to this client — VAT-only items are simply
-// omitted (not disabled) when the client isn't VAT-active, so a non-VAT
-// client sees a shorter, honest checklist rather than dead rows.
-function achkBuildFreshItems(client) {
-  const vatActive = !!client && client.vat_status === 'active';
+// Every client gets the full fixed template, every item explicitly
+// unchecked — a brand-new checklist never starts with anything pre-ticked.
+function achkBuildFreshItems() {
   return window.AQC_CHECKLIST_ITEMS
-    .filter(t => !t.vatOnly || vatActive)
     .map(t => ({ key: t.key, label: t.label, checked: false, checked_by: '', custom: false }));
 }
 
@@ -292,7 +289,7 @@ function achkMatchExistingRecord() {
   } else if (achkSelectedClient) {
     achkEditingId = null;
     achkAutoMatched = false;
-    achkItems = achkBuildFreshItems(achkSelectedClient);
+    achkItems = achkBuildFreshItems();
     achkRenderItems();
     achkEl('achk-drawer-title').textContent = 'New Checklist';
     achkEl('achk-drawer-status').innerHTML = '';

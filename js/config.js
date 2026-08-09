@@ -304,18 +304,18 @@ window.ARF_STAFF = ['Aadarsha', 'Kesav', 'Dipendra', 'Other'];
 window.AQC_STAFF = ['Shailesh & Associates', 'Dallakoti & Company', 'Aadarsha', 'Kesav', 'Dipendra', 'Other'];
 
 // The fixed checklist template, in display order. A new record seeds
-// items[] from this list (see js/auditChecklist.js). vatOnly items are
-// included only when the picked client's vat_status === 'active' (the same
-// field/value VAT Compliance already gates on) — omitted, not just hidden,
-// so a client with no VAT items shows a shorter, honest checklist rather
-// than disabled rows. Add a row here (no migration needed — items is jsonb)
-// when the firm's checklist grows.
+// items[] from this list (see js/auditChecklist.js), every item unchecked.
+// Every client gets all 9 — an earlier version gated the two VAT items on
+// clients.vat_status, which meant most clients (VAT-active is a small
+// hand-picked subset) never saw them at all; the CA asked for them on every
+// checklist regardless. Add a row here (no migration needed — items is
+// jsonb) when the firm's checklist grows.
 window.AQC_CHECKLIST_ITEMS = [
   { key: 'py_fig',              label: 'P.Y Fig' },
-  { key: 'sales_purchase_vat',  label: 'Sales/Purchase with VAT Return', vatOnly: true },
+  { key: 'sales_purchase_vat',  label: 'Sales/Purchase with VAT Return' },
   { key: 'bank_balances',       label: 'Bank Balances' },
   { key: 'bank_loan_interest',  label: 'Bank Loan Interest' },
-  { key: 'py_vat_adjustment',   label: 'P.Y VAT Adjustment', vatOnly: true },
+  { key: 'py_vat_adjustment',   label: 'P.Y VAT Adjustment' },
   { key: 'fs_overall_check',    label: 'Overall F.S Check' },
   { key: 'ann_1_2',             label: 'Ann-1/2' },
   { key: 'ann_10',              label: 'Ann-10' },
