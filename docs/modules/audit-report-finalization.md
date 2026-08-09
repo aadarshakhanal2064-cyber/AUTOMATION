@@ -110,7 +110,9 @@ saved fields, not a button-driven workflow.
 A segmented **Type of Return** control (`.arf-type-picker`, styled after the
 `.rep-view-btn` Edit/Preview toggle) reveals exactly one section:
 
-- **Always:** Client + PAN, Fiscal Year, Auditor (+ Other), Remarks
+- **Always:** Client + PAN, Fiscal Year (`ARF_FY_DEFAULT`, currently **2082/83**
+  — the year the firm is working through), Date Recorded (defaults to today),
+  Auditor (+ Other), Remarks
 - **IT Return:** Type of IT Return (D-2/D-3) · IT Submission No. · Submission
   Entered By · Return Checked By · IT Verified
 - **Estimate Return:** Entered By · Estimate Submission No. · Verification Status
@@ -142,13 +144,38 @@ Clearance has no Pending bar by design — it is a two-state field.
 
 Destroy-before-recreate on every render, the `vatCompliance.js` chart idiom.
 
+## Date recorded
+
+`recorded_date` answers "which day did we do this work?" — the module's second
+axis alongside fiscal year. It defaults to today on a new record, is **editable**
+(staff routinely log on Monday work actually done on Friday), and the filter bar
+carries a **Recorded From / Recorded To** range so a week's or a day's work can
+be pulled up and printed.
+
+It is deliberately a **separate column from `created_at`**: `created_at` is the
+immutable insert timestamp, `recorded_date` is what the user says happened.
+Existing rows were backfilled from `created_at::date`, which was accurate since
+nothing had been backdated yet.
+
+The table's default order is `recorded_date desc` — newest work first, which is
+the question the date filter exists to answer. Range endpoints are **inclusive**
+on both sides (a From = To = one day shows that day's work), and the comparison
+is plain ISO string comparison, no `Date` parsing. When a range is active the
+printed/exported sheet gains a `Recorded <from> to <to>` subtitle, so an export
+is still readable a month later.
+
+Chain-created follow-on records are stamped with **today**, not the IT return's
+recorded date — they become due when the IT return is verified, which may be
+long after the return itself was logged.
+
 ## Stat cards clear the filters
 
 Seven cards: Total Records · IT Verified · IT Not Verified · Estimate Verified ·
 Estimate Not Verified · Tax Cleared · Tax Not Cleared. `ARF_FILTERS` drives both
 the counts and the filtering from one definition, so they can't disagree.
 
-**Clicking a card clears every dropdown filter and the search box first.** A
+**Clicking a card clears every dropdown filter, the date range and the search
+box first.** A
 card's number counts the whole portfolio, so leaving stale filters applied would
 show fewer rows than the card advertises — which reads as a bug.
 
@@ -156,7 +183,7 @@ show fewer rows than the card advertises — which reads as a bug.
 
 `TableEngine` (Tabulator), 25/page. Columns: FY · Client (+PAN) · Type (badge,
 with the D-2/D-3 suffix on IT rows) · Auditor · Entered By · Checked By ·
-Submission No. · Status (badge) · Actions. `arfRowEnteredBy`/`arfRowSubmissionNo`
+Submission No. · Status (badge) · Recorded · Actions. `arfRowEnteredBy`/`arfRowSubmissionNo`
 pick the right column for the row's track, so one column serves both IT and
 Estimate; fields that don't apply to a type render the em-dash.
 
@@ -231,6 +258,26 @@ The finalization chain was exercised against an in-memory stub of the table
   for tracks with no row.
 - `AuditLog` writes failed against real RLS during this test and were swallowed
   without breaking the save — the documented behaviour, confirmed incidentally.
+
+`recorded_date` (added the same day) was verified against a 4-record seed
+spanning four dates:
+
+- Migration checked live first — all 20 production rows backfilled from
+  `created_at::date`, column NOT NULL with a `current_date` default.
+- Range filter: From-only, To-only, a closed window, a single day (From = To,
+  **inclusive** at both ends) and a no-match range all returned exactly the
+  right rows; the chart followed the filtered set.
+- Clicking a stat card clears the date range along with the other filters.
+- Form: new record defaults to today and FY **2082/83**; opening an existing
+  record loads *its* stored date (2026-07-20) rather than overwriting with today.
+- Export/print: `Recorded` is the leading column, all 13 headers present, and an
+  active range adds a `Recorded <from> to <to>` subtitle.
+
+**Not verified this round:** the `.xlsx` binary could not be re-read via ExcelJS
+— the promise stalled under browser-tab throttling with the preview pane not
+compositing. The model feeding it was verified through the synchronous HTML
+path, and the identical `toExcel` call was re-read successfully in the two
+earlier rounds, so this is a harness limitation rather than a known defect.
 
 **Not verified:** a live authenticated write (insert/update/delete succeeding
 end-to-end), and the **visual** appearance of the new chart card and segmented

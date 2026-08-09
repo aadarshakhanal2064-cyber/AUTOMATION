@@ -2653,11 +2653,13 @@ function cropLoginLogoIcon(img) {
           </div>
           <button class="btn btn-outline btn-sm" onclick="arfClearFilters()">Clear Filters</button>
         </div>
-        <div class="form-grid" style="grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:16px;">
+        <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:16px;">
           <div class="form-group" style="margin:0;"><label>Auditor</label><select id="arf-filter-auditor" onchange="arfOnFilterChange()"></select></div>
           <div class="form-group" style="margin:0;"><label>Fiscal Year</label><select id="arf-filter-fy" onchange="arfOnFilterChange()"></select></div>
           <div class="form-group" style="margin:0;"><label>Type of Return</label><select id="arf-filter-type" onchange="arfOnFilterChange()"></select></div>
           <div class="form-group" style="margin:0;"><label>Status</label><select id="arf-filter-status" onchange="arfOnFilterChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Recorded From</label><input type="date" id="arf-filter-from" onchange="arfOnFilterChange()" /></div>
+          <div class="form-group" style="margin:0;"><label>Recorded To</label><input type="date" id="arf-filter-to" onchange="arfOnFilterChange()" /></div>
         </div>
         <div id="arf-status-area"></div>
         <div id="arf-table-wrap"><div class="log-empty">Loading…</div></div>
@@ -2866,6 +2868,10 @@ function cropLoginLogoIcon(img) {
         <div class="form-group">
           <label>Fiscal Year</label>
           <select id="arf-fiscal-year" onchange="arfOnKeyFieldChange()"></select>
+        </div>
+        <div class="form-group">
+          <label>Date Recorded</label>
+          <input type="date" id="arf-recorded-date" />
         </div>
         <div class="form-group">
           <label>Auditor</label>
@@ -3457,7 +3463,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
 <script src="js/fileManagement.js?v=202608022300"></script>
-<script src="js/auditReportFinalization.js?v=202608091800"></script>
+<script src="js/auditReportFinalization.js?v=202608092000"></script>
 <script src="js/auth.js?v=202608022300"></script>
 
 </body>

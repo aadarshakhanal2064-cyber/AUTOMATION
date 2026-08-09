@@ -40,7 +40,7 @@ const ARF_TYPE_BADGES = {
 
 const ARF_FY_START = 2077;
 const ARF_FY_END = 2085;
-const ARF_FY_DEFAULT = '2083/84';
+const ARF_FY_DEFAULT = '2082/83';
 const ARF_SUBMISSION_DIGITS = 12;
 
 // Stat cards double as quick filters. Each one clears the dropdown filters
@@ -55,7 +55,7 @@ const ARF_FILTERS = {
   taxNotClear: { label: 'Tax Not Cleared',        test: r => r.return_type === 'tax_clearance' && r.tax_clearance !== true },
 };
 
-const ARF_FILTERS_EMPTY = { auditor: '', fiscalYear: '', returnType: '', status: '' };
+const ARF_FILTERS_EMPTY = { auditor: '', fiscalYear: '', returnType: '', status: '', from: '', to: '' };
 
 let arfRecords = [];
 let arfTable = null;
@@ -195,8 +195,10 @@ function arfUpdateDigitHint(inputId) {
 async function arfRefresh() {
   arfStatusMsg('<span class="spinner spinner-navy"></span> Loading records…', 'searching');
   try {
+    // Newest work first — the date filter's whole point is "what did we get
+    // through recently", so the default order should already answer that.
     arfRecords = await sbFetchAll(() => window.sb.from('audit_report_finalization')
-      .select('*').order('fiscal_year', { ascending: false }).order('client_name', { ascending: true }));
+      .select('*').order('recorded_date', { ascending: false }).order('client_name', { ascending: true }));
     arfRenderStats();
     arfRenderTable();
     arfEl('arf-status-area').innerHTML = '';
@@ -226,7 +228,8 @@ function arfSetFilter(key) {
 }
 
 function arfResetFilterInputs() {
-  ['arf-filter-auditor', 'arf-filter-fy', 'arf-filter-type', 'arf-filter-status', 'arf-search'].forEach(id => {
+  ['arf-filter-auditor', 'arf-filter-fy', 'arf-filter-type', 'arf-filter-status',
+   'arf-filter-from', 'arf-filter-to', 'arf-search'].forEach(id => {
     const el = arfEl(id); if (el) el.value = '';
   });
   arfFilters = { ...ARF_FILTERS_EMPTY };
@@ -295,6 +298,7 @@ function arfRenderTable() {
       { title: 'Checked By', field: 'it_checked_by', minWidth: 120, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Submission No.', field: 'it_submission_no', minWidth: 140, headerSort: false, formatter: c => escHtml(arfRowSubmissionNo(c.getRow().getData()) || '—') },
       { title: 'Status', field: 'id', width: 140, headerSort: false, formatter: c => arfStatusBadge(c.getRow().getData()) },
+      { title: 'Recorded', field: 'recorded_date', width: 115, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Actions', field: 'id', headerSort: false, minWidth: 190, formatter: c => arfRowActions(),
         cellClick: (e, cell) => {
           const btn = e.target.closest('[data-action]');
@@ -321,6 +325,8 @@ function arfReadFilters() {
     fiscalYear: arfEl('arf-filter-fy').value,
     returnType: arfEl('arf-filter-type').value,
     status: arfEl('arf-filter-status').value,
+    from: arfEl('arf-filter-from').value,
+    to: arfEl('arf-filter-to').value,
   };
 }
 
@@ -332,6 +338,9 @@ function arfCurrentFilteredRows() {
     if (arfFilters.fiscalYear && r.fiscal_year !== arfFilters.fiscalYear) return false;
     if (arfFilters.returnType && r.return_type !== arfFilters.returnType) return false;
     if (arfFilters.status && arfStatusKey(r) !== arfFilters.status) return false;
+    // ISO dates compare correctly as strings, so no Date parsing needed.
+    if (arfFilters.from && (r.recorded_date || '') < arfFilters.from) return false;
+    if (arfFilters.to && (r.recorded_date || '') > arfFilters.to) return false;
     return true;
   });
   const q = (arfEl('arf-search').value || '').trim();
@@ -516,6 +525,7 @@ function arfLoadIntoDrawer(existing, keepClientTyped) {
     arfSelectedClient = (window.clientsList || []).find(c => c.id === existing.client_id) || null;
   }
   arfEl('arf-fiscal-year').value = existing.fiscal_year || ARF_FY_DEFAULT;
+  arfEl('arf-recorded-date').value = existing.recorded_date || arfToday();
   arfFillStaffField('arf-auditor', 'arf-auditor-other', 'arf-auditor-other-group', existing.auditor, window.ARF_AUDITORS);
   arfSetType(existing.return_type || 'it_return');
 
@@ -552,6 +562,7 @@ function arfOpenEntry(existing) {
   arfEl('arf-client-search').value = '';
   arfEl('arf-client-pan').value = '';
   arfEl('arf-fiscal-year').value = ARF_FY_DEFAULT;
+  arfEl('arf-recorded-date').value = arfToday();
   arfEl('arf-auditor').value = '';
   arfEl('arf-auditor-other').value = '';
   arfEl('arf-auditor-other-group').style.display = 'none';
@@ -623,6 +634,7 @@ async function arfSaveEntry() {
     client_name: clientName,
     client_pan: arfEl('arf-client-pan').value.trim() || null,
     fiscal_year: fiscalYear,
+    recorded_date: arfEl('arf-recorded-date').value || arfToday(),
     return_type: type,
     auditor,
     it_return_type: type === 'it_return' ? (arfEl('arf-it-return-type').value || null) : null,
@@ -700,6 +712,8 @@ async function arfCreateFollowOns(base) {
       client_name: base.client_name,
       client_pan: base.client_pan,
       fiscal_year: base.fiscal_year,
+      // The follow-on becomes due today, whatever date the IT return carries.
+      recorded_date: arfToday(),
       return_type: type,
       auditor: base.auditor,
       // Outstanding, not merely unfilled — see the note above.
@@ -731,18 +745,24 @@ async function arfDeleteEntry(row) {
 
 // ── Print / Export ──
 function arfBuildModel(rows, titleSuffix) {
+  const subtitles = [`Generated ${arfToday()}`];
+  // A printed sheet should say what period it covers, or it's unreadable a
+  // month later.
+  if (arfFilters.from || arfFilters.to) {
+    subtitles.push(`Recorded ${arfFilters.from || 'the beginning'} to ${arfFilters.to || 'today'}`);
+  }
   return {
     title: 'Audit Report Finalization' + (titleSuffix ? ' — ' + titleSuffix : ''),
-    subtitleLines: [`Generated ${arfToday()}`],
+    subtitleLines: subtitles,
     landscape: true,
     columns: [
-      { label: 'FY', w: 0.85 }, { label: 'Client', w: 2 }, { label: 'PAN', w: 1 },
-      { label: 'Type', w: 1.2 }, { label: 'IT Form', w: 0.7 }, { label: 'Auditor', w: 1.5 },
-      { label: 'Entered By', w: 1.1 }, { label: 'Checked By', w: 1.1 }, { label: 'Submission No.', w: 1.3 },
-      { label: 'Status', w: 1.1 }, { label: 'Clearance Date', w: 1.1 }, { label: 'Remarks', w: 1.8 },
+      { label: 'Recorded', w: 1 }, { label: 'FY', w: 0.8 }, { label: 'Client', w: 1.9 }, { label: 'PAN', w: 0.95 },
+      { label: 'Type', w: 1.15 }, { label: 'IT Form', w: 0.65 }, { label: 'Auditor', w: 1.4 },
+      { label: 'Entered By', w: 1.05 }, { label: 'Checked By', w: 1.05 }, { label: 'Submission No.', w: 1.25 },
+      { label: 'Status', w: 1.05 }, { label: 'Clearance Date', w: 1.05 }, { label: 'Remarks', w: 1.6 },
     ],
     rows: rows.map(r => ({ cells: [
-      r.fiscal_year, r.client_name, r.client_pan,
+      r.recorded_date, r.fiscal_year, r.client_name, r.client_pan,
       arfTypeLabel(r.return_type), r.it_return_type, r.auditor,
       arfRowEnteredBy(r), r.it_checked_by, arfRowSubmissionNo(r),
       arfStatusLabel(r), r.tax_clearance_date,
