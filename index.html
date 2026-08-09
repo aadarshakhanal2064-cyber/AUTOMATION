@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608092330">
+<link rel="stylesheet" href="css/styles.css?v=202608100100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -183,6 +183,10 @@ function cropLoginLogoIcon(img) {
     <button class="nav-item" onclick="switchTab('auditChecklist'); achkInit();" id="nav-auditChecklist">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><path d="M4.5 6.5l1 1 2-2"></path><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M4.5 17.5l1 1 2-2"></path><line x1="14" y1="6.5" x2="21" y2="6.5"></line><line x1="14" y1="17.5" x2="21" y2="17.5"></line></svg>
       Audit Checklist
+    </button>
+    <button class="nav-item" onclick="switchTab('workDone'); wdInit();" id="nav-workDone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+      Work Done
     </button>
   </nav>
 
@@ -2803,6 +2807,78 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <div id="tab-workDone-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">Work Done</span></div>
+          <h2 class="page-title">Work Done</h2>
+          <p class="page-subtitle">What work has actually been finished, per client per fiscal year — and what files are still waiting.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="wdRefresh()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+          </button>
+          <button class="btn btn-outline" onclick="wdPreviewAll()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print / Preview
+          </button>
+          <button class="btn btn-outline" onclick="wdExport('pdf')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export PDF
+          </button>
+          <button class="btn btn-outline" onclick="wdExport('excel')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export Excel
+          </button>
+          <button class="btn btn-primary" onclick="wdOpenEntry()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            New Work Record
+          </button>
+        </div>
+      </div>
+
+      <div class="wd-view-toggle">
+        <button class="rep-view-btn active" id="wd-view-records" onclick="wdSetView('records')">Work Records</button>
+        <button class="rep-view-btn" id="wd-view-pending" onclick="wdSetView('pending')">Pending List<span id="wd-pending-count"></span></button>
+      </div>
+
+      <div id="wd-records-view">
+        <div class="stat-grid compact" id="wd-stat-grid"></div>
+
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+            <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+              <span class="sb-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              </span>
+              <input type="text" class="search-bar" id="wd-search" placeholder="Search client, PAN, remarks…" oninput="wdApplyFilters()" />
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="wdClearFilters()">Clear Filters</button>
+          </div>
+          <div class="form-grid" style="grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:16px;">
+            <div class="form-group" style="margin:0;"><label>Fiscal Year</label><select id="wd-filter-fy" onchange="wdOnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Status</label><select id="wd-filter-status" onchange="wdOnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Staff</label><select id="wd-filter-staff" onchange="wdOnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Recorded From</label><input type="date" id="wd-filter-from" onchange="wdOnFilterChange()" /></div>
+            <div class="form-group" style="margin:0;"><label>Recorded To</label><input type="date" id="wd-filter-to" onchange="wdOnFilterChange()" /></div>
+          </div>
+          <div id="wd-status-area"></div>
+          <div id="wd-table-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
+      </div>
+
+      <div id="wd-pending-view" style="display:none;">
+        <div class="table-wrap" style="padding:24px;">
+          <p class="page-subtitle" style="margin:0 0 14px;">
+            Sales Registers, Purchase Registers and Stock Books received in <strong>File In Out</strong> whose work is not yet marked Done — longest waiting first. Nothing is entered twice; this list is read straight from the document register.
+          </p>
+          <div id="wd-pending-note"></div>
+          <div id="wd-pending-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /app-section -->
 </main>
 
@@ -3205,6 +3281,57 @@ function cropLoginLogoIcon(img) {
         <button class="btn btn-primary" onclick="achkSaveEntry()">Save Checklist</button>
       </div>
       <div id="achk-drawer-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- WORK DONE — CREATE / EDIT DRAWER -->
+<div class="modal-overlay drawer-right" id="wd-entry-drawer">
+  <div class="modal drawer-panel" style="width:860px;">
+    <div class="modal-header">
+      <h3 id="wd-drawer-title">New Work Record</h3>
+      <button class="modal-close" onclick="wdCloseEntry()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full">
+          <label>Client (search by name or PAN)</label>
+          <input type="text" id="wd-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="autocomplete-list" id="wd-client-autocomplete" style="display:none;"></div>
+        </div>
+        <div class="form-group">
+          <label>Client PAN</label>
+          <input type="text" id="wd-client-pan" placeholder="Auto-filled on select" readonly />
+        </div>
+        <div class="form-group">
+          <label>Fiscal Year</label>
+          <select id="wd-fiscal-year" onchange="wdOnKeyFieldChange()"></select>
+        </div>
+        <div class="form-group">
+          <label>Date Recorded</label>
+          <input type="date" id="wd-recorded-date" />
+        </div>
+      </div>
+
+      <div class="form-group full" style="margin-top:14px; margin-bottom:0;">
+        <div class="wd-items-head">
+          <label style="margin:0;">Work Performed</label>
+          <span id="wd-drawer-progress" class="wd-drawer-progress"></span>
+        </div>
+        <div id="wd-items-list" class="wd-items"></div>
+        <button type="button" class="btn btn-outline btn-sm" style="margin-top:10px;" onclick="wdAddCustomItem()">+ Add Custom Work</button>
+      </div>
+
+      <div class="form-group full" style="margin-top:16px;">
+        <label>Remarks</label>
+        <textarea id="wd-remarks" placeholder="Optional"></textarea>
+      </div>
+
+      <div class="action-row" style="justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="wdCloseEntry()">Cancel</button>
+        <button class="btn btn-primary" onclick="wdSaveEntry()">Save Work Record</button>
+      </div>
+      <div id="wd-drawer-status"></div>
     </div>
   </div>
 </div>
@@ -3712,11 +3839,11 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608092520"></script>
+<script src="js/config.js?v=202608100100"></script>
 <script src="js/utils.js?v=202608022300"></script>
 <script src="js/core/moduleRegistry.js?v=202608022300"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
-<script src="js/core/nepaliLocale.js?v=202608022300"></script>
+<script src="js/core/nepaliLocale.js?v=202608100100"></script>
 <script src="js/core/documentEngine.js?v=202608022300"></script>
 <script src="js/core/searchEngine.js?v=202608022300"></script>
 <script src="js/core/tableEngine.js?v=202608022300"></script>
@@ -3757,6 +3884,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/fileManagement.js?v=202608092330"></script>
 <script src="js/auditReportFinalization.js?v=202608092200"></script>
 <script src="js/auditChecklist.js?v=202608092500"></script>
+<script src="js/workDone.js?v=202608100100"></script>
 <script src="js/auth.js?v=202608022300"></script>
 
 </body>

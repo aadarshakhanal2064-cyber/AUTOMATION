@@ -334,6 +334,55 @@ window.AQC_CHECKLIST_ITEMS = [
   { key: 'ann_13',              label: 'Ann-13' },
 ];
 
+// ── Work Done module data ──
+// The firm's work-type sheet, in display order, `group` driving the headings
+// the entry form renders them under. A new record seeds items[] from this
+// list (see js/workDone.js), every row 'not_started'. Adding a work type here
+// needs no migration — work_done.items is jsonb.
+//
+// `fileLabel` is the FM_DOC_TYPES label a work type is backed by, and marks
+// the ONLY three rows that can ever appear in the Pending List — exactly as
+// the firm's own sheet specifies ("If file is received and work is not done"
+// against Sales Register / Purchase Register / Stock Book, and "Do not show
+// in Pending list" against every other row). It must stay spelled
+// IDENTICALLY to the matching FM_DOC_TYPES label: document_register stores
+// doc_types[].type as the label TEXT, not the key, so renaming a document
+// type in File In Out silently empties this module's Pending List.
+//
+// 'Other Specify' from the paper sheet is deliberately absent — ad-hoc work
+// uses unlimited custom rows instead (the auditChecklist.js mechanism).
+window.WD_WORK_TYPES = [
+  { key: 'sales_register',      label: 'Sales Register',        group: 'Books & Records',      fileLabel: 'Sales Register' },
+  { key: 'purchase_register',   label: 'Purchase Register',     group: 'Books & Records',      fileLabel: 'Purchase Register' },
+  { key: 'stock_book',          label: 'Stock Book',            group: 'Books & Records',      fileLabel: 'Stock Book' },
+  { key: 'sp_as_per_vat',       label: 'S/P as per VAT Return', group: 'VAT & Reconciliation' },
+  { key: 'vat_reco',            label: 'VAT Reco',              group: 'VAT & Reconciliation' },
+  { key: 'ann_13',              label: 'Ann-13',                group: 'VAT & Reconciliation' },
+  { key: 'confirmation',        label: 'Confirmation',          group: 'VAT & Reconciliation' },
+  { key: 'financial_statement', label: 'Financial Statement',   group: 'Financial Statements' },
+  { key: 'projected',           label: 'Projected',             group: 'Financial Statements' },
+  { key: 'provisional',         label: 'Provisional',           group: 'Financial Statements' },
+  { key: 'vat_return',          label: 'VAT Return',            group: 'Returns & Filing' },
+  { key: 'etds_return',         label: 'ETDS Return',           group: 'Returns & Filing' },
+  { key: 'excise_return',       label: 'Excise Return',         group: 'Returns & Filing' },
+  { key: 'ird_submission',      label: 'IRD Submission',        group: 'Returns & Filing' },
+  { key: 'ledger_scrutiny',     label: 'Ledger Scrutiny',       group: 'Review & Advisory' },
+  { key: 'consulting',          label: 'Consulting',            group: 'Review & Advisory' },
+];
+
+// Three states per work row, not a plain done-tick: "In Progress" is what
+// stops two staff starting the same job, which is half the reason the module
+// exists. Record status and the Pending List both derive from these.
+window.WD_STATES = [
+  { key: 'not_started', label: 'Not Started', icon: '⬜', badgeClass: 'badge-neutral' },
+  { key: 'in_progress', label: 'In Progress', icon: '🟡', badgeClass: 'badge-amber' },
+  { key: 'done',        label: 'Done',        icon: '✅', badgeClass: 'badge-sent' },
+];
+
+// Work Done's "Name of Staff" reuses window.ARF_STAFF above — same humans as
+// Audit Report Finalization, so adding a staff member stays ONE config edit
+// for both modules. Deliberately not copied into a WD_STAFF constant.
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },

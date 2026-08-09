@@ -111,6 +111,28 @@ that doesn't match today's picklist (only possible from data predating the
 saving normalizes the rest away. Adding a picklist type needs no migration —
 extend the config array.
 
+### Three of these labels are now load-bearing outside this module
+
+`document_register` gained a **second reader** on 2026-08-09: the
+[Work Done](work-done.md) module's Pending List answers "is a file received?"
+from this register rather than from a second checkbox of its own. It matches
+on `doc_types[].type`, which stores the **label text**, not the key — so
+`Sales Register`, `Purchase Register` and `Stock Book` are strings two modules
+now agree on.
+
+**Renaming any of those three labels silently empties Work Done's Pending
+List** — no error anywhere, it just looks like nothing is pending. Rename them
+only together with the matching `WD_WORK_TYPES[].fileLabel` in `js/config.js`;
+`wdBrokenFileLabels()` exists to surface the mismatch if they ever drift.
+Adding, removing or renaming any *other* document type is unaffected.
+
+Note also that this module's `fiscal_year` is free text while Work Done's is a
+dropdown in slash format, so that join goes through
+`NepaliLocale.fyStartYear()` rather than string equality (see §"Fiscal Year"
+below). Intake rows whose year can't be parsed are reported in Work Done's
+Pending List rather than silently skipped — one more reason to keep the year
+filled in.
+
 ## Fiscal Year
 
 `fiscal_year` is dash format (`2081-82`, the majority convention — Bank Entry,

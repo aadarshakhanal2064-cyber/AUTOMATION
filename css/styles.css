@@ -1304,3 +1304,45 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 .achk-item-staff select{ width: 100%; margin: 0; }
 .achk-item-staff-other{ width: 140px; margin: 0; flex: 0 0 auto; }
 .achk-item-remove{ flex: 0 0 auto; padding: 4px 10px; }
+
+/* ── Work Done — work rows (state + label + staff + remarks) ──
+   A grid rather than the flex row Audit Checklist uses, because five columns
+   of differing content have to line up VERTICALLY down the list for it to be
+   scannable — flex would let each row size its own columns. Rows tint by
+   state so how far along a client's year is reads at a glance. */
+.wd-view-toggle{
+  display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-md);
+  overflow: hidden; background: var(--white); margin-bottom: 18px;
+}
+.wd-items-head{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.wd-drawer-progress{ font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.wd-items{ display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.wd-group-head{
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin: 12px 0 2px;
+}
+.wd-group-head:first-child{ margin-top: 0; }
+.wd-item-row{
+  /* Column widths measured against the real 860px drawer: the state select
+     needs ~128px for "🟡 In Progress", the staff pair ~200px, and the rest
+     splits 1.25:1 so the longest work-type label ("S/P as per VAT Return")
+     keeps real slack instead of sitting 16px off overflowing. */
+  display: grid; grid-template-columns: 128px 1.25fr 200px 1fr 34px;
+  align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-md);
+  transition: background .15s, border-color .15s;
+}
+.wd-item-row.state-in_progress{ background: var(--yellow-bg); border-color: var(--yellow-border); }
+.wd-item-row.state-done{ background: var(--green-bg); border-color: var(--green-border); }
+.wd-item-state{ margin: 0; width: 100%; }
+.wd-item-label-cell{ display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.wd-item-label{ font-size: 13.5px; font-weight: 600; color: var(--text-main); }
+.wd-item-label-input{ flex: 1; margin: 0; min-width: 0; }
+.wd-item-done-date{ font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
+.wd-item-staff{ display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wd-item-staff select{ width: 100%; margin: 0; min-width: 0; }
+.wd-item-staff-other{ width: 110px; margin: 0; flex: 0 0 auto; }
+.wd-item-remarks{ margin: 0; min-width: 0; }
+.wd-item-remove{ padding: 4px 8px; }
+/* Keeps the five columns aligned on rows that have no remove button. */
+.wd-item-remove-spacer{ display: block; }

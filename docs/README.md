@@ -35,6 +35,9 @@ module detail irrelevant to whatever the session was actually doing.
 | [`modules/projection.md`](modules/projection.md) | Projection Report — the constraint solver, its 10 master rules, and its exports | `pj-` |
 | [`modules/financial-statement.md`](modules/financial-statement.md) | Financial Statement — the NFRS statement-set builder | `fs-` |
 | [`modules/file-management.md`](modules/file-management.md) | File In Out (called File Management in code) — the physical document custody register | `fm-` |
+| [`modules/audit-report-finalization.md`](modules/audit-report-finalization.md) | Audit Report Finalization — the per-return-type IT / Estimate / Tax Clearance tracker | `arf-` |
+| [`modules/audit-checklist.md`](modules/audit-checklist.md) | Audit Checklist — the pre-finalization QC sign-off sheet | `achk-` |
+| [`modules/work-done.md`](modules/work-done.md) | Work Done — what work is finished per client/year, and the Pending List joined from File In Out | `wd-` |
 
 The four Financial Management modules share one file on purpose: they read each
 other's state (`finalAccount.js` calls `partyLedger.js`'s functions, and the
