@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (17 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (19 tables, §6).
 
 ---
 
@@ -48,7 +48,7 @@ The app itself runs **entirely client-side**, and **Supabase is now its only bac
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (14 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, vatCompliance,
   billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
@@ -89,7 +89,7 @@ AUTOMATION AI APP/
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, fmtAmount
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, email/password sign-in/out, app_users authorization
-│   ├── core/                # 13 reusable engines — §4
+│   ├── core/                # 14 reusable engines — §4
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
 ├── ocr_service/             # Optional local FastAPI + PaddleOCR service — §2
@@ -122,6 +122,7 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | EngineMath | `engineMath.js` | `seededRng(key)`, `round1000Up/Down`, `deRound`. What makes the "unique per case" figures **reproducible per client**. Node-loadable. |
 | ReportExport | `reportExport.js` | `toHtml`/`toPdf`/`toExcel`/`download` over one tabular model. Knows nothing about ledgers — callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** (PDF-Lib standard fonts throw on non-WinAnsi characters). |
 | DataCache | `dataCache.js` | `get(key, loader)` / `invalidate(...keys)` / `invalidateAll()`. 60s TTL in front of the shared full-table ledger loads. Caches the **promise**, so concurrent opens share one round-trip; a rejected load is never cached. **Keys live in `config.js` as `window.LEDGER_KEYS` and encode the ORDER BY, not just the table** — Bank Entry and Party Ledger sort `bank_accounts` differently and Final Account renders that array in order. Write paths call a module's `xxReload()` (invalidate + refresh); `xxRefresh()` must never invalidate. |
+| DocumentStore | `documentStore.js` | `save`/`list`/`get`/`remove`/`openPicker` over `saved_documents` — save, browse and re-open for the HTML document builders (Audit Report, Notes to Accounts). Stores **both** the form state (re-editable) and the rendered HTML (reprintable exactly as issued). One shared picker drawer (`ds-` ids); **never caches**. |
 | OcrEngine | `ocrEngine.js` | `checkHealth`, `extractText(file)` against the local OCR service (`ocr_service/`, §2). Translates a dead-port `fetch()` rejection into an actionable "service not running" message while preserving the API's own error text. Base URL is `window.OCR_SERVICE_URL`. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§9). No edits to `tabs.js`.
@@ -137,6 +138,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Module | Where | File(s) | Prefix | Table(s) | Doc |
 |---|---|---|---|---|---|
 | Dashboard | Sidebar *(default tab)* | `dashboard.js` | `dash-` | *(reads `audit_log`)* | [compliance-billing](docs/modules/compliance-billing.md) |
+| *(shared)* Saved documents picker | — | `js/core/documentStore.js` | `ds-` | `saved_documents` | [engines](docs/engines.md) |
 | VAT Compliance | Sidebar | `vatCompliance.js` | `vatc-` | `vat_filings` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
 | File Management | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
@@ -150,8 +152,8 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Projection Report | Automation Hub | `projection.js` + `projectionEngine.js` + `projectionExport.js` | `pj-` | `projection_reports` | [projection](docs/modules/projection.md) |
 | Depreciation | Automation Hub | `depreciation.js` + `depreciationSlm.js` | `dep-` `dep-slm-` | `depreciation_schedules` | [depreciation](docs/modules/depreciation.md) |
 | Confirmation | Automation Hub | `confirmationLetters.js` | `cl-` | *(none)* | [documents](docs/modules/documents.md) |
-| Generate Report | Automation Hub | `report.js` | `rep-` | *(none)* | [documents](docs/modules/documents.md) |
-| Notes to Accounts | Automation Hub | `notesToAccounts.js` | `nta-` | *(none)* | [documents](docs/modules/documents.md) |
+| Generate Report | Automation Hub | `report.js` | `rep-` | `saved_documents` | [documents](docs/modules/documents.md) |
+| Notes to Accounts | Automation Hub | `notesToAccounts.js` | `nta-` | `saved_documents` | [documents](docs/modules/documents.md) |
 | Autobooks | Automation Hub | `salesPurchaseBook.js` | `spb-` | *(none)* | [autobooks](docs/modules/autobooks.md) |
 | OCR Extract | Automation Hub | `ocrExtract.js` | `ocr-` | *(none)* | [documents](docs/modules/documents.md) |
 
@@ -174,7 +176,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**18 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register`.
+**19 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents`.
 
 ### Trigger-owned logic (never replicate in JS)
 
@@ -200,7 +202,7 @@ PostgREST caps a single select at **1000 rows** — any query that can grow past
 
 Show the SQL (annotated migration + rollback as files under `db/`) → apply via Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
 
-### RLS — ENABLED on all 18 tables (since 2026-07-16)
+### RLS — ENABLED on all 19 tables (since 2026-07-16)
 
 **Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE is admin-only; `send_logs`/`audit_log` are immutable; **`firm_bank_details` writes are admin-only** (payment-fraud target).
 
@@ -274,7 +276,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `pl-` | Party Ledger | | `fa-` | Final Account |
 | `fs-` | Financial Statement | | `cp-` | Company Profile |
 | `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | `ocr-` | OCR Extract |
-| `fm-` | File Management (Document Register) | | | |
+| `fm-` | File Management (Document Register) | | `ds-` | Saved-documents picker (shared drawer, `js/core/documentStore.js`) |
 
 ### Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
@@ -325,7 +327,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 ## 13. Security Practices
 
-- **RLS is the server-side enforcement layer** (§6) — enabled on all 17 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
+- **RLS is the server-side enforcement layer** (§6) — enabled on all 19 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
 - **CSP** (meta tag in `index.html`; `connect-src` is now just Supabase + the OCR loopback — every Google origin was removed 2026-08-01) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
 - Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk).
@@ -388,6 +390,10 @@ The established pattern — **investigate with real evidence → implement only 
 - **File Management is one row per visit, updated in place on handover** (2026-08-01) — an intake and its return are the same physical custody, so there is no paired "returns" row. `Reopen` clears the collector details rather than keeping them: the documents are physically back, and stale details would be read as fact. Don't add a second write path around `fmFlow`.
 - **File Management is deliberately not linked to Drive or the document pipeline** — it tracks the paper the firm is physically holding, which a digital copy doesn't substitute for. It also has no fiscal-year field on purpose; add one only if the firm asks.
 - **The OCR service is deliberately standalone** — no client picker, no `clients` row, no document pipeline. That's what keeps it optional: a stopped service breaks one tab, nothing else. Don't make another module depend on it without asking.
+- **Saved documents are ONE table with a `module` discriminator** (2026-08-02) — not one table per builder. Every HTML document builder stores the same two things (form state + rendered HTML), so per-module tables would duplicate the schema, the RLS block and the entire save/list/restore UI. Adding a builder means adding one value to the CHECK, not a migration and a drawer.
+- **A saved document stores BOTH its form state and its rendered HTML** — the preview is contenteditable, so the state alone loses every hand-edit, which is exactly the document the firm issued. Don't "simplify" either one away.
+- **Additional notes belong to Notes to Accounts only** (2026-08-02, CA instruction) — the audit report's sections are prescribed by the NSAs and are not the auditor's to extend. Don't add an equivalent to `report.js`.
+- **`.rep-blank-fill`'s placeholder styling belongs to `:empty` alone** — styling it grey-italic by default and black only on `:focus` is what made filled Emphasis-of-Matter and KAM text print washed out in every export (none of which has focus). It reached a client's printed report; don't restore the `:focus`-based version.
 - **`OCR_LANG` defaults to `ne` (Nepali/Devanagari), not `en`** — verified 2026-08-01 to read plain English correctly too, so one model serves both. This isn't a preference: `en` has no Devanagari support and returns confident-looking garbage on a Nepali page instead of erroring, which is easy to miss. Don't "optimize" it back to `en` for speed.
 
 ---
@@ -417,9 +423,9 @@ The established pattern — **investigate with real evidence → implement only 
 | `CLAUDE.md` | **Every session** | This file — hard rules, standards, indexes, deliberate decisions. |
 | `docs/README.md` | On demand | Map of the docs tree and the rule for what goes where. |
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
-| `docs/database.md` | On demand | All 17 tables column by column, triggers, the full RLS matrix. |
+| `docs/database.md` | On demand | All 19 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
-| `docs/engines.md` | On demand | The 13 engines in full. |
+| `docs/engines.md` | On demand | The 14 engines in full. |
 | `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |

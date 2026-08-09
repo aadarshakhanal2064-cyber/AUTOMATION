@@ -617,11 +617,120 @@ function depSlmCleanDate(v) {
 //  merges / borders / accounting format, LIVE formulas, an internal Check column,
 //  and the PPE↔Grand-Total tie-out.
 // ════════════════════════════════════════════
+// ════════════════════════════════════════════
+//  PRINT / SAVE AS PDF — the asset schedule, then the 3.1 PPE note on its
+//  own page. Shares depreciation.js's print CSS, identity header and blob
+//  window (depOpenPrintDoc), so both methods print as one document family.
+//  Both pages carry the client block: the note in particular is routinely
+//  detached and filed with the financial statements.
+// ════════════════════════════════════════════
+function depSlmPrint() {
+  if (!depSlmRows.length) { depStatus('⚠️ Add at least one asset before printing.', 'info'); return; }
+  depSlmRecalc();
+  const fyStart = depSlmFyStart();
+  const fyLbl = document.getElementById('dep-fy').value || '';
+  const openLbl = fyStart != null ? `1st Shrawan, ${fyStart}` : 'Opening';
+  const closeLbl = fyStart != null ? `End Ashadh, ${fyStart + 1}` : 'Closing';
+  const title = 'Statement of PPE and Depreciation — As per Books (SLM)';
+
+  // Grid, grouped by class with a subtotal per class and a grand total —
+  // the same shape as the "Dep as Books" sheet.
+  const FIELDS = ['origCost', 'openWDV', 'addition', 'delCost', 'balance', 'openDep', 'charge', 'totalDep', 'closingWDV'];
+  const grand = {}; FIELDS.forEach(f => grand[f] = 0);
+  let body = '';
+  depSlmClasses().forEach(cls => {
+    const rows = depSlmRows.filter(x => x.classKey === cls.key);
+    if (!rows.length) return;
+    const sum = {}; FIELDS.forEach(f => sum[f] = 0);
+    rows.forEach(x => {
+      const c = x._c || depSlmComputeLine(x, fyStart);
+      FIELDS.forEach(f => { sum[f] += c[f] || 0; });
+      body += `<tr>
+        <td class="l">${escHtml(cls.name)}</td>
+        <td class="l">${escHtml(x.particular || '')}</td>
+        <td class="c">${escHtml(x.dateOfUse || '')}</td>
+        <td class="c">${c.days || '–'}</td>
+        <td class="c">${c.life || '–'}</td>
+        ${FIELDS.map(f => `<td>${depFmt(c[f])}</td>`).join('')}
+      </tr>`;
+    });
+    FIELDS.forEach(f => { grand[f] += sum[f]; });
+    body += `<tr class="dp-sub-t"><td colspan="5" class="l">${escHtml(cls.name)} — Total</td>
+      ${FIELDS.map(f => `<td>${depFmt(sum[f])}</td>`).join('')}</tr>`;
+  });
+  body += `<tr class="dp-tot"><td colspan="5" class="l">Grand Total</td>
+    ${FIELDS.map(f => `<td>${depFmt(grand[f])}</td>`).join('')}</tr>`;
+
+  const gridPage = `
+    <div class="dp-page">
+      ${depPrintHead(title)}
+      <table class="dp-t">
+        <thead><tr>
+          <th style="width:11%">Pool / Class</th><th style="width:15%">Particulars</th>
+          <th>Date of<br>Use</th><th>Days</th><th>Life<br>(yr)</th>
+          <th>Original<br>Cost</th><th>Opening<br>WDV</th><th>Addition</th><th>Deletion<br>Cost</th>
+          <th>Balance</th><th>Opening<br>Dep</th><th>Depreciation</th><th>Total<br>Dep</th><th>Closing<br>WDV</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      ${depSignBlock()}
+    </div>`;
+
+  // ── 3.1 PPE note ──
+  const by = depSlmPpeAggregate(fyStart);
+  const cols = depSlmClasses().filter(c => {
+    const b = by[c.key];
+    return b.costOpen || b.add || b.dispCost || b.depOpen || b.charge || b.closeWDV;
+  });
+  let notePage = '';
+  if (cols.length) {
+    const tot = { costOpen: 0, add: 0, dispCost: 0, depOpen: 0, charge: 0, impair: 0, dispDep: 0 };
+    cols.forEach(c => { const b = by[c.key]; Object.keys(tot).forEach(k => tot[k] += b[k]); });
+    const derive = b => {
+      const costClose = b.costOpen + b.add - b.dispCost;
+      const depClose = b.depOpen + b.charge + b.impair - b.dispDep;
+      return { costClose, depClose, carryOpen: b.costOpen - b.depOpen, carryClose: costClose - depClose };
+    };
+    const cells = pick => cols.map(c => `<td>${depFmt(pick(by[c.key], derive(by[c.key])))}</td>`).join('')
+      + `<td>${depFmt(pick(tot, derive(tot)))}</td>`;
+    const section = label => `<tr class="dp-sec"><td colspan="${cols.length + 2}">${label}</td></tr>`;
+    const row = (label, pick, strong) => `<tr${strong ? ' class="dp-sub-t"' : ''}><td class="l">${label}</td>${cells(pick)}</tr>`;
+
+    notePage = `
+      <div class="dp-page">
+        ${depPrintHead('3.1  Property, Plant and Equipment   (Figures in NPR)')}
+        <table class="dp-t">
+          <thead><tr><th style="width:26%">Particulars</th>
+            ${cols.map(c => `<th>${escHtml(c.name)}</th>`).join('')}<th>Total</th></tr></thead>
+          <tbody>
+            ${section('Cost')}
+            ${row(`Balance as at ${escHtml(openLbl)}`, b => b.costOpen)}
+            ${row('Additions', b => b.add)}
+            ${row('Disposals', b => b.dispCost)}
+            ${row(`Balance at ${escHtml(closeLbl)}`, (b, d) => d.costClose, true)}
+            ${section('Depreciation &amp; Impairment')}
+            ${row(`Balance as at ${escHtml(openLbl)}`, b => b.depOpen)}
+            ${row('Depreciation charged for the year', b => b.charge)}
+            ${row('Impairment adjustment', b => b.impair)}
+            ${row('Disposals', b => b.dispDep)}
+            ${row(`Balance at ${escHtml(closeLbl)}`, (b, d) => d.depClose, true)}
+            ${section('Carrying Amount')}
+            ${row(`As at ${escHtml(openLbl)}`, (b, d) => d.carryOpen, true)}
+            ${row(`As at ${escHtml(closeLbl)}`, (b, d) => d.carryClose, true)}
+          </tbody>
+        </table>
+        ${depSignBlock()}
+      </div>`;
+  }
+
+  depOpenPrintDoc(title + (fyLbl ? ' — F.Y. ' + fyLbl : ''), gridPage + notePage);
+}
+
 async function depSlmGenerateExcel() {
   if (!window.ExcelJS) { depStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
   if (!depSlmRows.length) { depStatus('⚠️ Add at least one asset before generating.', 'info'); return; }
   depSlmRecalc();
-  const company = document.getElementById('dep-company').value.trim();
+  const { company, address, pan } = depIdentity();
   const fyLbl = document.getElementById('dep-fy').value.trim();
   const fyStart = depFyStartYear(fyLbl);
   const openLbl = fyStart != null ? `1st Shrawan, ${fyStart}` : 'Opening';
@@ -645,16 +754,13 @@ async function depSlmGenerateExcel() {
   // Columns: A class B particular C dateUse D days E life F remDays
   //   G OrigCost H OpenWDV I Addition J DelCost K Balance
   //   L OpenDep M Charge N DelDep O Impair P TotalDep Q ClosingWDV R Check
-  ws.mergeCells('A1:R1');
-  ws.getCell('A1').value = company || 'Depreciation as per Books (SLM)';
-  ws.getCell('A1').font = { bold: true, size: 14, color: { argb: NAVY } };
-  ws.getCell('A1').alignment = { horizontal: 'center' };
-  ws.mergeCells('A2:R2');
-  ws.getCell('A2').value = 'Statement of PPE and Depreciation — As per Books (SLM)' + (fyLbl ? '   |   F.Y. ' + fyLbl : '');
-  ws.getCell('A2').font = { size: 11, color: { argb: 'FF64748B' } };
-  ws.getCell('A2').alignment = { horizontal: 'center' };
+  depXlHeader(ws, 'R', {
+    company, address, pan, fy: fyLbl,
+    title: 'Statement of PPE and Depreciation — As per Books (SLM)',
+    fallback: 'Depreciation as per Books (SLM)',
+  });
 
-  const H = 4;
+  const H = 5;   // depXlHeader owns rows 1-3, row 4 is the separator
   const heads = ['Pool / Class', 'Particulars', 'Date of Use', 'Days', 'Life (yr)', 'Rem. Life (days)',
     'Original Cost (A)', 'Opening WDV (B)', 'Addition (C)', 'Deletion Cost (D)', 'Balance (B+C−D)',
     'Opening Dep (F)', 'Depreciation (G)', 'Deletion Dep (H)', 'Impairment', 'Total Dep (I)', 'Closing WDV (J)', 'Check'];
@@ -783,14 +889,19 @@ async function depSlmGenerateExcel() {
   const nCols = cols.length;
   ps.columns = [{ width: 40 }].concat(Array.from({ length: nCols + 1 }, () => ({ width: 16 })));
   const lastCol = nCols + 2; // 1 label + nCols classes + 1 total
-  const L = n => { let s = ''; while (n > 0) { s = String.fromCharCode(65 + (n - 1) % 26) + s; n = Math.floor((n - 1) / 26); } return s; };
+  const L = depColLetter;
 
-  ps.mergeCells(1, 1, 1, lastCol);
-  ps.getCell('A1').value = '3.1  Property, Plant and Equipment' + (fyLbl ? '   |   F.Y. ' + fyLbl : '') + '   (Figures in NPR)';
-  ps.getCell('A1').font = { bold: true, size: 12, color: { argb: NAVY } };
+  // This sheet used to open straight on "3.1 Property, Plant and Equipment"
+  // with no company on it anywhere — printed or mailed on its own, the note
+  // could not be told apart from any other client's.
+  depXlHeader(ps, lastCol, {
+    company, address, pan, fy: fyLbl,
+    title: '3.1  Property, Plant and Equipment   (Figures in NPR)',
+    fallback: 'Property, Plant and Equipment',
+  });
 
   // Header
-  const PH = 3;
+  const PH = 5;   // rows 1-3 identity, row 4 separator
   ps.getCell(PH, 1).value = 'Particulars';
   cols.forEach((c, i) => ps.getCell(PH, 2 + i).value = c.name);
   ps.getCell(PH, 2 + nCols).value = 'Total';

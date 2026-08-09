@@ -20,6 +20,7 @@ function selectRepClient(c){
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
   $rep('rep-entityType').value = mapped || 'private_company';
 
+  repForgetSavedId();   // different client => a different saved record
   repRefresh();
 }
 
@@ -79,19 +80,31 @@ function repMultiline(text){
   return escHtml(text).replace(/\n/g, '<br>');
 }
 
-// Matches the firm's own filed cover-page layout: bordered frame, title
-// block up top, a large blank gap with three decorative rules, then the
-// "Audited By" block — rather than the earlier certificate-stamp design.
+// The Projection Report's cover, carrying audit-report content (CA request,
+// 2026-08-02 — that cover is the one the firm liked). The design is that
+// document's, kept point-for-point: navy frame with an offset outline rule,
+// Times/Georgia serif, the rule under the title, "of", the entity block, the
+// three vertical rules, the date sitting on the bottom edge (see the
+// .rep-cover-* block in css/styles.css, mirrored from PJX_PRINT_CSS's
+// .pjp-cover-*). What changed is only the content mapping:
+//   Projection                          →  Audit Report
+//   "Projected Financial Report"        →  "Audit Report"
+//   "(N-Year Financial Projection)"     →  the report-type title
+//   (no equivalent)                     →  the "Audited By" firm block
+// The firm block is kept from the previous cover — it is the one element of
+// an audit cover the projection has no counterpart for.
 function renderRepCoverPage(s){
   const f = s.firm;
+  const kind = s.reportType === 'review' ? 'Report on the Financial Statement' : "Independent Auditor's Report";
   return `
   <div class="rep-sheet rep-cover" contenteditable="true" spellcheck="false">
     <div class="rep-cover-frame">
       <div class="rep-cover-title">Audit Report</div>
-      <div class="rep-cover-of">Of</div>
-      <div class="rep-cover-entity">${s.entityName}</div>
+      <div class="rep-cover-rule"></div>
+      <div class="rep-cover-of">of</div>
+      <div class="rep-cover-entity">${s.entityName.toUpperCase()}</div>
       <div class="rep-cover-address">${s.entityAddress}</div>
-      <div class="rep-cover-fy">For the Year Ending ${s.fy.bs}</div>
+      ${s.entityPan && s.entityPan !== '[PAN]' ? `<div class="rep-cover-pan">PAN : ${s.entityPan}</div>` : ''}
 
       <div class="rep-cover-lines" aria-hidden="true">
         <span class="rep-cover-line rep-cover-line--sm"></span>
@@ -99,9 +112,14 @@ function renderRepCoverPage(s){
         <span class="rep-cover-line rep-cover-line--md"></span>
       </div>
 
-      <div class="rep-cover-auditedby">Audited By:</div>
+      <div class="rep-cover-fy">For the Year Ended ${s.fy.bs} (${s.fy.ad})</div>
+      <div class="rep-cover-sub">(${kind})</div>
+
+      <div class="rep-cover-auditedby">Audited By</div>
       <div class="rep-cover-firm">${f.name}</div>
       <div class="rep-cover-firmtitle">${f.title}</div>
+
+      ${s.reportDate && s.reportDate !== '[DATE]' ? `<div class="rep-cover-date">Date of Report : ${s.reportDate} B.S.</div>` : ''}
     </div>
   </div>`;
 }
@@ -239,11 +257,14 @@ function renderRepBodyUnqualified(s, e){
       <p contenteditable="true">Key audit matters are those matters that, in our professional judgment, were of most significance in our audit of the financial statements of the current period. These matters were addressed in the context of our audit of the financial statements as a whole, and in forming our opinion thereon, and we do not provide a separate opinion on these matters. We have determined that, there are no other key audit matters to communicate in our report.</p>
       ${s.includeKAM ? `
       <table class="rep-kam-table">
+        <thead>
         <tr>
           <th style="width:6%">S.N.</th>
           <th style="width:44%">Details of Key Audit Matters</th>
           <th style="width:50%">How the matters were addressed in our audit</th>
         </tr>
+        </thead>
+        <tbody>
         <tr>
           <td class="rep-sn-col">1</td>
           <td class="rep-blank-fill" contenteditable="true" data-placeholder="Heading + reference note&hellip;">${repMultiline(s.kamHeading)}</td>
@@ -254,6 +275,7 @@ function renderRepBodyUnqualified(s, e){
           <td class="rep-blank-fill" contenteditable="true" data-placeholder="Description of the matter&hellip;">${repMultiline(s.kamDescription)}</td>
           <td class="rep-blank-fill" contenteditable="true" data-placeholder="How addressed&hellip;">${repMultiline(s.kamAddressed)}</td>
         </tr>
+        </tbody>
       </table>` : ``}
     </div>
 
@@ -502,11 +524,16 @@ function repEnsureRendered(){
   if (!repIsPreviewOpen()) renderRepReport();
 }
 
+// Every field that makes up a report. One list, used both to wire the live
+// watchers and to persist/restore a saved report — a field added to only one
+// of those two used to be the whole failure mode.
+const REP_FIELDS = ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan',
+  'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM','rep-toggleBasisExample',
+  'rep-eomText','rep-kamHeading','rep-kamProcedures','rep-kamDescription','rep-kamAddressed','rep-basisText'];
+
 // Need to run initialization logic on window load to ensure DOM is ready
 window.addEventListener('load', () => {
-  ['rep-firm','rep-reportType','rep-entityName','rep-entityType','rep-entityAddress','rep-entityPan',
-   'rep-fy','rep-reportDate','rep-reportPlace','rep-udin','rep-toggleEOM','rep-toggleKAM','rep-toggleBasisExample',
-   'rep-eomText','rep-kamHeading','rep-kamProcedures','rep-kamDescription','rep-kamAddressed','rep-basisText'].forEach(id=>{
+  REP_FIELDS.forEach(id=>{
     const el = document.getElementById(id);
     if (el){
       el.addEventListener('input', repRefresh);
@@ -514,12 +541,134 @@ window.addEventListener('load', () => {
     }
   });
 
+  // Programmatic assignment (repApplyState) fires no change event, so
+  // restoring a saved report can't trip this.
+  const fy = document.getElementById('rep-fy');
+  if (fy) fy.addEventListener('change', repForgetSavedId);
+
   renderRepFyDate();
   repUpdateCheckboxVisibility();
 });
 
+// ════════════════════════════════════════════
+//  PERSISTENCE — saved_documents via DocumentStore (js/core/documentStore.js)
+//
+//  Saves BOTH the form fields and the rendered document. The fields alone
+//  would lose every hand-edit made in the contenteditable preview, which is
+//  exactly the report the firm actually issued; the document alone could be
+//  reprinted but never edited again. Storing both means a recovered report
+//  can be reprinted verbatim OR taken back into the form and re-generated.
+// ════════════════════════════════════════════
+let repSavedId = null;      // saved_documents row id once saved this session
+
+function repStatus(html, type){ showStatus(html, type, 'rep-status'); }
+
+function repFormState(){
+  const state = {};
+  REP_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    state[id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return state;
+}
+
+function repApplyState(state){
+  REP_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const v = state ? state[id] : undefined;
+    // Assign unconditionally (§9) — a `if (v)` guard would leave the
+    // PREVIOUS report's text standing wherever the saved one was blank.
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v == null ? '' : v;
+  });
+}
+
+async function repSaveToDb(){
+  repEnsureRendered();
+  const clientName = $rep('rep-entityName').value.trim();
+  if (!clientName){ repStatus('Enter a client name before saving.', 'error'); return; }
+  const matched = (window.clientsList || []).find(c => (c.name || '').trim() === clientName);
+  const typeLabel = $rep('rep-reportType').selectedOptions[0]
+    ? $rep('rep-reportType').selectedOptions[0].textContent.trim() : '';
+  try {
+    repStatus('Saving report…', 'searching');
+    repSavedId = await DocumentStore.save(repSavedId, {
+      module: 'report',
+      client_id: matched ? matched.id : null,
+      client_name: clientName,
+      pan: $rep('rep-entityPan').value.trim() || null,
+      fiscal_year: $rep('rep-fy').value,
+      doc_type: $rep('rep-reportType').value,
+      title: `${typeLabel} — ${clientName} (F.Y. ${$rep('rep-fy').value})`,
+      state: repFormState(),
+      doc_html: $rep('rep-previewRoot').innerHTML,
+    });
+    repStatus(`Report saved (record #${repSavedId}). Reopen it any time from <strong>Saved reports</strong>.`, 'success');
+    AuditLog.record('audit_report_saved', { module: 'report', client_name: clientName, status: 'success', record_ref: repSavedId, detail: { reportType: $rep('rep-reportType').value } });
+  } catch (e){
+    console.error(e);
+    repStatus('Save failed: ' + escHtml(e.message), 'error');
+  }
+}
+
+function repOpenSaved(){
+  DocumentStore.openPicker({
+    module: 'report',
+    label: 'Saved audit reports',
+    onOpen: row => {
+      repApplyState(row.state);
+      repSavedId = row.id;           // further saves amend this record
+      repRefresh();
+      // The stored document, not a re-render: hand-edits made before saving
+      // are part of the report that was issued.
+      if (row.doc_html) $rep('rep-previewRoot').innerHTML = row.doc_html;
+      else renderRepReport();
+      repSetViewRestored();
+      repStatus(`Opened saved report #${row.id}. Editing the form re-renders it; Save to database updates the same record.`, 'info');
+    },
+  });
+}
+
+// Switch to Preview WITHOUT re-rendering — repSetView('preview') renders on
+// entry, which would immediately overwrite the document just restored.
+function repSetViewRestored(){
+  document.getElementById('rep-edit-view').hidden = true;
+  document.getElementById('rep-preview-view').hidden = false;
+  document.getElementById('rep-tab-edit').classList.remove('active');
+  document.getElementById('rep-tab-preview').classList.add('active');
+}
+
+// Client + fiscal year ARE the report's identity, so changing either means
+// this is a different report and the next save must create a new record —
+// not overwrite the one that was open. (The projection module learned this
+// the hard way: a stale saved id made Save update the PREVIOUS client's row
+// with the new client's figures.) Wording changes within the same
+// client/year keep amending the same record, which is what "revisit and
+// edit" means.
+function repForgetSavedId(){ repSavedId = null; }
+
+// The document HTML as it should LEAVE the app (print window, PDF, Word) —
+// as opposed to as it sits on screen, where the fill-in blocks carry an
+// authoring prompt. An unfilled block is dropped outright; an unfilled KAM
+// table CELL is only emptied, since removing it would collapse the row.
+// CSS alone can't cover the Word path (html-docx-js honours neither :empty
+// nor @media print), so the cleanup happens in the markup and the print
+// stylesheet backs it up.
+function repExportHtml(){
+  const src = document.getElementById('rep-previewRoot');
+  const clone = src.cloneNode(true);
+  clone.querySelectorAll('.rep-blank-fill').forEach(el => {
+    if (el.textContent.trim()) return;
+    if (el.tagName === 'TD') el.removeAttribute('data-placeholder');
+    else el.remove();
+  });
+  return clone.innerHTML;
+}
+
 function buildRepPrintableDoc(){
-  const reportHTML = document.getElementById('rep-previewRoot').innerHTML;
+  const reportHTML = repExportHtml();
   // Pull only the .rep- prefixed CSS rules so the standalone print tab is self-contained
   const allCss = Array.from(document.styleSheets).map(sheet => {
     try { return Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); }
@@ -532,8 +681,12 @@ function buildRepPrintableDoc(){
        .rep-sheet padding below is screen-only so the two never stack. */
     @page{ size:A4; margin: 12mm 16mm; }
     @media print{
+      /* Repeated from the copied stylesheet on purpose: if the cssRules read
+         above ever fails, the document still prints its fills and its text
+         in black rather than losing both. */
+      html, body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       body{ padding:0; }
-      .rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; page-break-after:always; }
+      .rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; page-break-after:always; color:#000; }
       .rep-sheet:last-child{ page-break-after:auto; }
     }
   </style></head><body>${reportHTML}
@@ -590,7 +743,7 @@ function getRepExportCss(){
 // both the .docx and the .doc-fallback paths share, so their formatting is
 // identical to the preview/PDF.
 function buildRepWordHtml(){
-  const inner = document.getElementById('rep-previewRoot').innerHTML;
+  const inner = repExportHtml();
   const css = getRepExportCss();
   return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Audit Report</title><style>" +
     "body{ margin:0; font-family:'Georgia','Times New Roman',serif; color:#111; font-size:12.5px; line-height:1.28; }" +

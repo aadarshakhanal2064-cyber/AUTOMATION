@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608022100">
+<link rel="stylesheet" href="css/styles.css?v=202608022300">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -520,6 +520,14 @@ function cropLoginLogoIcon(img) {
             <button id="rep-tab-edit" class="rep-view-btn active" onclick="repSetView('edit')">Edit</button>
             <button id="rep-tab-preview" class="rep-view-btn" onclick="repSetView('preview')">Preview</button>
           </div>
+          <button class="btn btn-outline" onclick="repOpenSaved()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Saved reports
+          </button>
+          <button class="btn btn-outline" onclick="repSaveToDb()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save to database
+          </button>
           <button class="btn btn-outline" onclick="saveRepAsWord()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
             Save as Word
@@ -530,6 +538,7 @@ function cropLoginLogoIcon(img) {
           </button>
         </div>
       </div>
+      <div id="rep-status"></div>
       <div class="card" style="padding:0; overflow:hidden;">
         <!-- EDIT VIEW: full-width form (default) -->
         <div id="rep-edit-view" style="padding:32px;">
@@ -657,6 +666,14 @@ function cropLoginLogoIcon(img) {
             <button id="nta-tab-edit" class="rep-view-btn active" onclick="ntaSetView('edit')">Edit</button>
             <button id="nta-tab-preview" class="rep-view-btn" onclick="ntaSetView('preview')">Preview</button>
           </div>
+          <button class="btn btn-outline" onclick="ntaOpenSaved()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Saved notes
+          </button>
+          <button class="btn btn-outline" onclick="ntaSaveToDb()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save to database
+          </button>
           <button class="btn btn-outline" onclick="saveNtaAsWord()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
             Save as Word
@@ -667,6 +684,7 @@ function cropLoginLogoIcon(img) {
           </button>
         </div>
       </div>
+      <div id="nta-status"></div>
       <div class="card" style="padding:0; overflow:hidden;">
         <!-- EDIT VIEW: full-width form (default) -->
         <div id="nta-edit-view" style="padding:32px;">
@@ -734,6 +752,9 @@ function cropLoginLogoIcon(img) {
               <label class="checkbox-label">
                 <input type="checkbox" id="nta-toggleRelatedParty" /> Include "Related Party Transaction"
               </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="nta-toggleExtraNotes" /> Include additional notes to accounts
+              </label>
             </div>
           </div>
 
@@ -753,6 +774,24 @@ function cropLoginLogoIcon(img) {
               <button type="button" class="btn btn-outline btn-sm" onclick="ntaAddRpRow()">+ Add related party</button>
             </div>
             <div id="nta-rp-rows"></div>
+          </div>
+
+          <!-- Additional notes editor — shown only when the Include checkbox is on.
+               Rows continue Section B's numbering; a "Bold title" row prints as a
+               heading and restarts the count at 1 beneath it. -->
+          <div class="nta-editor-block" id="nta-extra-editor" hidden>
+            <div class="nta-editor-head">
+              <h4>Additional Notes to Accounts</h4>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="ntaAddExtraRow('note')">+ Add note</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="ntaAddExtraRow('title')">+ Add bold title</button>
+              </div>
+            </div>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+              Notes carry on from where Section B ends and renumber themselves as you add, remove or reorder them.
+              A <strong>bold title</strong> row starts a headed group — the notes under it number from 1 again.
+            </p>
+            <div id="nta-extra-rows"></div>
           </div>
         </div>
         <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
@@ -1325,6 +1364,10 @@ function cropLoginLogoIcon(img) {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
             Import from Excel
           </button>
+          <button class="btn btn-outline" onclick="depPrint()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Save as PDF / Print
+          </button>
           <button class="btn btn-primary" onclick="depGenerateExcel()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
             Generate Excel
@@ -1351,6 +1394,10 @@ function cropLoginLogoIcon(img) {
           <div class="form-group">
             <label>PAN</label>
             <input type="text" id="dep-pan" placeholder="Auto-fills from the selected client" />
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <input type="text" id="dep-address" placeholder="Auto-fills from the selected client" />
           </div>
           <div class="form-group">
             <label>Fiscal Year</label>
@@ -2732,6 +2779,21 @@ function cropLoginLogoIcon(img) {
   </div>
 </div>
 
+<!-- SAVED DOCUMENTS — shared picker for the HTML document builders.
+     One drawer serves every module that uses js/core/documentStore.js
+     (Audit Report, Notes to Accounts); the engine fills the title and list. -->
+<div class="modal-overlay drawer-right" id="ds-drawer">
+  <div class="modal drawer-panel" style="width:560px;">
+    <div class="modal-header">
+      <h3 id="ds-drawer-title">Saved documents</h3>
+      <button class="modal-close" onclick="DocumentStore.closePicker()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="ds-list"></div>
+    </div>
+  </div>
+</div>
+
 <!-- FILE MANAGEMENT — HANDOVER MODAL -->
 <div class="modal-overlay" id="fm-return-modal">
   <div class="modal" style="max-width:520px;">
@@ -3135,49 +3197,50 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608022100"></script>
-<script src="js/utils.js?v=202608022100"></script>
-<script src="js/core/moduleRegistry.js?v=202608022100"></script>
-<script src="js/core/statusBox.js?v=202608022100"></script>
-<script src="js/core/nepaliLocale.js?v=202608022100"></script>
-<script src="js/core/documentEngine.js?v=202608022100"></script>
-<script src="js/core/searchEngine.js?v=202608022100"></script>
-<script src="js/core/tableEngine.js?v=202608022100"></script>
-<script src="js/core/workflowEngine.js?v=202608022100"></script>
-<script src="js/core/auditLog.js?v=202608022100"></script>
-<script src="js/core/reportExport.js?v=202608022100"></script>
-<script src="js/core/workbookReader.js?v=202608022100"></script>
-<script src="js/core/engineMath.js?v=202608022100"></script>
-<script src="js/core/ocrEngine.js?v=202608022100"></script>
-<script src="js/core/dataCache.js?v=202608022100"></script>
-<script src="js/tabs.js?v=202608022100"></script>
-<script src="js/dashboard.js?v=202608022100"></script>
-<script src="js/registrar.js?v=202608022100"></script>
-<script src="js/clients.js?v=202608022100"></script>
-<script src="js/vatCompliance.js?v=202608022100"></script>
-<script src="js/billing.js?v=202608022100"></script>
-<script src="js/serviceMemo.js?v=202608022100"></script>
-<script src="js/report.js?v=202608022100"></script>
-<script src="js/notesToAccounts.js?v=202608022100"></script>
-<script src="js/depreciation.js?v=202608022100"></script>
-<script src="js/depreciationSlm.js?v=202608022100"></script>
-<script src="js/bmAgmMinutes.js?v=202608022100"></script>
-<script src="js/auditorChange.js?v=202608022100"></script>
-<script src="js/companyProfile.js?v=202608022100"></script>
-<script src="js/salesPurchaseBook.js?v=202608022100"></script>
-<script src="js/confirmationLetters.js?v=202608022100"></script>
-<script src="js/bankBook.js?v=202608022100"></script>
-<script src="js/partyLedger.js?v=202608022100"></script>
-<script src="js/finalAccount.js?v=202608022100"></script>
-<script src="js/projectionEngine.js?v=202608022100"></script>
-<script src="js/projection.js?v=202608022100"></script>
-<script src="js/projectionExport.js?v=202608022100"></script>
-<script src="js/finStatementEngine.js?v=202608022100"></script>
-<script src="js/finStatement.js?v=202608022100"></script>
-<script src="js/finStatementExport.js?v=202608022100"></script>
-<script src="js/ocrExtract.js?v=202608022100"></script>
-<script src="js/fileManagement.js?v=202608022100"></script>
-<script src="js/auth.js?v=202608022100"></script>
+<script src="js/config.js?v=202608022300"></script>
+<script src="js/utils.js?v=202608022300"></script>
+<script src="js/core/moduleRegistry.js?v=202608022300"></script>
+<script src="js/core/statusBox.js?v=202608022300"></script>
+<script src="js/core/nepaliLocale.js?v=202608022300"></script>
+<script src="js/core/documentEngine.js?v=202608022300"></script>
+<script src="js/core/searchEngine.js?v=202608022300"></script>
+<script src="js/core/tableEngine.js?v=202608022300"></script>
+<script src="js/core/workflowEngine.js?v=202608022300"></script>
+<script src="js/core/auditLog.js?v=202608022300"></script>
+<script src="js/core/reportExport.js?v=202608022300"></script>
+<script src="js/core/workbookReader.js?v=202608022300"></script>
+<script src="js/core/engineMath.js?v=202608022300"></script>
+<script src="js/core/ocrEngine.js?v=202608022300"></script>
+<script src="js/core/dataCache.js?v=202608022300"></script>
+<script src="js/core/documentStore.js?v=202608022300"></script>
+<script src="js/tabs.js?v=202608022300"></script>
+<script src="js/dashboard.js?v=202608022300"></script>
+<script src="js/registrar.js?v=202608022300"></script>
+<script src="js/clients.js?v=202608022300"></script>
+<script src="js/vatCompliance.js?v=202608022300"></script>
+<script src="js/billing.js?v=202608022300"></script>
+<script src="js/serviceMemo.js?v=202608022300"></script>
+<script src="js/report.js?v=202608022300"></script>
+<script src="js/notesToAccounts.js?v=202608022300"></script>
+<script src="js/depreciation.js?v=202608022300"></script>
+<script src="js/depreciationSlm.js?v=202608022300"></script>
+<script src="js/bmAgmMinutes.js?v=202608022300"></script>
+<script src="js/auditorChange.js?v=202608022300"></script>
+<script src="js/companyProfile.js?v=202608022300"></script>
+<script src="js/salesPurchaseBook.js?v=202608022300"></script>
+<script src="js/confirmationLetters.js?v=202608022300"></script>
+<script src="js/bankBook.js?v=202608022300"></script>
+<script src="js/partyLedger.js?v=202608022300"></script>
+<script src="js/finalAccount.js?v=202608022300"></script>
+<script src="js/projectionEngine.js?v=202608022300"></script>
+<script src="js/projection.js?v=202608022300"></script>
+<script src="js/projectionExport.js?v=202608022300"></script>
+<script src="js/finStatementEngine.js?v=202608022300"></script>
+<script src="js/finStatement.js?v=202608022300"></script>
+<script src="js/finStatementExport.js?v=202608022300"></script>
+<script src="js/ocrExtract.js?v=202608022300"></script>
+<script src="js/fileManagement.js?v=202608022300"></script>
+<script src="js/auth.js?v=202608022300"></script>
 
 </body>
 </html>

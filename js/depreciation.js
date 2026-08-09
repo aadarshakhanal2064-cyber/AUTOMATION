@@ -71,6 +71,45 @@ function depPools() { return DEP_SCHEMES[depScheme]; }
 
 function depStatus(html, type) { showStatus(html, type, 'dep-status'); }
 
+// Excel column index (1-based) -> letter. Needed because the PPE sheet's
+// width depends on how many asset classes are in use.
+function depColLetter(n) {
+  let s = '';
+  while (n > 0) { s = String.fromCharCode(65 + (n - 1) % 26) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+// Rows 1-3 of every generated sheet: company, address · PAN, then the
+// schedule's own title and fiscal year. Written as one helper so all four
+// sheets (Income Tax, Dep as Books, 3.1 PPE, and anything added later) carry
+// the same identity block — the grid below always starts at row 4.
+function depXlHeader(ws, lastCol, o) {
+  const L = typeof lastCol === 'number' ? depColLetter(lastCol) : lastCol;
+  const NAVY = 'FF0B1F3D';
+  const line = (row, text, font) => {
+    ws.mergeCells(`A${row}:${L}${row}`);
+    const c = ws.getCell(`A${row}`);
+    c.value = text;
+    c.font = font;
+    c.alignment = { horizontal: 'center' };
+  };
+  line(1, o.company || o.fallback || '', { bold: true, size: 14, color: { argb: NAVY } });
+  const sub = [o.address, o.pan ? 'PAN: ' + o.pan : ''].filter(Boolean).join('   |   ');
+  line(2, sub, { size: 10.5, color: { argb: 'FF475569' } });
+  line(3, o.title + (o.fy ? '   |   F.Y. ' + o.fy : ''), { bold: true, size: 11, color: { argb: 'FF64748B' } });
+  ws.getRow(1).height = 20;
+}
+
+// The client identity block that heads every output — both Excel sheets of
+// both methods, and both printed schedules. One reader so a sheet can never
+// be built with a different notion of "who this schedule belongs to"; the
+// 3.1 PPE sheet used to carry no identity at all, which made a printed note
+// impossible to file against a client.
+function depIdentity() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  return { company: g('dep-company'), address: g('dep-address'), pan: g('dep-pan'), fy: g('dep-fy') };
+}
+
 function depParse(v) {
   if (v == null) return 0;
   const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
@@ -283,6 +322,7 @@ const depScope = WorkflowEngine.createClientScope({
       depClientId = null;
       document.getElementById('dep-company').value = '';
       document.getElementById('dep-pan').value = '';
+      document.getElementById('dep-address').value = '';
       depUpdateSaveState();
     }
     depClearIncomeTaxData();
@@ -295,6 +335,9 @@ const depScope = WorkflowEngine.createClientScope({
       depClientId = c.id != null ? c.id : null;
       document.getElementById('dep-company').value = c.name || '';
       document.getElementById('dep-pan').value = c.pan || '';
+      // Assign unconditionally — `if (c.address)` would leave the previous
+      // client's address heading this client's schedule (§9).
+      document.getElementById('dep-address').value = c.address || '';
       depUpdateSaveState();
     }
     depReloadForContext();
@@ -599,8 +642,7 @@ async function depGenerateExcel() {
   if (!window.ExcelJS) { depStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
   depRecalc();
 
-  const company = document.getElementById('dep-company').value.trim();
-  const fy = document.getElementById('dep-fy').value.trim();
+  const { company, address, pan, fy } = depIdentity();
   const pools = depPools();
   const schemeTitle = depScheme === 'special'
     ? 'Depreciation as per Income Tax (Special Industries)'
@@ -619,19 +661,12 @@ async function depGenerateExcel() {
     { width: 16 }, { width: 17 }, { width: 15 }, { width: 15 },
   ];
 
-  // Title block
-  ws.mergeCells('A1:L1');
-  ws.getCell('A1').value = company || 'Depreciation Schedule';
-  ws.getCell('A1').font = { bold: true, size: 14, color: { argb: NAVY } };
-  ws.getCell('A1').alignment = { horizontal: 'center' };
-  ws.mergeCells('A2:L2');
-  ws.getCell('A2').value = schemeTitle + (fy ? '   |   F.Y. ' + fy : '');
-  ws.getCell('A2').font = { size: 11, color: { argb: 'FF64748B' } };
-  ws.getCell('A2').alignment = { horizontal: 'center' };
-  ws.getRow(1).height = 20;
+  // Title block — the client's own name/address/PAN heads the sheet, so a
+  // printed schedule is filable on its own without the covering workbook.
+  depXlHeader(ws, 'L', { company, address, pan, fy, title: schemeTitle, fallback: 'Depreciation Schedule' });
 
-  // Header rows (4 & 5)
-  const H = 4, SUB = 5;
+  // Header rows — depXlHeader owns rows 1-3, row 4 is the separator.
+  const H = 5, SUB = 6;
   const setHead = (cell, text) => {
     const c = ws.getCell(cell);
     c.value = text;
@@ -647,7 +682,7 @@ async function depGenerateExcel() {
   setHead(`E${SUB}`, 'Up to Paush'); setHead(`F${SUB}`, 'Magh–Chaitra'); setHead(`G${SUB}`, 'Baishakh–Ashadh');
 
   // Pool rows
-  const first = 6;
+  const first = SUB + 1;
   pools.forEach((p, i) => {
     const r = first + i;
     const inp = p._inp || { opening:0, add1:0, add2:0, add3:0, disposal:0 };
@@ -743,6 +778,162 @@ async function depGenerateExcel() {
   } catch (err) {
     depStatus('❌ Could not generate the file: ' + escHtml(err.message), 'error');
   }
+}
+
+// ════════════════════════════════════════════
+//  PRINT / SAVE AS PDF
+//  Same mechanism as the Audit Report and Notes to Accounts (§8): a
+//  self-contained HTML document in a blob tab that auto-prints, so "Save as
+//  PDF" is the browser's own PDF writer and needs no extra library. The
+//  schedules are wide, so the page is A4 LANDSCAPE — portrait squeezes the
+//  twelve money columns into an unreadable ribbon.
+//
+//  Deliberately built from the computed figures (p._inp / p._c, refreshed by
+//  the recalc above) rather than by scraping the on-screen grid: the grid is
+//  a form full of <input> elements, which print as empty boxes.
+// ════════════════════════════════════════════
+const DEP_PRINT_CSS = `
+  *{ box-sizing:border-box; }
+  html, body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{ margin:0; padding:14px; background:#fff; color:#111;
+        font-family:"Times New Roman", Georgia, serif; font-size:10pt; }
+  .dp-head{ text-align:center; margin-bottom:12px; }
+  .dp-co{ font-size:15pt; font-weight:700; color:#0b1f3d; }
+  .dp-sub{ font-size:10pt; color:#475569; margin-top:3px; }
+  .dp-title{ font-size:11.5pt; font-weight:700; margin-top:7px; }
+  table.dp-t{ width:100%; border-collapse:collapse; border:1px solid #000; }
+  table.dp-t th{ background:#e9eef6; color:#0b1f3d; font-weight:700; font-size:8.5pt;
+                 padding:5px 4px; border:1px solid #000; text-align:center; vertical-align:middle; }
+  table.dp-t td{ padding:4px; border:1px solid #000; text-align:right; font-size:9pt; }
+  table.dp-t td.l{ text-align:left; }
+  table.dp-t td.c{ text-align:center; }
+  tr.dp-sub-t td{ background:#f2f5fb; font-weight:700; }
+  tr.dp-tot td{ background:#dde3f2; font-weight:700; border-top:1.2px solid #0b1f3d; }
+  tr.dp-sec td{ background:#f7f9fe; font-weight:700; font-style:italic; color:#0b1f3d; text-align:left; }
+  .dp-block{ margin-top:22px; }
+  .dp-block h4{ font-size:11pt; font-weight:700; color:#0b1f3d; margin-bottom:6px; }
+  .dp-page{ page-break-after:always; }
+  .dp-page:last-child{ page-break-after:auto; }
+  .dp-sign{ display:flex; justify-content:space-between; margin-top:34px; font-size:10pt; }
+  .dp-sign div{ border-top:1px dotted #000; padding-top:4px; width:190px; text-align:center; }
+  @page{ size:A4 landscape; margin:10mm; }
+  @media print{
+    body{ padding:0; }
+    thead{ display:table-header-group; }
+    tr{ page-break-inside:avoid; break-inside:avoid; }
+  }`;
+
+// The identity block that heads a printed page — the same three lines the
+// Excel sheets carry (depXlHeader), so paper and workbook agree.
+function depPrintHead(title) {
+  const { company, address, pan, fy } = depIdentity();
+  const sub = [address, pan ? 'PAN: ' + pan : ''].filter(Boolean).join(' &nbsp;|&nbsp; ');
+  return `<div class="dp-head">
+    <div class="dp-co">${escHtml(company || 'Depreciation Schedule')}</div>
+    ${sub ? `<div class="dp-sub">${sub}</div>` : ''}
+    <div class="dp-title">${escHtml(title)}${fy ? ' &nbsp;|&nbsp; F.Y. ' + escHtml(fy) : ''}</div>
+  </div>`;
+}
+
+function depSignBlock() {
+  return `<div class="dp-sign"><div>Prepared By</div><div>Checked By</div><div>For the Client</div></div>`;
+}
+
+// Opens the built document in a blob tab and prints it. Shared by both
+// methods so the pop-up handling and the auto-print timing live in one place.
+function depOpenPrintDoc(title, bodyHtml) {
+  const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escHtml(title)}</title>
+    <style>${DEP_PRINT_CSS}</style></head><body>${bodyHtml}
+    <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
+    </body></html>`;
+  const url = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
+  if (!window.open(url, '_blank')) {
+    depStatus('❌ Pop-up blocked — allow pop-ups for this site, then click Save as PDF / Print again.', 'error');
+    return;
+  }
+  const { company } = depIdentity();
+  AuditLog.record('depreciation_printed', { module: 'depreciation', client_name: company || null, status: 'success', detail: { title } });
+  depStatus('✅ Print view opened in a new tab — choose "Save as PDF" in the print dialog for a PDF.', 'success');
+}
+
+function depPrint() {
+  if (depMethod === 'slm') return depSlmPrint();
+  depRecalc();
+  const pools = depPools();
+  const active = pools.filter(p => p._c && p._c.active);
+  if (!active.length) { depStatus('⚠️ Enter at least one pool figure before printing.', 'info'); return; }
+
+  const title = depScheme === 'special'
+    ? 'Depreciation as per Income Tax (Special Industries)'
+    : 'Depreciation as per Income Tax';
+
+  const rate = p => p.mode === 'wdv' ? depRatePct(p.rate) : (p.mode === 'slm' ? depYears(p) + ' yrs' : '–');
+  const body = active.map(p => {
+    const i = p._inp, c = p._c;
+    return `<tr>
+      <td class="c">${escHtml(p.pool || '—')}</td>
+      <td class="l">${escHtml(p.name)}</td>
+      <td class="c">${escHtml(rate(p))}</td>
+      <td>${depFmt(i.opening)}</td><td>${depFmt(i.add1)}</td><td>${depFmt(i.add2)}</td><td>${depFmt(i.add3)}</td>
+      <td>${depFmt(i.disposal)}</td>
+      <td>${depFmt(c.total)}</td><td>${depFmt(c.base)}</td><td>${depFmt(c.dep)}</td><td>${depFmt(c.wdv)}</td>
+    </tr>`;
+  }).join('');
+
+  const T = window._depTotals || {};
+  const totals = `<tr class="dp-tot"><td colspan="3" class="l">Total</td>
+    <td>${depFmt(T.opening)}</td><td>${depFmt(T.add1)}</td><td>${depFmt(T.add2)}</td><td>${depFmt(T.add3)}</td>
+    <td>${depFmt(T.disposal)}</td><td>${depFmt(T.total)}</td><td>${depFmt(T.base)}</td><td>${depFmt(T.dep)}</td><td>${depFmt(T.wdv)}</td></tr>`;
+
+  const html = `
+    <div class="dp-page">
+      ${depPrintHead(title)}
+      <table class="dp-t">
+        <thead>
+          <tr>
+            <th rowspan="2">Pool</th><th rowspan="2" style="width:20%">Particular</th><th rowspan="2">Dep.<br>Rate</th>
+            <th rowspan="2">Opening<br>Value</th><th colspan="3">Addition</th><th rowspan="2">Disposal</th>
+            <th rowspan="2">Total<br>Value</th><th rowspan="2">Depreciation<br>Base</th>
+            <th rowspan="2">Depreciation</th><th rowspan="2">WDV<br>Amount</th>
+          </tr>
+          <tr><th>Up to Paush</th><th>Magh–Chaitra</th><th>Baishakh–Ashadh</th></tr>
+        </thead>
+        <tbody>${body}${totals}</tbody>
+      </table>
+      ${depPrintAdditionsHtml()}
+      ${depSignBlock()}
+    </div>`;
+
+  depOpenPrintDoc(title, html);
+}
+
+// The Income-Tax addition-details helper table, if any lines carry an amount.
+// Reads the same DOM rows depGenerateExcel() reads, so the printed list and
+// the Excel block can never show different purchases.
+function depPrintAdditionsHtml() {
+  const pools = depPools();
+  const lines = [];
+  document.querySelectorAll('#dep-add-tbody tr').forEach(tr => {
+    const amt = depParse(tr.querySelector('.dep-add-amount').value);
+    if (!amt) return;
+    const p = pools.find(x => x.key === tr.querySelector('.dep-add-pool').value);
+    lines.push({
+      date: tr.querySelector('.dep-add-date').value.trim(),
+      pool: p ? (p.pool || p.name) : '',
+      particular: tr.querySelector('.dep-add-particular').value.trim(),
+      amount: amt,
+    });
+  });
+  if (!lines.length) return '';
+  const total = lines.reduce((a, l) => a + l.amount, 0);
+  return `<div class="dp-block"><h4>Addition Details</h4>
+    <table class="dp-t" style="width:70%">
+      <thead><tr><th style="width:18%">Date</th><th style="width:14%">Pool</th><th>Particular</th><th style="width:20%">Amount</th></tr></thead>
+      <tbody>
+        ${lines.map(l => `<tr><td class="c">${escHtml(l.date)}</td><td class="c">${escHtml(l.pool)}</td><td class="l">${escHtml(l.particular)}</td><td>${depFmt(l.amount)}</td></tr>`).join('')}
+        <tr class="dp-tot"><td colspan="3" class="l">Total</td><td>${depFmt(total)}</td></tr>
+      </tbody>
+    </table></div>`;
 }
 
 // ── Wire client search once the DOM is ready (module loads before auth) ──

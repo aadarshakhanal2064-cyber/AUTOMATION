@@ -31,6 +31,7 @@ function selectNtaClient(c){
   const mapped = window.CLIENT_ENTITY_TO_REP_PROFILE[(c.entity_type || '').trim().toLowerCase()];
   $nta('nta-entityType').value = mapped || 'private_company';
 
+  ntaForgetSavedId();   // different client => a different saved record
   ntaRefresh();
 }
 
@@ -117,6 +118,45 @@ function ntaToggleRelatedParty(){
   ntaRefresh();
 }
 
+// ── Additional notes ──
+// The firm's fixed notes end at 6 (7 with Related Party), but a real set
+// regularly needs a few more, and sometimes a headed group of its own. Two
+// row kinds cover both: a `note` continues the running number, a `title`
+// renders as a bold heading and RESTARTS the numbering beneath it — which is
+// why the fixed notes below are no longer written as literal "1."–"6." text.
+// Deliberately Notes-only: the audit report's sections are prescribed by the
+// NSAs and are not the auditor's to extend (CA instruction, 2026-08-02).
+function ntaAddExtraRow(kind, text){
+  const wrap = $nta('nta-extra-rows');
+  const row = document.createElement('div');
+  row.className = 'nta-row';
+  row.innerHTML = `
+    <select class="nta-x-kind" onchange="ntaRefresh()">
+      <option value="note">Numbered note</option>
+      <option value="title">Bold title</option>
+    </select>
+    <textarea class="nta-x-text" placeholder="Note text — or the heading, if this row is a bold title"></textarea>
+    <button type="button" class="btn btn-danger btn-sm nta-row-rm" onclick="this.parentElement.remove(); ntaRefresh();">Remove</button>
+  `;
+  wrap.appendChild(row);
+  if (kind) row.querySelector('.nta-x-kind').value = kind;
+  if (text) row.querySelector('.nta-x-text').value = text;
+  ntaRefresh();
+}
+
+function ntaGetExtraRows(){
+  return Array.from(document.querySelectorAll('#nta-extra-rows .nta-row'))
+    .map(r => ({ kind: r.querySelector('.nta-x-kind').value, text: r.querySelector('.nta-x-text').value.trim() }))
+    .filter(r => r.text);
+}
+
+function ntaToggleExtraNotes(){
+  const on = $nta('nta-toggleExtraNotes').checked;
+  $nta('nta-extra-editor').hidden = !on;
+  if (on && !document.querySelector('#nta-extra-rows .nta-row')) ntaAddExtraRow();
+  ntaRefresh();
+}
+
 // ════════════════════════════════════════════
 //  State + rendering
 // ════════════════════════════════════════════
@@ -134,15 +174,22 @@ function getNtaState(){
     ppe: ntaGetPpeRows(),
     includeRP: $nta('nta-toggleRelatedParty').checked,
     relatedParties: ntaGetRpRows(),
+    includeExtra: $nta('nta-toggleExtraNotes').checked,
+    extraNotes: ntaGetExtraRows(),
   };
+}
+
+// Form-textarea text -> document HTML: escaped, line breaks preserved.
+function ntaMultiline(text){
+  return escHtml(text).replace(/\n/g, '<br>');
 }
 
 function ntaRenderPpeTable(ppe){
   const rows = ppe.length ? ppe : [{ type: '', life: '' }];
   return `
     <table class="nta-table">
-      <tr><th style="width:55%">Type of PPE</th><th style="width:45%">Estimated Useful Life</th></tr>
-      ${rows.map(r => `<tr><td>${escHtml(r.type)}</td><td>${escHtml(r.life)}</td></tr>`).join('')}
+      <thead><tr><th style="width:55%">Type of PPE</th><th style="width:45%">Estimated Useful Life</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${escHtml(r.type)}</td><td>${escHtml(r.life)}</td></tr>`).join('')}</tbody>
     </table>`;
 }
 
@@ -150,9 +197,45 @@ function ntaRenderRpTable(list){
   const rows = list.length ? list : [{ party: '', amount: '', type: '', relation: '' }];
   return `
     <table class="nta-table">
-      <tr><th>Related Party</th><th>Transaction Amount</th><th>Transaction Type</th><th>Nature of Relation</th></tr>
-      ${rows.map(r => `<tr><td>${escHtml(r.party)}</td><td>${escHtml(r.amount)}</td><td>${escHtml(r.type)}</td><td>${escHtml(r.relation)}</td></tr>`).join('')}
+      <thead><tr><th>Related Party</th><th>Transaction Amount</th><th>Transaction Type</th><th>Nature of Relation</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${escHtml(r.party)}</td><td>${escHtml(r.amount)}</td><td>${escHtml(r.type)}</td><td>${escHtml(r.relation)}</td></tr>`).join('')}</tbody>
     </table>`;
+}
+
+// Section B's notes, numbered by a running counter rather than by literal
+// "1."–"6." text. Everything after the six fixed notes — Related Party, then
+// any additional rows — takes the next number automatically, and a bold
+// title row resets the count to 1 so its own notes read 1, 2, 3 beneath it.
+function ntaRenderNotesSection(s, e){
+  const out = [];
+  let n = 0;
+  const note = html => { n++; out.push(`<p>${n}. ${html}</p>`); };
+
+  note('Cash &amp; Cash equivalents for the purpose of Cash Flow Statement comprise of Cash in hand and balances held in current bank accounts.');
+  note('Balances shown under trade receivables, trade payables, loans &amp; advances, deposits are subject to confirmation, reconciliation &amp; consequential adjustment, if any. The re-conciliation is carried out on ongoing basis &amp; provisions wherever considered necessary have been made in line with the guidelines. Request for confirmations of balances were sent and reconciliations with the parties are carried out as an ongoing process.');
+  note('In the absence of confirmation from all the parties, balances of various parties included under Sundry Debtors/Trade Payables in the Balance Sheet are as per ledger, trial balance and therefore the resultant effect of difference, if any of the same on financial statements is unascertainable. However, the management is of the opinion that these are fully recoverable and payable as applicable.');
+  note(`All the expenses, income, assets and Liabilities have been accounted for, ascertained with reasonable certainty and accuracy. They have been measured and presented with reasonable certainty, accuracy, completeness, and consistency in accordance with the applicable accounting principles and on the basis of supporting documents and internal records maintained by the ${e.entityNounCap}.`);
+  note("To facilitate better understanding and comparability of financial statements, the previous year's figures have been regrouped, rearranged, and reclassified wherever considered necessary and practicable in accordance with applicable accounting principles.");
+  note('Schedules referred above form part of the Financial Statements and have been duly authenticated.');
+
+  if (s.includeRP){
+    note('<strong>Related Party Transaction</strong>');
+    out.push('<p>Following are the related party transactions:</p>');
+    out.push(ntaRenderRpTable(s.relatedParties));
+  }
+
+  if (s.includeExtra){
+    s.extraNotes.forEach(r => {
+      if (r.kind === 'title'){
+        out.push(`<p class="nta-note-title">${ntaMultiline(r.text)}</p>`);
+        n = 0;                       // a headed group starts its own 1, 2, 3
+      } else {
+        note(ntaMultiline(r.text));
+      }
+    });
+  }
+
+  return out.join('\n    ');
 }
 
 function ntaDocHeader(s){
@@ -246,16 +329,7 @@ function renderNtaReport(){
     <p>Interest expenses are recognized in the statement of income using accrual method.</p>
 
     <h3 class="rep-sec">B. Notes to Accounts</h3>
-    <p>1. Cash &amp; Cash equivalents for the purpose of Cash Flow Statement comprise of Cash in hand and balances held in current bank accounts.</p>
-    <p>2. Balances shown under trade receivables, trade payables, loans &amp; advances, deposits are subject to confirmation, reconciliation &amp; consequential adjustment, if any. The re-conciliation is carried out on ongoing basis &amp; provisions wherever considered necessary have been made in line with the guidelines. Request for confirmations of balances were sent and reconciliations with the parties are carried out as an ongoing process.</p>
-    <p>3. In the absence of confirmation from all the parties, balances of various parties included under Sundry Debtors/Trade Payables in the Balance Sheet are as per ledger, trial balance and therefore the resultant effect of difference, if any of the same on financial statements is unascertainable. However, the management is of the opinion that these are fully recoverable and payable as applicable.</p>
-    <p>4. All the expenses, income, assets and Liabilities have been accounted for, ascertained with reasonable certainty and accuracy. They have been measured and presented with reasonable certainty, accuracy, completeness, and consistency in accordance with the applicable accounting principles and on the basis of supporting documents and internal records maintained by the ${e.entityNounCap}.</p>
-    <p>5. To facilitate better understanding and comparability of financial statements, the previous year's figures have been regrouped, rearranged, and reclassified wherever considered necessary and practicable in accordance with applicable accounting principles.</p>
-    <p>6. Schedules referred above form part of the Financial Statements and have been duly authenticated.</p>
-    ${s.includeRP ? `
-    <p>7. <strong>Related Party Transaction</strong></p>
-    <p>Following are the related party transactions:</p>
-    ${ntaRenderRpTable(s.relatedParties)}` : ``}
+    ${ntaRenderNotesSection(s, e)}
   </div>`;
 
   $nta('nta-previewRoot').innerHTML = html;
@@ -295,12 +369,17 @@ window.addEventListener('load', () => {
   (window.NTA_PPE_DEFAULTS || []).forEach(r => ntaAddPpeRow(r.type, r.life));
 
   $nta('nta-toggleRelatedParty').addEventListener('change', ntaToggleRelatedParty);
+  $nta('nta-toggleExtraNotes').addEventListener('change', ntaToggleExtraNotes);
 
   // Delegated watcher covers every field including the dynamically-added PPE /
   // Related Party row inputs — re-renders only while Preview is open.
   const editView = $nta('nta-edit-view');
   editView.addEventListener('input', ntaRefresh);
   editView.addEventListener('change', ntaRefresh);
+
+  // Programmatic assignment (ntaApplyState) fires no change event, so
+  // restoring a saved set can't trip this.
+  $nta('nta-fy').addEventListener('change', ntaForgetSavedId);
 });
 
 // ════════════════════════════════════════════
@@ -318,8 +397,11 @@ function buildNtaPrintableDoc(){
     ${allCss}
     @page{ size:A4; margin: 12mm 16mm; }
     @media print{
+      /* Repeated from the copied stylesheet on purpose — see the same block
+         in report.js's buildRepPrintableDoc(). */
+      html, body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       body{ padding:0; }
-      .rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; }
+      .rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; color:#000; }
     }
   </style></head><body>${inner}
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
@@ -377,6 +459,105 @@ function buildNtaWordHtml(){
     ".rep-sheet{ box-shadow:none; border:none; padding:0; max-width:none; }" +
     "</style></head><body>" + inner + "</body></html>";
 }
+
+// ════════════════════════════════════════════
+//  PERSISTENCE — saved_documents via DocumentStore (js/core/documentStore.js).
+//  Same contract as report.js: the form state makes a saved set re-editable,
+//  the rendered document makes it reprintable exactly as issued. The two row
+//  editors (PPE useful life, Related Party) and the additional notes are part
+//  of the state, so a restored set comes back with its rows intact.
+// ════════════════════════════════════════════
+let ntaSavedId = null;
+
+const NTA_FIELDS = ['nta-entityName','nta-entityType','nta-entityAddress','nta-entityPan','nta-place',
+  'nta-businessNature','nta-fy','nta-standard','nta-depMethod','nta-toggleRelatedParty','nta-toggleExtraNotes'];
+
+function ntaStatus(html, type){ showStatus(html, type, 'nta-status'); }
+
+function ntaFormState(){
+  const state = { rows: { ppe: ntaGetPpeRows(), rp: ntaGetRpRows(), extra: ntaGetExtraRows() } };
+  NTA_FIELDS.forEach(id => {
+    const el = $nta(id);
+    if (!el) return;
+    state[id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return state;
+}
+
+function ntaApplyState(state){
+  NTA_FIELDS.forEach(id => {
+    const el = $nta(id);
+    if (!el) return;
+    const v = state ? state[id] : undefined;
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v == null ? '' : v;
+  });
+  // Row editors are rebuilt from scratch — clearing FIRST is what stops the
+  // previous set's rows surviving into a restored one that has none (§9).
+  const rows = (state && state.rows) || {};
+  $nta('nta-ppe-rows').innerHTML = '';
+  $nta('nta-rp-rows').innerHTML = '';
+  $nta('nta-extra-rows').innerHTML = '';
+  (rows.ppe || []).forEach(r => ntaAddPpeRow(r.type, r.life));
+  (rows.rp || []).forEach(r => ntaAddRpRow(r.party, r.amount, r.type, r.relation));
+  (rows.extra || []).forEach(r => ntaAddExtraRow(r.kind, r.text));
+  $nta('nta-rp-editor').hidden = !$nta('nta-toggleRelatedParty').checked;
+  $nta('nta-extra-editor').hidden = !$nta('nta-toggleExtraNotes').checked;
+}
+
+async function ntaSaveToDb(){
+  ntaEnsureRendered();
+  const clientName = $nta('nta-entityName').value.trim();
+  if (!clientName){ ntaStatus('Enter a client name before saving.', 'error'); return; }
+  const matched = (window.clientsList || []).find(c => (c.name || '').trim() === clientName);
+  try {
+    ntaStatus('Saving notes…', 'searching');
+    ntaSavedId = await DocumentStore.save(ntaSavedId, {
+      module: 'notesToAccounts',
+      client_id: matched ? matched.id : null,
+      client_name: clientName,
+      pan: $nta('nta-entityPan').value.trim() || null,
+      fiscal_year: $nta('nta-fy').value,
+      doc_type: $nta('nta-standard').value,
+      title: `Notes to Accounts — ${clientName} (F.Y. ${$nta('nta-fy').value})`,
+      state: ntaFormState(),
+      doc_html: $nta('nta-previewRoot').innerHTML,
+    });
+    ntaStatus(`Notes saved (record #${ntaSavedId}). Reopen them any time from <strong>Saved notes</strong>.`, 'success');
+    AuditLog.record('notes_to_accounts_saved', { module: 'notesToAccounts', client_name: clientName, status: 'success', record_ref: ntaSavedId });
+  } catch (e){
+    console.error(e);
+    ntaStatus('Save failed: ' + escHtml(e.message), 'error');
+  }
+}
+
+function ntaOpenSaved(){
+  DocumentStore.openPicker({
+    module: 'notesToAccounts',
+    label: 'Saved notes to accounts',
+    onOpen: row => {
+      ntaApplyState(row.state);
+      ntaSavedId = row.id;
+      if (row.doc_html) $nta('nta-previewRoot').innerHTML = row.doc_html;
+      else renderNtaReport();
+      ntaSetViewRestored();
+      ntaStatus(`Opened saved notes #${row.id}. Editing the form re-renders them; Save to database updates the same record.`, 'info');
+    },
+  });
+}
+
+// Show Preview without re-rendering — ntaSetView('preview') renders on entry
+// and would overwrite the document just restored.
+function ntaSetViewRestored(){
+  $nta('nta-edit-view').hidden = true;
+  $nta('nta-preview-view').hidden = false;
+  $nta('nta-tab-edit').classList.remove('active');
+  $nta('nta-tab-preview').classList.add('active');
+}
+
+// Client + fiscal year are the document's identity — see the same note in
+// report.js. Changing either means the next save creates a new record.
+function ntaForgetSavedId(){ ntaSavedId = null; }
 
 function saveNtaAsWord(){
   ntaEnsureRendered();
