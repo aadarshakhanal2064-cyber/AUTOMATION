@@ -1,5 +1,7 @@
 // ════════════════════════════════════════════
-//  FILE MANAGEMENT — Document Register
+//  FILE IN OUT — Document Register (display renamed 2026-08-09; code kept
+//  as fileManagement.js / fm- / document_register — the Autobooks/Bank Entry
+//  label-only precedent, CLAUDE.md §5).
 //  Custody log for the PHYSICAL documents clients hand over (purchase/sales
 //  files, ledgers, confirmations, interest certificates, ...): what came in,
 //  who brought it, and — once the work is done — who collected it back. A
@@ -11,6 +13,13 @@
 //  about what is still held. Everything a return records (date, collector,
 //  remarks) is written by the SAME status transition that flips the badge,
 //  through fmFlow — the one choke point, mirroring vatCompliance.js.
+//
+//  2026-08-09: added Fiscal Year (auto-derived from Date Received, editable)
+//  and an Online (email) / Physical (person) delivery mode, tracked
+//  independently for intake and handover — a client can drop files off in
+//  person and the firm can email them back, or the reverse. doc_types moved
+//  from a flat picklist array to {type, qty} objects so the register can
+//  show real counts ("Ledger x2"), matching the firm's paper form.
 //
 //  Deliberately NOT tied to Google Drive or the document-generation pipeline:
 //  this tracks paper the firm is physically holding, which no digital record
@@ -37,7 +46,7 @@ const FM_FILTERS = {
   returned: { label: 'Returned',      test: r => r.status === 'returned' },
 };
 
-const FM_FILTERS_EMPTY = { docType: '', from: '', to: '' };
+const FM_FILTERS_EMPTY = { docType: '', fy: '', from: '', to: '' };
 
 let fmEntries = [];
 let fmTable = null;
@@ -61,10 +70,39 @@ function fmDaysHeld(row) {
   return days > 0 ? days : 0;
 }
 
+// date_received is a real AD date; the dash fiscal-year format (majority
+// convention — Bank Entry, Party Ledger, Depreciation) is B.S.-boundary
+// aware, so this goes through the same AD->BS chain as Party Ledger's memo
+// dates (NepaliLocale.adToBs is exactly this: a Gregorian Postgres date that
+// still needs a B.S. fiscal year).
+function fmFyFromDate(dateStr) {
+  if (!dateStr) return '';
+  const bs = NepaliLocale.adToBs(dateStr);
+  return bs ? (NepaliLocale.bsFyDash(NepaliLocale.bsToStr(bs)) || '') : '';
+}
+
 function fmDocSummary(row) {
-  const types = Array.isArray(row.doc_types) ? row.doc_types.slice() : [];
-  const list = types.map(t => (t === 'Others' && row.doc_other) ? row.doc_other : t);
-  return list.length ? list.join(', ') : '—';
+  const types = Array.isArray(row.doc_types) ? row.doc_types : [];
+  if (!types.length) return '—';
+  return types.map(t => {
+    if (typeof t === 'string') return t; // legacy rows saved before quantities existed
+    return `${t.type}${t.qty && t.qty !== 1 ? ` ×${t.qty}` : ''}`;
+  }).join(', ');
+}
+
+// One cell renderer for both "Received From" and "Returned To" — same shape,
+// different field prefix, so intake and handover contact info never drift
+// into two different display rules.
+function fmContactCell(row, side) {
+  if (side === 'returned' && row.status !== 'returned') return '—';
+  const mode = side === 'received' ? row.mode_received : row.mode_returned;
+  if (mode === 'online') {
+    const email = side === 'received' ? row.email_received : row.email_sent;
+    return `📧 ${escHtml(email || '—')}`;
+  }
+  const name = side === 'received' ? row.brought_by_name : row.returned_to_name;
+  const phone = side === 'received' ? row.brought_by_phone : row.returned_to_phone;
+  return `🧍 ${escHtml(name || '—')}` + (phone ? `<br><span style="color:var(--text-faint); font-size:12px;">${escHtml(phone)}</span>` : '');
 }
 
 // Every status change — mark returned, reopen — goes through this one flow,
@@ -105,6 +143,7 @@ async function fmRefresh() {
   try {
     fmEntries = await sbFetchAll(() => window.sb.from('document_register')
       .select('*').order('created_at', { ascending: false }));
+    fmPopulateFyFilter();
     fmRenderStats();
     fmRenderTable();
     document.getElementById('fm-status-area').innerHTML = '';
@@ -148,22 +187,21 @@ function fmRenderTable() {
     // No initialSort: the query already returns newest-first, and created_at
     // isn't a displayed column so Tabulator would ignore a sort on it anyway.
     columns: [
-      { title: 'Ref #', field: 'register_no', width: 110, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'Received', field: 'date_received', width: 110 },
-      { title: 'Client', field: 'client_name', minWidth: 170, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'PAN', field: 'client_pan', width: 110, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'Documents', field: 'doc_types', minWidth: 210, headerSort: false, formatter: c => escHtml(fmDocSummary(c.getRow().getData())) },
-      { title: 'Brought By', field: 'brought_by_name', minWidth: 150, formatter: c => {
-          const r = c.getRow().getData();
-          return escHtml(r.brought_by_name || '—') + (r.brought_by_phone ? `<br><span style="color:var(--text-faint); font-size:12px;">${escHtml(r.brought_by_phone)}</span>` : '');
-        } },
-      { title: 'Days', field: 'id', width: 80, hozAlign: 'right', headerSort: false, formatter: c => {
+      { title: 'Ref #', field: 'register_no', width: 100, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'FY', field: 'fiscal_year', width: 85, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Received', field: 'date_received', width: 105 },
+      { title: 'Client', field: 'client_name', minWidth: 160, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'PAN', field: 'client_pan', width: 105, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Documents', field: 'doc_types', minWidth: 220, headerSort: false, formatter: c => escHtml(fmDocSummary(c.getRow().getData())) },
+      { title: 'Received From', field: 'brought_by_name', minWidth: 160, headerSort: false, formatter: c => fmContactCell(c.getRow().getData(), 'received') },
+      { title: 'Days', field: 'id', width: 75, hozAlign: 'right', headerSort: false, formatter: c => {
           const r = c.getRow().getData();
           const d = fmDaysHeld(r);
           const alert = r.status === 'pending' && d > FM_AGEING_ALERT_DAYS;
           return alert ? `<span style="color:var(--red); font-weight:700;">${d}</span>` : String(d);
         } },
-      { title: 'Status', field: 'status', width: 130, formatter: c => fmFlow.badgeHtml(c.getValue()) },
+      { title: 'Status', field: 'status', width: 120, formatter: c => fmFlow.badgeHtml(c.getValue()) },
+      { title: 'Returned To', field: 'returned_to_name', minWidth: 160, headerSort: false, formatter: c => fmContactCell(c.getRow().getData(), 'returned') },
       { title: 'Actions', field: 'id', headerSort: false, minWidth: 230, formatter: c => fmRowActions(c.getRow().getData()),
         cellClick: (e, cell) => {
           const btn = e.target.closest('[data-action]');
@@ -190,16 +228,32 @@ function fmRowActions(row) {
 // ── Filters ──
 function fmPopulateDocTypes() {
   document.getElementById('fm-filter-doctype').innerHTML = '<option value="">All documents</option>' +
-    window.FM_DOC_TYPES.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+    window.FM_DOC_TYPES.map(t => `<option value="${escHtml(t.label)}">${escHtml(t.label)}</option>`).join('');
   document.getElementById('fm-doc-types').innerHTML = window.FM_DOC_TYPES.map(t => `
-    <label class="checkbox-label">
-      <input type="checkbox" class="fm-doc-type" value="${escHtml(t)}" onchange="fmOnDocTypeChange()" /> ${escHtml(t)}
-    </label>`).join('');
+    <div class="fm-doctype-row">
+      <label for="fm-qty-${t.key}">${escHtml(t.label)}</label>
+      <div class="fm-doctype-qty">
+        <input type="number" min="0" id="fm-qty-${t.key}" placeholder="0" />
+        <span class="fm-doctype-unit">${escHtml(t.unit)}</span>
+      </div>
+    </div>`).join('');
+}
+
+// The Fiscal Year filter's options depend on what's actually in the data, so
+// it's rebuilt from fmEntries on every refresh rather than a fixed list.
+function fmPopulateFyFilter() {
+  const sel = document.getElementById('fm-filter-fy');
+  if (!sel) return;
+  const cur = sel.value;
+  const years = Array.from(new Set(fmEntries.map(r => r.fiscal_year).filter(Boolean))).sort().reverse();
+  sel.innerHTML = '<option value="">All years</option>' + years.map(y => `<option value="${escHtml(y)}">${escHtml(y)}</option>`).join('');
+  if (years.includes(cur)) sel.value = cur;
 }
 
 function fmReadFilters() {
   fmFilters = {
     docType: document.getElementById('fm-filter-doctype').value,
+    fy: document.getElementById('fm-filter-fy').value,
     from: document.getElementById('fm-filter-from').value,
     to: document.getElementById('fm-filter-to').value,
   };
@@ -210,14 +264,15 @@ function fmApplyFilters() {
   const cardTest = FM_FILTERS[fmActiveFilter].test;
   let rows = fmEntries.filter(r => {
     if (!cardTest(r)) return false;
-    if (fmFilters.docType && !(Array.isArray(r.doc_types) && r.doc_types.includes(fmFilters.docType))) return false;
+    if (fmFilters.docType && !(Array.isArray(r.doc_types) && r.doc_types.some(t => (typeof t === 'string' ? t : t.type) === fmFilters.docType))) return false;
+    if (fmFilters.fy && (r.fiscal_year || '') !== fmFilters.fy) return false;
     if (fmFilters.from && (r.date_received || '') < fmFilters.from) return false;
     if (fmFilters.to && (r.date_received || '') > fmFilters.to) return false;
     return true;
   });
   const q = (document.getElementById('fm-search').value || '').trim();
   if (q) {
-    const fuse = SearchEngine.buildIndex(rows, ['register_no', 'client_name', 'client_pan', 'brought_by_name', 'brought_by_phone', 'returned_to_name', 'doc_other', 'remarks']);
+    const fuse = SearchEngine.buildIndex(rows, ['register_no', 'fiscal_year', 'client_name', 'client_pan', 'brought_by_name', 'brought_by_phone', 'email_received', 'returned_to_name', 'email_sent', 'remarks']);
     rows = fuse.search(q).map(r => r.item);
   }
   fmTable.replaceData(rows);
@@ -226,13 +281,79 @@ function fmApplyFilters() {
 function fmOnFilterChange() { fmReadFilters(); fmApplyFilters(); }
 
 function fmClearFilters() {
-  ['fm-filter-doctype', 'fm-filter-from', 'fm-filter-to', 'fm-search'].forEach(id => {
+  ['fm-filter-doctype', 'fm-filter-fy', 'fm-filter-from', 'fm-filter-to', 'fm-search'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   fmFilters = { ...FM_FILTERS_EMPTY };
   fmActiveFilter = 'all';
   fmRenderStats();
   fmApplyFilters();
+}
+
+// ── Delivery mode toggle (intake and handover, kept independent) ──
+// Physical <-> Online swaps which contact fields are shown/required; the
+// active class mirrors ARF's type-picker (arf-type-picker/arf-type-option —
+// same visual component, reused rather than re-invented).
+function fmOnModeChange(side) {
+  const name = side === 'received' ? 'fm-mode-received' : 'fm-mode-returned';
+  const checked = document.querySelector(`input[name="${name}"]:checked`);
+  const mode = checked ? checked.value : 'physical';
+  document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+    const opt = r.closest('.arf-type-option');
+    if (opt) opt.classList.toggle('active', r.checked);
+  });
+  if (side === 'received') {
+    document.getElementById('fm-received-physical-group').style.display = mode === 'physical' ? '' : 'none';
+    document.getElementById('fm-received-online-group').style.display = mode === 'online' ? '' : 'none';
+  } else {
+    document.getElementById('fm-return-physical-name-group').style.display = mode === 'physical' ? '' : 'none';
+    document.getElementById('fm-return-physical-phone-group').style.display = mode === 'physical' ? '' : 'none';
+    document.getElementById('fm-return-online-group').style.display = mode === 'online' ? '' : 'none';
+  }
+}
+
+// Auto-fills Fiscal Year from Date Received, but never clobbers a value the
+// user already typed or that was loaded from a saved record.
+function fmOnDateReceivedChange() {
+  const fyEl = document.getElementById('fm-fiscal-year');
+  if (fyEl.value.trim()) return;
+  fyEl.value = fmFyFromDate(document.getElementById('fm-date-received').value);
+}
+
+// ── Document-type quantities ──
+function fmSetDocTypeQtys(list) {
+  const arr = Array.isArray(list) ? list : [];
+  const byLabel = {};
+  arr.forEach(item => {
+    if (typeof item === 'string') { byLabel[item] = (byLabel[item] || 0) + 1; return; } // legacy string entries
+    if (item && item.type) byLabel[item.type] = item.qty || 1;
+  });
+  window.FM_DOC_TYPES.forEach(t => {
+    const el = document.getElementById(`fm-qty-${t.key}`);
+    if (el) el.value = byLabel[t.label] || '';
+    delete byLabel[t.label];
+  });
+  // Anything left didn't match today's picklist (a legacy label, or a
+  // previously-typed custom entry) — the single Others row can only carry
+  // one, so the first is offered back for editing.
+  const leftover = Object.keys(byLabel);
+  document.getElementById('fm-doc-other-name').value = leftover[0] || '';
+  document.getElementById('fm-doc-other-qty').value = leftover[0] ? byLabel[leftover[0]] : '';
+}
+
+function fmReadDocTypeQtys() {
+  const list = [];
+  window.FM_DOC_TYPES.forEach(t => {
+    const el = document.getElementById(`fm-qty-${t.key}`);
+    const qty = el ? parseInt(el.value, 10) : 0;
+    if (qty > 0) list.push({ type: t.label, qty });
+  });
+  const otherName = document.getElementById('fm-doc-other-name').value.trim();
+  if (otherName) {
+    const otherQtyRaw = parseInt(document.getElementById('fm-doc-other-qty').value, 10);
+    list.push({ type: otherName, qty: otherQtyRaw > 0 ? otherQtyRaw : 1 });
+  }
+  return list;
 }
 
 // ── Intake drawer (create / edit) ──
@@ -242,32 +363,28 @@ function fmSelectClient(c) {
   document.getElementById('fm-client-pan').value = c.pan || '';
 }
 
-function fmOnDocTypeChange() {
-  const others = Array.from(document.querySelectorAll('.fm-doc-type')).some(cb => cb.checked && cb.value === 'Others');
-  document.getElementById('fm-doc-other-group').style.display = others ? '' : 'none';
-}
-
-function fmCheckedDocTypes() {
-  return Array.from(document.querySelectorAll('.fm-doc-type')).filter(cb => cb.checked).map(cb => cb.value);
-}
-
 function fmOpenEntry(existing) {
   fmEditingId = existing ? existing.id : null;
   fmSelectedClient = null;
   document.getElementById('fm-drawer-title').textContent = existing ? `Edit ${existing.register_no || 'Intake'}` : 'Record Document Intake';
   document.getElementById('fm-drawer-status').innerHTML = '';
 
-  const types = existing && Array.isArray(existing.doc_types) ? existing.doc_types : [];
-  document.querySelectorAll('.fm-doc-type').forEach(cb => { cb.checked = types.includes(cb.value); });
-  fmOnDocTypeChange();
+  fmSetDocTypeQtys(existing ? existing.doc_types : []);
 
   document.getElementById('fm-date-received').value = existing ? existing.date_received : fmToday();
+  document.getElementById('fm-fiscal-year').value = existing ? (existing.fiscal_year || '') : '';
+  if (!existing) fmOnDateReceivedChange();
   document.getElementById('fm-client-search').value = existing ? (existing.client_name || '') : '';
   document.getElementById('fm-client-pan').value = existing ? (existing.client_pan || '') : '';
-  document.getElementById('fm-doc-other').value = existing ? (existing.doc_other || '') : '';
   document.getElementById('fm-brought-name').value = existing ? (existing.brought_by_name || '') : '';
   document.getElementById('fm-brought-phone').value = existing ? (existing.brought_by_phone || '') : '';
+  document.getElementById('fm-email-received').value = existing ? (existing.email_received || '') : '';
   document.getElementById('fm-remarks').value = existing ? (existing.remarks || '') : '';
+
+  const modeReceived = (existing && existing.mode_received === 'online') ? 'online' : 'physical';
+  const modeInput = document.querySelector(`input[name="fm-mode-received"][value="${modeReceived}"]`);
+  if (modeInput) modeInput.checked = true;
+  fmOnModeChange('received');
 
   if (existing && existing.client_id) {
     const c = (window.clientsList || []).find(x => x.id === existing.client_id);
@@ -283,12 +400,20 @@ async function fmSaveEntry() {
   const drawerErr = msg => showStatus(escHtml(msg), 'info', 'fm-drawer-status');
   const clientName = document.getElementById('fm-client-search').value.trim();
   if (!clientName) { drawerErr('Enter or select a client.'); return; }
-  const broughtBy = document.getElementById('fm-brought-name').value.trim();
-  if (!broughtBy) { drawerErr('Enter who brought the documents.'); return; }
-  const docTypes = fmCheckedDocTypes();
-  if (!docTypes.length) { drawerErr('Tick at least one document type.'); return; }
-  const docOther = document.getElementById('fm-doc-other').value.trim();
-  if (docTypes.includes('Others') && !docOther) { drawerErr('Describe the "Others" document.'); return; }
+
+  const docTypes = fmReadDocTypeQtys();
+  if (!docTypes.length) { drawerErr('Add a quantity for at least one document, or type a custom one.'); return; }
+
+  const modeReceived = (document.querySelector('input[name="fm-mode-received"]:checked') || {}).value || 'physical';
+  let broughtName = null, broughtPhone = null, emailReceived = null;
+  if (modeReceived === 'physical') {
+    broughtName = document.getElementById('fm-brought-name').value.trim();
+    if (!broughtName) { drawerErr('Enter who brought the documents.'); return; }
+    broughtPhone = document.getElementById('fm-brought-phone').value.trim() || null;
+  } else {
+    emailReceived = document.getElementById('fm-email-received').value.trim();
+    if (!emailReceived) { drawerErr('Enter the email ID the documents came from.'); return; }
+  }
 
   // Keep client_id only while the name still matches the picked client — a
   // hand-edited name becomes a typed-only (nullable) client.
@@ -298,11 +423,13 @@ async function fmSaveEntry() {
     client_id: clientId,
     client_name: clientName,
     client_pan: document.getElementById('fm-client-pan').value.trim() || null,
+    fiscal_year: document.getElementById('fm-fiscal-year').value.trim() || null,
     date_received: document.getElementById('fm-date-received').value || fmToday(),
     doc_types: docTypes,
-    doc_other: docOther || null,
-    brought_by_name: broughtBy,
-    brought_by_phone: document.getElementById('fm-brought-phone').value.trim() || null,
+    mode_received: modeReceived,
+    brought_by_name: broughtName,
+    brought_by_phone: broughtPhone,
+    email_received: emailReceived,
     remarks: document.getElementById('fm-remarks').value.trim() || null,
     updated_by: fmUserEmail(),
   };
@@ -343,12 +470,21 @@ function fmOpenReturn(row) {
   document.getElementById('fm-return-summary').innerHTML =
     `<strong>${escHtml(row.register_no || '—')}</strong> · ${escHtml(row.client_name || '—')}<br>` +
     `<span style="color:var(--text-muted);">${escHtml(fmDocSummary(row))}</span><br>` +
-    `<span style="color:var(--text-faint); font-size:12.5px;">Received ${escHtml(row.date_received || '—')} from ${escHtml(row.brought_by_name || '—')} · held ${fmDaysHeld(row)} days</span>`;
+    `<span style="color:var(--text-faint); font-size:12.5px;">Received ${escHtml(row.date_received || '—')} from ${escHtml(row.brought_by_name || row.email_received || '—')} · held ${fmDaysHeld(row)} days</span>`;
   document.getElementById('fm-return-date').value = fmToday();
   document.getElementById('fm-return-name').value = row.brought_by_name || '';
   document.getElementById('fm-return-phone').value = row.brought_by_phone || '';
+  document.getElementById('fm-return-email').value = row.email_received || '';
   document.getElementById('fm-return-remarks').value = '';
   document.getElementById('fm-return-status').innerHTML = '';
+
+  // Default the handover mode to how the documents came in — usually the
+  // same channel, and easy to switch if not.
+  const modeReturned = row.mode_received === 'online' ? 'online' : 'physical';
+  const modeInput = document.querySelector(`input[name="fm-mode-returned"][value="${modeReturned}"]`);
+  if (modeInput) modeInput.checked = true;
+  fmOnModeChange('returned');
+
   document.getElementById('fm-return-modal').classList.add('open');
 }
 
@@ -356,15 +492,25 @@ function fmCloseReturn() { document.getElementById('fm-return-modal').classList.
 
 async function fmConfirmReturn() {
   if (!fmReturningRow) return;
-  const name = document.getElementById('fm-return-name').value.trim();
-  if (!name) { showStatus('Enter who collected the documents.', 'info', 'fm-return-status'); return; }
+  const modeReturned = (document.querySelector('input[name="fm-mode-returned"]:checked') || {}).value || 'physical';
+  let name = null, phone = null, email = null;
+  if (modeReturned === 'physical') {
+    name = document.getElementById('fm-return-name').value.trim();
+    if (!name) { showStatus('Enter who collected the documents.', 'info', 'fm-return-status'); return; }
+    phone = document.getElementById('fm-return-phone').value.trim() || null;
+  } else {
+    email = document.getElementById('fm-return-email').value.trim();
+    if (!email) { showStatus('Enter the email ID the documents were sent to.', 'info', 'fm-return-status'); return; }
+  }
 
   showStatus('<span class="spinner spinner-navy"></span> Recording handover…', 'searching', 'fm-return-status');
   try {
     await fmFlow.transition(fmReturningRow, 'returned', { patch: {
       date_returned: document.getElementById('fm-return-date').value || fmToday(),
+      mode_returned: modeReturned,
       returned_to_name: name,
-      returned_to_phone: document.getElementById('fm-return-phone').value.trim() || null,
+      returned_to_phone: phone,
+      email_sent: email,
       return_remarks: document.getElementById('fm-return-remarks').value.trim() || null,
     } });
     fmCloseReturn();
@@ -381,7 +527,8 @@ async function fmReopen(row) {
   if (!confirm(`Reopen ${row.register_no || 'this entry'}? It will show as still with us, and the handover details will be cleared.`)) return;
   try {
     await fmFlow.transition(row, 'pending', { patch: {
-      date_returned: null, returned_to_name: null, returned_to_phone: null, return_remarks: null,
+      date_returned: null, returned_to_name: null, returned_to_phone: null,
+      mode_returned: null, email_sent: null, return_remarks: null,
     } });
     await fmRefresh();
     fmStatusMsg('✅ Entry reopened — shown as still with us.', 'success');

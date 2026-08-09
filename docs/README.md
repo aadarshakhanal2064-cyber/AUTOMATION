@@ -34,7 +34,7 @@ module detail irrelevant to whatever the session was actually doing.
 | [`modules/autobooks.md`](modules/autobooks.md) | Autobooks (called Sales & Purchase Book everywhere in code) | `spb-` |
 | [`modules/projection.md`](modules/projection.md) | Projection Report — the constraint solver, its 10 master rules, and its exports | `pj-` |
 | [`modules/financial-statement.md`](modules/financial-statement.md) | Financial Statement — the NFRS statement-set builder | `fs-` |
-| [`modules/file-management.md`](modules/file-management.md) | File Management — the physical document custody register | `fm-` |
+| [`modules/file-management.md`](modules/file-management.md) | File In Out (called File Management in code) — the physical document custody register | `fm-` |
 
 The four Financial Management modules share one file on purpose: they read each
 other's state (`finalAccount.js` calls `partyLedger.js`'s functions, and the

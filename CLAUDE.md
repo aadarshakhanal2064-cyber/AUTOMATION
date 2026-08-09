@@ -142,7 +142,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | *(shared)* Saved documents picker | — | `js/core/documentStore.js` | `ds-` | `saved_documents` | [engines](docs/engines.md) |
 | VAT Compliance | Sidebar | `vatCompliance.js` | `vatc-` | `vat_filings` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
-| File Management | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
+| File In Out | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
 | Audit Report Finalization | Sidebar | `auditReportFinalization.js` | `arf-` | `audit_report_finalization` | [audit-report-finalization](docs/modules/audit-report-finalization.md) |
 | Audit Checklist | Sidebar | `auditChecklist.js` | `achk-` | `audit_checklists` | [audit-checklist](docs/modules/audit-checklist.md) |
 | Company Registrar *(6 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `st-` `ic-` `cr-` `pr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
@@ -160,14 +160,15 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Autobooks | Automation Hub | `salesPurchaseBook.js` | `spb-` | *(none)* | [autobooks](docs/modules/autobooks.md) |
 | OCR Extract | Automation Hub | `ocrExtract.js` | `ocr-` | *(none)* | [documents](docs/modules/documents.md) |
 
-### Two modules were renamed — display name only
+### Three modules were renamed — display name only
 
-File names, function prefixes, element-ID prefixes, table names and `ModuleRegistry` ids all keep their originals. This trips up every first encounter with either module:
+File names, function prefixes, element-ID prefixes, table names and `ModuleRegistry` ids all keep their originals. This trips up every first encounter with any of the three:
 
 | Menu / page label | Module in code |
 |---|---|
 | **Autobooks** | Sales & Purchase Book — `js/salesPurchaseBook.js`, `spb-` |
 | **Bank Entry** | Bank Book — `js/bankBook.js`, `bb-`, tables `bank_accounts`/`bank_transactions` |
+| **File In Out** | File Management — `js/fileManagement.js`, `fm-`, table `document_register` (renamed 2026-08-09) |
 
 "Confirmation" is the menu label for Confirmation Letters; the panel keeps the fuller title.
 
@@ -279,7 +280,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `pl-` | Party Ledger | | `fa-` | Final Account |
 | `fs-` | Financial Statement | | `cp-` | Company Profile |
 | `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | `ocr-` | OCR Extract |
-| `fm-` | File Management (Document Register) | | `ds-` | Saved-documents picker (shared drawer, `js/core/documentStore.js`) |
+| `fm-` | File In Out (File Management / Document Register in code) | | `ds-` | Saved-documents picker (shared drawer, `js/core/documentStore.js`) |
 
 ### Interaction patterns
 Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
@@ -390,8 +391,10 @@ The established pattern — **investigate with real evidence → implement only 
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
 - **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
-- **File Management is one row per visit, updated in place on handover** (2026-08-01) — an intake and its return are the same physical custody, so there is no paired "returns" row. `Reopen` clears the collector details rather than keeping them: the documents are physically back, and stale details would be read as fact. Don't add a second write path around `fmFlow`.
-- **File Management is deliberately not linked to Drive or the document pipeline** — it tracks the paper the firm is physically holding, which a digital copy doesn't substitute for. It also has no fiscal-year field on purpose; add one only if the firm asks.
+- **File In Out (File Management in code) is one row per visit, updated in place on handover** (2026-08-01) — an intake and its return are the same physical custody, so there is no paired "returns" row. `Reopen` clears the collector details rather than keeping them: the documents are physically back, and stale details would be read as fact. Don't add a second write path around `fmFlow`.
+- **File In Out is deliberately not linked to Drive or the document pipeline** — it tracks the paper the firm is physically holding, which a digital copy doesn't substitute for.
+- **File In Out's custom document-type slot is one manually-typed entry, not a repeater** (2026-08-09, explicit user ask) — a single "type another document" row alongside the fixed picklist, not an "add another" list.
+- **File In Out's Fiscal Year field was added 2026-08-09, reversing the module's original "no FY field" decision** — the firm's own paper register carries one, so the earlier reasoning ("documents arrive against a job, not a year") no longer holds for this module. Don't re-remove it citing the old decision.
 - **Audit Report Finalization is one record per `(client, fiscal year, RETURN TYPE)`** (2026-08-09, superseding the same-day "one record per client+year") — IT return, estimate return and tax clearance are separate work done by different staff at different times, so each gets its own row. Its status is a **derived** 4-key badge computed per track from raw columns (submission text + a nullable verified flag), never a stored status column, so the badge, the filter, the chart and the export text can't drift apart. `client_id` is NOT NULL / ON DELETE RESTRICT — directory clients only, no walk-in case like File Management's. `auditor` is deliberately **free text with no CHECK** (the UI offers "Other, type a name") and holds FIRM names — `Shailesh & Associates`, `Dallakoti & Company` — not partner names. Don't add a stored status column, relax the FK, or re-add a CHECK to `auditor` without asking.
 - **Verifying an IT return auto-opens its follow-on records** (2026-08-09) — a D-2 opens the Estimate Return, a D-3 opens Estimate Return *and* Tax Clearance, because the firm verifies the estimate only after the IT return. They are created explicitly **not verified / not cleared** rather than blank: a blank row derives to "Not Submitted" and would drop out of the *Not Verified* counts, but the work really is outstanding. **The link is reversible** (corrected 2026-08-09 after shipping one-directional): un-verifying the IT return, or switching D-3 to D-2, withdraws the follow-ons so those tracks read "Not recorded" again — a row left behind after its trigger was undone reports work the firm doesn't owe. **But a follow-on anyone has worked on is never deleted**: `arfIsUntouchedFollowOn()` gates every removal and the save message reports what was kept. Creation is idempotent.
 - **`audit_report_finalization.recorded_date` is deliberately NOT `created_at`** — `created_at` is the immutable insert timestamp; `recorded_date` is user-editable because staff routinely log on Monday work actually done on Friday, and the From/To range filter has to reflect the work, not the typing. Don't collapse the two.

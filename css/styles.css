@@ -1226,6 +1226,25 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 .arf-type-option.active{ background: var(--brand-navy); color: #fff; }
 .arf-type-option.active:hover{ background: var(--brand-navy-lt); color: #fff; }
 
+/* ── File In Out — document quantity grid ──
+   Each row is a picklist document type + a quantity input, matching the
+   firm's paper register's "No of books"/"no PAD"/"no" columns. The last row
+   (.fm-doctype-other) is the one manually-typed custom entry. */
+.fm-doctype-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 8px; }
+.fm-doctype-row{
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 10px; background: var(--bg-page-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.fm-doctype-row label{ font-size: 13px; color: var(--text-main); font-weight: 500; }
+.fm-doctype-qty{ display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.fm-doctype-qty input{ width: 56px; text-align: center; padding: 5px 6px; }
+.fm-doctype-unit{ font-size: 11.5px; color: var(--text-faint); min-width: 40px; }
+.fm-doctype-other{ grid-column: 1 / -1; margin-top: 2px; background: var(--white); border-style: dashed; }
+.fm-doctype-other input[type=text]{ flex: 1; border: none; background: transparent; padding: 4px 0; }
+.fm-doctype-other input[type=text]:focus{ outline: none; box-shadow: none; }
+@media (max-width: 720px) { .fm-doctype-grid{ grid-template-columns: 1fr; } }
+
 /* Chain strip in the record drawer: where this client stands across all three
    tracks for the chosen year, so what's outstanding is visible while filling
    the form. The current track is outlined. */

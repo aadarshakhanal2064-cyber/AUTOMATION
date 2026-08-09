@@ -247,20 +247,28 @@ window.BANK_PAYMENT_TYPES = [
 // fee_receipt/for_tax reduce what the client owes, tax_payment increases it.
 window.BANK_CLIENT_PARTICULARS = ['fee_receipt', 'for_tax', 'tax_payment'];
 
-// ── File Management (Document Register) module data ──
-// Document kinds a client physically hands over. One intake can carry several,
-// so these are checkboxes, stored as a jsonb array in document_register.doc_types.
-// 'Others' reveals a free-text field (document_register.doc_other), mirroring the
-// SERVICE_MEMO_TASKS "Others" pattern. Adding a kind here needs no migration.
+// ── File In Out (Document Register — display renamed 2026-08-09, code kept
+// as-is: js/fileManagement.js, fm-, document_register. Same label-only
+// precedent as Autobooks/Bank Entry, CLAUDE.md §5) module data ──
+// Document kinds a client physically hands over, matching the firm's paper
+// register. One intake can carry several, each with its own quantity (the
+// register's "No of books"/"no PAD"/"no" columns) — stored as a jsonb array
+// of {type, qty} in document_register.doc_types. `unit` is display-only
+// (the label next to the quantity input / table cell). Adding a kind here
+// needs no migration. A manually-typed "Others" row (own name + qty) is
+// handled separately in js/fileManagement.js, not part of this picklist.
 window.FM_DOC_TYPES = [
-  'Purchase & Sales Files',
-  'Ledger',
-  'Confirmation',
-  'Interest Certificate',
-  'Bank Statement',
-  'Cheque Book / Vouchers',
-  'Tax Documents',
-  'Others',
+  { key: 'sales_register',      label: 'Sales Register',                unit: 'Books' },
+  { key: 'purchase_register',   label: 'Purchase Register',             unit: 'Books' },
+  { key: 'sales_bill',          label: 'Sales Bill',                    unit: 'Pads' },
+  { key: 'purchase_bill',       label: 'Purchase Bill',                 unit: 'Pads' },
+  { key: 'stock_book',          label: 'Stock Book',                    unit: 'Books' },
+  { key: 'ledger',              label: 'Ledger',                        unit: 'Books' },
+  { key: 'confirmation',        label: 'Confirmation',                  unit: 'No.' },
+  { key: 'bank_statement',      label: 'Bank Statement',                unit: 'No.' },
+  { key: 'bank_loan_interest',  label: 'Bank Loan / Interest Certificate', unit: 'No.' },
+  { key: 'cheque_vouchers',     label: 'Cheque Book / Vouchers',        unit: 'No.' },
+  { key: 'tax_documents',       label: 'Tax Documents',                 unit: 'No.' },
 ];
 
 // ── Audit Report Finalization module data ──

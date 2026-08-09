@@ -1,7 +1,7 @@
 # Audit Report Finalization (§5.21)
 
 **Code:** `js/auditReportFinalization.js` · **Prefix:** `arf-` · **Table:** `audit_report_finalization`
-**Where:** sidebar, Core modules (after File Management) · **Registry id:** `auditReportFinalization`
+**Where:** sidebar, Core modules (after File In Out) · **Registry id:** `auditReportFinalization`
 
 A shared status tracker used by multiple staff to record where a client's **IT
 return, estimate return and tax clearance** stand for a fiscal year. It answers
