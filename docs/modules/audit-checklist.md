@@ -123,6 +123,28 @@ seed the moment the combination stops matching, exactly the ARF bug class
 ("switching client keeps editing the previous client's record") that a
 `achkAutoMatched` flag exists specifically to prevent.
 
+## Print / Preview / PDF
+
+Added after the first ship, at the user's request. Three entry points, all
+built on the same `achkBuildModel()` the Excel export already used, so
+Preview, PDF export and Excel export can never show different data for the
+same filters:
+
+- **Print / Preview** (page header) — previews every currently-filtered
+  record in a print window.
+- **Export PDF** (page header) — `ReportExport.download(model, 'pdf', ...)`,
+  same filtered set, direct download instead of a preview window.
+- **Print** (per table row) — `achkPrintOne(row)` previews just that one
+  client's checklist, the single-record case the paper form actually existed
+  for.
+
+`achkOpenPrintWindow()` is ARF's exact idiom: `window.open('', '_blank')`,
+write `ReportExport.toHtml(model)` into it, then `w.print()` after a short
+delay so the new document has finished laying out. **The browser's own print
+dialog's "Save as PDF" destination is the actual preview→PDF path** — there
+is no separate "convert preview to PDF" feature to build, since every
+browser's print dialog already offers it.
+
 ## Gotchas
 
 - Saving uses an explicit `if (achkEditingId) update else insert`, **not**
@@ -147,10 +169,6 @@ seed the moment the combination stops matching, exactly the ARF bug class
 - **No overview chart** — a single client+year status doesn't need one; ARF's
   three-track grouped bar chart exists because it compares three tracks at
   once, which doesn't apply here.
-- **No single-record printable sheet** — only a table-level Excel export
-  (`ReportExport`, matching ARF's table export). The digital checklist itself
-  is the paper form's real replacement; a printable copy can be added later
-  if the firm still wants one after using the module.
 - **Export flattens `items` into two text cells** (`Completed Items` /
   `Pending Items`, each `label (checked_by)` joined with `; `) rather than one
   column per item — the item list's length varies per client (VAT gating,
@@ -208,6 +226,21 @@ Supabase session in this sandbox):
   new tab; the only console output was the documented AuditLog-swallowed-RLS
   and 401 pattern that appears throughout this app without a real session —
   nothing attributable to this module.
+
+Print/Preview/PDF (added after the first ship) verified by stubbing
+`window.open` and checking what was actually written and called, since a
+real popup can't be inspected directly in this sandbox:
+
+- `achkPrintOne()` (row-level Print) opened exactly one window, wrote HTML
+  containing that client's name and its pending item, and called `.print()`.
+- `achkPreviewAll()` (header Print/Preview) opened one window over the full
+  filtered set, HTML included the title and a completed item.
+- `achkExport('pdf')` ran `ReportExport.download` through to completion
+  without throwing (PDF-Lib's WinAnsi-only standard fonts are the usual
+  failure mode with Devanagari/curly-quote content — none hit here). The
+  generated PDF binary itself was not re-opened/inspected.
+- Console showed the same AuditLog-swallowed-RLS pattern for the new
+  `achk_printed` and `document_generated` events — expected, not a defect.
 
 **Not verified:** a live authenticated write (insert/update/delete
 succeeding end-to-end against Supabase), the delete button's confirm-dialog

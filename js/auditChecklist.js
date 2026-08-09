@@ -189,12 +189,13 @@ function achkRenderTable() {
         } },
       { title: 'Status', field: 'id', width: 140, headerSort: false, formatter: c => achkStatusBadge(c.getRow().getData()) },
       { title: 'Recorded', field: 'recorded_date', width: 115, formatter: c => escHtml(c.getValue() || '—') },
-      { title: 'Actions', field: 'id', headerSort: false, minWidth: 150, formatter: () => achkRowActions(),
+      { title: 'Actions', field: 'id', headerSort: false, minWidth: 190, formatter: () => achkRowActions(),
         cellClick: (e, cell) => {
           const btn = e.target.closest('[data-action]');
           if (!btn) return;
           const row = cell.getRow().getData();
           if (btn.dataset.action === 'edit') achkOpenEntry(row);
+          else if (btn.dataset.action === 'print') achkPrintOne(row);
           else if (btn.dataset.action === 'delete') achkDeleteEntry(row);
         } },
     ],
@@ -204,7 +205,7 @@ function achkRenderTable() {
 
 function achkRowActions() {
   const btn = (a, label) => `<button class="btn btn-outline btn-sm" data-action="${a}" title="${label}">${label}</button>`;
-  return `<div class="client-actions">${btn('edit', 'Edit')}${btn('delete', 'Delete')}</div>`;
+  return `<div class="client-actions">${btn('edit', 'Edit')}${btn('print', 'Print')}${btn('delete', 'Delete')}</div>`;
 }
 
 // ── Filters ──
@@ -532,16 +533,49 @@ function achkBuildModel(rows, titleSuffix) {
   };
 }
 
-async function achkExport() {
+async function achkExport(kind) {
   achkReadFilters();
   const rows = achkCurrentFilteredRows();
   if (!rows.length) { achkStatusMsg('Nothing to export for the current filters.', 'info'); return; }
   const model = achkBuildModel(rows);
   try {
-    await ReportExport.download(model, 'excel', `${model._filename}.xlsx`, {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
       module: 'auditChecklist', clientName: 'Filtered Records', sheetName: 'Checklists',
     });
   } catch (e) {
     achkStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
   }
+}
+
+// ── Print / Preview ──
+// Opens a plain print window over the same model the Excel/PDF export uses
+// (ReportExport.toHtml), so what you see in Preview and what a PDF export
+// contains can't disagree — same idiom as Audit Report Finalization.
+function achkOpenPrintWindow(model) {
+  const w = window.open('', '_blank');
+  if (!w) { achkStatusMsg('Allow pop-ups to print.', 'info'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>${escHtml(model.title)}</title>
+    <style>body{font-family:Inter,Arial,sans-serif;margin:28px;color:#1a202c;}
+    table{border-collapse:collapse;width:100%;font-size:11px;}
+    th,td{border:1px solid #d9dce5;padding:5px 8px;}
+    th{background:#f3f5fb;color:#0b1f3d;}
+    @page{size:A4 landscape;margin:12mm;}</style></head>
+    <body>${ReportExport.toHtml(model)}</body></html>`);
+  w.document.close();
+  // The browser's own print dialog offers "Save as PDF" — this is the
+  // preview's actual save-to-PDF path, not a separate feature to build.
+  setTimeout(() => w.print(), 300);
+  AuditLog.record('achk_printed', { module: 'auditChecklist' });
+}
+
+function achkPreviewAll() {
+  achkReadFilters();
+  const rows = achkCurrentFilteredRows();
+  if (!rows.length) { achkStatusMsg('Nothing to preview for the current filters.', 'info'); return; }
+  achkOpenPrintWindow(achkBuildModel(rows));
+}
+
+function achkPrintOne(row) {
+  achkOpenPrintWindow(achkBuildModel([row], row.client_name));
 }
