@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608102130">
+<link rel="stylesheet" href="css/styles.css?v=202608110900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -90,11 +90,9 @@ function cropLoginLogoIcon(img) {
         <svg class="app-tag-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </button>
       <div class="topbar-dropdown-menu" id="topbar-regd-menu">
-        <button class="topbar-dropdown-item" onclick="openRegdModule('shareTransfer', 'Share Transfer')">Share Transfer</button>
-        <button class="topbar-dropdown-item" onclick="openRegdModule('increaseCapital', 'Increase Capital')">Increase Capital</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('companyRegistration', 'Company Registration')">Company Registration</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('auditorChange', 'Auditor Change')">Auditor Change</button>
-        <button class="topbar-dropdown-item" onclick="openRegdModule('pinReset', 'PIN Reset')">PIN Reset</button>
+        <button class="topbar-dropdown-item" onclick="openRegdModule('companySecretary', 'Company Secretary Appointment')">Company Secretary Appointment</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('bmAgmMinutes', 'BM/AGM Minutes')">BM/AGM Minutes</button>
         <button class="topbar-dropdown-item" onclick="openRegdModule('companyProfile', 'Company Profile')">Company Profile</button>
       </div>
@@ -164,10 +162,6 @@ function cropLoginLogoIcon(img) {
     <button class="nav-item active" onclick="switchTab('dashboard'); loadDashboard();" id="nav-dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
       Dashboard
-    </button>
-    <button class="nav-item" onclick="switchTab('vatCompliance'); loadVatCompliance();" id="nav-vatCompliance">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-      VAT Compliance
     </button>
     <button class="nav-item" onclick="switchTab('clients')" id="nav-clients">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -354,79 +348,6 @@ function cropLoginLogoIcon(img) {
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Documents by Module</h3>
           <canvas id="dash-module-chart" height="220"></canvas>
         </div>
-      </div>
-    </div>
-
-    <!-- ── TAB: VAT COMPLIANCE ── -->
-    <div id="tab-vatCompliance-panel" class="tab-panel">
-      <div class="page-header">
-        <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span class="current">VAT Compliance</span></div>
-          <h2 class="page-title">VAT Compliance</h2>
-          <p class="page-subtitle">Monthly VAT Return filing status for the clients whose VAT we handle.</p>
-        </div>
-        <div class="page-header-actions">
-          <button class="btn btn-primary" onclick="vatcOpenPicker()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
-            Manage VAT Clients
-          </button>
-        </div>
-      </div>
-
-      <div class="stat-grid compact" id="vatc-stat-grid"></div>
-
-      <div class="vatc-charts">
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Monthly Filing Progress</h3>
-          <canvas id="vatc-chart-progress" height="210"></canvas>
-        </div>
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Completion</h3>
-          <canvas id="vatc-chart-completion" height="210"></canvas>
-        </div>
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Pending by Staff</h3>
-          <canvas id="vatc-chart-workload" height="210"></canvas>
-        </div>
-      </div>
-
-      <div class="table-wrap" style="padding:24px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; gap:16px; flex-wrap:wrap;">
-          <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
-            <div class="form-group" style="margin:0;">
-              <label>Fiscal Year</label>
-              <select id="vatc-fy" onchange="vatcRefresh()"></select>
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label>Month</label>
-              <select id="vatc-month" onchange="vatcRefresh()"></select>
-            </div>
-          </div>
-          <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
-            <span class="sb-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            </span>
-            <input type="text" class="search-bar" id="vatc-search" placeholder="Search by client, PAN, staff or notes…" oninput="vatcFilterTable(this.value)" />
-          </div>
-        </div>
-        <div id="vatc-period-label" style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;"></div>
-        <div id="vatc-bulk-bar" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; background:var(--blue-bg); border:1px solid #c3d7f2; border-radius:var(--radius); padding:10px 14px; margin-bottom:16px;">
-          <strong id="vatc-bulk-count" style="font-size:13px; color:var(--blue-dk);">0 selected</strong>
-          <button class="btn btn-primary btn-sm" onclick="vatcBulkStatus('filed')">✓ Mark Filed</button>
-          <span style="display:inline-flex; gap:6px; align-items:center;">
-            <select id="vatc-bulk-status" style="max-width:200px;"></select>
-            <button class="btn btn-outline btn-sm" onclick="vatcBulkStatus(document.getElementById('vatc-bulk-status').value)">Set Status</button>
-          </span>
-          <span style="display:inline-flex; gap:6px; align-items:center;">
-            <select id="vatc-bulk-staff" style="max-width:200px;"></select>
-            <button class="btn btn-outline btn-sm" onclick="vatcBulkAssign()">Assign</button>
-          </span>
-          <button class="btn btn-outline btn-sm" onclick="vatcExportCsv()">⬇ Export CSV</button>
-          <button class="btn btn-outline btn-sm" onclick="vatcPrint()">🖨 Print</button>
-          <button class="btn btn-outline btn-sm" onclick="vatcTable && vatcTable.deselectRow()">Clear</button>
-        </div>
-        <div id="vatc-status-area"></div>
-        <div id="vatc-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>
     </div>
 
@@ -818,107 +739,15 @@ function cropLoginLogoIcon(img) {
     <div id="tab-regd-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Home</span><span>›</span><span>Company Registrar</span><span>›</span><span class="current" id="regd-module-crumb">Share Transfer</span></div>
+          <div class="breadcrumb"><span>Home</span><span>›</span><span>Company Registrar</span><span>›</span><span class="current" id="regd-module-crumb">Company Registration</span></div>
           <h2 class="page-title">Company Registrar Automations</h2>
           <p class="page-subtitle">Auto-generate statutory documents and filings.</p>
         </div>
       </div>
       <div class="card" style="padding:0; overflow:hidden;">
 
-        <!-- ── SUB: SHARE TRANSFER ── -->
-        <div id="regd-shareTransfer-panel" class="regd-sub-panel active">
-          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
-            <div style="padding:24px; border-right:1px solid var(--border);">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Name</label>
-                <input type="text" id="st-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Transferor Name (Selling)</label>
-                <input type="text" id="st-transferorName" placeholder="e.g. Ram Bahadur Thapa" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Transferee Name (Buying)</label>
-                <input type="text" id="st-transfereeName" placeholder="e.g. Sita Kumari Rai" />
-              </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>No. of Shares</label>
-                  <input type="text" id="st-numShares" placeholder="e.g. 100" />
-                </div>
-                <div class="form-group">
-                  <label>Face Value</label>
-                  <input type="text" id="st-faceValue" placeholder="e.g. 100" />
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Transfer Date (B.S.)</label>
-                <input type="text" id="st-transferDate" placeholder="e.g. 2082/06/04" />
-              </div>
-              <div class="form-group" style="margin-bottom:24px;">
-                <label>Remarks</label>
-                <textarea id="st-remarks" placeholder="Optional notes…"></textarea>
-              </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Share Transfer')">⚙️ Generate Documents</button>
-            </div>
-            <div style="background:#f8fafc; padding:24px;">
-              <div class="regd-preview-placeholder">
-                <div class="icon">🔄</div>
-                <p>Share Transfer document preview will appear here.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── SUB: INCREASE CAPITAL ── -->
-        <div id="regd-increaseCapital-panel" class="regd-sub-panel">
-          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
-            <div style="padding:24px; border-right:1px solid var(--border);">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Name</label>
-                <input type="text" id="ic-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
-              </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>Current Auth. Cap.</label>
-                  <input type="text" id="ic-curAuthCapital" placeholder="e.g. 10,00,000" />
-                </div>
-                <div class="form-group">
-                  <label>New Auth. Cap.</label>
-                  <input type="text" id="ic-newAuthCapital" placeholder="e.g. 25,00,000" />
-                </div>
-              </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>Current Paid Cap.</label>
-                  <input type="text" id="ic-curPaidCapital" placeholder="e.g. 10,00,000" />
-                </div>
-                <div class="form-group">
-                  <label>New Paid Cap.</label>
-                  <input type="text" id="ic-newPaidCapital" placeholder="e.g. 25,00,000" />
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Approval Date (B.S.)</label>
-                <input type="text" id="ic-approvalDate" placeholder="e.g. 2082/06/04" />
-              </div>
-              <div class="form-group" style="margin-bottom:24px;">
-                <label>Remarks</label>
-                <textarea id="ic-remarks" placeholder="Optional notes…"></textarea>
-              </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Increase Capital')">⚙️ Generate Documents</button>
-            </div>
-            <div style="background:#f8fafc; padding:24px;">
-              <div class="regd-preview-placeholder">
-                <div class="icon">📈</div>
-                <p>Increase Capital document preview will appear here.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- ── SUB: COMPANY REGISTRATION ── -->
-        <div id="regd-companyRegistration-panel" class="regd-sub-panel">
+        <div id="regd-companyRegistration-panel" class="regd-sub-panel active">
           <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
             <div style="padding:24px; border-right:1px solid var(--border);">
               <div class="form-group" style="margin-bottom:14px;">
@@ -1095,36 +924,50 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
 
-        <!-- ── SUB: PIN RESET ── -->
-        <div id="regd-pinReset-panel" class="regd-sub-panel">
+        <!-- ── SUB: COMPANY SECRETARY APPOINTMENT ── -->
+        <div id="regd-companySecretary-panel" class="regd-sub-panel">
           <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
             <div style="padding:24px; border-right:1px solid var(--border);">
               <div class="form-group" style="margin-bottom:14px;">
                 <label>Company Name</label>
-                <input type="text" id="pr-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+                <input type="text" id="cs-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
               </div>
               <div class="form-group" style="margin-bottom:14px;">
-                <label>PAN Number</label>
-                <input type="text" id="pr-pan" placeholder="e.g. 610304639" />
+                <label>Secretary Name</label>
+                <input type="text" id="cs-secretaryName" placeholder="e.g. Ram Bahadur Thapa" />
               </div>
               <div class="form-group" style="margin-bottom:14px;">
-                <label>Registered Contact</label>
-                <input type="text" id="pr-contact" placeholder="e.g. client@email.com" />
+                <label>Secretary Qualification</label>
+                <input type="text" id="cs-qualification" placeholder="e.g. Company Secretary / Chartered Accountant" />
+              </div>
+              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
+                <div class="form-group">
+                  <label>Appointment Date (B.S.)</label>
+                  <input type="text" id="cs-appointmentDate" placeholder="e.g. 2082/06/04" />
+                </div>
+                <div class="form-group">
+                  <label>Board Meeting Date (B.S.)</label>
+                  <input type="text" id="cs-meetingDate" placeholder="e.g. 2082/06/04" />
+                </div>
               </div>
               <div class="form-group" style="margin-bottom:14px;">
-                <label>Reason for Reset</label>
-                <input type="text" id="pr-reason" placeholder="e.g. Forgot PIN / Locked account" />
+                <label>Outgoing Secretary (if any)</label>
+                <input type="text" id="cs-outgoingName" placeholder="Leave blank for a first appointment" />
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Remuneration (Rs.)</label>
+                <input type="text" id="cs-remuneration" placeholder="e.g. 25,000" />
               </div>
               <div class="form-group" style="margin-bottom:24px;">
-                <label>Requested By</label>
-                <input type="text" id="pr-requestedBy" placeholder="e.g. Client / Authorized Rep." />
+                <label>Remarks</label>
+                <textarea id="cs-remarks" placeholder="Optional notes…"></textarea>
               </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('PIN Reset')">⚙️ Generate Documents</button>
+              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Company Secretary Appointment')">⚙️ Generate Documents</button>
             </div>
             <div style="background:#f8fafc; padding:24px;">
               <div class="regd-preview-placeholder">
-                <div class="icon">🔑</div>
-                <p>PIN Reset document preview will appear here.</p>
+                <div class="icon">🧾</div>
+                <p>Company Secretary Appointment document preview will appear here.</p>
               </div>
             </div>
           </div>
@@ -3814,76 +3657,6 @@ function cropLoginLogoIcon(img) {
   </div>
 </div>
 
-<!-- VAT COMPLIANCE — MANAGE VAT CLIENTS PICKER -->
-<div class="modal-overlay" id="vatc-picker">
-  <div class="modal">
-    <div class="modal-header">
-      <div>
-        <h3>Manage VAT Clients</h3>
-        <div id="vatc-picker-count" style="font-size:12.5px; color:var(--text-muted); margin-top:2px;"></div>
-      </div>
-      <button class="modal-close" onclick="vatcClosePicker()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="search-bar-wrap" style="margin-bottom:14px;">
-        <span class="sb-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        </span>
-        <input type="text" class="search-bar" id="vatc-picker-search" placeholder="Search your client directory by name or PAN…" oninput="vatcPickerSearch(this.value)" />
-      </div>
-      <div id="vatc-picker-status"></div>
-      <div id="vatc-picker-list" style="max-height:420px; overflow-y:auto; border:1px solid var(--border-soft); border-radius:var(--radius);"></div>
-      <div class="action-row">
-        <button class="btn btn-outline" onclick="vatcClosePicker()">Done</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- VAT COMPLIANCE — CLIENT MONTH DRAWER -->
-<div class="modal-overlay drawer-right" id="vatc-drawer">
-  <div class="modal drawer-panel">
-    <div class="modal-header">
-      <div>
-        <h3 id="vatc-drawer-title">Client</h3>
-        <div id="vatc-drawer-sub" style="font-size:12.5px; color:var(--text-muted); margin-top:2px;"></div>
-      </div>
-      <button class="modal-close" onclick="vatcCloseDrawer()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-        <div class="form-group">
-          <label>Status</label>
-          <select id="vatc-d-status"></select>
-        </div>
-        <div class="form-group">
-          <label>Assigned Staff</label>
-          <select id="vatc-d-staff"></select>
-        </div>
-        <div class="form-group">
-          <label>Filed Date (B.S.)</label>
-          <input type="text" id="vatc-d-filed" placeholder="e.g. 2083/04/22" />
-        </div>
-        <div class="form-group">
-          <label>Generated Workbook</label>
-          <input type="text" id="vatc-d-workbook" placeholder="—" readonly />
-        </div>
-        <div class="form-group full">
-          <label>Notes</label>
-          <textarea id="vatc-d-notes" placeholder="Internal notes for this month…"></textarea>
-        </div>
-      </div>
-      <div class="action-row">
-        <button class="btn btn-primary" onclick="vatcSaveDrawer()">Save Changes</button>
-        <button class="btn btn-outline" onclick="vatcCloseDrawer()">Close</button>
-      </div>
-      <div id="vatc-drawer-status"></div>
-      <h4 style="margin:22px 0 10px; font-size:13.5px; color:var(--brand-navy);">History</h4>
-      <div id="vatc-drawer-history"><div class="log-empty">No history yet.</div></div>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="import-modal">
   <div class="modal" style="max-width:800px;">
     <div class="modal-header">
@@ -3952,15 +3725,15 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608102030"></script>
+<script src="js/config.js?v=202608110900"></script>
 <script src="js/utils.js?v=202608022300"></script>
-<script src="js/core/moduleRegistry.js?v=202608022300"></script>
+<script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
 <script src="js/core/nepaliLocale.js?v=202608100100"></script>
 <script src="js/core/documentEngine.js?v=202608022300"></script>
 <script src="js/core/searchEngine.js?v=202608022300"></script>
 <script src="js/core/tableEngine.js?v=202608022300"></script>
-<script src="js/core/workflowEngine.js?v=202608022300"></script>
+<script src="js/core/workflowEngine.js?v=202608110900"></script>
 <script src="js/core/auditLog.js?v=202608101800"></script>
 <script src="js/core/reportExport.js?v=202608022300"></script>
 <script src="js/core/workbookReader.js?v=202608022300"></script>
@@ -3970,10 +3743,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/documentStore.js?v=202608022300"></script>
 <script src="js/tabs.js?v=202608022300"></script>
 <script src="js/dashboard.js?v=202608022300"></script>
-<script src="js/registrar.js?v=202608022300"></script>
+<script src="js/registrar.js?v=202608110900"></script>
 <script src="js/clients.js?v=202608092330"></script>
-<script src="js/vatCompliance.js?v=202608022300"></script>
-<script src="js/billing.js?v=202608022300"></script>
+<script src="js/billing.js?v=202608110900"></script>
 <script src="js/serviceMemo.js?v=202608022300"></script>
 <script src="js/report.js?v=202608101800"></script>
 <script src="js/notesToAccounts.js?v=202608101800"></script>
@@ -3994,7 +3766,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
-<script src="js/fileManagement.js?v=202608101800"></script>
+<script src="js/fileManagement.js?v=202608110900"></script>
 <script src="js/auditReportFinalization.js?v=202608092200"></script>
 <script src="js/auditChecklist.js?v=202608092500"></script>
 <script src="js/workDone.js?v=202608102030"></script>

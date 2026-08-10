@@ -179,7 +179,7 @@ All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes thro
 | Format | Used by |
 |---|---|
 | `2081-82` (dash) | Send Document, Report Builder, Notes, Billing |
-| `2083/84` (slash) | VAT Compliance (canonical: `vatcFyLabel`) |
+| `2083/84` (slash) | Audit Report Finalization, Audit Checklist, Work Done |
 | `2083.084` (dot, 3-digit) | Drive year folders (Send Document folder walk) |
 | `2081.2082` (dot, full 4-digit) | Sales & Purchase Book sheet titles (`spbFyDot()`) |
 | `2081/082` (slash, 3-digit) | Confirmation Letters (`clFyLabel()`) — matches the firm's own real letters |

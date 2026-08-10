@@ -421,6 +421,9 @@ window.MODULE_LABELS = {
   report: 'Generate Report',
   salesPurchaseBook: 'Autobooks',
   serviceMemo: 'Service Memo',
+  // Removed modules (VAT Return 2026-07-14, VAT Compliance 2026-08-10). Kept
+  // because their audit_log rows survive the module — dropping the label would
+  // print a raw code id in the Activity Log for work the firm really did.
   vatCompliance: 'VAT Compliance',
   vatReturn: 'VAT Return',
   workDone: 'Work Done',
@@ -479,6 +482,8 @@ window.ACTIVITY_EVENT_LABELS = {
   service_memo_created: 'Service memo created', service_memo_updated: 'Service memo updated',
   service_memo_deleted: 'Service memo deleted',
   spb_correction: 'Autobooks correction',
+  // Historical only — the VAT Compliance module that emitted these was removed
+  // 2026-08-10; its audit_log rows remain.
   vat_client_change: 'VAT client change', vat_filing_update: 'VAT filing updated',
   vat_status_change: 'VAT status change',
   wd_created: 'Work record created', wd_updated: 'Work record updated',

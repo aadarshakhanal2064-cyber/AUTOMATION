@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (20 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (21 tables, §6).
 
 ---
 
@@ -140,13 +140,12 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 |---|---|---|---|---|---|
 | Dashboard | Sidebar *(default tab)* | `dashboard.js` | `dash-` | *(reads `audit_log`)* | [compliance-billing](docs/modules/compliance-billing.md) |
 | *(shared)* Saved documents picker | — | `js/core/documentStore.js` | `ds-` | `saved_documents` | [engines](docs/engines.md) |
-| VAT Compliance | Sidebar | `vatCompliance.js` | `vatc-` | `vat_filings` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
 | File In Out | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
 | Audit Report Finalization | Sidebar | `auditReportFinalization.js` | `arf-` | `audit_report_finalization` | [audit-report-finalization](docs/modules/audit-report-finalization.md) |
 | Audit Checklist | Sidebar | `auditChecklist.js` | `achk-` | `audit_checklists` | [audit-checklist](docs/modules/audit-checklist.md) |
 | Work Done *(+ cross-module Activity Log)* | Sidebar | `workDone.js` | `wd-` | `work_done` *(+ reads `document_register`, `audit_log`)* | [work-done](docs/modules/work-done.md) |
-| Company Registrar *(6 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `st-` `ic-` `cr-` `pr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
+| Company Registrar *(5 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `cr-` `cs-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Billing | Financial Management | `billing.js` | `billing-` | `invoices`, `invoice_items`, `invoice_payments`, `firm_bank_details` | [compliance-billing](docs/modules/compliance-billing.md) |
 | Party Ledger | Financial Management | `partyLedger.js` | `pl-` | `party_opening_balances` | [financial-management](docs/modules/financial-management.md) |
@@ -173,7 +172,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 "Confirmation" is the menu label for Confirmation Letters; the panel keeps the fuller title.
 
-**Four Company Registrar stubs remain** (Share Transfer, Increase Capital, Company Registration, PIN Reset) — UI built, logic is `moduleComingSoon()`. **The VAT Return OCR module was removed** 2026-07-14 by user decision; see `docs/modules/registrar.md` for what went with it and how to recover it.
+**Two Company Registrar stubs remain** (Company Registration, Company Secretary Appointment — the latter added 2026-08-10) — UI built, logic is `moduleComingSoon()`. **Share Transfer, Increase Capital and PIN Reset were removed** 2026-08-10 by user decision — the firm doesn't do that work; recoverable from git history. **The VAT Return OCR module was removed** 2026-07-14 by user decision; see `docs/modules/registrar.md` for what went with it and how to recover it. **The VAT Compliance module was removed** 2026-08-10 by user decision, along with its `vat_filings` table; see `docs/modules/compliance-billing.md`.
 
 ---
 
@@ -181,7 +180,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**22 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `vat_filings` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done`.
+**21 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done`. (`vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`.)
 
 ### Trigger-owned logic (never replicate in JS)
 
@@ -195,7 +194,6 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 - Capital amounts are formatted **text**, deliberately (preserves `"25,00,000"`).
 - Registration numbers/PANs may be **Devanagari numerals** — normalize with `NepaliLocale.toEnglishDigits` before comparing.
 - Log tables **snapshot** client data rather than FK it (immutable trail).
-- **Lazy row creation** for `vat_filings` — never pre-create months.
 
 ### Query rules
 
@@ -207,7 +205,7 @@ PostgREST caps a single select at **1000 rows** — any query that can grow past
 
 Show the SQL (annotated migration + rollback as files under `db/`) → apply via Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
 
-### RLS — ENABLED on all 20 tables (since 2026-07-16)
+### RLS — ENABLED on all 21 tables (since 2026-07-16)
 
 **Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE is admin-only; `send_logs`/`audit_log` are immutable; **`firm_bank_details` writes are admin-only** (payment-fraud target).
 
@@ -253,7 +251,7 @@ All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes thro
 | Format | Used by |
 |---|---|
 | `2081-82` (dash) | Send Document, Report Builder, Notes, Billing, Service Memo, Bank Entry, Party Ledger, Depreciation, Financial Statement, Projection (UI) |
-| `2083/84` (slash) | VAT Compliance (canonical: `vatcFyLabel`) |
+| `2083/84` (slash) | Audit Report Finalization, Audit Checklist, Work Done |
 | `2083.084` (dot, 3-digit) | Drive year folders (Send Document folder walk) |
 | `2081.2082` (dot, full 4-digit) | Autobooks sheet titles (`spbFyDot()`), Projection sheet columns |
 | `2081/082` (slash, 3-digit) | Confirmation Letters (`clFyLabel()`) — matches the firm's own real letters |
@@ -271,8 +269,8 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 
 | Prefix | Module | | Prefix | Module |
 |---|---|---|---|---|
-| `rep-` | Audit Report Builder | | `vatc-` | VAT Compliance |
-| `nta-` | Notes to Accounts | | `st-`/`ic-`/`cr-`/`pr-` | Registrar stubs |
+| `rep-` | Audit Report Builder | | `cr-`/`cs-` | Registrar stubs (Company Registration / Company Secretary Appointment) |
+| `nta-` | Notes to Accounts | | | |
 | `bm-` | BM/AGM Minutes | | `billing-` | Billing |
 | `dep-` | Depreciation | | `spb-` | Sales & Purchase Book (Autobooks) |
 | `ac-` | **BOTH** Auditor Change and Add Client (historical overlap — no live collision, but check both before adding any `ac-*` id) | | `dash-` | Dashboard |
@@ -334,7 +332,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 ## 13. Security Practices
 
-- **RLS is the server-side enforcement layer** (§6) — enabled on all 20 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
+- **RLS is the server-side enforcement layer** (§6) — enabled on all 21 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
 - **CSP** (meta tag in `index.html`; `connect-src` is now just Supabase + the OCR loopback — every Google origin was removed 2026-08-01) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
 - Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk).
@@ -376,7 +374,7 @@ The established pattern — **investigate with real evidence → implement only 
 - **`tax_registration_type` (VAT/PAN) is not `vat_status`** — one is a client property, the other is whether the firm files that client's monthly VAT return. Don't merge them.
 - **Entity Type on the client form is exactly 8 values** (`CLIENT_ENTITY_TYPES`) — the 7 `Partnership Firm` clients are a deliberate exception preserved via injection; don't add a 9th option.
 - **Dashboard is the default landing tab** (2026-08-01, user decision) — it took that role when Send Document was removed. This supersedes the earlier "Dashboard is not the default" decision; `afterSupabaseSignIn()` calls `loadDashboard()` on boot because the nav button's `onclick` never fires on the landing tab.
-- **Tabulator (`TableEngine`) is the default for any list-style table** — Clients, Service Memo, Bank Book, Billing, VAT Compliance, File Management and Audit Report Finalization all use it. (This line previously said only the Clients table used it; that was stale by 2026-08-09 and corrected here.)
+- **Tabulator (`TableEngine`) is the default for any list-style table** — Clients, Service Memo, Bank Book, Billing, File Management and Audit Report Finalization all use it. (This line previously said only the Clients table used it; that was stale by 2026-08-09 and corrected here. VAT Compliance, an earlier Tabulator consumer, was removed 2026-08-10.)
 - **Service Memo records work, not collection** (2026-07-26) — its payment columns were dropped deliberately. A payment is recorded once, in Bank Entry, and netted by the Party Ledger. Never re-add payment fields to the memo.
 - **Financial Statement's cash is seeded, and Trade Receivables is the plug** (2026-07-26, user decision) — the spec asks for cash "unique on Each case", so it is seeded from client identity to stay reproducible, and receivables absorbs the balance. A negative plug raises a Director/Proprietor loan; it is never fixed by nudging cash.
 - **Financial Statement's three proof rows are shown, not forced** — a non-zero figure is a finding about the inputs, not a rendering bug.
@@ -393,6 +391,8 @@ The established pattern — **investigate with real evidence → implement only 
 - **`xxRefresh()` never invalidates the DataCache; `xxReload()` does** (§4) — they look interchangeable and are not. Refresh-invalidates would make the cache a no-op; reload-forgets makes saves invisible.
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
 - **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
+- **The VAT Compliance module was removed on purpose** (2026-08-10, user decision) — the firm stopped tracking clients' monthly VAT filing status in this app. Removal took `js/vatCompliance.js`, its sidebar tab, its two modals, its `.vatc-*` CSS, and the `vat_filings` table itself (`db/2026-08-10_drop_vat_filings.sql` — data is gone; the rollback restores structure only). **`clients.vat_status` stays** — it's still edited via Company Registrar → Company Profile and is a distinct client property (§15 `tax_registration_type` note), not owned by the module that read/wrote it. Historical `audit_log` rows with `module: 'vatCompliance'` remain valid; `js/config.js` keeps their display labels. Don't restore the module without an explicit ask — it's recoverable from git history.
+- **Share Transfer, Increase Capital and PIN Reset stubs were removed** (2026-08-10, user decision) — the firm doesn't do that work; **Company Secretary Appointment** (`cs-` prefix) was added as a stub in their place, alongside the surviving Company Registration stub. Same `moduleComingSoon()` treatment as before — UI built, logic not yet wired up.
 - **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
 - **File In Out (File Management in code) is one row per visit** (2026-08-01) — an intake and everything given back out of it are the same physical custody, so there is no paired "returns" row; it all lives on the intake row (`doc_types` in, `outtakes` out).
 - **File In Out's status is 3-way and DERIVED, never hand-set** (`fmDeriveStatus`, 2026-08-09 second pass) — pending/partial/returned is computed from `doc_types` vs `outtakes` on every change and then written through `fmFlow`, mirroring Audit Report Finalization's "never a stored status column drifting from the raw data" idiom. Don't set `status` directly from a button value.
@@ -455,7 +455,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `CLAUDE.md` | **Every session** | This file — hard rules, standards, indexes, deliberate decisions. |
 | `docs/README.md` | On demand | Map of the docs tree and the rule for what goes where. |
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
-| `docs/database.md` | On demand | All 20 tables column by column, triggers, the full RLS matrix. |
+| `docs/database.md` | On demand | All 21 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
 | `docs/engines.md` | On demand | The 14 engines in full. |
 | `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |

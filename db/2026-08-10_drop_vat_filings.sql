@@ -1,0 +1,35 @@
+-- ════════════════════════════════════════════════════════════════════
+--  DROP vat_filings — VAT Compliance module removed (2026-08-10)
+--
+--  User decision: the firm stopped tracking clients' monthly VAT return
+--  filing status in this app, so the module (js/vatCompliance.js, its tab,
+--  its two modals and its .vatc-* styles) was removed and the table it
+--  backed goes with it.
+--
+--  This is NOT the 2026-07-14 VAT Return OCR removal — that module read
+--  scanned IRD PDFs and never owned a table. This one is the portfolio-wide
+--  filing tracker.
+--
+--  WHY DROP RATHER THAN KEEP (send_logs was kept for its history):
+--  send_logs held a delivery trail nobody could reconstruct. vat_filings
+--  held current working state for one fiscal year (15 rows / 13 clients,
+--  all FY 2082/83 at the time of this migration) and the firm tracks that
+--  work elsewhere now. The user asked for the table to go.
+--
+--  WHAT IS NOT TOUCHED:
+--  · clients.vat_status — still edited in Company Registrar -> Company
+--    Profile, and it is a client property, not a filing record. Note it is
+--    NOT the same field as clients.tax_registration_type (CLAUDE.md §15).
+--  · audit_log rows with module = 'vatCompliance' — the log is an immutable
+--    trail of work the firm really did. js/config.js keeps the display
+--    labels so the Work Done Activity Log still renders them in words.
+--
+--  Dropping the table drops its three RLS policies
+--  (vat_filings_{select,insert,update}_member, created in
+--  db/2026-07-16_rls_lockdown.sql) and its two FKs
+--  (-> clients.id, -> app_users.id) with it. Nothing references
+--  vat_filings, so no CASCADE is needed and none is used — a plain DROP
+--  will fail loudly rather than silently take a dependent object with it.
+-- ════════════════════════════════════════════════════════════════════
+
+drop table if exists public.vat_filings;

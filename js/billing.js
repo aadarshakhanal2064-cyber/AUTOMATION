@@ -1,9 +1,8 @@
 // ════════════════════════════════════════════
 //  BILLING
 //  Tracks what clients owe for the firm's own services (audit, VAT return
-//  prep, registration work, ...) — separate from VAT Compliance, which
-//  tracks CLIENTS' VAT filing obligations to IRD, not money owed to the
-//  firm. Invoices are created here, rendered to PDF (PDF-Lib) with the
+//  prep, registration work, ...) — money owed TO the firm, not clients' own
+//  tax obligations. Invoices are created here, rendered to PDF (PDF-Lib) with the
 //  firm's bank details + payment QR, downloaded for the staff member to
 //  attach to their own email (Gmail sending went with Google auth on
 //  2026-08-01), and reconciled against payments recorded here — Supabase

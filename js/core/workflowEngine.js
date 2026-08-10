@@ -95,8 +95,9 @@ window.WorkflowEngine = (function () {
     return { set, zoomIn: () => set(level + step), zoomOut: () => set(level - step), getLevel: () => level };
   }
 
-  // Status lifecycle for record-tracking modules (VAT Compliance is the
-  // first consumer): one definition of statuses + display metadata, and one
+  // Status lifecycle for record-tracking modules (File In Out, Billing,
+  // Audit Report Finalization): one definition of statuses + display
+  // metadata, and one
   // transition() choke point every status change goes through — so the badge
   // a table shows, the update that's persisted, and the audit entry written
   // can never disagree. `onTransition(record, from, to, ctx)` is

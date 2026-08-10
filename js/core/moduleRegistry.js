@@ -27,9 +27,7 @@ ModuleRegistry.register({ id: 'report',  group: 'main', buttonId: null,         
 ModuleRegistry.register({ id: 'regd',    group: 'main', buttonId: 'topbar-regd-trigger', panelId: 'tab-regd-panel' });
 ModuleRegistry.register({ id: 'clients', group: 'main', buttonId: 'nav-clients', panelId: 'tab-clients-panel' });
 
-ModuleRegistry.register({ id: 'shareTransfer',       group: 'regd', buttonId: 'subtab-shareTransfer',       panelId: 'regd-shareTransfer-panel' });
-ModuleRegistry.register({ id: 'increaseCapital',     group: 'regd', buttonId: 'subtab-increaseCapital',     panelId: 'regd-increaseCapital-panel' });
 ModuleRegistry.register({ id: 'companyRegistration', group: 'regd', buttonId: 'subtab-companyRegistration', panelId: 'regd-companyRegistration-panel' });
 ModuleRegistry.register({ id: 'auditorChange',       group: 'regd', buttonId: 'subtab-auditorChange',       panelId: 'regd-auditorChange-panel' });
-ModuleRegistry.register({ id: 'pinReset',            group: 'regd', buttonId: 'subtab-pinReset',            panelId: 'regd-pinReset-panel' });
+ModuleRegistry.register({ id: 'companySecretary',    group: 'regd', buttonId: 'subtab-companySecretary',    panelId: 'regd-companySecretary-panel' });
 ModuleRegistry.register({ id: 'bmAgmMinutes',        group: 'regd', buttonId: 'subtab-bmAgmMinutes',         panelId: 'regd-bmAgmMinutes-panel' });

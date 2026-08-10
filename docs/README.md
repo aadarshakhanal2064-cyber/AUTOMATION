@@ -18,7 +18,7 @@ module detail irrelevant to whatever the session was actually doing.
 | File | Covers | Was |
 |---|---|---|
 | [`architecture.md`](architecture.md) | Runtime architecture, script load order, CDN pins + SRI, hosting, local dev, the auth lifecycle, Google Drive/Gmail integration, and the three document-generation paths | CLAUDE.md §2, §7, §8, §9.1–9.4 |
-| [`database.md`](database.md) | All 18 tables column by column, trigger-owned logic, data conventions, query rules, migration workflow, the full RLS model | CLAUDE.md §6 |
+| [`database.md`](database.md) | All 21 tables column by column, trigger-owned logic, data conventions, query rules, migration workflow, the full RLS model | CLAUDE.md §6 |
 | [`engines.md`](engines.md) | The 12 `js/core/` engines in full — responsibilities, key APIs, and the load-bearing implementation notes | CLAUDE.md §4 |
 
 ## Modules
@@ -26,9 +26,9 @@ module detail irrelevant to whatever the session was actually doing.
 | File | Modules | Code prefixes |
 |---|---|---|
 | [`modules/clients.md`](modules/clients.md) | Clients Directory — CRUD, import wizard, portfolio dashboard, the client master reloads | `ac-`, `cd-`, `nb-` |
-| [`modules/compliance-billing.md`](modules/compliance-billing.md) | Dashboard, VAT Compliance, Billing, Send Logs | `dash-`, `vatc-`, `billing-` |
+| [`modules/compliance-billing.md`](modules/compliance-billing.md) | Dashboard, Billing — plus the removed VAT Compliance and Send Logs modules | `dash-`, `billing-` |
 | [`modules/documents.md`](modules/documents.md) | Send Document, Audit Report Builder, Notes to Accounts, Confirmation Letters | `rep-`, `nta-`, `cl-` |
-| [`modules/registrar.md`](modules/registrar.md) | Company Registrar: BM/AGM Minutes, Auditor Change, Company Profile, the four stubs — plus the removed VAT Return OCR module | `bm-`, `ac-`, `cp-` |
+| [`modules/registrar.md`](modules/registrar.md) | Company Registrar: BM/AGM Minutes, Auditor Change, Company Profile, the two stubs — plus the removed VAT Return OCR module and three removed stubs | `bm-`, `ac-`, `cp-`, `cr-`, `cs-` |
 | [`modules/financial-management.md`](modules/financial-management.md) | Service Memo, Bank Entry, Party Ledger, Final Account | `sm-`, `bb-`, `pl-`, `fa-` |
 | [`modules/depreciation.md`](modules/depreciation.md) | Depreciation — both the Income Tax pool method and the Accounting-Standard SLM method | `dep-`, `dep-slm-` |
 | [`modules/autobooks.md`](modules/autobooks.md) | Autobooks (called Sales & Purchase Book everywhere in code) | `spb-` |

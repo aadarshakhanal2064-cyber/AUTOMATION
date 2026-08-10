@@ -12,18 +12,17 @@
 
 ## 6. Database (Supabase Postgres)
 
-Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-07-26** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
+Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-08-10** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
 ### 6.1 Tables (21)
 
 | Table | Purpose / key columns |
 |---|---|
-| `app_users` | Authorization list. `email` (unique), `role` (`admin`/`staff`, default staff). Checked after Google sign-in; not in the list = Access Denied. |
-| `clients` | Directory (**314 rows** since the 2026-07-26 master reload — 261 workbook + 45 Devanagari + 8 kept; §5.7). `name`, `email`, `pan`, `phone`, `address`, `entity_type` (free text), `business_nature`, `registration_number`, `chairman_name`, `shareholder_name`, `authorized_capital`/`issued_capital`/`paid_up_capital` (**text, not numeric** — preserves `"25,00,000"` formatting), `vat_status` (`active`/`inactive`/`not_registered`, CHECK-constrained), plus `district`, `country`, `it_return_type` (`D1/D2`/`D-01`/`D-02`/`D-03`, free text by design) and `tax_type_d3` — added by `db/2026-07-26_client_master_reload.sql`. **PANs may be Devanagari** on the 45 Nepali records, so normalize before comparing (§6.3). |
+| `app_users` | Authorization list. `email` (unique), `role` (`admin`/`staff`, default staff). Checked after sign-in; not in the list = Access Denied. |
+| `clients` | Directory (**314 rows** since the 2026-07-26 master reload — 261 workbook + 45 Devanagari + 8 kept; §5.7). `name`, `email`, `pan`, `phone`, `address`, `entity_type` (free text), `business_nature`, `registration_number`, `chairman_name`, `shareholder_name`, `authorized_capital`/`issued_capital`/`paid_up_capital` (**text, not numeric** — preserves `"25,00,000"` formatting), `vat_status` (`active`/`inactive`/`not_registered`, CHECK-constrained — edited via Company Registrar → Company Profile; not tied to any filing tracker), plus `district`, `country`, `it_return_type` (`D1/D2`/`D-01`/`D-02`/`D-03`, free text by design) and `tax_type_d3` — added by `db/2026-07-26_client_master_reload.sql`. **PANs may be Devanagari** on the 45 Nepali records, so normalize before comparing (§6.3). |
 | `client_shareholders` | Extra shareholders beyond `clients.shareholder_name`. `client_id` (FK, cascade delete), `name`, `sort_order`. |
 | `send_logs` | **Historical archive — no reader, no writer since 2026-08-01.** Was the Send Document audit trail; both that module and the Send Logs viewer were removed, and the table was deliberately kept rather than dropped so the history survives. Client name/email snapshotted (not FK'd — immutable trail). `status` `sent`/`error`/`pending`. Readable via the Supabase dashboard. |
 | `audit_log` | App-wide event log (AuditLog engine). `event_type`, `module`, `status`, `user_email`, `client_name`, `record_ref` (bigint), `detail` (jsonb). Feeds the Dashboard. History starts 2026-07-08 (table created after the engine). |
-| `vat_filings` | One row per client per month, lazy (§5.2). Unique on `(client_id, fiscal_year, month)`; `month` 1–12 CHECK; `status` CHECK-constrained to the nine §5.2 values; `assigned_staff_id` FK → app_users; `validation_summary` jsonb. |
 | `firm_bank_details` | PK `firm_key`. `invoice_prefix` (NOT NULL — see upsert gotcha §5.3), bank fields, `qr_image`. One row per firm. |
 | `invoices` | `invoice_number` (unique, trigger-assigned), `client_id`/`firm_key` FKs, `status` CHECK (`draft`/`sent`/`partially_paid`/`paid`/`void`), amounts numeric, `tax_rate` default 0.13. |
 | `invoice_items` | Line items: `description`, `quantity`, `rate`, `amount`, `sort_order`. |
@@ -53,7 +52,6 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 - Capital amounts are formatted **text**, deliberately.
 - Registration numbers/PANs may be stored in **Devanagari numerals** — normalize with `NepaliLocale.toEnglishDigits` before comparing.
 - Log tables snapshot client data rather than FK it.
-- Lazy row creation for `vat_filings` (never pre-create).
 
 ### 6.4 Query rules
 
@@ -67,7 +65,7 @@ Show the SQL (annotated migration + rollback script as files under `db/`) → ap
 
 All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions`, `projection_reports` and `financial_statements` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql`, `db/2026-07-22_projection_reports.sql`, `db/2026-07-26_financial_statements.sql` and `db/2026-08-01_document_register.sql`). The permission model:
 
-- **Membership, not authentication, grants access.** Any Google account can complete Supabase sign-in and hold an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
+- **Membership, not authentication, grants access.** Anyone who can complete Supabase sign-in holds an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
 - **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
 - Triggers (`set_invoice_number`, `sync_invoice_payment_totals`) run as the invoking member — the member UPDATE policy on `invoices` is what lets them work. Don't remove it.
 - The 4 RPCs are EXECUTE-revoked for `anon`; `get_db_storage_usage` (SECURITY DEFINER) additionally guards internally on `is_app_user()`.

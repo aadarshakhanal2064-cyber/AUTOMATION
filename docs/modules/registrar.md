@@ -1,7 +1,8 @@
 # Company Registrar
 
 > Loaded on demand, not in every session. The always-loaded index is **CLAUDE.md §5**;
-> this file holds the detail for the Company Registrar sub-modules, plus the removed VAT Return OCR module.
+> this file holds the detail for the Company Registrar sub-modules, plus the removed VAT Return OCR module
+> and the three removed Registrar stubs (Share Transfer, Increase Capital, PIN Reset).
 > Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
 
 ---
@@ -12,7 +13,7 @@
 
 **b) Auditor Change (`js/auditorChange.js`, `ac-` prefix — shares the prefix with Add Client, §10.2)** — two documents from one shared form: Board Resolution + registrar notification letter (`auditor-change-*.docx` templates). Same DocumentEngine architecture as BM/AGM, same UI pattern as the Report Builder (Edit/Preview, per-document preview tabs); B.S. date validation on blur; known-firm quick-fill picker (`attachFirmPicker` over `REGD_AUDIT_FIRMS`). No autosave/inline-edit yet (deliberate trim).
 
-**c) Stubs** — Share Transfer, Increase Capital, Company Registration, PIN Reset: UI built, logic is `moduleComingSoon()` in `js/registrar.js`. Real remaining product surface. (Party Ledger used to share this stub; it became a real module on 2026-07-26 — §5.16.)
+**c) Stubs** — Company Registration, Company Secretary Appointment (`cs-` prefix, added 2026-08-10): UI built, logic is `moduleComingSoon()` in `js/registrar.js`. Real remaining product surface. (Party Ledger used to share this stub; it became a real module on 2026-07-26 — §5.16. Share Transfer, Increase Capital and PIN Reset were removed 2026-08-10 by user decision — the firm doesn't do that work; recoverable from git history.)
 
 **d) Company Profile (`js/companyProfile.js`, `cp-` prefix)** — added 2026-07-27 as the new home for the seven statutory fields removed from the general Add/Edit Client form (§5.7): registration number, chairman name, shareholder name, authorized/issued/paid-up capital, and VAT status. **Same `clients` columns, same data** — only the editing surface moved, because this data is Nepalese company-registration lookup material that was noise on the form for the ~150 proprietorship firms that carry none of it. A client search (digit-agnostic, by name/registration number/PAN — this screen is reached holding a registration number, not a name) loads the record into a form; a **Profile completeness meter** (reusing the `.cd-meter-*` look) tracks how many of the six non-VAT fields are filled. Saving updates `clients` directly and patches `window.clientsList` in place so BM/AGM Minutes and Auditor Change see the new values without a reload, and logs `company_profile_saved` to AuditLog.
 

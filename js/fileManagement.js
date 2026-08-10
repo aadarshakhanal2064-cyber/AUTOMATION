@@ -41,8 +41,7 @@ const FM_STATUSES = {
 const FM_AGEING_ALERT_DAYS = 30;
 
 // The stat cards double as quick filters: one definition drives both the card
-// counts and the table filtering, so they can never disagree (vatCompliance
-// pattern).
+// counts and the table filtering, so they can never disagree.
 const FM_FILTERS = {
   all:      { label: 'Total Entries',      test: () => true },
   pending:  { label: 'With Us',            test: r => r.status === 'pending' },
