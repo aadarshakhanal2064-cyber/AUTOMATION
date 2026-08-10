@@ -1374,3 +1374,14 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
   background: var(--white); border: 1px solid var(--border); color: var(--text-muted);
 }
 .wd-received-doc.implies{ background: var(--green-bg); border-color: var(--green-border); color: var(--green-dk); font-weight: 600; }
+
+/* ── Number inputs: no spinner arrows ──
+   The native up/down stepper sits on top of the right-hand edge of the box
+   and steals the click target while typing, which is exactly where the
+   caret goes on a right-aligned amount. Every number field in this app is
+   typed, never stepped (quantities, rupee amounts, percentages), so the
+   control is pure interference — removed app-wide rather than per module,
+   since the complaint applies to all of them. Keyboard arrows still step. */
+input[type=number]{ -moz-appearance: textfield; appearance: textfield; }
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
