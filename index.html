@@ -407,6 +407,10 @@ function cropLoginLogoIcon(img) {
           <p class="page-subtitle">Record work performed and the fee to collect — an internal service record, not a tax invoice.</p>
         </div>
         <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="sm-view-memos" class="rep-view-btn active" onclick="smSetView('memos')">Memos</button>
+            <button id="sm-view-pending" class="rep-view-btn" onclick="smSetView('pending')">Pending Audit Fees<span id="sm-pending-count"></span></button>
+          </div>
           <button class="btn btn-primary" onclick="smOpenCreate()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             New Service Memo
@@ -414,30 +418,41 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
-      <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
-        <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Memos</h3>
-        <div id="sm-recent-list"><div class="log-empty">Loading…</div></div>
+      <div id="sm-memos-view">
+        <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Memos</h3>
+          <div id="sm-recent-list"><div class="log-empty">Loading…</div></div>
+        </div>
+
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+            <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+              <span class="sb-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              </span>
+              <input type="text" class="search-bar" id="sm-search" placeholder="Search memo #, client, PAN, nature…" oninput="smApplyFilters()" />
+            </div>
+          </div>
+          <div class="form-grid" style="grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:16px;">
+            <div class="form-group" style="margin:0;"><label>Firm</label><select id="sm-filter-firm" onchange="smOnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Category</label><select id="sm-filter-category" onchange="smOnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>F.Y.</label><input type="text" id="sm-filter-fy" placeholder="e.g. 2081-82" oninput="smOnFilterChange()" /></div>
+            <div class="form-group" style="margin:0;"><label>From</label><input type="date" id="sm-filter-from" onchange="smOnFilterChange()" /></div>
+            <div class="form-group" style="margin:0;"><label>To</label><input type="date" id="sm-filter-to" onchange="smOnFilterChange()" /></div>
+          </div>
+          <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="smClearFilters()">Clear Filters</button></div>
+          <div id="sm-status-area"></div>
+          <div id="sm-table-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
       </div>
 
-      <div class="table-wrap" style="padding:24px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
-          <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
-            <span class="sb-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            </span>
-            <input type="text" class="search-bar" id="sm-search" placeholder="Search memo #, client, PAN, nature…" oninput="smApplyFilters()" />
-          </div>
+      <div id="sm-pending-view" style="display:none;">
+        <div class="table-wrap" style="padding:24px;">
+          <p class="page-subtitle" style="margin:0 0 14px;">
+            Clients whose IT Return, Estimate Return or Tax Clearance has been verified in <strong>Audit Report Finalization</strong> but who don't yet have a Statutory Audit fee memo. Nothing is entered twice — this reads straight from Audit Report Finalization; adding the fee here takes it off this list.
+          </p>
+          <div id="sm-pending-wrap"><div class="log-empty">Loading…</div></div>
         </div>
-        <div class="form-grid" style="grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:16px;">
-          <div class="form-group" style="margin:0;"><label>Firm</label><select id="sm-filter-firm" onchange="smOnFilterChange()"></select></div>
-          <div class="form-group" style="margin:0;"><label>Category</label><select id="sm-filter-category" onchange="smOnFilterChange()"></select></div>
-          <div class="form-group" style="margin:0;"><label>F.Y.</label><input type="text" id="sm-filter-fy" placeholder="e.g. 2081-82" oninput="smOnFilterChange()" /></div>
-          <div class="form-group" style="margin:0;"><label>From</label><input type="date" id="sm-filter-from" onchange="smOnFilterChange()" /></div>
-          <div class="form-group" style="margin:0;"><label>To</label><input type="date" id="sm-filter-to" onchange="smOnFilterChange()" /></div>
-        </div>
-        <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="smClearFilters()">Clear Filters</button></div>
-        <div id="sm-status-area"></div>
-        <div id="sm-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>
     </div>
 
@@ -2844,7 +2859,8 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="form-group">
           <label>Financial Year</label>
-          <input type="text" id="sm-fiscal-year" placeholder="e.g. 2081-82 — or 2080-81/2081-82" />
+          <input type="text" id="sm-fiscal-year" list="sm-fy-datalist" placeholder="e.g. 2081-82 — or 2080-81/2081-82" />
+          <datalist id="sm-fy-datalist"></datalist>
         </div>
       </div>
 
@@ -3746,7 +3762,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/registrar.js?v=202608110900"></script>
 <script src="js/clients.js?v=202608092330"></script>
 <script src="js/billing.js?v=202608110900"></script>
-<script src="js/serviceMemo.js?v=202608022300"></script>
+<script src="js/serviceMemo.js?v=202608102030"></script>
 <script src="js/report.js?v=202608101800"></script>
 <script src="js/notesToAccounts.js?v=202608101800"></script>
 <script src="js/depreciation.js?v=202608101800"></script>

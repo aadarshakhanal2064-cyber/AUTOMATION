@@ -27,6 +27,32 @@ let smEditingRow = null;
 let smInitDone = false;
 let smFilters = { ...SM_FILTERS_EMPTY };
 
+// ── Fiscal-year defaults ──
+// Fixed at the firm's current working year (mirrors Audit Report
+// Finalization's own ARF_FY_DEFAULT) rather than derived from today's B.S.
+// date — a memo written in Shrawan is routinely for the year just closed,
+// not the one that just started. Statutory Audit is always for a completed
+// year, so its own suggestion list never offers a year beyond this default.
+const SM_FY_DEFAULT = '2082-83';
+const SM_FY_START = 2077;
+const SM_FY_END = 2085;
+const SM_FY_AUDIT_CAP = 2082;
+
+function smFyLabel(startYear) { return startYear + '-' + String((startYear + 1) % 100).padStart(2, '0'); }
+function smFyOptions(capped) {
+  const end = capped ? SM_FY_AUDIT_CAP : SM_FY_END;
+  const opts = [];
+  for (let y = end; y >= SM_FY_START; y--) opts.push(smFyLabel(y));
+  return opts;
+}
+// The field stays free-typeable (a memo can still span years, e.g.
+// "2080-81/2081-82") — the datalist only adds suggestions, never forces a
+// closed list.
+function smPopulateFyDatalist(capped) {
+  const dl = document.getElementById('sm-fy-datalist');
+  if (dl) dl.innerHTML = smFyOptions(capped).map(fy => `<option value="${fy}"></option>`).join('');
+}
+
 function smUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
 function smMoney(n) { return 'Rs. ' + fmtAmount(n); }
 function smNum(n) { return fmtAmount(n); }
@@ -75,8 +101,10 @@ async function smRefresh() {
   try {
     smMemos = await DataCache.get(window.LEDGER_KEYS.memosSm, () => sbFetchAll(() => window.sb.from('service_memos')
       .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false })));
+    await smLoadArfVerified();
     smRenderRecent();
     smRenderTable();
+    smRenderPending();
     document.getElementById('sm-status-area').innerHTML = '';
   } catch (e) {
     smStatusMsg('❌ Failed to load service memos: ' + escHtml(e.message || String(e)), 'error');
@@ -139,6 +167,130 @@ function smRenderTable() {
 function smRowActions() {
   const btn = (a, label, title) => `<button class="btn btn-outline btn-sm" data-action="${a}" title="${title || label}">${label}</button>`;
   return `<div class="client-actions">${btn('edit', 'Edit')}${btn('pdf', 'PDF', 'Download Service Memo PDF')}${btn('delete', 'Delete')}</div>`;
+}
+
+// ── Pending Audit Fees — derived from Audit Report Finalization, never
+// stored twice ──
+// The firm's real workflow: the moment ANY of a client's three ARF tracks
+// (IT Return / Estimate Return / Tax Clearance) is verified for a fiscal
+// year, that year's statutory audit fee is due to be memoed — regardless of
+// which track got there first. This reads audit_report_finalization
+// directly, the same idiom Work Done uses for its own Pending List over
+// document_register, rather than caching a second copy of the same fact.
+// Once a Statutory Audit memo exists for that client+FY, the row drops off
+// on its own — nothing here is ever marked "done" by hand.
+let smArfRows = [];
+let smPendingTable = null;
+let smView = 'memos';
+
+const SM_ARF_TRACK_LABELS = { it_return: 'IT Return', estimate_return: 'Estimate Return', tax_clearance: 'Tax Clearance' };
+const SM_ARF_TRACK_BADGES = { it_return: 'badge-blue', estimate_return: 'badge-purple', tax_clearance: 'badge-yellow' };
+
+function smArfTrackVerified(row) {
+  if (row.return_type === 'tax_clearance') return row.tax_clearance === true;
+  if (row.return_type === 'estimate_return') return row.estimate_verified === true;
+  return row.it_verified === true;
+}
+
+async function smLoadArfVerified() {
+  try {
+    smArfRows = await sbFetchAll(() => window.sb.from('audit_report_finalization')
+      .select('client_id, client_name, client_pan, fiscal_year, return_type, it_verified, estimate_verified, tax_clearance, auditor')
+      .order('fiscal_year', { ascending: false }));
+  } catch (e) {
+    smArfRows = [];
+  }
+}
+
+// ARF's slash short-year format ('2082/83') -> Service Memo's own dash
+// format ('2082-83'). Same digits, different separator only.
+function smFyFromArf(slash) { return String(slash || '').replace('/', '-'); }
+
+function smPendingAuditRows() {
+  const groups = new Map();
+  smArfRows.forEach(r => {
+    // ARF's client_id is NOT NULL (directory clients only), but guard anyway
+    // — a row this module can't attribute to a client can't be memoed either.
+    if (r.client_id == null || !smArfTrackVerified(r)) return;
+    const key = r.client_id + '::' + r.fiscal_year;
+    let g = groups.get(key);
+    if (!g) {
+      g = { clientId: r.client_id, clientName: r.client_name, clientPan: r.client_pan, fiscalYear: r.fiscal_year, tracks: [], auditor: r.auditor || '' };
+      groups.set(key, g);
+    }
+    if (!g.tracks.includes(r.return_type)) g.tracks.push(r.return_type);
+    if (!g.auditor && r.auditor) g.auditor = r.auditor;
+  });
+
+  const hasMemo = (clientId, fyStart) => smMemos.some(m =>
+    m.nature_category === 'Audit' && m.nature_subcategory === 'Statutory Audit' &&
+    m.client_id === clientId && NepaliLocale.fyStartYear(m.fiscal_year) === fyStart);
+
+  return Array.from(groups.values())
+    .filter(g => !hasMemo(g.clientId, NepaliLocale.fyStartYear(g.fiscalYear)))
+    .sort((a, b) => (NepaliLocale.fyStartYear(b.fiscalYear) || 0) - (NepaliLocale.fyStartYear(a.fiscalYear) || 0)
+      || String(a.clientName || '').localeCompare(String(b.clientName || '')));
+}
+
+function smUpdatePendingBadge(count) {
+  const el = document.getElementById('sm-pending-count');
+  if (el) el.textContent = count ? ` (${count})` : '';
+}
+
+function smSetView(view) {
+  smView = view;
+  document.getElementById('sm-view-memos').classList.toggle('active', view === 'memos');
+  document.getElementById('sm-view-pending').classList.toggle('active', view === 'pending');
+  document.getElementById('sm-memos-view').style.display = view === 'memos' ? '' : 'none';
+  document.getElementById('sm-pending-view').style.display = view === 'pending' ? '' : 'none';
+  // Tabulator lays out to zero width while its container is display:none —
+  // the newly-shown table needs a redraw once it actually has a box to measure.
+  if (view === 'pending' && smPendingTable) setTimeout(() => smPendingTable.redraw(true), 0);
+}
+
+function smRenderPending() {
+  const rows = smPendingAuditRows();
+  smUpdatePendingBadge(rows.length);
+
+  const wrap = document.getElementById('sm-pending-wrap');
+  if (!wrap) return;
+  if (smPendingTable) { smPendingTable.destroy(); smPendingTable = null; }
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return, Estimate Return or Tax Clearance already has a Statutory Audit fee memo.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  smPendingTable = TableEngine.createTable(wrap, {
+    data: rows,
+    pagination: true,
+    paginationSize: 25,
+    paginationSizeSelector: [25, 50, 100],
+    columns: [
+      { title: 'Client', field: 'clientName', minWidth: 180, formatter: c => {
+          const r = c.getRow().getData();
+          return `${escHtml(r.clientName || '—')}<div class="log-sub">PAN ${escHtml(r.clientPan || '—')}</div>`;
+        } },
+      { title: 'F.Y.', field: 'fiscalYear', width: 90, formatter: c => escHtml(smFyFromArf(c.getValue())) },
+      { title: 'Verified In', field: 'tracks', minWidth: 220, headerSort: false, formatter: c =>
+          c.getValue().map(t => `<span class="log-badge ${SM_ARF_TRACK_BADGES[t] || 'badge-neutral'}">${escHtml(SM_ARF_TRACK_LABELS[t] || t)}</span>`).join(' ') },
+      { title: 'Auditor', field: 'auditor', width: 160, formatter: c => escHtml(c.getValue() || '—') },
+      { title: '', field: 'clientId', headerSort: false, width: 110,
+        formatter: () => '<div class="client-actions"><button class="btn btn-outline btn-sm" data-action="add-fee">Add Fee</button></div>',
+        cellClick: (e, cell) => {
+          if (!e.target.closest('[data-action="add-fee"]')) return;
+          smOpenCreateFromPending(cell.getRow().getData());
+        } },
+    ],
+  });
+}
+
+// One click from "audit verified, no fee memo yet" to a prefilled memo —
+// client, Audit / Statutory Audit and the fiscal year are already set; the
+// user only has to type the Professional Fee.
+function smOpenCreateFromPending(p) {
+  const client = (window.clientsList || []).find(c => c.id === p.clientId)
+    || { id: p.clientId, name: p.clientName, pan: p.clientPan };
+  smOpenCreate(null, { client, category: 'Audit', subcategory: 'Statutory Audit', fiscalYear: smFyFromArf(p.fiscalYear) });
 }
 
 // ── Filters ──
@@ -214,6 +366,17 @@ function smOnSubcategoryChange() {
   const sub = document.getElementById('sm-nature-subcategory').value;
   const showOther = cat === 'Others' || sub === 'Others';
   document.getElementById('sm-nature-other-group').style.display = showOther ? '' : 'none';
+
+  // Statutory Audit is always for a completed fiscal year — cap the
+  // suggestion list at the firm's current default, and fill the field only
+  // when it's still blank, so a value the user already typed (or one
+  // prefilled from the Pending Audit Fees list) is never clobbered.
+  const isStatutoryAudit = cat === 'Audit' && sub === 'Statutory Audit';
+  smPopulateFyDatalist(isStatutoryAudit);
+  if (isStatutoryAudit) {
+    const fyEl = document.getElementById('sm-fiscal-year');
+    if (fyEl && !fyEl.value.trim()) fyEl.value = SM_FY_DEFAULT;
+  }
 }
 
 function smComputeTotals() {
@@ -235,26 +398,32 @@ function smOnFirmChange() {
   document.getElementById('sm-firm-other-group').style.display = (f && f.typed) ? '' : 'none';
 }
 
-function smOpenCreate(existing) {
+// `prefill` seeds a brand-new memo from another module's record — currently
+// only the Pending Audit Fees list: { client, category, subcategory,
+// fiscalYear }. Ignored whenever `existing` is set; an edit always wins.
+function smOpenCreate(existing, prefill) {
   smEditingId = existing ? existing.id : null;
   smEditingRow = existing || null;
   smSelectedClient = null;
   document.getElementById('sm-delete-btn').style.display = existing ? '' : 'none';
-  document.getElementById('sm-drawer-title').textContent = existing ? `Edit ${existing.memo_number || 'Service Memo'}` : 'New Service Memo';
+  document.getElementById('sm-drawer-title').textContent = existing
+    ? `Edit ${existing.memo_number || 'Service Memo'}`
+    : (prefill ? 'New Service Memo — Statutory Audit' : 'New Service Memo');
   document.getElementById('sm-drawer-status').innerHTML = '';
 
   smPopulateCategorySelect();
+  smPopulateFyDatalist(false);
 
   document.getElementById('sm-firm-key').value = existing ? existing.firm_key : 'shailesh';
   document.getElementById('sm-firm-other').value = existing ? (existing.firm_other || '') : '';
   smOnFirmChange();
   document.getElementById('sm-memo-date').value = existing ? existing.memo_date : new Date().toISOString().slice(0, 10);
-  document.getElementById('sm-client-search').value = existing ? (existing.client_name || '') : '';
-  document.getElementById('sm-client-pan').value = existing ? (existing.client_pan || '') : '';
-  document.getElementById('sm-client-address').value = existing ? (existing.client_address || '') : '';
-  document.getElementById('sm-nature-category').value = existing ? (existing.nature_category || '') : '';
+  document.getElementById('sm-client-search').value = existing ? (existing.client_name || '') : (prefill ? (prefill.client.name || '') : '');
+  document.getElementById('sm-client-pan').value = existing ? (existing.client_pan || '') : (prefill ? (prefill.client.pan || '') : '');
+  document.getElementById('sm-client-address').value = existing ? (existing.client_address || '') : (prefill ? (prefill.client.address || '') : '');
+  document.getElementById('sm-nature-category').value = existing ? (existing.nature_category || '') : (prefill ? prefill.category : '');
   smOnCategoryChange();
-  document.getElementById('sm-nature-subcategory').value = existing ? (existing.nature_subcategory || '') : '';
+  document.getElementById('sm-nature-subcategory').value = existing ? (existing.nature_subcategory || '') : (prefill ? prefill.subcategory : '');
   smOnSubcategoryChange();
   document.getElementById('sm-nature-other').value = existing ? (existing.nature_other || '') : '';
   document.getElementById('sm-description').value = existing ? (existing.description || '') : '';
@@ -262,13 +431,13 @@ function smOpenCreate(existing) {
   document.getElementById('sm-apply-vat').checked = existing ? !!existing.apply_vat : false;
   document.getElementById('sm-remarks').value = existing ? (existing.remarks || '') : '';
 
-  const bs = NepaliLocale.todayBs();
-  const defaultFy = bs ? NepaliLocale.bsFiscal(bs).fy.replace('/', '-') : '';
-  document.getElementById('sm-fiscal-year').value = existing ? (existing.fiscal_year || '') : defaultFy;
+  document.getElementById('sm-fiscal-year').value = existing ? (existing.fiscal_year || '') : (prefill ? prefill.fiscalYear : SM_FY_DEFAULT);
 
   if (existing && existing.client_id) {
     const c = (window.clientsList || []).find(x => x.id === existing.client_id);
     if (c) smSelectedClient = c;
+  } else if (prefill && prefill.client && prefill.client.id) {
+    smSelectedClient = prefill.client;
   }
 
   smRenderTotals();
