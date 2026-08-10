@@ -598,7 +598,16 @@ function pjRenderOverrides() {
     cash: yr.bs.cash, creditors: yr.bs.creditors, closingStock: yr.pl.closingStock,
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
   })[f];
-  pjEl('pj-overrides').innerHTML = `<div class="table-wrap"><table class="client-table">
+  // pjRecalcDebounced re-runs the solver and calls back in here on every
+  // keystroke (debounced), which used to innerHTML the whole table — that
+  // destroys the focused <input> and rebuilds a new DOM node in its place,
+  // so the browser drops focus and the user has to click back in after each
+  // character. Save which cell (by data-year/data-field) had focus and its
+  // caret position, then restore both once the new markup is in.
+  const container = pjEl('pj-overrides');
+  const active = container.querySelector('input:focus');
+  const activeKey = active ? { year: active.dataset.year, field: active.dataset.field, selStart: active.selectionStart, selEnd: active.selectionEnd } : null;
+  container.innerHTML = `<div class="table-wrap"><table class="client-table">
     <thead><tr><th>Figure</th>${pjResult.years.map(yr => `<th style="text-align:right;">F.Y. ${escHtml(pjFyLabel(yr.year))}</th>`).join('')}</tr></thead>
     <tbody>
       ${PJ_OVERRIDE_FIELDS.map(fd => `<tr>
@@ -615,6 +624,13 @@ function pjRenderOverrides() {
         ${pjResult.years.map(yr => `<td style="text-align:right; color:var(--text-muted);">${pjAmt(yr.bs.debtors)}</td>`).join('')}
       </tr>
     </tbody></table></div>`;
+  if (activeKey) {
+    const restored = container.querySelector(`input[data-year="${activeKey.year}"][data-field="${activeKey.field}"]`);
+    if (restored) {
+      restored.focus();
+      try { restored.setSelectionRange(activeKey.selStart, activeKey.selEnd); } catch (e) { /* number inputs may not support range selection in all browsers */ }
+    }
+  }
 }
 
 // Why is there owner capital on this balance sheet, and what would remove it?
