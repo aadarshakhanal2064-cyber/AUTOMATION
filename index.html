@@ -3358,18 +3358,24 @@ function cropLoginLogoIcon(img) {
 
 <!-- FILE IN OUT — OUTTAKE MODAL (partial or full return) -->
 <div class="modal-overlay" id="fm-outtake-modal">
-  <div class="modal" style="max-width:580px;">
+  <div class="modal fm-outtake-modal">
     <div class="modal-header">
       <h3>Record Outtake</h3>
       <button class="modal-close" onclick="fmCloseOuttake()">×</button>
     </div>
     <div class="modal-body">
-      <div style="background:var(--bg-page-alt); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; font-size:13.5px; margin-bottom:18px;" id="fm-outtake-summary"></div>
+      <div class="fm-outtake-summary" id="fm-outtake-summary"></div>
 
       <div class="form-group full">
-        <label>Documents Being Given Out Now</label>
-        <div id="fm-outtake-items" class="fm-doctype-grid"></div>
-        <p style="font-size:12px; color:var(--text-faint); margin:6px 0 0;">Defaults to everything still remaining — reduce a quantity if only part of it is going out this time.</p>
+        <div class="fm-outtake-items-head">
+          <label style="margin:0;">Documents Being Given Out Now</label>
+          <div class="fm-outtake-quick">
+            <button type="button" class="btn btn-outline btn-sm" onclick="fmOuttakeSetAll('all')">All remaining</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="fmOuttakeSetAll('none')">Clear</button>
+          </div>
+        </div>
+        <div id="fm-outtake-items" class="fm-doctype-grid fm-outtake-items"></div>
+        <p style="font-size:12px; color:var(--text-faint); margin:8px 0 0;">Defaults to everything still remaining — reduce a quantity if only part of it is going out this time.</p>
       </div>
 
       <div class="form-group full" style="margin-top:14px;">
@@ -3437,18 +3443,18 @@ function cropLoginLogoIcon(img) {
 
 <!-- FILE IN OUT — OUTTAKE PICKER (header "Outtake" button: find the client's open entry first) -->
 <div class="modal-overlay" id="fm-outtake-picker-modal">
-  <div class="modal" style="max-width:520px;">
+  <div class="modal fm-picker-modal">
     <div class="modal-header">
-      <h3>Record Outtake</h3>
+      <h3>Record Outtake — choose the entry</h3>
       <button class="modal-close" onclick="fmCloseOuttakePicker()">×</button>
     </div>
     <div class="modal-body">
-      <div class="form-group full">
-        <label>Client (search by name or PAN)</label>
-        <input type="text" id="fm-outtake-picker-search" placeholder="Start typing to search clients…" autocomplete="off" />
+      <div class="form-group full" style="margin-bottom:6px;">
+        <label>Search by client, PAN, reference or document</label>
+        <input type="text" id="fm-outtake-picker-search" placeholder="Type to filter the list below…" autocomplete="off" oninput="fmOuttakePickerSearchChanged()" />
         <div class="autocomplete-list" id="fm-outtake-picker-autocomplete" style="display:none;"></div>
       </div>
-      <div id="fm-outtake-picker-results" style="margin-top:12px;"></div>
+      <div id="fm-outtake-picker-results" class="fm-picker-results"></div>
     </div>
   </div>
 </div>
@@ -3886,7 +3892,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>
 <script src="js/ocrExtract.js?v=202608022300"></script>
-<script src="js/fileManagement.js?v=202608092330"></script>
+<script src="js/fileManagement.js?v=202608101800"></script>
 <script src="js/auditReportFinalization.js?v=202608092200"></script>
 <script src="js/auditChecklist.js?v=202608092500"></script>
 <script src="js/workDone.js?v=202608101200"></script>

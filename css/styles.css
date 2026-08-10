@@ -1264,12 +1264,47 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 }
 .fm-detail-outtake-head{ display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-muted); margin-bottom: 4px; }
 
-/* ── File In Out — Outtake picker results (header "Outtake" button) ── */
-.fm-picker-row{
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
-  margin-bottom: 8px; font-size: 13px;
+/* ── File In Out — Outtake picker results (header "Outtake" button) ──
+   Opens listing every entry still with the firm, so the common case is
+   pick-from-a-list rather than search-an-empty-box. Wider than the default
+   modal because each row carries client + ref + ageing + remaining docs. */
+.fm-picker-modal{ max-width: 720px; }
+.fm-picker-results{ margin-top: 10px; max-height: 52vh; overflow-y: auto; }
+.fm-picker-head{
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin: 6px 0 10px;
 }
+.fm-picker-row{
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  margin-bottom: 8px; font-size: 13px; background: var(--white);
+  transition: border-color .15s, background .15s;
+}
+.fm-picker-row:hover{ border-color: var(--accent-blue); background: var(--bg-page-alt); }
+.fm-picker-main{ min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.fm-picker-title{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--text-main); }
+.fm-picker-meta{ font-size: 12px; color: var(--text-faint); }
+.fm-picker-docs{ font-size: 12.5px; color: var(--amber-dk); font-weight: 600; }
+
+/* ── File In Out — Record Outtake modal ──
+   The quantity list is one full-width row per document type here (not the
+   intake form's paired columns): it's filled at the counter while a client
+   waits, and the 2-up grid left both the label and its input cramped. */
+.fm-outtake-modal{ max-width: 720px; }
+.fm-outtake-summary{
+  background: var(--bg-page-alt); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; font-size: 13.5px;
+  line-height: 1.6; margin-bottom: 18px;
+}
+.fm-outtake-items-head{
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 2px;
+}
+.fm-outtake-quick{ display: flex; gap: 8px; }
+.fm-outtake-items{ grid-template-columns: 1fr; max-height: 40vh; overflow-y: auto; padding-right: 2px; }
+.fm-outtake-row{ padding: 10px 14px; }
+.fm-outtake-row label{ font-size: 13.5px; }
+.fm-outtake-row .fm-doctype-qty input{ width: 84px; padding: 8px; font-size: 14px; font-weight: 600; }
 
 /* Chain strip in the record drawer: where this client stands across all three
    tracks for the chosen year, so what's outstanding is visible while filling

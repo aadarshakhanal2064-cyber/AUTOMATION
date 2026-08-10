@@ -188,11 +188,44 @@ not a separate hand-rolled receipt renderer.
 
 Beside "Record Intake" in the page header (`fmOpenOuttakePicker`). Finishing a
 job for a client used to mean finding their row and its small per-row button;
-this searches by client first (`fmOuttakePickerSelect`) and:
-- **one open entry** (`status !== 'returned'`) → jumps straight into
-  `fmOpenOuttake` for it;
-- **more than one** → lists them (ref #, FY, documents) to pick from;
-- **none** → says so rather than opening an outtake form with nothing to give.
+this picks the entry directly instead.
+
+### Reworked 2026-08-10 — it opens showing the list
+
+The first version rendered **nothing** until a client was chosen from the
+autocomplete, so the modal opened as a lone search box at 520px (the state in
+the user's screenshot) and the commonest case — someone at the desk, find
+their file — was a blind search. Worse, a **walk-in intake** (`client_id`
+null, which this module deliberately allows) could never be reached at all,
+because the only way in was picking a directory client.
+
+It now opens listing **every entry still with the firm** (`fmOpenEntries()`,
+`status !== 'returned'`), **longest held first** — the same triage order the
+ageing cards use, and the row most likely to be wanted. Each row carries
+client + status badge, ref #/FY/received date, days held (red past
+`FM_AGEING_ALERT_DAYS`), and what's still remaining, with one **Outtake**
+button.
+
+- Typing filters the visible list (`fmOuttakePickerRows`) across ref, client,
+  PAN, FY and document names. **Plain substring, not Fuse** — the user is
+  filtering against text they can already see, where a fuzzy near-miss reads
+  as a bug.
+- The client autocomplete still works and still **jumps straight in** when
+  that client has exactly one open entry (`fmOuttakePickerSelect`).
+- Empty states distinguish "nothing is with us at all" from "nothing matches
+  that search", and the second one says how many entries clearing the box
+  would show.
+
+### The modal's own sizing (same pass)
+
+`fm-outtake-modal` went 580px → **720px** (`.fm-outtake-modal`), and its
+quantity list is now **one full-width row per document type**
+(`.fm-outtake-items`, a 1-column override of `.fm-doctype-grid`) with larger
+inputs (84×34, 14px). The intake form keeps the paired 2-column grid — only
+the outtake copy changed, because it's the one filled at the counter while a
+client waits. **All remaining / Clear** buttons (`fmOuttakeSetAll`) cover the
+two ways it is actually filled; `All` reads each input's `max`, so it can
+never exceed what is still with the firm.
 
 ## Register-wide Print / Preview / Export, and the Client Report
 

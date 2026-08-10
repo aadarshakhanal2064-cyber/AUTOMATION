@@ -462,31 +462,97 @@ function fmDetailOuttake() {
 }
 
 // ── Outtake quick picker — the header "Outtake" button beside "Record
-// Intake": find the client first, then jump straight to their open entry
-// (or offer a choice if they have more than one), instead of hunting
-// through the table for a specific row's button. ──
+// Intake": pick the entry the documents are going back from, without
+// hunting through the register table for that row's button.
+//
+// It opens showing EVERY entry still with the firm, longest-held first,
+// rather than an empty box waiting to be typed into. The original version
+// rendered nothing until a client was chosen from the autocomplete, which
+// made the commonest case ("someone is at the desk, find their file") a
+// blind search — and gave no way in at all for a walk-in intake with no
+// directory client attached. Typing now filters the visible list; the
+// client autocomplete still works and additionally jumps straight in when
+// the client has exactly one open entry.
 function fmOpenOuttakePicker() {
   document.getElementById('fm-outtake-picker-search').value = '';
-  document.getElementById('fm-outtake-picker-results').innerHTML = '';
+  fmRenderOuttakePickerList();
   document.getElementById('fm-outtake-picker-modal').classList.add('open');
 }
 function fmCloseOuttakePicker() { document.getElementById('fm-outtake-picker-modal').classList.remove('open'); }
 
-function fmOuttakePickerSelect(client) {
-  document.getElementById('fm-outtake-picker-search').value = client.name;
-  const open = fmEntries.filter(r => r.status !== 'returned' && (r.client_id === client.id || r.client_name === client.name));
+// Everything still (wholly or partly) with the firm — the only entries an
+// outtake can be recorded against. Longest-held first: that is the one the
+// register exists to chase.
+function fmOpenEntries() {
+  return fmEntries.filter(r => r.status !== 'returned')
+    .slice()
+    .sort((a, b) => fmDaysHeld(b) - fmDaysHeld(a));
+}
+
+// Plain substring matching, not Fuse: the user is filtering a short visible
+// list against something they can see on it (a ref number, a name), where a
+// fuzzy near-miss is confusing rather than helpful.
+function fmOuttakePickerRows() {
+  const q = (document.getElementById('fm-outtake-picker-search').value || '').trim().toLowerCase();
+  const rows = fmOpenEntries();
+  if (!q) return rows;
+  return rows.filter(r => [r.register_no, r.client_name, r.client_pan, r.fiscal_year, fmDocSummary(r)]
+    .some(v => String(v || '').toLowerCase().includes(q)));
+}
+
+function fmRenderOuttakePickerList() {
   const resultsEl = document.getElementById('fm-outtake-picker-results');
-  if (!open.length) {
-    resultsEl.innerHTML = '<div class="log-empty">Nothing currently with us for this client — no outtake to record.</div>';
+  const rows = fmOuttakePickerRows();
+  const openCount = fmOpenEntries().length;
+
+  if (!openCount) {
+    resultsEl.innerHTML = '<div class="log-empty">Nothing is currently with us — every intake has been fully returned, so there is no outtake to record.</div>';
     return;
   }
+  if (!rows.length) {
+    resultsEl.innerHTML = '<div class="log-empty">No open entry matches that search. Clear the box to see all ' + openCount + ' entries still with us.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML =
+    `<div class="fm-picker-head">${rows.length === openCount
+      ? `${openCount} entr${openCount === 1 ? 'y' : 'ies'} still with us — longest held first`
+      : `${rows.length} of ${openCount} matching`}</div>` +
+    rows.map(r => {
+      const remaining = fmRemainingByType(r);
+      const parts = Object.keys(remaining).filter(k => remaining[k] > 0).map(k => `${k} ×${remaining[k]}`);
+      const days = fmDaysHeld(r);
+      const overdue = days > FM_AGEING_ALERT_DAYS;
+      return `
+        <div class="fm-picker-row">
+          <div class="fm-picker-main">
+            <div class="fm-picker-title">
+              <strong>${escHtml(r.client_name || '—')}</strong>
+              ${fmFlow.badgeHtml(r.status)}
+            </div>
+            <div class="fm-picker-meta">
+              ${escHtml(r.register_no || '—')} · FY ${escHtml(r.fiscal_year || '—')} · received ${escHtml(r.date_received || '—')}
+              · <span style="color:${overdue ? 'var(--red)' : 'var(--text-faint)'}; font-weight:${overdue ? '700' : '400'};">${days} day${days === 1 ? '' : 's'}</span>
+            </div>
+            <div class="fm-picker-docs">${escHtml(parts.join(', ') || '—')}</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="fmPickOuttakeEntry(${r.id})">Outtake</button>
+        </div>`;
+    }).join('');
+}
+
+// Typing filters the list in place. The client autocomplete fires its own
+// listener on the same input — both are wanted, so this is an additive
+// oninput rather than a replacement.
+function fmOuttakePickerSearchChanged() { fmRenderOuttakePickerList(); }
+
+function fmOuttakePickerSelect(client) {
+  document.getElementById('fm-outtake-picker-search').value = client.name;
+  const open = fmOpenEntries().filter(r => r.client_id === client.id || r.client_name === client.name);
+  // One open entry for the picked client is unambiguous — go straight there
+  // rather than making them click the only row on screen.
   if (open.length === 1) { fmCloseOuttakePicker(); fmOpenOuttake(open[0]); return; }
-  resultsEl.innerHTML = `<p style="font-size:12.5px; color:var(--text-muted); margin:4px 0 8px;">This client has ${open.length} open entries — pick one:</p>` +
-    open.map(r => `
-      <div class="fm-picker-row">
-        <div><strong>${escHtml(r.register_no || '—')}</strong> · ${escHtml(r.fiscal_year || '—')} · ${escHtml(fmDocSummary(r))}</div>
-        <button class="btn btn-outline btn-sm" onclick="fmPickOuttakeEntry(${r.id})">Select</button>
-      </div>`).join('');
+  fmRenderOuttakePickerList();
 }
 function fmPickOuttakeEntry(id) {
   const row = fmEntries.find(r => r.id === id);
@@ -827,8 +893,11 @@ function fmOpenOuttake(row) {
     `<span style="color:var(--text-muted);">Remaining: ${escHtml(remainingKeys.map(k => `${k} ×${remaining[k]}`).join(', ') || '—')}</span><br>` +
     `<span style="color:var(--text-faint); font-size:12.5px;">Received ${escHtml(row.date_received || '—')} · held ${fmDaysHeld(row)} days${row.outtakes && row.outtakes.length ? ` · ${row.outtakes.length} outtake(s) so far` : ''}</span>`;
 
+  // One document type per row at full width, not the intake form's 2-column
+  // grid: this list is read and edited under time pressure at the counter,
+  // and the paired columns made both the label and the quantity box cramped.
   document.getElementById('fm-outtake-items').innerHTML = remainingKeys.map(k => `
-    <div class="fm-doctype-row">
+    <div class="fm-doctype-row fm-outtake-row">
       <label for="fm-outtake-qty-${fmSlug(k)}">${escHtml(k)}</label>
       <div class="fm-doctype-qty">
         <input type="number" min="0" max="${remaining[k]}" value="${remaining[k]}" id="fm-outtake-qty-${fmSlug(k)}" data-type="${escHtml(k)}" />
@@ -856,6 +925,16 @@ function fmOpenOuttake(row) {
 
 // Element ids can't contain spaces/slashes; document-type labels can.
 function fmSlug(s) { return String(s).replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase(); }
+
+// "Everything back" and "nothing yet, let me pick" are the two ways this
+// form is actually filled; both were several keystrokes per row before.
+// `max` is the remaining quantity the row was rendered with, so All can
+// never set a figure above what's still with us.
+function fmOuttakeSetAll(mode) {
+  document.querySelectorAll('#fm-outtake-items input[data-type]').forEach(el => {
+    el.value = mode === 'all' ? (el.max || 0) : 0;
+  });
+}
 
 function fmCloseOuttake() { document.getElementById('fm-outtake-modal').classList.remove('open'); }
 
