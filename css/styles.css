@@ -846,8 +846,9 @@ textarea { resize: vertical; min-height: 100px; }
 .spinner-navy { border-color: rgba(11,31,61,0.15); border-top-color: var(--brand-navy); }
 @keyframes spin { to { transform: rotate(360deg); } }
 #loading-screen { position: fixed; inset: 0; background: var(--white); display: flex; align-items: center; justify-content: center; z-index: 200; flex-direction: column; gap: 22px; }
-#loading-screen img { max-width: 320px; width: 60vw; }
+#loading-screen img { max-width: 560px; width: 80vw; }
 #loading-screen p { color: var(--text-muted); font-size: 14px; font-weight:500; }
+#loading-screen .loading-reg { color: var(--text-muted); font-size: 13px; font-weight: 500; margin: -14px 0 0; letter-spacing: 0.2px; }
 
 .regd-sub-panel { display: none; }
 .regd-sub-panel.active { display: block; animation: fadeIn 0.25s ease; }
