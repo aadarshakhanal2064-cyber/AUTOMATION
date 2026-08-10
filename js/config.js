@@ -388,6 +388,86 @@ window.WD_STATES = [
 // Audit Report Finalization, so adding a staff member stays ONE config edit
 // for both modules. Deliberately not copied into a WD_STAFF constant.
 
+// ── Activity Log vocabulary (Work Done → Activity Log, js/workDone.js) ──
+// audit_log stores the raw ModuleRegistry id in `module` and a snake_case
+// verb in `event_type`. Both are developer vocabulary; these two maps are
+// what turn them into the words the firm actually uses, so the Activity Log
+// reads like a work diary rather than a debug feed.
+//
+// The keys are the DISPLAY names of §5's modules, including the three that
+// were renamed display-only (Autobooks / Bank Entry / File In Out keep their
+// original code ids — CLAUDE.md §5). An unmapped module or event falls back
+// to its raw value rather than being hidden: a new module's events must show
+// up in the log the day it ships, before anyone remembers to add it here.
+window.MODULE_LABELS = {
+  auditChecklist: 'Audit Checklist',
+  auditorChange: 'Auditor Change',
+  auditReportFinalization: 'Audit Report Finalization',
+  bankBook: 'Bank Entry',
+  billing: 'Billing',
+  bmAgmMinutes: 'BM/AGM Minutes',
+  clients: 'Clients',
+  companyProfile: 'Company Profile',
+  confirmationLetters: 'Confirmation Letters',
+  dashboard: 'Dashboard',
+  depreciation: 'Depreciation',
+  fileManagement: 'File In Out',
+  finalAccount: 'Final Account',
+  finStatement: 'Financial Statement',
+  notesToAccounts: 'Notes to Accounts',
+  ocrExtract: 'OCR Extract',
+  partyLedger: 'Party Ledger',
+  projection: 'Projection Report',
+  report: 'Generate Report',
+  salesPurchaseBook: 'Autobooks',
+  serviceMemo: 'Service Memo',
+  vatCompliance: 'VAT Compliance',
+  vatReturn: 'VAT Return',
+  workDone: 'Work Done',
+};
+
+// event_type → what a person would call it. Grouped by the module that
+// emits it; see the AuditLog.record() calls across js/.
+window.ACTIVITY_EVENT_LABELS = {
+  achk_created: 'Checklist created', achk_updated: 'Checklist updated',
+  achk_deleted: 'Checklist deleted', achk_printed: 'Checklist printed',
+  arf_created: 'Finalization record created', arf_updated: 'Finalization record updated',
+  arf_deleted: 'Finalization record deleted', arf_printed: 'Finalization printed',
+  audit_report_saved: 'Audit report saved',
+  bank_account_created: 'Bank account created', bank_account_updated: 'Bank account updated',
+  bank_account_deactivated: 'Bank account deactivated', bank_account_deleted: 'Bank account deleted',
+  bank_transfer_created: 'Bank transfer recorded', bank_transfer_updated: 'Bank transfer updated',
+  bank_transfer_deleted: 'Bank transfer deleted',
+  bank_txn_created: 'Bank entry recorded', bank_txn_updated: 'Bank entry updated',
+  bank_txn_deleted: 'Bank entry deleted',
+  clients_nonfilers_printed: 'Non-filers list printed',
+  company_profile_saved: 'Company profile saved',
+  depreciation_saved: 'Depreciation schedule saved', depreciation_deleted: 'Depreciation schedule deleted',
+  depreciation_printed: 'Depreciation printed',
+  document_generated: 'Document generated',
+  document_register_created: 'File intake recorded', document_register_updated: 'File intake updated',
+  document_register_deleted: 'File intake deleted', document_register_printed: 'Register printed',
+  document_register_status_change: 'Outtake / status change',
+  final_account_printed: 'Final account printed',
+  finstatement_generated: 'Financial statement generated', finstatement_saved: 'Financial statement saved',
+  finstatement_printed: 'Financial statement printed', finstatement_py_parsed: 'Prior-year statement parsed',
+  firm_bank_details_updated: 'Firm bank details updated',
+  invoice_created: 'Invoice created', invoice_deleted: 'Invoice deleted',
+  invoice_payment_recorded: 'Invoice payment recorded', invoice_status_change: 'Invoice status change',
+  notes_to_accounts_saved: 'Notes to Accounts saved',
+  ocr_extract_run: 'OCR extraction run',
+  party_opening_saved: 'Party opening balance saved',
+  projection_generated: 'Projection generated', projection_saved: 'Projection saved',
+  projection_printed: 'Projection printed', projection_statement_parsed: 'Statement parsed',
+  service_memo_created: 'Service memo created', service_memo_updated: 'Service memo updated',
+  service_memo_deleted: 'Service memo deleted',
+  spb_correction: 'Autobooks correction',
+  vat_client_change: 'VAT client change', vat_filing_update: 'VAT filing updated',
+  vat_status_change: 'VAT status change',
+  wd_created: 'Work record created', wd_updated: 'Work record updated',
+  wd_deleted: 'Work record deleted', wd_printed: 'Work record printed',
+};
+
 window.REP_FY_DATES = {
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },

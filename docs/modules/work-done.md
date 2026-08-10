@@ -185,6 +185,51 @@ because of that, all of them about making emptiness *explainable*:
    file-backed document has ever been logged"**, and in the second case says
    how many intakes exist. Those two look identical otherwise.
 
+## The Activity Log — cross-module, per client (2026-08-10)
+
+A header button beside *Export Excel* opens a read-only view over
+**`audit_log`**: what anyone at the firm has actually **done for a client,
+across every module** — a projection generated, an invoice raised, a VAT
+filing updated, a file intake recorded — filterable **client-wise**,
+**work/module-wise** and **staff-wise**.
+
+It lives here rather than on the Dashboard because the Dashboard's feed is a
+10-row "what just happened" glance for the whole firm; this is the searchable
+history. The rest of Work Done answers "what work is finished on this client's
+file"; this answers the question the same person asks next.
+
+**Nothing new is written.** Every module already calls `AuditLog.record()`, so
+this is a view over data that exists, and a module added later appears in it
+the day it ships without touching this code.
+
+- `window.MODULE_LABELS` / `window.ACTIVITY_EVENT_LABELS` (`js/config.js`) turn
+  the stored `module` id and snake_case `event_type` into the firm's own
+  words. **An unmapped value falls back to the raw string rather than being
+  hidden** — a new module's events must never be silently missing from the log
+  just because nobody has added a label yet.
+- Filter options are built from **what's actually in the loaded window**, not
+  a fixed list, and are **sorted by label, not by raw value** (sorting the ids
+  puts Autobooks — `salesPurchaseBook` — between Projection and Work Done).
+- The window is **bounded on purpose**: `audit_log` passed 1,800 rows in its
+  first month (861 of them one module's `spb_correction` events) and only
+  grows, so it opens on the last **90 days** and widens only when a From/To
+  range is set. Changing the range **re-fetches** — those rows aren't in
+  memory to filter.
+- `staff` is the signed-in `user_email` (the only identity the log carries):
+  the local part is displayed, the full address is in the tooltip and export.
+- Print / PDF / Excel go through `ReportExport` over the **filtered** rows, so
+  what's exported is what's on screen.
+
+### The client column was empty for six modules
+
+`AuditLog.record()` reads `detail.clientName` / `detail.recordRef`, but
+`companyProfile`, `depreciation`, `depreciationSlm`, `notesToAccounts`,
+`report`, `projection` and `projectionExport` were passing **snake_case**
+`client_name` / `record_ref`. Those keys are silently dropped, so every one of
+those events had written a **null client name** — visible in the live table as
+`projection_saved` / `projection_printed` rows with no client against them.
+Fixed at all call sites in the same change; historical rows keep their nulls.
+
 ## Views, filters and export
 
 A segmented toggle (`.rep-view-btn`) switches between **Work Records** and

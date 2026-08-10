@@ -1113,3 +1113,261 @@ function wdPreviewAll() {
 function wdPrintOne(row) {
   wdOpenPrintWindow(wdBuildModel([row], row.client_name));
 }
+
+// ════════════════════════════════════════════
+//  ACTIVITY LOG — what the firm has done for a client, ACROSS EVERY MODULE
+//
+//  The rest of this module answers "what work is finished on this client's
+//  file". The Activity Log answers the wider question the same person asks
+//  next: what has anyone here actually DONE for this client — a projection
+//  generated, an invoice raised, a VAT filing updated, a document printed —
+//  regardless of which module did it.
+//
+//  It reads audit_log, which every module already writes to through
+//  AuditLog.record() (js/core/auditLog.js), so this is a READ-ONLY VIEW over
+//  data that already exists. No new table, no new writes, and no module has
+//  to be modified to appear here: anything that records an audit event shows
+//  up the day it ships.
+//
+//  It lives in Work Done rather than the Dashboard because the Dashboard's
+//  activity feed is a 10-row "what just happened" glance for the whole firm,
+//  while this is the searchable per-client / per-work / per-staff history.
+//
+//  THE WINDOW IS BOUNDED ON PURPOSE. audit_log only grows (1,800+ rows in
+//  the first month, 861 of them one module's corrections), so the log opens
+//  on a fixed recent window and widens only when the user asks for a range —
+//  an unbounded read here would get slower every week it runs.
+// ════════════════════════════════════════════
+
+const WD_ACTIVITY_DEFAULT_DAYS = 90;
+
+let wdActivityRows = [];       // raw audit_log rows for the loaded window
+let wdActivityTable = null;
+let wdActivityLoaded = false;  // false until the first load, so re-open is instant
+let wdActivityFilters = { module: '', staff: '', client: '', from: '', to: '' };
+
+function wdModuleLabel(m) { return (window.MODULE_LABELS || {})[m] || m || '—'; }
+function wdEventLabel(e) { return (window.ACTIVITY_EVENT_LABELS || {})[e] || e || '—'; }
+
+// "Staff" in audit_log is the signed-in email — the only identity the log
+// carries. The local part is what people recognise; the full address stays
+// in the title and in the export, so two staff at the same firm domain are
+// still distinguishable.
+function wdActivityStaff(row) { return (row.user_email || '').split('@')[0] || '—'; }
+
+function wdDaysAgoIso(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function wdActivityOpen() {
+  wdEl('wd-activity-modal').classList.add('open');
+  if (!wdActivityLoaded) wdActivityLoad();
+  else if (wdActivityTable) setTimeout(() => wdActivityTable.redraw(true), 0);
+}
+
+function wdActivityClose() { wdEl('wd-activity-modal').classList.remove('open'); }
+
+// The From/To boxes are what widen the window, so the load has to read them —
+// an empty From means "the default recent window", not "all history".
+async function wdActivityLoad() {
+  const from = wdEl('wd-activity-from').value;
+  const to = wdEl('wd-activity-to').value;
+  wdEl('wd-activity-status').innerHTML = '<div class="log-empty"><span class="spinner spinner-navy"></span> Loading activity…</div>';
+  try {
+    wdActivityRows = await AuditLog.query({
+      sinceIso: from ? new Date(from + 'T00:00:00').toISOString() : wdDaysAgoIso(WD_ACTIVITY_DEFAULT_DAYS),
+      // Inclusive of the whole "to" day — a date-only bound would cut that
+      // day's events off at midnight and silently drop today's work.
+      untilIso: to ? new Date(to + 'T23:59:59').toISOString() : null,
+    });
+    wdActivityLoaded = true;
+    wdActivityPopulateFilters();
+    wdEl('wd-activity-status').innerHTML = '';
+    wdActivityRenderTable();
+  } catch (e) {
+    wdEl('wd-activity-status').innerHTML = `<div class="status-box status-error">❌ Failed to load the activity log: ${escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+// Options come from what's actually in the loaded window, not a fixed list —
+// a module nobody has touched this quarter would otherwise sit in the filter
+// forever offering zero rows.
+function wdActivityPopulateFilters() {
+  const fill = (id, values, allLabel, labeller) => {
+    const sel = wdEl(id);
+    if (!sel) return;
+    const cur = sel.value;
+    // Sorted by the LABEL, not the raw value — the module list is stored as
+    // camelCase ids, so sorting on those puts "Autobooks" (salesPurchaseBook)
+    // between Projection and Work Done, which reads as unsorted on screen.
+    const sorted = Array.from(new Set(values.filter(Boolean)))
+      .sort((a, b) => String(labeller ? labeller(a) : a).localeCompare(String(labeller ? labeller(b) : b)));
+    sel.innerHTML = `<option value="">${allLabel}</option>` +
+      sorted.map(v => `<option value="${escHtml(v)}">${escHtml(labeller ? labeller(v) : v)}</option>`).join('');
+    if (sorted.includes(cur)) sel.value = cur;
+  };
+  fill('wd-activity-module', wdActivityRows.map(r => r.module), 'All modules', wdModuleLabel);
+  fill('wd-activity-staff', wdActivityRows.map(r => r.user_email), 'All staff');
+  fill('wd-activity-client', wdActivityRows.map(r => r.client_name), 'All clients');
+}
+
+function wdActivityReadFilters() {
+  wdActivityFilters = {
+    module: wdEl('wd-activity-module').value,
+    staff: wdEl('wd-activity-staff').value,
+    client: wdEl('wd-activity-client').value,
+    from: wdEl('wd-activity-from').value,
+    to: wdEl('wd-activity-to').value,
+  };
+}
+
+// Shared by the table AND the exports, so what's on screen and what leaves
+// the app can never disagree (the same idiom as fmFilteredRows /
+// wdCurrentFilteredRows).
+function wdActivityFilteredRows() {
+  let rows = wdActivityRows.filter(r => {
+    if (wdActivityFilters.module && r.module !== wdActivityFilters.module) return false;
+    if (wdActivityFilters.staff && r.user_email !== wdActivityFilters.staff) return false;
+    if (wdActivityFilters.client && r.client_name !== wdActivityFilters.client) return false;
+    return true;
+  });
+  const q = (wdEl('wd-activity-search').value || '').trim();
+  if (q) {
+    // Searching the RAW event_type as well as the label: staff search for
+    // what they see, but a developer chasing an event searches the code word.
+    const indexed = rows.map(r => ({
+      ...r,
+      _eventLabel: wdEventLabel(r.event_type),
+      _moduleLabel: wdModuleLabel(r.module),
+    }));
+    const fuse = SearchEngine.buildIndex(indexed, ['client_name', '_eventLabel', '_moduleLabel', 'event_type', 'user_email']);
+    rows = fuse.search(q).map(r => r.item);
+  }
+  return rows;
+}
+
+function wdActivityApplyFilters() {
+  wdActivityReadFilters();
+  const rows = wdActivityFilteredRows();
+  wdActivityUpdateCount(rows.length);
+  if (wdActivityTable) wdActivityTable.replaceData(rows);
+}
+
+// Changing the date range needs a re-FETCH, not just a re-filter — the rows
+// outside the loaded window aren't in memory to filter.
+function wdActivityRangeChanged() { wdActivityLoad(); }
+
+function wdActivityClearFilters() {
+  ['wd-activity-module', 'wd-activity-staff', 'wd-activity-client', 'wd-activity-search'].forEach(id => {
+    const el = wdEl(id); if (el) el.value = '';
+  });
+  wdActivityApplyFilters();
+}
+
+function wdActivityUpdateCount(shown) {
+  const el = wdEl('wd-activity-count');
+  if (!el) return;
+  const total = wdActivityRows.length;
+  el.textContent = total
+    ? `${shown} of ${total} event${total === 1 ? '' : 's'}${shown === total ? '' : ' (filtered)'}`
+    : '';
+}
+
+function wdActivityWhen(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function wdActivityRenderTable() {
+  const wrap = wdEl('wd-activity-wrap');
+  if (wdActivityTable) { wdActivityTable.destroy(); wdActivityTable = null; }
+  if (!wdActivityRows.length) {
+    wrap.innerHTML = `<div class="log-empty">No activity recorded in this period. Widen the date range above to look further back.</div>`;
+    wdActivityUpdateCount(0);
+    return;
+  }
+  wrap.innerHTML = '';
+  wdActivityTable = TableEngine.createTable(wrap, {
+    data: wdActivityFilteredRows(),
+    index: 'id',
+    pagination: true,
+    paginationSize: 25,
+    paginationSizeSelector: [25, 50, 100],
+    columns: [
+      { title: 'When', field: 'created_at', width: 150, formatter: c => escHtml(wdActivityWhen(c.getValue())) },
+      { title: 'Client', field: 'client_name', minWidth: 170, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Module', field: 'module', width: 165, formatter: c => escHtml(wdModuleLabel(c.getValue())) },
+      { title: 'Work Done', field: 'event_type', minWidth: 190, formatter: c => {
+          const r = c.getRow().getData();
+          const failed = r.status === 'error';
+          return `<span class="log-badge ${failed ? 'badge-error' : 'badge-sent'}" title="${escHtml(r.event_type || '')}">${failed ? '❌' : '✅'} ${escHtml(wdEventLabel(r.event_type))}</span>`;
+        } },
+      { title: 'Staff', field: 'user_email', width: 130, formatter: c => {
+          const r = c.getRow().getData();
+          return `<span title="${escHtml(r.user_email || '')}">${escHtml(wdActivityStaff(r))}</span>`;
+        } },
+      { title: 'Ref', field: 'record_ref', width: 90, formatter: c => escHtml(c.getValue() == null ? '—' : String(c.getValue())) },
+    ],
+  });
+  wdActivityUpdateCount(wdActivityFilteredRows().length);
+}
+
+// ── Activity Log export (same ReportExport model → Print / PDF / Excel) ──
+function wdActivityBuildModel(rows) {
+  const subtitles = ['Every recorded action across all modules, newest first'];
+  const range = wdActivityFilters.from || wdActivityFilters.to
+    ? `${wdActivityFilters.from || 'the beginning'} to ${wdActivityFilters.to || 'today'}`
+    : `last ${WD_ACTIVITY_DEFAULT_DAYS} days`;
+  subtitles.push(`Period: ${range}`);
+  if (wdActivityFilters.client) subtitles.push(`Client: ${wdActivityFilters.client}`);
+  if (wdActivityFilters.module) subtitles.push(`Module: ${wdModuleLabel(wdActivityFilters.module)}`);
+  if (wdActivityFilters.staff) subtitles.push(`Staff: ${wdActivityFilters.staff}`);
+  subtitles.push(`Generated ${wdToday()}`);
+  return {
+    title: 'Activity Log',
+    subtitleLines: subtitles,
+    landscape: true,
+    columns: [
+      { label: 'When', w: 1.3 }, { label: 'Client', w: 2.0 }, { label: 'Module', w: 1.4 },
+      { label: 'Work Done', w: 1.8 }, { label: 'Staff', w: 1.6 },
+      { label: 'Status', w: 0.7 }, { label: 'Ref', w: 0.6 },
+    ],
+    rows: rows.map(r => ({ cells: [
+      wdActivityWhen(r.created_at), r.client_name || '—', wdModuleLabel(r.module),
+      wdEventLabel(r.event_type), r.user_email || '—',
+      r.status === 'error' ? 'Failed' : 'Success', r.record_ref == null ? '—' : String(r.record_ref),
+    ] })),
+    _filename: 'Activity Log' + (wdActivityFilters.client ? ' - ' + wdActivityFilters.client : ''),
+  };
+}
+
+function wdActivityModel() {
+  wdActivityReadFilters();
+  const rows = wdActivityFilteredRows();
+  return rows.length ? wdActivityBuildModel(rows) : null;
+}
+
+function wdActivityPreview() {
+  const model = wdActivityModel();
+  if (!model) { wdEl('wd-activity-status').innerHTML = '<div class="status-box status-info">Nothing to preview for the current filters.</div>'; return; }
+  wdOpenPrintWindow(model);
+}
+
+async function wdActivityExport(kind) {
+  const model = wdActivityModel();
+  if (!model) { wdEl('wd-activity-status').innerHTML = '<div class="status-box status-info">Nothing to export for the current filters.</div>'; return; }
+  try {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
+      module: 'workDone',
+      clientName: wdActivityFilters.client || 'All Clients',
+      sheetName: 'Activity Log',
+    });
+  } catch (e) {
+    wdEl('wd-activity-status').innerHTML = `<div class="status-box status-error">❌ Failed to export: ${escHtml(e.message || String(e))}</div>`;
+  }
+}

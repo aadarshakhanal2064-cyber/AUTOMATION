@@ -1420,3 +1420,35 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 input[type=number]{ -moz-appearance: textfield; appearance: textfield; }
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
+
+/* ── Work Done — Activity Log (cross-module view over audit_log) ──
+   Wide because it carries six columns of real content; capped at 96vw so it
+   still fits a laptop screen, and its body scrolls rather than the page. */
+.wd-activity-modal{ max-width: 1180px; width: 96vw; }
+.wd-activity-toolbar{
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.wd-activity-search{ flex: 1; min-width: 240px; max-width: 420px; }
+.wd-activity-count{ font-size: 12.5px; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+.wd-activity-actions{ display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+/* Six filters across on a wide screen, collapsing to two on a narrow one —
+   the same auto-fit idiom as .stat-grid.compact rather than a fixed count. */
+.wd-activity-filters{
+  /* 170px, not 150: at the modal's real inner width 150 fits SEVEN tracks
+     for six filters, leaving a stray empty column at the end of the row. */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px; margin-bottom: 12px;
+}
+.wd-activity-hint{ font-size: 12px; color: var(--text-faint); margin: 0 0 14px; }
+
+/* ── Number inputs: no spinner arrows ──
+   The native up/down stepper sits on top of the right-hand edge of the box
+   and steals the click target while typing, which is exactly where the
+   caret goes on a right-aligned amount. Every number field in this app is
+   typed, never stepped (quantities, rupee amounts, percentages), so the
+   control is pure interference — removed app-wide rather than per module,
+   since the complaint applies to all of them. Keyboard arrows still step. */
+input[type=number]{ -moz-appearance: textfield; appearance: textfield; }
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }

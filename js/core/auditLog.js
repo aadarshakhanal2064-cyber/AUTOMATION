@@ -43,5 +43,25 @@ window.AuditLog = (function () {
     }
   }
 
-  return { record, recent, countSince };
+  // Bounded multi-row read across every module's events (Work Done's
+  // cross-module Activity Log, js/workDone.js). audit_log has no row cap of
+  // its own and only grows, so callers MUST pass sinceIso/untilIso rather
+  // than pulling the whole table — sbFetchAll would happily page through
+  // years of history otherwise.
+  async function query(opts) {
+    opts = opts || {};
+    try {
+      return await sbFetchAll(() => {
+        let q = window.sb.from('audit_log').select('*').order('created_at', { ascending: false });
+        if (opts.sinceIso) q = q.gte('created_at', opts.sinceIso);
+        if (opts.untilIso) q = q.lte('created_at', opts.untilIso);
+        return q;
+      });
+    } catch (e) {
+      console.error('AuditLog: query failed', e);
+      return [];
+    }
+  }
+
+  return { record, recent, countSince, query };
 })();
