@@ -29,3 +29,72 @@ Bank-ready multi-year **financial projection** generated from an uploaded audite
 
 ---
 
+### New Task vs Updation, and who performed it (2026-08-10)
+
+A **Task** card heads Step 2: a New Task / Updation segmented picker
+(`.arf-type-picker`, the ARF component), a **Staff Performing This Task**
+select, and a status line. All three are **UI-only — none of it is rendered
+into the exported report**; `pjxBuildReport()` reads only
+`pj-company`/`pj-pan`/`pj-org-type`/`pj-include-audited`/`pj-statement-type`,
+and that was asserted directly in verification.
+
+- **The mode decides insert vs update.** Picking a client lists that client's
+  saved `projection_reports` rows and **auto-switches to Updation** — the
+  record already existing in the database *is* what makes this an updation,
+  and requiring the user to notice would just produce duplicates. Each row
+  offers **Load & Update**.
+- **Loading restores from `inputs`, not from the workbook** — `parsedModel` +
+  `assumptions` are everything the engine needs, so a revision months later
+  doesn't need the original file, which the firm often no longer has to hand.
+  `pjApplyAssumptions()` writes the saved figures back onto the Step 2 form
+  (years, growth, NCA %, org/tax type, loans, additions/disposals, share
+  capital) so an updation is edited exactly where a new task is built, then
+  re-solves from the saved assumptions object — the overrides live only there
+  and have no form inputs to read back from yet.
+- **`pjRun()` used to null `pjSavedId` on every re-solve**, so any edit turned
+  the next Save into a brand-new row. That is right for a New Task and wrong
+  for an Updation, where revising the figures *is* the point; it is now
+  conditional on the mode. The action button reads **"Update Saved Projection
+  #N"** so the two can't be confused.
+- **A fresh upload always resets to New Task**, even for a client with saved
+  projections: keeping the link would let a workbook for a different year
+  silently overwrite an existing record. Switching to Updation and loading is
+  the explicit path.
+- `pjSetLoans()` **clears each loan group before refilling it** — appending
+  would stack loaded loans on top of what the form already showed and double
+  the client's debt.
+- On an update, **`created_by` is deliberately not in the payload** (it is who
+  first created the record); `performed_by` is the staff name, and reuses
+  `window.ARF_STAFF` with the usual "Other replaces the value" convention, so
+  a name typed by hand restores onto *Other* rather than being blanked.
+- Staff is **required to save** — a saved projection with no name attached
+  can't answer the question the field exists for.
+
+### Share Capital is an editable input
+
+`pj-share-capital` (Step 2) is prefilled from the parsed statement and feeds
+`pjModel.shareCapital` via `pjApplyModelEdits()` before every solve. The
+workbook's capital line is regularly stale (a rights issue since the audit, a
+figure sitting in the wrong note) and every downstream total keys off it.
+**Clearing the box returns to the parsed figure**, which is why
+`pjParsedShareCapital` is kept rather than the box merely being seeded once.
+
+Verified against the real `Avi Agro 2082.083 Provisional.xlsx`: at share
+capital 20 lakh / 50 lakh / 75 lakh the solver returned Additional Capital of
+85.80 / 55.80 / 30.80 lakh — **substituting rupee for rupee**, with Total
+Sources correctly unchanged (the solver finds the smallest owner capital that
+satisfies the bank tests), and the balance and cash-flow ties exact at every
+level.
+
+### `performed_by` column
+
+`db/2026-08-10_projection_performed_by.sql` adds one nullable text column to
+`projection_reports`. Nullable because projections saved before this feature
+have no staff attached, and that is a valid state, not an error — the saved
+list falls back to `created_by` for those. Saving also now stores
+`inputs.ui = { statementType, baseFy }`, the two DOM-read choices that aren't
+part of the assumptions object, so reloading reproduces the same report rather
+than a defaulted one (jsonb — no migration).
+
+---
+

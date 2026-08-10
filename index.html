@@ -2063,7 +2063,39 @@ function cropLoginLogoIcon(img) {
 
       <!-- Step 2: Assumptions -->
       <div id="pj-section-assumptions" style="display:none;">
+        <!-- Task: is this a first generation or a revision of a saved one, and
+             who is performing it. UI-only — the staff name is deliberately
+             never rendered into the exported report. -->
         <div class="card">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Task</div></div>
+          <div class="form-grid" style="grid-template-columns:1.2fr 1fr 1fr; gap:14px; align-items:start;">
+            <div class="form-group" style="margin:0;">
+              <label>Task Type</label>
+              <div class="arf-type-picker">
+                <label class="arf-type-option active">
+                  <input type="radio" name="pj-task-mode" value="new" checked onchange="pjTaskModeChanged()" />
+                  <span>🆕 New Task</span>
+                </label>
+                <label class="arf-type-option">
+                  <input type="radio" name="pj-task-mode" value="update" onchange="pjTaskModeChanged()" />
+                  <span>✏️ Updation</span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Staff Performing This Task</label>
+              <select id="pj-staff" onchange="pjStaffChanged()"></select>
+              <input type="text" id="pj-staff-other" placeholder="Type name" style="display:none; margin-top:8px;" />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Status</label>
+              <div id="pj-task-note" class="pj-task-note"></div>
+            </div>
+          </div>
+          <div id="pj-saved-list"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Client &amp; Basics</div></div>
           <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
             <div class="form-group" style="position:relative;">
@@ -2093,6 +2125,10 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>Sales Growth — Year 1 (%)</label><input type="number" id="pj-growth1" value="10" step="0.5" /></div>
             <div class="form-group"><label>Sales Growth — Later Years (%)</label><input type="number" id="pj-growth-rest" value="5" step="0.5" /></div>
             <div class="form-group"><label>NCA % (drawing power)</label><input type="number" id="pj-nca-pct" value="70" min="1" max="100" step="1" /></div>
+            <div class="form-group">
+              <label>Share Capital (Rs)</label>
+              <input type="number" id="pj-share-capital" step="1000" placeholder="From statement" title="Prefilled from the uploaded statement — edit to correct it. Clear the box to go back to the figure in the workbook." />
+            </div>
             <div class="form-group"><label>Uploaded Statement</label>
               <select id="pj-statement-type">
                 <option value="audited">Audited</option>
@@ -3938,21 +3974,21 @@ function cropLoginLogoIcon(img) {
 <script src="js/vatCompliance.js?v=202608022300"></script>
 <script src="js/billing.js?v=202608022300"></script>
 <script src="js/serviceMemo.js?v=202608022300"></script>
-<script src="js/report.js?v=202608022300"></script>
-<script src="js/notesToAccounts.js?v=202608022300"></script>
-<script src="js/depreciation.js?v=202608022300"></script>
-<script src="js/depreciationSlm.js?v=202608022300"></script>
+<script src="js/report.js?v=202608101800"></script>
+<script src="js/notesToAccounts.js?v=202608101800"></script>
+<script src="js/depreciation.js?v=202608101800"></script>
+<script src="js/depreciationSlm.js?v=202608101800"></script>
 <script src="js/bmAgmMinutes.js?v=202608022300"></script>
 <script src="js/auditorChange.js?v=202608022300"></script>
-<script src="js/companyProfile.js?v=202608022300"></script>
+<script src="js/companyProfile.js?v=202608101800"></script>
 <script src="js/salesPurchaseBook.js?v=202608022300"></script>
 <script src="js/confirmationLetters.js?v=202608022300"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>
 <script src="js/finalAccount.js?v=202608022300"></script>
 <script src="js/projectionEngine.js?v=202608022300"></script>
-<script src="js/projection.js?v=202608022300"></script>
-<script src="js/projectionExport.js?v=202608022300"></script>
+<script src="js/projection.js?v=202608101800"></script>
+<script src="js/projectionExport.js?v=202608101800"></script>
 <script src="js/finStatementEngine.js?v=202608022300"></script>
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>

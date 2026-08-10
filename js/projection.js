@@ -23,6 +23,22 @@ let pjInitDone = false;
 let pjRecalcTimer = null;
 let pjSavedId = null;        // projection_reports row id once saved
 
+// ── New Task vs Updation ──
+// A projection is either being built for the first time or REVISED — the
+// firm re-runs a client's projection when the bank asks for changed figures,
+// and that is an update to the same record, not a second record. The mode is
+// therefore what decides insert-vs-update on save, and it flips to 'update'
+// automatically the moment a saved projection for the picked client is
+// found: the record already existing in the database IS the fact that makes
+// this an updation, so making the user notice and set it by hand would just
+// be a way to end up with duplicates.
+let pjTaskMode = 'new';      // 'new' | 'update'
+let pjSavedList = [];        // this client's saved projection_reports rows
+let pjLoadedRow = null;      // the saved row currently open, when updating
+// The share capital exactly as parsed from the workbook, so clearing the
+// (now editable) field returns to the statement's own figure rather than 0.
+let pjParsedShareCapital = 0;
+
 function pjStatus(html, type) { showStatus(html, type, 'pj-status-area'); }
 function pjEl(id) { return document.getElementById(id); }
 // Accounting display: lakh/crore grouping, negatives in parentheses, 0 → "–".
@@ -56,9 +72,49 @@ function pjInit() {
   // Typing over the picked name detaches the screen from that client record,
   // so a later Save can't attach to it.
   pjEl('pj-client-search').addEventListener('input', () => { pjScope.invalidate(); pjSelectedClient = null; });
+  pjPopulateStaff();
   pjRenderAdditionsRows();
   pjAddLoanRow('st');          // one starter row for the common case
   pjInitDone = true;
+}
+
+// ── Who performed this task ──
+// Reuses window.ARF_STAFF rather than defining a projection-specific list —
+// the same people, so adding a staff member stays one config edit (the same
+// decision Work Done made). 'Other' reveals a free-text box whose typed name
+// REPLACES 'Other' in what gets saved, so there is no *_other column.
+function pjPopulateStaff() {
+  const sel = pjEl('pj-staff');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Select staff…</option>' +
+    window.ARF_STAFF.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+}
+
+function pjStaffChanged() {
+  const isOther = pjEl('pj-staff').value === 'Other';
+  const other = pjEl('pj-staff-other');
+  other.style.display = isOther ? '' : 'none';
+  if (!isOther) other.value = '';
+}
+
+function pjStaffName() {
+  const sel = pjEl('pj-staff').value;
+  if (!sel) return '';
+  return sel === 'Other' ? pjEl('pj-staff-other').value.trim() : sel;
+}
+
+// Restores the picker from a saved name, which may be a typed one that isn't
+// on the fixed list — that case has to land on 'Other' with the box shown,
+// or re-saving would silently blank the person who did the work.
+function pjSetStaff(name) {
+  const sel = pjEl('pj-staff');
+  const other = pjEl('pj-staff-other');
+  if (!name) { sel.value = ''; other.value = ''; other.style.display = 'none'; return; }
+  if (window.ARF_STAFF.includes(name) && name !== 'Other') {
+    sel.value = name; other.value = ''; other.style.display = 'none';
+  } else {
+    sel.value = 'Other'; other.value = name; other.style.display = '';
+  }
 }
 
 // Everything on this screen belongs to one client: the uploaded statement,
@@ -72,7 +128,14 @@ const pjScope = WorkflowEngine.createClientScope({
     pjModel = null; pjParseIssues = [];
     pjResult = null; pjIssues = [];
     pjSavedId = null;
-    ['pj-company', 'pj-pan'].forEach(id => { pjEl(id).value = ''; });
+    // The saved-projection list and the task mode belong to the previous
+    // client just as much as the parsed statement does — leaving them
+    // standing would offer to "update" another client's record.
+    pjSavedList = []; pjLoadedRow = null;
+    pjParsedShareCapital = 0;
+    pjSetTaskMode('new');
+    pjRenderSavedList();
+    ['pj-company', 'pj-pan', 'pj-share-capital'].forEach(id => { const el = pjEl(id); if (el) el.value = ''; });
     const fileEl = pjEl('pj-file');
     if (fileEl) fileEl.value = '';
     pjRenderDetectSummary();
@@ -90,8 +153,186 @@ const pjScope = WorkflowEngine.createClientScope({
     pjEl('pj-org-type').value = profile === 'partnership' ? 'partnership'
       : profile === 'proprietorship' ? 'proprietorship' : 'private';
     pjOrgTypeChanged();
+    // Fire-and-forget: the rest of the screen must not wait on this lookup,
+    // and a failure downgrades to "no saved projections found", never blocks.
+    pjLoadSavedForClient();
   },
 });
+
+// ════════════════════════════════════════════
+//  TASK MODE — New Task vs Updation
+// ════════════════════════════════════════════
+
+function pjSetTaskMode(mode) {
+  pjTaskMode = mode === 'update' ? 'update' : 'new';
+  document.querySelectorAll('input[name="pj-task-mode"]').forEach(r => {
+    r.checked = r.value === pjTaskMode;
+    const opt = r.closest('.arf-type-option');
+    if (opt) opt.classList.toggle('active', r.checked);
+  });
+  // A New Task must never overwrite the record that was loaded for updating
+  // — dropping the id is what turns the next Save back into an insert.
+  if (pjTaskMode === 'new') { pjSavedId = null; pjLoadedRow = null; }
+  pjRenderTaskNote();
+}
+
+function pjTaskModeChanged() {
+  const checked = document.querySelector('input[name="pj-task-mode"]:checked');
+  pjSetTaskMode(checked ? checked.value : 'new');
+  pjRenderSavedList();
+}
+
+function pjRenderTaskNote() {
+  const el = pjEl('pj-task-note');
+  if (!el) return;
+  if (pjTaskMode === 'update' && pjLoadedRow) {
+    const who = pjLoadedRow.performed_by || pjLoadedRow.created_by || 'not recorded';
+    const when = (pjLoadedRow.updated_at || pjLoadedRow.created_at || '').slice(0, 10);
+    el.innerHTML = `<span class="pj-task-chip">Updating saved projection #${pjLoadedRow.id}</span>` +
+      `<span class="pj-task-sub">Last performed by <strong>${escHtml(who)}</strong>${when ? ' on ' + escHtml(when) : ''}</span>`;
+  } else if (pjTaskMode === 'update') {
+    el.innerHTML = '<span class="pj-task-sub">Pick a saved projection below to load its figures for updating.</span>';
+  } else {
+    el.innerHTML = '<span class="pj-task-sub">A first generation — saving creates a new projection record.</span>';
+  }
+}
+
+// Which saved projections exist for the client on screen. Matched on
+// client_id when there is one; a typed-only company (this module allows
+// projections for non-directory names) falls back to the company name,
+// which is what those rows were saved under.
+async function pjLoadSavedForClient() {
+  pjSavedList = [];
+  pjRenderSavedList();
+  const company = (pjEl('pj-company').value || '').trim();
+  if (!pjSelectedClient && !company) return;
+  try {
+    let q = window.sb.from('projection_reports')
+      .select('id, client_id, company_name, pan, fiscal_year_base, years, performed_by, created_by, created_at, updated_at')
+      .order('updated_at', { ascending: false });
+    q = pjSelectedClient ? q.eq('client_id', pjSelectedClient.id) : q.eq('company_name', company);
+    const { data, error } = await q;
+    if (error) throw error;
+    pjSavedList = data || [];
+    // Already in the database ⇒ this is an updation. Auto-switching is the
+    // whole point: it's what stops a revision being saved as a duplicate.
+    if (pjSavedList.length && !pjLoadedRow) pjSetTaskMode('update');
+    pjRenderSavedList();
+  } catch (e) {
+    console.error('projection: could not list saved reports', e);
+    pjRenderSavedList();
+  }
+}
+
+function pjRenderSavedList() {
+  const el = pjEl('pj-saved-list');
+  if (!el) return;
+  if (!pjSavedList.length) {
+    el.innerHTML = pjSelectedClient
+      ? '<div class="pj-saved-empty">No saved projection for this client yet — this will be a new task.</div>'
+      : '';
+    return;
+  }
+  el.innerHTML = `<div class="pj-saved-head">${pjSavedList.length} saved projection${pjSavedList.length === 1 ? '' : 's'} for this client</div>` +
+    pjSavedList.map(r => {
+      const who = r.performed_by || r.created_by || '—';
+      const when = (r.updated_at || r.created_at || '').slice(0, 10);
+      const isOpen = pjLoadedRow && pjLoadedRow.id === r.id;
+      return `
+        <div class="pj-saved-row${isOpen ? ' open' : ''}">
+          <div class="pj-saved-main">
+            <div class="pj-saved-title"><strong>#${r.id}</strong> · Base F.Y. ${escHtml(r.fiscal_year_base || '—')} · ${r.years} year${r.years === 1 ? '' : 's'}</div>
+            <div class="pj-saved-meta">Performed by <strong>${escHtml(who)}</strong>${when ? ' · ' + escHtml(when) : ''}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="pjLoadSaved(${r.id})">${isOpen ? 'Reload' : 'Load & Update'}</button>
+        </div>`;
+    }).join('');
+}
+
+// ── Load a saved projection back onto the screen ──
+// inputs.parsedModel + inputs.assumptions are everything the engine needs to
+// reproduce the projection exactly, so an updation re-solves from the SAME
+// statement rather than asking for the workbook again — which the firm often
+// no longer has to hand months later.
+async function pjLoadSaved(id) {
+  pjStatus('Loading saved projection…', 'searching');
+  try {
+    const { data, error } = await window.sb.from('projection_reports').select('*').eq('id', id).single();
+    if (error) throw error;
+    const inputs = data.inputs || {};
+    if (!inputs.parsedModel || !inputs.assumptions) {
+      pjStatus('That saved record does not carry its parsed statement, so it cannot be re-opened for updating. Upload the workbook and save it again as a new task.', 'error');
+      return;
+    }
+    pjModel = inputs.parsedModel;
+    pjParseIssues = [];
+    pjParsedShareCapital = pjModel.shareCapital || 0;
+    pjLoadedRow = data;
+    pjSavedId = data.id;
+    pjSetTaskMode('update');
+
+    pjEl('pj-company').value = data.company_name || '';
+    pjEl('pj-pan').value = data.pan || '';
+    if (data.performed_by) pjSetStaff(data.performed_by);
+    pjApplyAssumptions(inputs.assumptions, inputs.ui || {});
+    pjRenderDetectSummary();
+    pjRenderSavedList();
+
+    // Re-solve from the saved assumptions rather than re-reading the form:
+    // the form was just populated from them, but the overrides live in the
+    // assumptions only and have no inputs to read back from yet.
+    pjRunAsm(JSON.parse(JSON.stringify(inputs.assumptions)));
+    pjShowSection('review');
+    pjStatus(`Loaded saved projection #${data.id} — change any figure and Save to update this record.`, 'success');
+  } catch (e) {
+    console.error(e);
+    pjStatus('Could not load that projection: ' + escHtml(e.message || String(e)), 'error');
+  }
+}
+
+// Writes a saved assumptions object back onto the Step 2 form, so an
+// updation is edited in exactly the same place a new task is built.
+function pjApplyAssumptions(asm, ui) {
+  const set = (id, v) => { const el = pjEl(id); if (el != null && v != null) el.value = v; };
+  set('pj-years', asm.years);
+  set('pj-org-type', asm.orgType);
+  set('pj-growth1', asm.growthY1Pct);
+  set('pj-growth-rest', asm.growthRestPct);
+  set('pj-nca-pct', asm.ncaPct);
+  set('pj-tax-profile', asm.taxProfile);
+  if (ui.baseFy) set('pj-base-fy', ui.baseFy);
+  if (ui.statementType) set('pj-statement-type', ui.statementType);
+  const inc = pjEl('pj-include-audited');
+  if (inc) inc.checked = !!asm.includeAudited;
+  pjEl('pj-share-capital').value = pjModel ? Math.round(pjModel.shareCapital || 0) : '';
+
+  pjSetLoans('st', asm.stLoans); pjSetLoans('lt', asm.ltLoans);
+  pjSetLoans('pwc', asm.pwcLoans); pjSetLoans('hp', asm.hpLoans);
+
+  pjRenderAdditionsRows();
+  ProjectionEngine.DEP_POOLS.forEach(p => {
+    const a = pjEl('pj-add-' + p.key), d = pjEl('pj-dis-' + p.key);
+    if (a) a.value = (asm.additions && asm.additions[p.key]) || '';
+    if (d) d.value = (asm.disposals && asm.disposals[p.key]) || '';
+  });
+}
+
+// Rebuilds a loan group from saved rows. Clearing first matters: appending
+// would stack the loaded loans on top of whatever the form already showed
+// and silently double the client's debt.
+function pjSetLoans(kind, list) {
+  const wrap = pjEl('pj-loans-' + kind);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const rows = Array.isArray(list) ? list : [];
+  if (!rows.length) { if (kind === 'st') pjAddLoanRow('st'); return; }
+  rows.forEach(l => {
+    pjAddLoanRow(kind);
+    const row = wrap.lastElementChild;
+    const put = (f, v) => { const el = row.querySelector(`[data-f="${f}"]`); if (el && v) el.value = v; };
+    put('amount', l.amount); put('rate', l.ratePct); put('years', l.years);
+  });
+}
 
 function pjSelectClient(c) { pjScope.select(c); }
 
@@ -118,7 +359,13 @@ async function pjHandleFile(input) {
     const { model, issues } = ProjectionEngine.parseStatement(wb, XLSX);
     pjModel = model;
     pjParseIssues = issues;
-    pjResult = null; pjIssues = []; pjSavedId = null;
+    pjResult = null; pjIssues = [];
+    // A freshly uploaded statement is a NEW task, even for a client who has
+    // saved projections: keeping the update link here would let an upload
+    // for a different year silently overwrite an existing record. Switching
+    // to Updation and loading that record is the explicit way to revise it.
+    pjSetTaskMode('new');
+    pjRenderSavedList();
 
     const errors = issues.filter(i => i.level === 'error');
     pjRenderDetectSummary();
@@ -130,8 +377,12 @@ async function pjHandleFile(input) {
     if (!pjEl('pj-company').value) pjEl('pj-company').value = model.company.name;
     if (model.company.bsYear) pjEl('pj-base-fy').value = `${model.company.bsYear - 1}-${String(model.company.bsYear).slice(2)}`;
     pjRenderAdditionsRows();
+    // Seed the editable capital box from the workbook, and remember the
+    // parsed figure so clearing the box can return to it.
+    pjParsedShareCapital = model.shareCapital || 0;
+    pjEl('pj-share-capital').value = Math.round(pjParsedShareCapital) || '';
     pjStatus(`Statement detected — ${issues.length ? issues.length + ' warning(s), see summary.' : 'all figures extracted cleanly.'} Continue to Assumptions.`, 'success');
-    AuditLog.record('projection_statement_parsed', { module: 'projection', client_name: model.company.name, status: 'success' });
+    AuditLog.record('projection_statement_parsed', { module: 'projection', clientName: model.company.name, status: 'success' });
     pjShowSection('assumptions');
   } catch (e) {
     console.error(e);
@@ -240,15 +491,36 @@ function pjCalculate() {
   if (pjParseIssues.some(i => i.level === 'error')) { pjStatus('The uploaded statement is missing required figures — fix the file and re-upload.', 'error'); return; }
   pjRun(false);
   pjShowSection('review');
-  AuditLog.record('projection_generated', { module: 'projection', client_name: pjEl('pj-company').value, status: 'success', detail: { years: pjEl('pj-years').value } });
+  AuditLog.record('projection_generated', { module: 'projection', clientName: pjEl('pj-company').value, status: 'success', detail: { years: pjEl('pj-years').value } });
+}
+
+// Share Capital is the one figure on the statement the firm regularly has to
+// correct by hand — the workbook's own capital line is often stale (a rights
+// issue since the audit, or a figure sitting in the wrong note), and every
+// downstream total keys off it. It's therefore an editable input rather than
+// a read-only parsed figure. Blank means "use what the workbook said", which
+// is why the parsed value is kept rather than the box being seeded once.
+function pjApplyModelEdits() {
+  if (!pjModel) return;
+  const raw = (pjEl('pj-share-capital').value || '').trim();
+  const v = parseFloat(raw);
+  pjModel.shareCapital = (raw === '' || isNaN(v)) ? pjParsedShareCapital : v;
 }
 
 function pjRun(keepOverrides) {
-  const asm = pjCollectAsm(keepOverrides);
+  pjApplyModelEdits();
+  pjRunAsm(pjCollectAsm(keepOverrides));
+}
+
+function pjRunAsm(asm) {
   pjResult = ProjectionEngine.project(pjModel, asm);
   pjResult.asm = asm;
   pjIssues = ProjectionEngine.validate(pjModel, pjResult);
-  pjSavedId = null;
+  // Re-solving used to unconditionally drop pjSavedId, so every edit turned
+  // the next Save into a brand-new row. That is right for a New Task and
+  // wrong for an Updation — revising the figures is the entire purpose of an
+  // updation, and it must still write back to the record it was loaded from.
+  if (pjTaskMode !== 'update') pjSavedId = null;
   pjRenderReview();
 }
 
@@ -275,7 +547,12 @@ function pjRenderReview() {
   pjEl('pj-print-btn').disabled = false;
   pjEl('pj-excel-btn').disabled = false;
   pjEl('pj-pdf-btn').disabled = false;
-  pjEl('pj-save-btn').disabled = hasErrors;
+  const saveBtn = pjEl('pj-save-btn');
+  saveBtn.disabled = hasErrors;
+  // The button says which of the two it will do, so an updation can never be
+  // mistaken for a save that quietly creates a second record.
+  saveBtn.textContent = (pjTaskMode === 'update' && pjSavedId)
+    ? `Update Saved Projection #${pjSavedId}` : 'Save to Database';
 }
 
 function pjRenderValidation() {
@@ -539,29 +816,60 @@ function pjShowSection(name) {
 async function pjSave() {
   if (!pjResult || !pjModel) return;
   if (pjIssues.some(i => i.level === 'error')) { pjStatus('Fix the validation errors before saving.', 'error'); return; }
+  // Who did the work is the point of the New Task / Updation split — a saved
+  // record with no name attached can't answer "who ran this projection?",
+  // which is exactly the question it exists to answer.
+  const staff = pjStaffName();
+  if (!staff) { pjStatus('Choose the staff member performing this task before saving (Step 2 → Task).', 'error'); return; }
+
   const company = pjEl('pj-company').value || pjModel.company.name;
+  const updating = pjTaskMode === 'update' && pjSavedId;
   try {
-    pjStatus('Saving projection…', 'searching');
+    pjStatus(updating ? 'Updating saved projection…' : 'Saving projection…', 'searching');
     const row = {
       client_id: pjSelectedClient ? pjSelectedClient.id : null,
       company_name: company,
       pan: pjEl('pj-pan').value || null,
       fiscal_year_base: pjFyLabel(0),
       years: pjResult.years.length,
-      inputs: { parsedModel: pjModel, assumptions: pjResult.asm },
+      // `ui` carries the two Step-1/2 choices that are read straight from the
+      // DOM at export time rather than living in the assumptions object, so
+      // reloading this record restores the same report, not a default one.
+      inputs: {
+        parsedModel: pjModel,
+        assumptions: pjResult.asm,
+        ui: { statementType: pjEl('pj-statement-type').value, baseFy: pjEl('pj-base-fy').value },
+      },
       computed: { years: pjResult.years, ird: pjResult.ird },
-      created_by: (window.currentUser && window.currentUser.email) || null,
+      performed_by: staff,
     };
     let resp;
-    if (pjSavedId) {
-      resp = await window.sb.from('projection_reports').update(row).eq('id', pjSavedId).select('id').single();
+    if (updating) {
+      // created_by is deliberately NOT in the payload on an update — it is
+      // who first created the record, and an updation must not rewrite it.
+      resp = await window.sb.from('projection_reports').update(row).eq('id', pjSavedId).select('*').single();
     } else {
-      resp = await window.sb.from('projection_reports').insert(row).select('id').single();
+      row.created_by = (window.currentUser && window.currentUser.email) || null;
+      resp = await window.sb.from('projection_reports').insert(row).select('*').single();
     }
     if (resp.error) throw resp.error;
     pjSavedId = resp.data.id;
-    pjStatus(`Projection saved (record #${pjSavedId}).`, 'success');
-    AuditLog.record('projection_saved', { module: 'projection', client_name: company, status: 'success', record_ref: pjSavedId, detail: { years: pjResult.years.length } });
+    // A saved record is by definition updatable from here on, so the next
+    // Save revises this row instead of creating a second one.
+    pjLoadedRow = resp.data;
+    pjSetTaskMode('update');
+    // Re-render so the action button stops saying "Save to Database" the
+    // instant the record exists — the next press updates it, and the button
+    // is the only thing on screen that says which.
+    pjRenderReview();
+    await pjLoadSavedForClient();
+    pjStatus(updating
+      ? `Projection #${pjSavedId} updated by ${escHtml(staff)}.`
+      : `Projection saved (record #${pjSavedId}) by ${escHtml(staff)}.`, 'success');
+    AuditLog.record('projection_saved', {
+      module: 'projection', clientName: company, status: 'success', recordRef: pjSavedId,
+      detail: { years: pjResult.years.length, taskMode: updating ? 'update' : 'new', staff },
+    });
   } catch (e) {
     console.error(e);
     pjStatus('Save failed: ' + escHtml(e.message), 'error');

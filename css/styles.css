@@ -1410,17 +1410,6 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 }
 .wd-received-doc.implies{ background: var(--green-bg); border-color: var(--green-border); color: var(--green-dk); font-weight: 600; }
 
-/* ── Number inputs: no spinner arrows ──
-   The native up/down stepper sits on top of the right-hand edge of the box
-   and steals the click target while typing, which is exactly where the
-   caret goes on a right-aligned amount. Every number field in this app is
-   typed, never stepped (quantities, rupee amounts, percentages), so the
-   control is pure interference — removed app-wide rather than per module,
-   since the complaint applies to all of them. Keyboard arrows still step. */
-input[type=number]{ -moz-appearance: textfield; appearance: textfield; }
-input[type=number]::-webkit-outer-spin-button,
-input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
-
 /* ── Work Done — Activity Log (cross-module view over audit_log) ──
    Wide because it carries six columns of real content; capped at 96vw so it
    still fits a laptop screen, and its body scrolls rather than the page. */
@@ -1441,6 +1430,33 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
   gap: 10px; margin-bottom: 12px;
 }
 .wd-activity-hint{ font-size: 12px; color: var(--text-faint); margin: 0 0 14px; }
+
+/* ── Projection Report — Task card (New Task / Updation + staff) ──
+   UI-only tracking: none of this reaches the exported report. */
+.pj-task-note{
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 0;
+  font-size: 12.5px; color: var(--text-muted);
+}
+.pj-task-chip{
+  align-self: flex-start; font-size: 12px; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--green-bg); border: 1px solid var(--green-border); color: var(--green-dk);
+}
+.pj-task-sub{ font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+.pj-saved-head{
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin: 16px 0 8px;
+}
+.pj-saved-empty{ font-size: 12.5px; color: var(--text-faint); margin-top: 14px; }
+.pj-saved-row{
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  margin-bottom: 8px; background: var(--white);
+}
+.pj-saved-row.open{ border-color: var(--accent-blue); background: var(--bg-page-alt); }
+.pj-saved-main{ min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pj-saved-title{ font-size: 13.5px; color: var(--text-main); }
+.pj-saved-meta{ font-size: 12px; color: var(--text-faint); }
 
 /* ── Number inputs: no spinner arrows ──
    The native up/down stepper sits on top of the right-hand edge of the box
