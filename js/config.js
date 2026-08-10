@@ -426,6 +426,23 @@ window.MODULE_LABELS = {
   workDone: 'Work Done',
 };
 
+// Modules whose Activity Log entries are restricted to events that actually
+// WROTE TO THE DATABASE (user decision, 2026-08-10). Generating, printing or
+// downloading a depreciation schedule or an audit report is a step on the way
+// to the work, not the work — and both modules emit one event per export, so
+// they dominated the log with attempts rather than results.
+//
+// Listing a module here means "only these event types count for it". A module
+// that is ABSENT is unrestricted, so the default for anything new is still to
+// show everything.
+//
+// Deletes are kept deliberately: a delete is a database write, and hiding it
+// would leave the log asserting a schedule exists after it was removed.
+window.ACTIVITY_SAVED_ONLY = {
+  depreciation: ['depreciation_saved', 'depreciation_deleted'],
+  report: ['audit_report_saved'],
+};
+
 // event_type → what a person would call it. Grouped by the module that
 // emits it; see the AuditLog.record() calls across js/.
 window.ACTIVITY_EVENT_LABELS = {

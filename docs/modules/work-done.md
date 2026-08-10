@@ -220,6 +220,60 @@ the day it ships without touching this code.
 - Print / PDF / Excel go through `ReportExport` over the **filtered** rows, so
   what's exported is what's on screen.
 
+### Repeats are merged into one entry (2026-08-10)
+
+Re-running a projection eight times while getting the figures right is **one
+piece of work, not eight**, and logging it eight times buried the days when
+something was actually finished. `wdActivityCollapse()` keys on
+**(client, module, event type)** — the same job for a *different* client is
+separate work — and keeps only the **latest** run.
+
+The window (`WD_ACTIVITY_MERGE_HOURS`, 3h) is measured **gap-to-gap, not from
+the newest event**: a working session with two-hour pauses is one entry
+however long it runs, which is the case the firm actually hit. An
+anchor-based window would instead chop that session into an arbitrary entry
+every three hours.
+
+**Nothing is silently dropped.** The kept row carries `×N` (with the run's
+start and end in its tooltip), the count line reports how many repeats were
+merged, and the export gains a **Times** column plus a subtitle stating the
+rule — a printed copy must not read as a complete event list when it is a
+merged one.
+
+Measured against the live table: **1,886 raw events in 90 days → 350
+entries.** The largest single merge is 713 `spb_correction` events from one
+2-hour Autobooks session; a 5½-hour run of 26 `projection_generated` events
+becomes one row marked ×26.
+
+**Caveat on historical rows:** events written before the camelCase fix have a
+null client, so they can only be keyed on module + event type — two clients'
+projections in the same afternoon merge into one entry there. Rows written
+from now on carry the client and merge per client, as intended.
+
+### Depreciation and Generate Report show saves only
+
+`window.ACTIVITY_SAVED_ONLY` (`js/config.js`) restricts a module to the events
+that actually **wrote to the database**. Both modules emit an event per export,
+so they filled the log with attempts rather than results:
+
+| Module | Kept | Dropped |
+|---|---|---|
+| Depreciation | `depreciation_saved`, `depreciation_deleted` | `document_generated` (23 live rows), `depreciation_printed` |
+| Generate Report | `audit_report_saved` | `document_generated` (13 live rows) |
+
+Deletes are kept deliberately — a delete *is* a database write, and hiding it
+would leave the log asserting a schedule exists after it was removed.
+
+A module **absent** from the map is unrestricted, so a new module shows
+everything by default rather than silently showing nothing.
+
+> **Generate Report currently shows nothing at all.** `saved_documents` is
+> empty — no audit report has ever been saved to the database, so all 13 of
+> that module's events are generate/download. This is the requested
+> behaviour, not a bug: the module will start appearing once staff use its
+> **Save** button. The empty state says so explicitly rather than reading as
+> "nothing happened".
+
 ### The client column was empty for six modules
 
 `AuditLog.record()` reads `detail.clientName` / `detail.recordRef`, but

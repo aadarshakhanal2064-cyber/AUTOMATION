@@ -1141,7 +1141,14 @@ function wdPrintOne(row) {
 
 const WD_ACTIVITY_DEFAULT_DAYS = 90;
 
+// Repeats of the SAME work on the SAME client inside this gap are one entry.
+// Re-running a projection eight times while getting the figures right is one
+// piece of work, not eight, and logging it eight times buried the days when
+// something was actually finished. See wdActivityCollapse().
+const WD_ACTIVITY_MERGE_HOURS = 3;
+
 let wdActivityRows = [];       // raw audit_log rows for the loaded window
+let wdActivityEntries = [];    // after saved-only filtering + repeat merging
 let wdActivityTable = null;
 let wdActivityLoaded = false;  // false until the first load, so re-open is instant
 let wdActivityFilters = { module: '', staff: '', client: '', from: '', to: '' };
@@ -1160,6 +1167,63 @@ function wdDaysAgoIso(days) {
   d.setDate(d.getDate() - days);
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+// ── What counts as work for this module ──
+// Some modules log an event per export as well as per save. Where the firm
+// has said only the database write counts (window.ACTIVITY_SAVED_ONLY), the
+// rest is dropped from the log. A module not listed there is unrestricted,
+// so a newly added module shows everything by default rather than silently
+// showing nothing.
+function wdActivityIsPersisted(row) {
+  const allowed = (window.ACTIVITY_SAVED_ONLY || {})[row.module];
+  return !allowed || allowed.includes(row.event_type);
+}
+
+// ── Merge repeats of the same work on the same client ──
+// Keyed on (client, module, event type): the same job done again for the same
+// client is a repeat; the same job for a DIFFERENT client is separate work.
+//
+// The window is measured GAP-TO-GAP, not from the newest event: a continuous
+// session with 2-hour pauses is one piece of work however long it runs, which
+// is the case the firm actually hit (testing a projection, adjusting it, re-
+// running it). An anchor-based window would instead break that session into
+// an arbitrary entry every 3 hours.
+//
+// The NEWEST event of a run is the one kept — "if I altered or re-made the
+// work, only the latest counts" — and the ones folded into it are counted on
+// the row (×N) rather than silently discarded, so the log never claims work
+// happened once when it happened eight times.
+function wdActivityCollapse(rows) {
+  const windowMs = WD_ACTIVITY_MERGE_HOURS * 3600000;
+  // Sort explicitly rather than trusting the query's order — this is the one
+  // place where a wrong order would silently keep the wrong event.
+  const sorted = rows.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const keptOf = new Map();     // key → the entry the run is folding into
+  const lastTsOf = new Map();   // key → timestamp of the most recent event absorbed
+  const out = [];
+
+  sorted.forEach(r => {
+    const key = [r.client_name || '~', r.module || '~', r.event_type || '~'].join('|');
+    const ts = new Date(r.created_at).getTime();
+    const prevTs = lastTsOf.get(key);
+    if (prevTs != null && (prevTs - ts) <= windowMs) {
+      const kept = keptOf.get(key);
+      kept._repeats += 1;
+      kept._runStart = r.created_at;      // the run's oldest event so far
+      lastTsOf.set(key, ts);
+      return;
+    }
+    const entry = { ...r, _repeats: 1, _runStart: r.created_at };
+    keptOf.set(key, entry);
+    lastTsOf.set(key, ts);
+    out.push(entry);
+  });
+  return out;
+}
+
+function wdActivityBuildEntries() {
+  wdActivityEntries = wdActivityCollapse(wdActivityRows.filter(wdActivityIsPersisted));
 }
 
 function wdActivityOpen() {
@@ -1184,6 +1248,10 @@ async function wdActivityLoad() {
       untilIso: to ? new Date(to + 'T23:59:59').toISOString() : null,
     });
     wdActivityLoaded = true;
+    // Saved-only filtering and repeat-merging happen ONCE per load, before
+    // any UI filter: the ×N count then means "how many times this was really
+    // done", not "how many survived the filter that happens to be applied".
+    wdActivityBuildEntries();
     wdActivityPopulateFilters();
     wdEl('wd-activity-status').innerHTML = '';
     wdActivityRenderTable();
@@ -1209,9 +1277,11 @@ function wdActivityPopulateFilters() {
       sorted.map(v => `<option value="${escHtml(v)}">${escHtml(labeller ? labeller(v) : v)}</option>`).join('');
     if (sorted.includes(cur)) sel.value = cur;
   };
-  fill('wd-activity-module', wdActivityRows.map(r => r.module), 'All modules', wdModuleLabel);
-  fill('wd-activity-staff', wdActivityRows.map(r => r.user_email), 'All staff');
-  fill('wd-activity-client', wdActivityRows.map(r => r.client_name), 'All clients');
+  // Built from the ENTRIES, not the raw rows: an option that can only match
+  // events the log now hides would filter to nothing and look broken.
+  fill('wd-activity-module', wdActivityEntries.map(r => r.module), 'All modules', wdModuleLabel);
+  fill('wd-activity-staff', wdActivityEntries.map(r => r.user_email), 'All staff');
+  fill('wd-activity-client', wdActivityEntries.map(r => r.client_name), 'All clients');
 }
 
 function wdActivityReadFilters() {
@@ -1228,7 +1298,7 @@ function wdActivityReadFilters() {
 // the app can never disagree (the same idiom as fmFilteredRows /
 // wdCurrentFilteredRows).
 function wdActivityFilteredRows() {
-  let rows = wdActivityRows.filter(r => {
+  let rows = wdActivityEntries.filter(r => {
     if (wdActivityFilters.module && r.module !== wdActivityFilters.module) return false;
     if (wdActivityFilters.staff && r.user_email !== wdActivityFilters.staff) return false;
     if (wdActivityFilters.client && r.client_name !== wdActivityFilters.client) return false;
@@ -1267,13 +1337,21 @@ function wdActivityClearFilters() {
   wdActivityApplyFilters();
 }
 
+// Says how much was folded away, so a collapsed log never looks like a log
+// that lost data.
 function wdActivityUpdateCount(shown) {
   const el = wdEl('wd-activity-count');
   if (!el) return;
-  const total = wdActivityRows.length;
-  el.textContent = total
-    ? `${shown} of ${total} event${total === 1 ? '' : 's'}${shown === total ? '' : ' (filtered)'}`
-    : '';
+  const total = wdActivityEntries.length;
+  if (!total) { el.textContent = ''; return; }
+  const merged = wdActivityEntries.reduce((n, r) => n + (r._repeats - 1), 0);
+  const hidden = wdActivityRows.length - wdActivityRows.filter(wdActivityIsPersisted).length;
+  const notes = [];
+  if (merged) notes.push(`${merged} repeat${merged === 1 ? '' : 's'} merged`);
+  if (hidden) notes.push(`${hidden} non-saved hidden`);
+  el.textContent = `${shown} of ${total} entr${total === 1 ? 'y' : 'ies'}` +
+    (shown === total ? '' : ' (filtered)') +
+    (notes.length ? ` · ${notes.join(', ')}` : '');
 }
 
 function wdActivityWhen(iso) {
@@ -1285,8 +1363,14 @@ function wdActivityWhen(iso) {
 function wdActivityRenderTable() {
   const wrap = wdEl('wd-activity-wrap');
   if (wdActivityTable) { wdActivityTable.destroy(); wdActivityTable = null; }
-  if (!wdActivityRows.length) {
-    wrap.innerHTML = `<div class="log-empty">No activity recorded in this period. Widen the date range above to look further back.</div>`;
+  if (!wdActivityEntries.length) {
+    // "Nothing happened" and "everything that happened was a non-saved step"
+    // are different answers, and the second one is the one that looks like a
+    // bug if it isn't said out loud.
+    const suppressed = wdActivityRows.length;
+    wrap.innerHTML = suppressed
+      ? `<div class="log-empty">No saved work in this period. ${suppressed} event${suppressed === 1 ? '' : 's'} were recorded, but they were all generate/print/download steps in modules that only log database saves.</div>`
+      : `<div class="log-empty">No activity recorded in this period. Widen the date range above to look further back.</div>`;
     wdActivityUpdateCount(0);
     return;
   }
@@ -1301,10 +1385,15 @@ function wdActivityRenderTable() {
       { title: 'When', field: 'created_at', width: 150, formatter: c => escHtml(wdActivityWhen(c.getValue())) },
       { title: 'Client', field: 'client_name', minWidth: 170, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Module', field: 'module', width: 165, formatter: c => escHtml(wdModuleLabel(c.getValue())) },
-      { title: 'Work Done', field: 'event_type', minWidth: 190, formatter: c => {
+      { title: 'Work Done', field: 'event_type', minWidth: 210, formatter: c => {
           const r = c.getRow().getData();
           const failed = r.status === 'error';
-          return `<span class="log-badge ${failed ? 'badge-error' : 'badge-sent'}" title="${escHtml(r.event_type || '')}">${failed ? '❌' : '✅'} ${escHtml(wdEventLabel(r.event_type))}</span>`;
+          // The ×N chip is what keeps the merge honest: the entry shows the
+          // latest run, and says how many runs it stands for.
+          const repeat = r._repeats > 1
+            ? `<span class="wd-activity-repeat" title="Done ${r._repeats} times between ${escHtml(wdActivityWhen(r._runStart))} and ${escHtml(wdActivityWhen(r.created_at))} — shown as the latest">×${r._repeats}</span>`
+            : '';
+          return `<span class="log-badge ${failed ? 'badge-error' : 'badge-sent'}" title="${escHtml(r.event_type || '')}">${failed ? '❌' : '✅'} ${escHtml(wdEventLabel(r.event_type))}</span>${repeat}`;
         } },
       { title: 'Staff', field: 'user_email', width: 130, formatter: c => {
           const r = c.getRow().getData();
@@ -1318,11 +1407,14 @@ function wdActivityRenderTable() {
 
 // ── Activity Log export (same ReportExport model → Print / PDF / Excel) ──
 function wdActivityBuildModel(rows) {
-  const subtitles = ['Every recorded action across all modules, newest first'];
+  const subtitles = ['Work recorded across all modules, newest first'];
   const range = wdActivityFilters.from || wdActivityFilters.to
     ? `${wdActivityFilters.from || 'the beginning'} to ${wdActivityFilters.to || 'today'}`
     : `last ${WD_ACTIVITY_DEFAULT_DAYS} days`;
   subtitles.push(`Period: ${range}`);
+  // The exported sheet has to carry the same caveat as the screen, or a
+  // printed copy reads as a complete event list when it is a merged one.
+  subtitles.push(`Repeats of the same work on the same client within ${WD_ACTIVITY_MERGE_HOURS} hours are shown once, as the latest (Times column)`);
   if (wdActivityFilters.client) subtitles.push(`Client: ${wdActivityFilters.client}`);
   if (wdActivityFilters.module) subtitles.push(`Module: ${wdModuleLabel(wdActivityFilters.module)}`);
   if (wdActivityFilters.staff) subtitles.push(`Staff: ${wdActivityFilters.staff}`);
@@ -1333,12 +1425,12 @@ function wdActivityBuildModel(rows) {
     landscape: true,
     columns: [
       { label: 'When', w: 1.3 }, { label: 'Client', w: 2.0 }, { label: 'Module', w: 1.4 },
-      { label: 'Work Done', w: 1.8 }, { label: 'Staff', w: 1.6 },
+      { label: 'Work Done', w: 1.8 }, { label: 'Times', w: 0.5, align: 'r' }, { label: 'Staff', w: 1.6 },
       { label: 'Status', w: 0.7 }, { label: 'Ref', w: 0.6 },
     ],
     rows: rows.map(r => ({ cells: [
       wdActivityWhen(r.created_at), r.client_name || '—', wdModuleLabel(r.module),
-      wdEventLabel(r.event_type), r.user_email || '—',
+      wdEventLabel(r.event_type), String(r._repeats || 1), r.user_email || '—',
       r.status === 'error' ? 'Failed' : 'Success', r.record_ref == null ? '—' : String(r.record_ref),
     ] })),
     _filename: 'Activity Log' + (wdActivityFilters.client ? ' - ' + wdActivityFilters.client : ''),
