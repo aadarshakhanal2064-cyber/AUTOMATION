@@ -602,7 +602,7 @@ async function depSave() {
     const { error } = await window.sb.from('depreciation_schedules')
       .upsert(payload, { onConflict: 'client_id,scheme,fiscal_year' });
     if (error) throw error;
-    AuditLog.record('depreciation_saved', { module: 'depreciation', client_name: payload.company_name, detail: { scheme: depScheme, fiscal_year: fy } });
+    AuditLog.record('depreciation_saved', { module: 'depreciation', clientName: payload.company_name, detail: { scheme: depScheme, fiscal_year: fy } });
     depCarryBanner(`💾 Saved for F.Y. ${escHtml(fy)}. Next year's sheet will carry these closing balances into Opening.`, 'saved');
     depStatus('✅ Schedule saved to the database.', 'success');
   } catch (err) {
@@ -621,7 +621,7 @@ async function depDelete() {
     const { error } = await window.sb.from('depreciation_schedules')
       .delete().eq('client_id', depClientId).eq('scheme', depScheme).eq('fiscal_year', fy);
     if (error) throw error;
-    AuditLog.record('depreciation_deleted', { module: 'depreciation', client_name: document.getElementById('dep-company').value.trim() || null, detail: { scheme: depScheme, fiscal_year: fy } });
+    AuditLog.record('depreciation_deleted', { module: 'depreciation', clientName: document.getElementById('dep-company').value.trim() || null, detail: { scheme: depScheme, fiscal_year: fy } });
     depCarryBanner(`🗑️ Saved schedule for F.Y. ${escHtml(fy)} deleted.`, '');
     depStatus('✅ Saved schedule deleted.', 'success');
   } catch (err) {
@@ -852,7 +852,7 @@ function depOpenPrintDoc(title, bodyHtml) {
     return;
   }
   const { company } = depIdentity();
-  AuditLog.record('depreciation_printed', { module: 'depreciation', client_name: company || null, status: 'success', detail: { title } });
+  AuditLog.record('depreciation_printed', { module: 'depreciation', clientName: company || null, status: 'success', detail: { title } });
   depStatus('✅ Print view opened in a new tab — choose "Save as PDF" in the print dialog for a PDF.', 'success');
 }
 

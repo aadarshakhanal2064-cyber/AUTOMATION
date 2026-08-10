@@ -498,7 +498,7 @@ async function depSlmSave() {
     const { error } = await window.sb.from('depreciation_schedules')
       .upsert(payload, { onConflict: 'client_id,scheme,fiscal_year' });
     if (error) throw error;
-    AuditLog.record('depreciation_saved', { module: 'depreciation', client_name: payload.company_name, detail: { scheme: 'slm', fiscal_year: fy } });
+    AuditLog.record('depreciation_saved', { module: 'depreciation', clientName: payload.company_name, detail: { scheme: 'slm', fiscal_year: fy } });
     depCarryBanner(`💾 Saved (SLM) for F.Y. ${escHtml(fy)}. Next year's sheet will carry these closing balances forward.`, 'saved');
     depStatus('✅ SLM schedule saved to the database.', 'success');
   } catch (err) {
@@ -516,7 +516,7 @@ async function depSlmDelete() {
     const { error } = await window.sb.from('depreciation_schedules')
       .delete().eq('client_id', depClientId).eq('scheme', 'slm').eq('fiscal_year', fy);
     if (error) throw error;
-    AuditLog.record('depreciation_deleted', { module: 'depreciation', client_name: document.getElementById('dep-company').value.trim() || null, detail: { scheme: 'slm', fiscal_year: fy } });
+    AuditLog.record('depreciation_deleted', { module: 'depreciation', clientName: document.getElementById('dep-company').value.trim() || null, detail: { scheme: 'slm', fiscal_year: fy } });
     depCarryBanner(`🗑️ Saved SLM schedule for F.Y. ${escHtml(fy)} deleted.`, '');
     depStatus('✅ Saved schedule deleted.', 'success');
   } catch (err) {

@@ -1014,7 +1014,7 @@ function pjPrintReport() {
     if (!win) { pjStatus('Pop-up blocked — allow pop-ups for this site, then click Print again.', 'error'); return; }
     pjStatus('Print view opened in a new tab.', 'success');
     AuditLog.record('projection_printed', { module: 'projection', status: 'success',
-      client_name: pjEl('pj-company').value || pjModel.company.name });
+      clientName: pjEl('pj-company').value || pjModel.company.name });
   } catch (e) {
     console.error(e);
     pjStatus('Print failed: ' + escHtml(e.message), 'error');

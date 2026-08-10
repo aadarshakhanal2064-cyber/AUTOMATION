@@ -524,7 +524,7 @@ async function ntaSaveToDb(){
       doc_html: $nta('nta-previewRoot').innerHTML,
     });
     ntaStatus(`Notes saved (record #${ntaSavedId}). Reopen them any time from <strong>Saved notes</strong>.`, 'success');
-    AuditLog.record('notes_to_accounts_saved', { module: 'notesToAccounts', client_name: clientName, status: 'success', record_ref: ntaSavedId });
+    AuditLog.record('notes_to_accounts_saved', { module: 'notesToAccounts', clientName, status: 'success', recordRef: ntaSavedId });
   } catch (e){
     console.error(e);
     ntaStatus('Save failed: ' + escHtml(e.message), 'error');

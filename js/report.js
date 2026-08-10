@@ -606,7 +606,7 @@ async function repSaveToDb(){
       doc_html: $rep('rep-previewRoot').innerHTML,
     });
     repStatus(`Report saved (record #${repSavedId}). Reopen it any time from <strong>Saved reports</strong>.`, 'success');
-    AuditLog.record('audit_report_saved', { module: 'report', client_name: clientName, status: 'success', record_ref: repSavedId, detail: { reportType: $rep('rep-reportType').value } });
+    AuditLog.record('audit_report_saved', { module: 'report', clientName, status: 'success', recordRef: repSavedId, detail: { reportType: $rep('rep-reportType').value } });
   } catch (e){
     console.error(e);
     repStatus('Save failed: ' + escHtml(e.message), 'error');

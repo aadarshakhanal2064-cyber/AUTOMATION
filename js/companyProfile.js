@@ -132,7 +132,7 @@ async function cpSave() {
   Object.assign(c, payload);
 
   AuditLog.record('company_profile_saved', {
-    module: 'companyProfile', client_name: c.name, record_ref: c.id,
+    module: 'companyProfile', clientName: c.name, recordRef: c.id,
     detail: { fields: Object.keys(payload).filter(k => payload[k]) },
   });
 
