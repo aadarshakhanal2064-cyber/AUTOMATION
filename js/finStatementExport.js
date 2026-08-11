@@ -20,9 +20,10 @@
 // fsxBuildReport() is pure (no DOM, no vendor calls) so it can be verified in
 // Node against the real sample workbooks.
 
-// Accounting format: negatives bracketed, zero as an en-dash.
-const FSX_NUMFMT = '#,##0.00;(#,##0.00);"–"';
-const FSX_NUMFMT0 = '#,##0;(#,##0);"–"';
+// The firm's own accounting format (lifted from the T3 template): negatives
+// carry a leading minus, never parentheses; zero renders as an en-dash.
+const FSX_NUMFMT = '_ * #,##0.00_ ;_ * -#,##0.00_ ;_ * "-"??_ ;_ @_ ';
+const FSX_NUMFMT0 = '_ * #,##0_ ;_ * -#,##0_ ;_ * "-"??_ ;_ @_ ';
 
 // Column geometry per sheet, taken from the template. `cy`/`py` are the current
 // and comparative value columns; `cols` is used by the matrix sheets (SOCE,
@@ -565,8 +566,71 @@ function fsxPdfSafe(s) {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  EXCEL — the template's geometry, with live cross-sheet formulas
+//  EXCEL — the template's geometry AND its literal styling, with live
+//  cross-sheet formulas. Verified cell-by-cell against the firm's own
+//  T3 Pvt.Ltd 2081.082 Provisional.xlsx (assets/templates/): Book Antiqua
+//  throughout, zero fills, borders on value cells only (never the label or
+//  note cell, never on a plain item row), medium-rule header band, thin+
+//  double subtotal rule, double-only grand-total rule.
 // ════════════════════════════════════════════════════════════════
+
+const FSX_FONT = 'Book Antiqua';
+// Schedule sheets (3.1 PPE, Sch-BS, Sch-PL) are the note workings: no
+// company/address block, matching the template exactly (`Sch-BS!B2` is
+// literally "3.2 Investment" — nothing above it).
+const FSX_SCHEDULE_KEYS = { PPE: true, SchBS: true, SchPL: true };
+
+// Where each sheet's title block ends and its data rows begin. Pure and
+// data-driven (not sheet-key special-cased) so pass 1 and pass 2 agree:
+// the header band sits one row later than usual only when a column is
+// actually marked `restated` — exactly the SFP/SOI vs SOCE/SOCF split
+// observed in the template, which turns out to be driven by that flag
+// rather than by which sheet it is.
+function fsxLayout(sh) {
+  if (sh.noHeaderBand) return { bandRow: null, firstDataRow: 2 };
+  if (FSX_SCHEDULE_KEYS[sh.key]) {
+    // row1 (optional) heading, then title+"Figures in NPR" together, then a
+    // short blank spacer, then the header band.
+    const titleRow = sh.heading ? 2 : 1;
+    const bandRow = titleRow + 2;
+    return { bandRow, firstDataRow: bandRow + 1, titleRow, hasCompany: false };
+  }
+  // Statement sheets: rows 2-6 company/address/title/period/"Figures in
+  // NPR", row 7 a short blank spacer, row 8 the "Restated" tag ONLY when a
+  // column needs it (pushing the band to row 9), else the band is row 8.
+  const hasRestated = (sh.cols || []).some(c => c.restated);
+  const bandRow = hasRestated ? 9 : 8;
+  return { bandRow, firstDataRow: bandRow + 1, hasCompany: true };
+}
+
+// Label ~42 wide, the note column ~16, each value column ~22-23, a single
+// narrow "margin" column at A, and a narrow spacer between every other pair
+// of columns — the template's own proportions (§8 of the formatting spec),
+// generalized across sheets whose value-column letters differ.
+function fsxSetColumnWidths(ws, sh) {
+  const geom = sh.geom;
+  const labelCol = fsxColNum(geom.label);
+  const noteCol = geom.note ? fsxColNum(geom.note) : null;
+  const nCols = (sh.cols || []).length || 1;
+  const valueCols = new Set();
+  for (let i = 0; i < nCols; i++) {
+    const letter = fsxSheetCol(geom, i, !!sh.matrix);
+    if (letter) valueCols.add(fsxColNum(letter));
+  }
+  let lastCol = labelCol;
+  for (const c of valueCols) lastCol = Math.max(lastCol, c);
+  if (noteCol) lastCol = Math.max(lastCol, noteCol);
+  for (let c = 1; c <= lastCol; c++) {
+    let w;
+    if (c === labelCol) w = sh.key === 'COI' ? 52 : 42;
+    else if (c === noteCol) w = 16;
+    else if (valueCols.has(c)) w = sh.matrix ? 16 : 22.5;
+    else if (c === 1 && labelCol !== 1) w = 9;
+    else w = 3;
+    ws.getColumn(c).width = w;
+  }
+  return lastCol;
+}
 
 // Pass 1 fixes every sheet's row numbers before any formula is written, so a
 // reference can never point at the wrong row. Pass 2 writes the cells and
@@ -576,18 +640,19 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
   const wb = new ExcelJSNs.Workbook();
   wb.creator = 'Shailesh & Associates';
 
-  const NAVY = 'FF0B1F3D', TOT_FILL = 'FFEBEFF6', GRAND_FILL = 'FFD8E2ED';
-  const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
-  const thin = { style: 'thin', color: { argb: 'FFC7CEDB' } };
-
-  const TITLE_ROWS = 4;           // company, address, title, as-at
-  const first = TITLE_ROWS + 4;   // + blank, restated, header band, blank
+  const thin = { style: 'thin' };
+  const double = { style: 'double' };
+  const medium = { style: 'medium' };
+  const font = (opts) => Object.assign({ name: FSX_FONT }, opts || {});
 
   // ── pass 1: row registry ──
   const reg = {};
+  const layouts = {};
   for (const sh of report.sheets) {
+    const layout = fsxLayout(sh);
+    layouts[sh.key] = layout;
     const rows = {};
-    let rn = sh.noHeaderBand ? 2 : first;
+    let rn = layout.firstDataRow;
     for (const r of sh.rows) {
       if (r.k) rows[r.k] = rn;
       rn++;
@@ -610,85 +675,102 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
 
   for (const sh of report.sheets) {
     const ws = wb.addWorksheet(sh.name, { views: [{ showGridLines: false }] });
+    ws.pageSetup = {
+      orientation: 'portrait',
+      margins: { left: 0.71, right: 0.71, top: 0.58, bottom: 0.58, header: 0.31, footer: 0.31 },
+    };
     const geom = sh.geom;
     const nCols = (sh.cols || []).length || 1;
     const labelCol = fsxColNum(geom.label);
-    const lastCol = fsxColNum(fsxSheetCol(geom, nCols - 1, !!sh.matrix) || geom.label);
-
-    ws.getColumn(labelCol).width = sh.key === 'COI' ? 52 : 48;
-    for (let i = 0; i < nCols; i++) {
-      const c = fsxColNum(fsxSheetCol(geom, i, !!sh.matrix));
-      if (c) ws.getColumn(c).width = 18;
-    }
-    if (geom.note) ws.getColumn(fsxColNum(geom.note)).width = 8;
+    const layout = layouts[sh.key];
+    const lastCol = Math.max(fsxSetColumnWidths(ws, sh), labelCol);
 
     // ── title block ──
     if (!sh.noHeaderBand) {
-      const put = (rowNo, text, opts) => {
-        const cell = ws.getCell(rowNo, labelCol);
+      const put = (rowNo, col, text, opts, align) => {
+        const cell = ws.getCell(rowNo, col);
         cell.value = text || '';
-        cell.font = Object.assign({ name: 'Calibri', size: 11 }, opts || {});
-        cell.alignment = { horizontal: 'center' };
-        if (lastCol > labelCol) ws.mergeCells(rowNo, labelCol, rowNo, lastCol);
+        cell.font = font(opts);
+        cell.alignment = Object.assign({ horizontal: 'center', wrapText: true }, align || {});
       };
-      put(1, (report.meta.company || {}).name, { bold: true, size: 13 });
-      put(2, (report.meta.company || {}).address, { size: 10 });
-      put(3, sh.heading ? sh.heading + ' — ' + (sh.title || '') : (sh.title || ''), { bold: true, size: 12 });
-      put(4, sh.subtitle || '', { italic: true, size: 10 });
+      const merge = (rowNo, toCol) => { if ((toCol || lastCol) > labelCol) ws.mergeCells(rowNo, labelCol, rowNo, toCol || lastCol); };
 
-      // ── header band ──
-      const bandRow = first - 1;
-      const restated = (sh.cols || []).some(c => c.restated);
-      if (restated) {
-        const rc = ws.getCell(bandRow - 1, fsxColNum(fsxSheetCol(geom, 1, !!sh.matrix)));
-        rc.value = 'Restated';
-        rc.font = { italic: true, size: 9 };
-        rc.alignment = { horizontal: 'right' };
+      if (layout.hasCompany) {
+        put(2, labelCol, (report.meta.company || {}).name, { bold: true, size: 18 }); merge(2);
+        put(3, labelCol, (report.meta.company || {}).address, { bold: true, size: 18 }); merge(3);
+        put(4, labelCol, sh.title || '', { bold: true, size: 16 }); merge(4);
+        put(5, labelCol, sh.subtitle || '', { bold: true, size: 14 }); merge(5);
+        put(6, labelCol, 'Figures in NPR', { bold: true, size: 11 }, { horizontal: 'right' }); merge(6);
+        ws.getRow(7).height = 5;
+        if (layout.bandRow === 9) {
+          const restCell = ws.getCell(8, fsxSheetCol(geom, 1, !!sh.matrix) ? fsxColNum(fsxSheetCol(geom, 1, !!sh.matrix)) : lastCol);
+          restCell.value = 'Restated';
+          restCell.font = font({ bold: true, italic: true, size: 11 });
+          restCell.alignment = { horizontal: 'right', vertical: 'center' };
+        }
+      } else {
+        // Schedule sheet: optional heading line, then title + "Figures in
+        // NPR" sharing one row (title left, figures right — the template's
+        // own Sch-BS layout), then a short spacer before the band.
+        if (sh.heading) { put(1, labelCol, sh.heading, { bold: true, size: 16 }, { horizontal: 'left' }); }
+        put(layout.titleRow, labelCol, sh.title || '', { bold: true, size: sh.heading ? 14 : 16 }, { horizontal: 'left' });
+        const figCell = ws.getCell(layout.titleRow, lastCol);
+        figCell.value = 'Figures in NPR';
+        figCell.font = font({ bold: true, size: 11 });
+        figCell.alignment = { horizontal: 'right' };
+        ws.getRow(layout.titleRow + 1).height = 5;
       }
+
+      // ── header band: bold, wrapped, medium bottom rule only, no fill ──
+      const bandRow = layout.bandRow;
       const lc = ws.getCell(bandRow, labelCol);
       lc.value = 'Particulars';
-      lc.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      lc.fill = fill(NAVY);
+      lc.font = font({ bold: true, size: 12 });
+      lc.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+      lc.border = { bottom: medium };
       if (geom.note) {
         const nc = ws.getCell(bandRow, fsxColNum(geom.note));
         nc.value = 'Notes';
-        nc.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        nc.fill = fill(NAVY);
-        nc.alignment = { horizontal: 'center' };
+        nc.font = font({ bold: true, size: 12 });
+        nc.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+        nc.border = { bottom: medium };
       }
       (sh.cols || []).forEach((col, i) => {
         const cn = fsxColNum(fsxSheetCol(geom, i, !!sh.matrix));
         if (!cn) return;
         const cell = ws.getCell(bandRow, cn);
         cell.value = col.h2 ? `${col.h1}\n${col.h2}` : col.h1;
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-        cell.fill = fill(NAVY);
+        cell.font = font({ bold: true, size: 12 });
         cell.alignment = { horizontal: 'right', wrapText: true, vertical: 'bottom' };
+        cell.border = { bottom: medium };
       });
       ws.getRow(bandRow).height = 30;
     }
 
     // ── pass 2: the rows ──
     const rowsMap = reg[sh.key].rows;
-    let rn = sh.noHeaderBand ? 2 : first;
+    let rn = layout.firstDataRow;
     for (const r of sh.rows) {
       const rowNo = rn++;
-      if (r.kind === 'blank') continue;
+      if (r.kind === 'blank') { ws.getRow(rowNo).height = 6; continue; }
 
       const lab = ws.getCell(rowNo, labelCol);
       lab.value = r.label || '';
-      lab.alignment = { indent: r.kind === 'item' ? 1 : 0, wrapText: false };
-      if (r.kind === 'head') lab.font = { bold: true, color: { argb: NAVY } };
-      else if (r.kind === 'sub') lab.font = { bold: true, size: 10 };
-      else if (r.kind === 'tot' || r.kind === 'grand') lab.font = { bold: true };
-      else if (r.kind === 'note') { lab.font = { italic: true, size: 9 }; if (lastCol > labelCol) ws.mergeCells(rowNo, labelCol, rowNo, lastCol); }
-      else if (r.kind === 'kv') lab.font = { size: 10 };
+      lab.alignment = { wrapText: false };
+      if (r.kind === 'head' || r.kind === 'sub') lab.font = font({ bold: true, size: 14 });
+      else if (r.kind === 'tot' || r.kind === 'grand') lab.font = font({ bold: true, size: 14 });
+      else if (r.kind === 'note') {
+        lab.font = font({ bold: true, size: 12 });
+        if (lastCol > labelCol) ws.mergeCells(rowNo, labelCol, rowNo, lastCol);
+      }
+      else if (r.kind === 'kv') lab.font = font({ size: 10 });
+      else lab.font = font({ size: 14 });
 
       if (r.note && geom.note) {
         const nc = ws.getCell(rowNo, fsxColNum(geom.note));
         nc.value = r.note;
         nc.alignment = { horizontal: 'center' };
-        nc.font = { size: 10 };
+        nc.font = font({ size: 14 });
       }
 
       (r.vals || []).forEach((v, i) => {
@@ -701,7 +783,7 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
         // 0 the moment it recalculated, which is not the same claim as "not
         // entered yet".
         if (v === null) { cell.value = null; cell.numFmt = FSX_NUMFMT; return; }
-        if (!fsxIsNum(v)) { cell.value = v == null ? '' : String(v); cell.alignment = { horizontal: 'left' }; return; }
+        if (!fsxIsNum(v)) { cell.value = v == null ? '' : String(v); cell.font = font({ size: 14 }); cell.alignment = { horizontal: 'left' }; return; }
 
         // A row total across a matrix sheet sums its own row rather than
         // fetching anything.
@@ -729,28 +811,24 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
         cell.value = formula ? { formula, result: v } : v;
         cell.numFmt = FSX_NUMFMT;
         cell.alignment = { horizontal: 'right' };
-        if (r.kind === 'tot' || r.kind === 'grand') cell.font = { bold: true };
+        cell.font = font({ bold: r.kind === 'tot' || r.kind === 'grand', size: 14 });
+
+        // Borders live on the value cell only — never the label/note cell,
+        // and never on a plain item row: confirmed cell-by-cell against the
+        // template (an ordinary line carries no border at all; a subtotal's
+        // value cells carry top-thin/bottom-double; a grand total's carry
+        // bottom-double only, since a blank spacer row already separates it).
+        if (r.kind === 'tot') cell.border = { top: thin, bottom: double };
+        else if (r.kind === 'grand') cell.border = { bottom: double };
       });
 
-      // ── banding and rules ──
-      const band = (argb) => { for (let c = labelCol; c <= lastCol; c++) ws.getCell(rowNo, c).fill = fill(argb); };
-      if (r.kind === 'tot') band(TOT_FILL);
-      if (r.kind === 'grand') band(GRAND_FILL);
-      for (let c = labelCol; c <= lastCol; c++) {
-        const cell = ws.getCell(rowNo, c);
-        const b = cell.border || {};
-        if (r.kind === 'item' || r.kind === 'kv') b.bottom = thin;
-        if (r.kind === 'tot' || r.kind === 'grand') b.top = { style: 'thin', color: { argb: 'FF8593A6' } };
-        if (r.kind === 'grand') b.bottom = { style: 'double', color: { argb: NAVY } };
-        cell.border = b;
-      }
       if (r.balancing) {
         const cn = fsxColNum(fsxSheetCol(geom, 0, !!sh.matrix));
         if (cn) ws.getCell(rowNo, cn).note = 'Balancing figure';
       }
     }
 
-    // ── signature block ──
+    // ── signature block (prompt §9: notes 12pt bold, signature/date 13pt regular) ──
     if (sh.sig) {
       const T = report.meta.terms || {};
       let sr = rn + 3;
@@ -760,20 +838,21 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
       sigCols.forEach((c, i) => {
         if (!names[i]) return;
         ws.getCell(sr, c).value = '…………………………';
+        ws.getCell(sr, c).font = font({ size: 13 });
         ws.getCell(sr + 2, c).value = names[i];
-        ws.getCell(sr + 2, c).font = { bold: true, size: 10 };
+        ws.getCell(sr + 2, c).font = font({ size: 13 });
       });
       if (report.meta.auditor && report.meta.auditor.name) {
         ws.getCell(sr + 3, lastCol).value = report.meta.auditor.name;
-        ws.getCell(sr + 3, lastCol).font = { size: 10 };
+        ws.getCell(sr + 3, lastCol).font = font({ size: 13 });
       }
       ws.getCell(sr + 4, labelCol).value = 'Date: ' + (report.meta.dateBs || '');
       ws.getCell(sr + 5, labelCol).value = 'Place: ' + (report.meta.place || 'Chitwan');
-      ws.getCell(sr + 4, labelCol).font = { size: 10 };
-      ws.getCell(sr + 5, labelCol).font = { size: 10 };
+      ws.getCell(sr + 4, labelCol).font = font({ size: 13 });
+      ws.getCell(sr + 5, labelCol).font = font({ size: 13 });
     }
 
-    if (!sh.noHeaderBand) ws.views = [{ state: 'frozen', ySplit: first - 1, showGridLines: false }];
+    if (!sh.noHeaderBand) ws.views = [{ state: 'frozen', ySplit: layout.bandRow, showGridLines: false }];
   }
 
   return wb;
