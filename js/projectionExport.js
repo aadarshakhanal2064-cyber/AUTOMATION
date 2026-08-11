@@ -34,13 +34,14 @@ const PJX_PL_L = {
 const PJX_BS_L = {
   srcLabel: 'Sources of Funds:', capLabel: '1. Share Capital',
   cap: 'a. Registered/Paid up Share Capital', addl: 'b. Director/Partner/Proprietor Additional Capital',
-  reserve: 'c. Reserve & Surplus', lt: '2. Long Term Loan', pwc: '3. Permanent Working Capital',
-  director: '4. Director/Proprietor/Partner Lending', totalSrc: 'Total Sources of Funds',
+  reserve: 'c. Reserve & Surplus', lt: '2. Long Term Loan', pwc: '3. Permanent Working Capital Loan',
+  hp: '4. Hire Purchase (HP) Loan',
+  director: '5. Director/Proprietor/Partner Lending', totalSrc: 'Total Sources of Funds',
   usesLabel: 'Uses of Funds:', faLabel: '1. Fixed Assets', wdv: 'a. Written down Book Value',
   depRow: 'b. Depreciation', faTotal: 'Total Fixed Assets', caLabel: '2. Current Assets',
   cash: 'a. Cash at Hand & Bank', debtors: 'b. Sundry Debtors', stock: 'c. Closing Stock',
   caTotal: 'Total Current Assets', clLabel: '3. Current Liabilities', creditors: 'a. Sundry Creditors',
-  provTax: 'b. Provision for tax', expPay: 'c. Expenses Payable', tds: 'd. Duties and Tax Payable',
+  provTax: 'b. Provision for tax', expPay: 'c. Expenses Payable', tds: 'd. TDS Payable',
   stl: 'e. Short Term Loan /OD/CC', clTotal: 'Total Current Liabilities',
   nca: 'Net Current Assets (2-3)', totalUses: 'Total Uses of Funds',
 };
@@ -202,7 +203,13 @@ function pjxBuildReport() {
   const audAdminLine = i => i === 0 ? m.salary : ((m.otherExpenses[i - 1] || {}).amount ?? null);
   const audAdminTotal = m.salary + m.otherExpenses.reduce((s, e) => s + e.amount, 0);
   const audGP = m.revenue.operations - m.materials.total;
-  const audNCA = m.currentAssetsTotal - m.currentLiabilitiesTotal;
+  // Permanent WC and hire purchase move up into Sources, so whatever the
+  // statement showed of them inside Current Liabilities has to come back out of
+  // the current-liability total — otherwise the same money is counted on both
+  // sides and Sources stop equalling Uses. The short-term row is already net of
+  // it, so the printed rows still add to this total.
+  const audCL = m.currentLiabilitiesTotal - m.loans.currentReclassified;
+  const audNCA = m.currentAssetsTotal - audCL;
 
   const sections = [];
 
@@ -217,12 +224,18 @@ function pjxBuildReport() {
       { k: 'addl', label: T.addlRow, vals: withAud(null, v(x => x.bs.additionalCapital)), kind: 'item', zeroable: true },
       { k: 'reserve', label: PJX_BS_L.reserve, vals: withAud(m.reserves, v(x => x.bs.reserves)), kind: 'item',
         xexpr: (R, c, X) => X('PL', 'transfer') },
+      // Every facility gets its own line and none are summed together: the
+      // firm's bank needs to see term, permanent WC, hire purchase and the
+      // short-term facility separately. (Only their INTEREST is combined, on
+      // the P&L, where term/PWC/HP share one row.)
       { k: 'lt', label: PJX_BS_L.lt, vals: withAud(audLT, v(x => x.bs.longTermLoan)), kind: 'plain', zeroable: true },
-      { k: 'pwc', label: PJX_BS_L.pwc, vals: withAud(null, v(x => x.bs.permanentWC)), kind: 'plain', zeroable: true },
+      { k: 'pwc', label: PJX_BS_L.pwc, vals: withAud(m.loans.permanentWC, v(x => x.bs.permanentWC)), kind: 'plain', zeroable: true },
+      { k: 'hp', label: PJX_BS_L.hp, vals: withAud(m.loans.hirePurchase, v(x => x.bs.hirePurchase)), kind: 'plain', zeroable: true },
       { k: 'lend', label: T.lendRow, vals: withAud(m.loans.directorLoan, v(x => x.bs.directorLending)), kind: 'plain', zeroable: true },
       { k: 'totalSrc', label: PJX_BS_L.totalSrc, kind: 'grand',
-        vals: withAud(m.shareCapital + m.reserves + audLT + m.loans.directorLoan, v(x => x.bs.totalSources)),
-        xsum: ['cap', 'addl', 'reserve', 'lt', 'pwc', 'lend'] },
+        vals: withAud(m.shareCapital + m.reserves + audLT + m.loans.permanentWC + m.loans.hirePurchase + m.loans.directorLoan,
+                      v(x => x.bs.totalSources)),
+        xsum: ['cap', 'addl', 'reserve', 'lt', 'pwc', 'hp', 'lend'] },
       { k: 'usesLabel', label: PJX_BS_L.usesLabel, vals: [], kind: 'sec' },
       { k: 'faLabel', label: PJX_BS_L.faLabel, vals: [], kind: 'sec' },
       // Both fetched from the Depreciation schedule's total row for that year.
@@ -275,8 +288,11 @@ function pjxBuildReport() {
           if (Math.abs(Math.round(sal * 0.01 + audit * 0.015) - Y[yi].bs.tdsPayable) > 0.5) return null;
           return `ROUND(${s}*0.01+${a}*0.015,0)`;
         } },
-      { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.currentTotal, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
-      { k: 'clTotal', label: PJX_BS_L.clTotal, vals: withAud(m.currentLiabilitiesTotal, v(x => x.bs.totalCurrentLiabilities)), kind: 'tot',
+      // `overdraft`, not `currentTotal` — the latter still carries the Permanent
+      // WC and hire purchase that have moved up into Sources, so using it would
+      // show that money twice and stop this block footing to its own total.
+      { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.overdraft, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
+      { k: 'clTotal', label: PJX_BS_L.clTotal, vals: withAud(audCL, v(x => x.bs.totalCurrentLiabilities)), kind: 'tot',
         xsum: ['creditors', 'provTax', 'expPay', 'tds', 'stl'] },
       { k: 'nca', label: PJX_BS_L.nca, vals: withAud(audNCA, v(x => x.bs.netCurrentAssets)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.caTotal}-${c}${R.clTotal}` },
@@ -512,11 +528,11 @@ function pjxBuildReport() {
             tax: () => X('PL', 'tax'),
             paidUpCapital: () => X('BS', 'cap'),
             reserves: () => X('BS', 'reserve'),
-            // Every facility the company owes a bank: long term (which carries
-            // hire purchase), permanent working capital and the short-term
-            // OD/CC. Director lending is deliberately absent — not a bank.
-            bankLoan: () => { const l = X('BS', 'lt'), p = X('BS', 'pwc'), s = X('BS', 'stl');
-              return [l, p, s].filter(Boolean).join('+') || null; },
+            // Every facility the company owes a bank: term, permanent working
+            // capital, hire purchase and the short-term OD/CC. Director lending
+            // is deliberately absent — related-party money, not a bank.
+            bankLoan: () => { const l = X('BS', 'lt'), p = X('BS', 'pwc'), h = X('BS', 'hp'), s = X('BS', 'stl');
+              return [l, p, h, s].filter(Boolean).join('+') || null; },
             currentLiabilities: () => X('BS', 'clTotal'),
             provision: () => X('PL', 'tax'),
             currentAssets: () => X('BS', 'caTotal'),

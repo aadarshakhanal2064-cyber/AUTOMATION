@@ -104,7 +104,8 @@ What the parser now reads, and why each was wrong:
 | `loans.nonCurrentTotal` / `currentTotal` | **SFP**, the two same-labelled `Loans and Borrowings` rows, told apart by which liability heading precedes them | dead fields, never read |
 | `loans.term` / `overdraft` | Note 3.8, bucketed by its `Non-Current :` / `Current :` headings | headings were skipped without being recorded, so every row was classified by keyword and anything unnamed (`AG WC Loan`, `Demand Loan`) fell through to Long Term Loan |
 | `depreciation` | SOI `Depreciation Expenses` (3.1 PPE `Depreciation Charged` as fallback) | never parsed at all |
-| `expensesPayable` / `dutiesTaxPayable` | Note 3.9, split at its `Duties and taxes:` sub-heading | only the first `Trade Payables` row was read |
+| `expensesPayable` / `dutiesTaxPayable` | Note 3.9, split at its `Duties and taxes:` sub-heading (the row prints as **TDS Payable**) | only the first `Trade Payables` row was read |
+| `loans.permanentWC` / `hirePurchase` | Note 3.8 by keyword, from either section | never parsed — both rows printed blank |
 | `financeCostST` / `financeCostLT` | Note 3.14 sub-lines (`OD/CC/STL/DL` vs `TL/PWC/HP`) | the whole finance cost went on the short-term row |
 | `retainedOpening` / `dividendPaid` | Note 3.7 roll-forward | never parsed |
 
@@ -134,6 +135,55 @@ projection concepts with no counterpart in a filed statement.
 and `Test 1` carry non-operating income and out-of-note SOI expenses, which
 §5.15 excludes from the projection by CA decision. That residual is the
 documented exclusion, not a parsing gap — don't "fix" it.
+
+### Every loan is reported on its own line (2026-08-11, user decision)
+
+The balance sheet shows **Long Term Loan · Permanent Working Capital Loan ·
+Hire Purchase (HP) Loan** in Sources and **Short Term Loan /OD/CC** in current
+liabilities, and none of them are ever summed together. Only their *interest*
+is combined, on the P&L, where term/PWC/HP share one row and short-term/OD/CC
+keeps its own — that split was already right and is what the firm wants.
+
+Hire purchase previously had no line at all: `closingLT` folded `hpScheds` in.
+It is now `closingLT` + `closingHP` separately, with every total (`sources`,
+`debt`, `prevLoans`, `cf.deltaLoans`, IRD `bankLoan`) adding it back
+explicitly, so no figure moved — only the reporting split. Verified across four
+loan combinations (LT+ST, +HP, +PWC+HP, HP-only): Sources=Uses, CF=BS cash and
+the Sources rows footing to their total all hold in every year.
+
+**PWC and HP are matched by KEYWORD from either section, not by section.** Real
+statements put them on both sides — T3 lists `Permanent WC` under *Current*,
+Test 2 lists `PWC Term Loan` under *Non-Current*. `permanent wc|pwc` and
+`hire purchase|hp|vehicle|auto loan`; **plain "WC Loan" is NOT permanent
+working capital** (T3's own note lists `WC Loan` and `Permanent WC` as separate
+facilities, so a substring match would merge two real facilities), and vehicle
+/auto loans count as HP by user decision.
+
+**Moving PWC/HP up into Sources means taking them back out of Current
+Liabilities**, or the same money is counted on both sides and Sources stop
+equalling Uses. `loans.currentReclassified` records how much came out of the
+current section; the audited CL total is reduced by it and the Short Term row
+uses **`loans.overdraft`, never `loans.currentTotal`** — the latter still
+carries the reclassified amount. Getting that wrong is invisible in the totals
+(they still tie) and only shows as the CL rows not adding to their own total,
+which is how it was caught on T3.
+
+Each section is reconciled against **its own** SFP row and the residual is
+booked to that section's catch-all — Long Term Loan on the non-current side,
+Short Term /OD/CC on the current side — so a residual never lands on a facility
+that has a line of its own to distort.
+
+### Base fiscal year and Share Capital (2026-08-11, user decision)
+
+`PJ_BASE_FY_DEFAULT = '2082-83'` — a fixed default, same convention as
+`ARF_FY_DEFAULT`/`SM_FY_DEFAULT`, **not** derived from the upload or today's
+date. An upload no longer overwrites the field; it only fills it when blank,
+and Clear restores the default rather than blanking it. Still editable.
+
+**Share Capital moved from Step 2 (Assumptions) to Step 3 (Review & Export)**,
+into the Balancing Figures card alongside the other live-editable figures, with
+`oninput="pjRecalcDebounced()"`. It sits *outside* `#pj-overrides`, so the
+debounced re-render that rebuilds that table cannot destroy it mid-typing.
 
 ### IRD row definitions (2026-08-11)
 

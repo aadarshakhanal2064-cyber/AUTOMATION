@@ -74,7 +74,15 @@ const ProjectionEngine = (() => {
       reserves: 0,
       retainedOpening: null, // Note 3.7 "Opening" — the P&L's "profit upto last year"
       dividendPaid: null,    // Note 3.7 "Less: Drawing/Dividend"
-      loans: { term: [], directorLoan: 0, overdraft: 0, nonCurrentTotal: 0, currentTotal: 0 },
+      // Every facility is reported on its own line, never summed together —
+      // `term` is long-term bank debt alone. permanentWC and hirePurchase are
+      // matched by KEYWORD from either section: real statements put Permanent
+      // WC under Current (T3) and under Non-Current (Test 2) with equal
+      // frequency. currentReclassified is how much of them came out of the
+      // current section, which the balance sheet's current-liability total has
+      // to be reduced by or Sources stop equalling Uses.
+      loans: { term: [], directorLoan: 0, overdraft: 0, permanentWC: 0, hirePurchase: 0,
+               nonCurrentTotal: 0, currentTotal: 0, currentReclassified: 0 },
       revenue: { operations: 0, nonOperations: 0 },
       materials: { opening: 0, purchases: 0, directCost: 0, directCostItems: [], closing: 0, total: 0 },
       salary: 0,
@@ -298,7 +306,7 @@ const ProjectionEngine = (() => {
       }
     } else warn('Sch-PL: Note 3.15 (Other Expenses) not found.');
 
-    // ── Sch-BS — Note 3.8 loan split (term / director / overdraft) + 3.9 creditors ──
+    // ── Sch-BS — Note 3.8 loan split (term / pwc / hp / director / overdraft) + 3.9 ──
     const schBs = findSheet(wb, ['Sch-BS', 'Sch BS', 'Schedule BS', 'Schedules-BS']);
     if (schBs) {
       const gB = grid(schBs, XLSX);
@@ -311,7 +319,20 @@ const ProjectionEngine = (() => {
           // bucket. They used to be skipped without being recorded, so every
           // row was classified by keyword alone and any facility the keyword
           // list did not name fell through to Long Term Loan.
+          //
+          // Permanent WC and hire purchase are the exception: they are matched
+          // by keyword FIRST, from whichever section they appear in, because
+          // real statements put them on both sides — T3 lists "Permanent WC"
+          // under Current, Test 2 lists "PWC Term Loan" under Non-Current. They
+          // get their own balance-sheet rows, so they must not be swept into
+          // whichever total their section happens to be.
+          //
+          // "WC Loan" alone is NOT permanent working capital: T3's own note
+          // lists "WC Loan" and "Permanent WC" as separate facilities.
+          const pwcRe = /permanent\s*wc|\bpwc\b/;
+          const hpRe  = /hire purchase|\bhp\b|vehicle|auto loan/;
           let sect = null;             // 'nc' | 'cur' | null (no headings seen)
+          let ncSum = 0, curSum = 0;   // raw per-section sums, for reconciliation
           for (let r = h.row + 1; r < (end === -1 ? h.row + 25 : end); r++) {
             const label = gB[r] && gB[r][h.labelCol];
             if (!label) continue;
@@ -321,8 +342,16 @@ const ProjectionEngine = (() => {
             if (/^total$/.test(l)) continue;
             const amount = num(gB[r][h.valCol]);
             if (amount === 0) continue;
+            if (sect === 'nc') ncSum += amount; else if (sect === 'cur') curSum += amount;
             // A related-party loan is one wherever it is shown.
             if (/director|proprietor|partner/.test(l)) model.loans.directorLoan += amount;
+            else if (pwcRe.test(l)) {
+              model.loans.permanentWC += amount;
+              if (sect === 'cur') model.loans.currentReclassified += amount;
+            } else if (hpRe.test(l)) {
+              model.loans.hirePurchase += amount;
+              if (sect === 'cur') model.loans.currentReclassified += amount;
+            }
             else if (sect === 'cur') model.loans.overdraft += amount;
             else if (sect === 'nc') model.loans.term.push({ name: String(label).trim(), amount });
             // No headings in this note — fall back to the keyword heuristic so
@@ -330,6 +359,8 @@ const ProjectionEngine = (() => {
             else if (/overdraft|hypothec|\bod\b|\bcc\b|short/.test(l)) model.loans.overdraft += amount;
             else model.loans.term.push({ name: String(label).trim(), amount });
           }
+          model.loans._ncSum = ncSum;
+          model.loans._curSum = curSum;
         }
       } else warn('Sch-BS: Note 3.8 (Loans & Borrowings) not found — loan split unavailable.');
       // 3.7 Reserves — the retained-earnings roll-forward. Its "Opening" line
@@ -425,31 +456,41 @@ const ProjectionEngine = (() => {
     // Borrowings" rows, the same way the PPE pools are forced to the SFP fixed
     // -asset total above. The SFP wins: it is the statement the client signed,
     // and the comparison column's Sources = Uses identity is stated in terms of
-    // its figures. Booking the residual keeps that identity true whatever the
-    // note calls an individual facility.
+    // its figures.
+    // Each section is reconciled against ITS OWN balance-sheet row, and the
+    // residual is booked to that section's catch-all facility — Long Term Loan
+    // on the non-current side, Short Term Loan /OD/CC on the current side. PWC
+    // and hire purchase are already carved out by keyword and keep whatever the
+    // note gave them, so a residual only ever lands on a facility that has no
+    // line of its own to distort.
     {
       const L = model.loans;
+      const ncSum = L._ncSum || 0, curSum = L._curSum || 0;
+      delete L._ncSum; delete L._curSum;
       const termSum = L.term.reduce((s, x) => s + x.amount, 0);
       if (L.nonCurrentTotal) {
-        const residual = L.nonCurrentTotal - (termSum + L.directorLoan);
+        const residual = L.nonCurrentTotal - ncSum;
         if (Math.abs(residual) > 1) {
           L.term.push({ name: 'Long Term Loan', amount: residual });
-          warn(`Note 3.8's non-current rows total ${(termSum + L.directorLoan).toFixed(2)} against the `
+          warn(`Note 3.8's non-current rows total ${ncSum.toFixed(2)} against the `
              + `${L.nonCurrentTotal.toFixed(2)} shown under Non-Current Liabilities on the balance sheet; `
              + `the ${residual.toFixed(2)} difference has been carried as Long Term Loan so Sources still equal Uses.`);
         }
+      } else if (ncSum) {
+        L.nonCurrentTotal = ncSum;                      // no SFP row — trust the note
       } else if (termSum || L.directorLoan) {
-        L.nonCurrentTotal = termSum + L.directorLoan;   // no SFP row — trust the note
+        L.nonCurrentTotal = termSum + L.directorLoan;   // note carried no headings at all
       }
       if (L.currentTotal) {
-        if (Math.abs(L.currentTotal - L.overdraft) > 1) {
-          warn(`Note 3.8's current rows total ${L.overdraft.toFixed(2)} against the ${L.currentTotal.toFixed(2)} `
-             + `shown under Current Liabilities on the balance sheet; the balance sheet figure has been used for `
-             + `Short Term Loan /OD/CC.`);
+        const residual = L.currentTotal - curSum;
+        if (Math.abs(residual) > 1) {
+          warn(`Note 3.8's current rows total ${curSum.toFixed(2)} against the ${L.currentTotal.toFixed(2)} `
+             + `shown under Current Liabilities on the balance sheet; the ${residual.toFixed(2)} difference has `
+             + `been carried as Short Term Loan /OD/CC.`);
         }
-        L.overdraft = L.currentTotal;
-      } else if (L.overdraft) {
-        L.currentTotal = L.overdraft;
+        L.overdraft += residual;
+      } else if (curSum || L.overdraft) {
+        L.currentTotal = curSum || L.overdraft;
       }
     }
 
@@ -750,7 +791,13 @@ const ProjectionEngine = (() => {
 
       const intLT = sumAt(ltScheds, y, s => s.interest) + sumAt(pwcScheds, y, s => s.interest)
                   + sumAt(hpScheds, y, s => s.interest);
-      const closingLT = sumAt(ltScheds, y, s => s.closing) + sumAt(hpScheds, y, s => s.closing);
+      // Hire purchase used to be folded into the long-term closing balance and
+      // so had no line of its own on the balance sheet. Every total below adds
+      // it back explicitly, so the figures are unchanged — only the reporting
+      // splits. (Its INTEREST still joins the long-term interest row, and its
+      // principal is still outside `principalAt`'s debt-service test.)
+      const closingLT = sumAt(ltScheds, y, s => s.closing);
+      const closingHP = sumAt(hpScheds, y, s => s.closing);
       const closingPWC = sumAt(pwcScheds, y, s => s.closing);
       const dep = depYears[y - 1];
 
@@ -836,7 +883,7 @@ const ProjectionEngine = (() => {
         const retainedClosing = retainedOpening + pat - dividend;
         const provTax = tax;
         const cl = creditors + provTax + expPayable + tdsPayable + stlTotal;
-        const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC;
+        const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC + closingHP;
         const faNet = dep.closing;
         // Cash is the lever that moves Net Current Assets — NCA works out to
         // `sources − fixed assets − cash + short-term loan`, independent of
@@ -845,7 +892,7 @@ const ProjectionEngine = (() => {
         const cashEff = ov.cash != null ? num(ov.cash) : Math.max(0, cash - cashCut);
         const debtors = sources - faNet - cashEff - closingStock + cl;
         const ca = cashEff + debtors + closingStock;
-        const debt = closingLT + closingPWC + stlTotal;
+        const debt = closingLT + closingPWC + closingHP + stlTotal;
         const equity = input.shareCapital + addlCap + retainedClosing;
         const days = sales > 0 ? debtors / sales * 365 : 0;
         const currentRatio = cl > 0 ? ca / cl : Infinity;
@@ -1011,7 +1058,7 @@ const ProjectionEngine = (() => {
       };
       const bs = {
         shareCapital: input.shareCapital, additionalCapital: addlCap, reserves: state.retainedClosing,
-        longTermLoan: closingLT, permanentWC: closingPWC, directorLending: 0,
+        longTermLoan: closingLT, permanentWC: closingPWC, hirePurchase: closingHP, directorLending: 0,
         totalSources: state.sources,
         fixedAssetsGross: dep.total, depreciation: dep.dep, fixedAssetsNet: state.faNet,
         cash: state.cash, debtors: state.debtors, closingStock: state.closingStock,
@@ -1065,7 +1112,7 @@ const ProjectionEngine = (() => {
         prevDir = Math.max(0, Math.min(input.loans.directorLoan, prevDebtAll));
         prevLoans = prevDebtAll - prevDir;
       } else {
-        prevLoans = prev.bs.longTermLoan + prev.bs.permanentWC;
+        prevLoans = prev.bs.longTermLoan + prev.bs.permanentWC + prev.bs.hirePurchase;
         prevDir = prev.bs.directorLending;
       }
       const additions  = dep.addition;
@@ -1083,7 +1130,7 @@ const ProjectionEngine = (() => {
         dividend: -dividend,
         interestPaid: -(interestST + intLT),
         deltaDirector: 0 - prevDir,
-        deltaLoans: (closingLT + closingPWC) - prevLoans,
+        deltaLoans: (closingLT + closingPWC + closingHP) - prevLoans,
         financing: 0,
         netChange: 0,
         openingCash: prevCash,
@@ -1150,10 +1197,11 @@ const ProjectionEngine = (() => {
     //  · Paid-up Capital is the share capital alone. Additional Capital is the
     //    projection's own balancing injection, not capital the company has
     //    actually issued, so adding it overstated the figure.
-    //  · Loan from Bank and Financial Institution is every facility. The
-    //    projected column omitted the long-term loan entirely (which is also
-    //    where hire purchase sits) and counted director lending, which is a
-    //    related-party loan and not from a bank at all.
+    //  · Loan from Bank and Financial Institution is every bank facility —
+    //    term, permanent WC, hire purchase and the short-term OD/CC. The
+    //    projected column omitted the long-term loan entirely. A director loan
+    //    is excluded from BOTH columns: it is related-party money, not from a
+    //    bank or financial institution, which is what this row asks for.
     const ird = {
       audited: {
         grossIncome: input.revenue.operations,
@@ -1161,7 +1209,7 @@ const ProjectionEngine = (() => {
         tax: input.tax,
         paidUpCapital: input.shareCapital,
         reserves: input.reserves,
-        bankLoan: input.loans.nonCurrentTotal + input.loans.currentTotal,
+        bankLoan: input.loans.nonCurrentTotal + input.loans.currentTotal - input.loans.directorLoan,
         currentLiabilities: input.currentLiabilitiesTotal,
         provision: input.tax,
         currentAssets: input.currentAssetsTotal,
@@ -1173,7 +1221,8 @@ const ProjectionEngine = (() => {
         tax: years[0].pl.tax,
         paidUpCapital: years[0].bs.shareCapital,
         reserves: years[0].bs.reserves,
-        bankLoan: years[0].bs.longTermLoan + years[0].bs.permanentWC + years[0].bs.shortTermLoan,
+        bankLoan: years[0].bs.longTermLoan + years[0].bs.permanentWC + years[0].bs.hirePurchase
+                + years[0].bs.shortTermLoan,
         currentLiabilities: years[0].bs.totalCurrentLiabilities,
         provision: years[0].pl.tax,
         currentAssets: years[0].bs.totalCurrentAssets,
