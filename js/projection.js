@@ -599,14 +599,21 @@ function pjRenderOverrides() {
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
   })[f];
   // pjRecalcDebounced re-runs the solver and calls back in here on every
-  // keystroke (debounced), which used to innerHTML the whole table — that
-  // destroys the focused <input> and rebuilds a new DOM node in its place,
-  // so the browser drops focus and the user has to click back in after each
-  // character. Save which cell (by data-year/data-field) had focus and its
-  // caret position, then restore both once the new markup is in.
+  // keystroke (debounced), which rebuilds the whole table via innerHTML —
+  // that destroys the focused <input> and replaces it with a brand-new DOM
+  // node, so the browser drops focus, and a fresh node focused
+  // programmatically starts its caret at position 0. type="number" inputs
+  // don't support selectionStart/setSelectionRange at all (both throw
+  // InvalidStateError unconditionally — not just report null), so the caret
+  // can't be repositioned via JS after the fact; every following keystroke
+  // was inserting BEFORE what was already typed, reversing digits typed in
+  // one run ("123456" landed as "654321"). The only real fix is to keep
+  // reusing the SAME live <input> node rather than letting the rebuild
+  // recreate it — a node's native caret position survives being detached
+  // and reattached, just not being destroyed and recreated.
   const container = pjEl('pj-overrides');
   const active = container.querySelector('input:focus');
-  const activeKey = active ? { year: active.dataset.year, field: active.dataset.field, selStart: active.selectionStart, selEnd: active.selectionEnd } : null;
+  const activeKey = active ? { year: active.dataset.year, field: active.dataset.field } : null;
   container.innerHTML = `<div class="table-wrap"><table class="client-table">
     <thead><tr><th>Figure</th>${pjResult.years.map(yr => `<th style="text-align:right;">F.Y. ${escHtml(pjFyLabel(yr.year))}</th>`).join('')}</tr></thead>
     <tbody>
@@ -625,10 +632,15 @@ function pjRenderOverrides() {
       </tr>
     </tbody></table></div>`;
   if (activeKey) {
-    const restored = container.querySelector(`input[data-year="${activeKey.year}"][data-field="${activeKey.field}"]`);
-    if (restored) {
-      restored.focus();
-      try { restored.setSelectionRange(activeKey.selStart, activeKey.selEnd); } catch (e) { /* number inputs may not support range selection in all browsers */ }
+    const fresh = container.querySelector(`input[data-year="${activeKey.year}"][data-field="${activeKey.field}"]`);
+    if (fresh) {
+      // Reusing the live node means it keeps whatever border-color it had
+      // before this render — sync the "set" highlight the fresh node would
+      // have carried so it doesn't lag a render behind while typing.
+      const isSet = ov[activeKey.year] && ov[activeKey.year][activeKey.field] != null;
+      active.style.borderColor = isSet ? 'var(--accent-blue)' : '';
+      fresh.replaceWith(active);
+      active.focus();
     }
   }
 }
