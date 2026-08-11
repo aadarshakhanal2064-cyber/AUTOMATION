@@ -13,6 +13,13 @@
 // ════════════════════════════════════════════
 ModuleRegistry.register({ id: 'projection', group: 'main', buttonId: null, panelId: 'tab-projection-panel' });
 
+// The base fiscal year the firm is projecting FROM. A fixed default rather
+// than one derived from the upload or today's date: the workbook's own "as at"
+// year is regularly a year the firm isn't reporting on, and a projection built
+// in Shrawan is for the year just closed. Same convention as ARF_FY_DEFAULT /
+// SM_FY_DEFAULT. The field stays editable for the cases that differ.
+const PJ_BASE_FY_DEFAULT = '2082-83';
+
 let pjModel = null;          // parsed InputModel
 let pjParseIssues = [];
 let pjResult = null;         // last ProjectionEngine.project() output
@@ -55,7 +62,7 @@ function pjAmt(v) {
 function pjBsYear() {
   const typed = (pjEl('pj-base-fy').value || '').match(/(20[6-9]\d)/);
   if (typed) return parseInt(typed[1], 10) + 1;      // "2082-83" → audited year-end 2083
-  return (pjModel && pjModel.company.bsYear) || (parseInt(NepaliLocale.todayBs().year, 10));
+  return parseInt(PJ_BASE_FY_DEFAULT.match(/(20[6-9]\d)/)[1], 10) + 1;
 }
 function pjFyLabel(y) { const b = pjBsYear(); return `${b + y - 1}-${String(b + y).slice(2)}`; }
 function pjFyDot(y)   { const b = pjBsYear(); return `${b + y - 1}.${b + y}`; }
@@ -136,6 +143,8 @@ const pjScope = WorkflowEngine.createClientScope({
     pjSetTaskMode('new');
     pjRenderSavedList();
     ['pj-company', 'pj-pan', 'pj-share-capital'].forEach(id => { const el = pjEl(id); if (el) el.value = ''; });
+    const fyEl = pjEl('pj-base-fy');
+    if (fyEl) fyEl.value = PJ_BASE_FY_DEFAULT;   // back to the default, not blank
     const fileEl = pjEl('pj-file');
     if (fileEl) fileEl.value = '';
     pjRenderDetectSummary();
@@ -375,7 +384,9 @@ async function pjHandleFile(input) {
     }
     // Prefill assumptions from the detected statement
     if (!pjEl('pj-company').value) pjEl('pj-company').value = model.company.name;
-    if (model.company.bsYear) pjEl('pj-base-fy').value = `${model.company.bsYear - 1}-${String(model.company.bsYear).slice(2)}`;
+    // The base year is the firm's choice, not the workbook's — an upload only
+    // fills it when the user has cleared it, never overwrites what is there.
+    if (!pjEl('pj-base-fy').value.trim()) pjEl('pj-base-fy').value = PJ_BASE_FY_DEFAULT;
     pjRenderAdditionsRows();
     // Seed the editable capital box from the workbook, and remember the
     // parsed figure so clearing the box can return to it.

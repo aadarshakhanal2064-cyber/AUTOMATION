@@ -1980,14 +1980,10 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>Projection Years</label>
               <select id="pj-years"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
             </div>
-            <div class="form-group"><label>Base Fiscal Year</label><input type="text" id="pj-base-fy" placeholder="e.g. 2082-83" /></div>
+            <div class="form-group"><label>Base Fiscal Year</label><input type="text" id="pj-base-fy" value="2082-83" placeholder="e.g. 2082-83" title="Defaults to 2082-83. Edit it if this projection is built off a different year." /></div>
             <div class="form-group"><label>Sales Growth — Year 1 (%)</label><input type="number" id="pj-growth1" value="10" step="0.5" /></div>
             <div class="form-group"><label>Sales Growth — Later Years (%)</label><input type="number" id="pj-growth-rest" value="5" step="0.5" /></div>
             <div class="form-group"><label>NCA % (drawing power)</label><input type="number" id="pj-nca-pct" value="70" min="1" max="100" step="1" /></div>
-            <div class="form-group">
-              <label>Share Capital (Rs)</label>
-              <input type="number" id="pj-share-capital" step="1000" placeholder="From statement" title="Prefilled from the uploaded statement — edit to correct it. Clear the box to go back to the figure in the workbook." />
-            </div>
             <div class="form-group"><label>Uploaded Statement</label>
               <select id="pj-statement-type">
                 <option value="audited">Audited</option>
@@ -2060,6 +2056,10 @@ function cropLoginLogoIcon(img) {
         <div class="card" style="margin-bottom:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Balancing Figures (editable — recalculates live)</div></div>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Auto-solved under the firm's rules. Adjust any figure — Sundry Debtors always re-balances so Sources = Uses. Clear a box to return it to automatic.</p>
+          <div class="form-group" style="max-width:280px; margin-bottom:14px;">
+            <label>Share Capital (Rs)</label>
+            <input type="number" id="pj-share-capital" step="1000" placeholder="From statement" oninput="pjRecalcDebounced()" title="Prefilled from the uploaded statement — edit to correct it. Clear the box to go back to the figure in the workbook." />
+          </div>
           <div id="pj-overrides"></div>
           <div id="pj-levers" style="margin-top:12px;"></div>
         </div>
@@ -3775,9 +3775,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>
 <script src="js/finalAccount.js?v=202608022300"></script>
-<script src="js/projectionEngine.js?v=202608110900"></script>
-<script src="js/projection.js?v=202608102000"></script>
-<script src="js/projectionExport.js?v=202608110900"></script>
+<script src="js/projectionEngine.js?v=202608111200"></script>
+<script src="js/projection.js?v=202608111200"></script>
+<script src="js/projectionExport.js?v=202608111200"></script>
 <script src="js/finStatementEngine.js?v=202608022300"></script>
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>
