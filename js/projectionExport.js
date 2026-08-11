@@ -140,7 +140,12 @@ function pjxBuildReport() {
   const v = f => Y.map(f);
   const withAud = (aud, arr) => incAud ? [aud, ...arr] : arr;
   const yearCols = h1 => Y.map(yr => ({ h1: h1(yr.year), h2: `Year ${yr.year}` }));
-  const audCol = { h1: `F.Y. ${pjFyLabel(0)}`, h2: stmtType };
+  // The comparison column heads the same table as the projected years, so it
+  // takes that table's OWN date convention — an as-at date on the balance
+  // sheet, the fiscal-year span on the P&L — rather than a lone "F.Y. 2082-83"
+  // sitting beside columns headed 2084.03.31.
+  const audColAsAt = { h1: pjBaseAsAt(), h2: stmtType };
+  const audColFy   = { h1: pjFyDot(0), h2: stmtType };
 
   const zeroRow = vals => (vals || []).every(x => x == null || x === '' ||
     (typeof x === 'number' && Math.round(x) === 0) ||
@@ -216,7 +221,7 @@ function pjxBuildReport() {
   // ── Balance Sheet ──
   sections.push({
     key: 'BS', title: 'Projected Balance Sheet', sheet: 'Balance Sheet', sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
-    cols: withAud(audCol, yearCols(y => pjAsAt(y))),
+    cols: withAud(audColAsAt, yearCols(y => pjAsAt(y))),
     rows: renumber(prune([
       { k: 'srcLabel', label: PJX_BS_L.srcLabel, vals: [], kind: 'sec' },
       { k: 'capLabel', label: PJX_BS_L.capLabel, vals: [], kind: 'sec' },
@@ -304,7 +309,7 @@ function pjxBuildReport() {
   // ── Profit & Loss ──
   sections.push({
     key: 'PL', title: 'Projected Profit & Loss A/C', sheet: 'Profit & Loss', sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
-    cols: withAud(audCol, yearCols(y => pjFyDot(y))),
+    cols: withAud(audColFy, yearCols(y => pjFyDot(y))),
     rows: prune([
       // Sales — the growth rate the user entered is visible in the formula.
       // Input rows (Sales, Goods Purchase, Direct Cost, admin lines, cash)
@@ -391,7 +396,7 @@ function pjxBuildReport() {
   sections.push({
     key: 'ADM', title: 'Schedule 1 – Administrative Expenses', sheet: 'Schedule 1 - Admin Expenses',
     sig: true, aud: incAud, audOffset: incAud ? 1 : 0,
-    cols: withAud(audCol, yearCols(y => pjFyDot(y))),
+    cols: withAud(audColFy, yearCols(y => pjFyDot(y))),
     rows: prune([
       ...Y[0].pl.adminLines.map((l, i) => (
         { k: 'adm' + i, label: l.name, vals: withAud(audAdminLine(i), v(x => x.pl.adminLines[i].amount)), kind: 'item', zeroable: true }

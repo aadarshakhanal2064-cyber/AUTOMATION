@@ -185,6 +185,28 @@ into the Balancing Figures card alongside the other live-editable figures, with
 `oninput="pjRecalcDebounced()"`. It sits *outside* `#pj-overrides`, so the
 debounced re-render that rebuilds that table cannot destroy it mid-typing.
 
+**Share Capital is also a per-year override row** (2026-08-11) — first entry in
+`PJ_OVERRIDE_FIELDS`, one input per projected year, because a rights issue
+lands in a single year rather than across the whole projection. An empty box
+falls back to the base figure in the Share Capital box above, the same
+"blank = automatic" idiom as every other lever. In the engine `shareCap` is read
+per year off `ov.shareCapital` and carried on `state`, so `sources`, `equity`,
+`bs.shareCapital` and `cf.capitalIssued` all move together — `prevCap` already
+read the prior year's balance, so the cash flow needed no change. Verified with
+one year raised, and with all three years different: Sources=Uses, CF=BS cash
+and the Sources rows footing to their total hold in every case.
+
+### The comparison column is headed by a date, not a fiscal year (2026-08-11)
+
+`audCol` was a single `F.Y. 2082-83` used by all three sections, which printed
+beside sibling columns headed `2084.03.31`. It is now per-section: the balance
+sheet uses `pjBaseAsAt()` (→ `2083.03.31`), the P&L and Schedule 1 use
+`pjFyDot(0)` (→ `2082.2083`), each matching its own year columns. The IRD sheet
+keeps its `F.Y.` labels — that page is fiscal-year semantics.
+
+`pj-base-asat` overrides the balance-sheet date for a statement drawn to a
+non-standard day; blank follows the base fiscal year.
+
 ### IRD row definitions (2026-08-11)
 
 Three were wrong, and each needs its audited value, projected value **and**

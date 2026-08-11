@@ -883,7 +883,10 @@ const ProjectionEngine = (() => {
         const retainedClosing = retainedOpening + pat - dividend;
         const provTax = tax;
         const cl = creditors + provTax + expPayable + tdsPayable + stlTotal;
-        const sources = input.shareCapital + addlCap + retainedClosing + closingLT + closingPWC + closingHP;
+        // Share capital is per-year overridable: a rights issue lands in one
+        // year, not across the whole projection. Empty box = the base figure.
+        const shareCap = ov.shareCapital != null ? num(ov.shareCapital) : input.shareCapital;
+        const sources = shareCap + addlCap + retainedClosing + closingLT + closingPWC + closingHP;
         const faNet = dep.closing;
         // Cash is the lever that moves Net Current Assets — NCA works out to
         // `sources − fixed assets − cash + short-term loan`, independent of
@@ -893,7 +896,7 @@ const ProjectionEngine = (() => {
         const debtors = sources - faNet - cashEff - closingStock + cl;
         const ca = cashEff + debtors + closingStock;
         const debt = closingLT + closingPWC + closingHP + stlTotal;
-        const equity = input.shareCapital + addlCap + retainedClosing;
+        const equity = shareCap + addlCap + retainedClosing;
         const days = sales > 0 ? debtors / sales * 365 : 0;
         const currentRatio = cl > 0 ? ca / cl : Infinity;
         const debtEquity = equity > 0 ? debt / equity : Infinity;
@@ -902,7 +905,7 @@ const ProjectionEngine = (() => {
         const ncaHeadroom = nca70 - (stlTotal + closingPWC);   // must stay positive
 
         state = { closingStock, gp, cogs, directCost, purchases, retainedClosing, provTax, cl, sources, faNet,
-                  cash: cashEff, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
+                  shareCap, cash: cashEff, debtors, ca, debt, equity, days, currentRatio, debtEquity, nca, nca70, ncaHeadroom };
 
         // Does this year stand up at the capital level it has been given?
         // Only tests that MORE capital would fix count — a >90-day debtor
@@ -1057,7 +1060,7 @@ const ProjectionEngine = (() => {
         pbt, tax, pat, retainedOpening, dividend, retainedClosing: state.retainedClosing,
       };
       const bs = {
-        shareCapital: input.shareCapital, additionalCapital: addlCap, reserves: state.retainedClosing,
+        shareCapital: state.shareCap, additionalCapital: addlCap, reserves: state.retainedClosing,
         longTermLoan: closingLT, permanentWC: closingPWC, hirePurchase: closingHP, directorLending: 0,
         totalSources: state.sources,
         fixedAssetsGross: dep.total, depreciation: dep.dep, fixedAssetsNet: state.faNet,
@@ -1126,7 +1129,7 @@ const ProjectionEngine = (() => {
         capex: -additions + (y === 1 ? dep.disposal : 0),
         liquidatedNC: y === 1 ? input.investmentsNC + input.otherReceivablesNC : 0,
         investing: 0,
-        capitalIssued: (input.shareCapital + addlCap) - prevCap,
+        capitalIssued: (state.shareCap + addlCap) - prevCap,
         dividend: -dividend,
         interestPaid: -(interestST + intLT),
         deltaDirector: 0 - prevDir,

@@ -68,6 +68,17 @@ function pjFyLabel(y) { const b = pjBsYear(); return `${b + y - 1}-${String(b + 
 function pjFyDot(y)   { const b = pjBsYear(); return `${b + y - 1}.${b + y}`; }
 function pjAsAt(y)    { const b = pjBsYear(); return `${b + y}.03.31`; }
 
+// The comparison column's as-at date. It heads the client's own reported
+// figures, so it follows the same convention as the projected columns beside it
+// rather than a fiscal-year label — and a statement drawn to a non-standard
+// date needs to say so, which is why the box can override it. Empty =
+// automatic, the same idiom as every other override in this module.
+function pjBaseAsAt() {
+  const el = pjEl('pj-base-asat');
+  const typed = el ? (el.value || '').trim() : '';
+  return typed || pjAsAt(0);
+}
+
 function pjInit() {
   if (pjInitDone) return;
   SearchEngine.attachAutocomplete(pjEl('pj-client-search'), pjEl('pj-client-autocomplete'), {
@@ -594,8 +605,11 @@ function pjRenderRatioStrip() {
   }).join('');
 }
 
-// The five editable levers, one column per year. Empty box = automatic.
+// The editable levers, one column per year. Empty box = automatic.
+// Share Capital is per-year because a rights issue lands in a single year — an
+// empty box falls back to the base figure in the Share Capital box above.
 const PJ_OVERRIDE_FIELDS = [
+  { field: 'shareCapital',      label: 'Share Capital' },
   { field: 'cash',              label: 'Cash at Hand & Bank' },
   { field: 'creditors',         label: 'Sundry Creditors' },
   { field: 'closingStock',      label: 'Closing Stock' },
@@ -606,6 +620,7 @@ const PJ_OVERRIDE_FIELDS = [
 function pjRenderOverrides() {
   const ov = (pjResult.asm && pjResult.asm.overrides) || {};
   const auto = (yr, f) => ({
+    shareCapital: yr.bs.shareCapital,
     cash: yr.bs.cash, creditors: yr.bs.creditors, closingStock: yr.pl.closingStock,
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
   })[f];

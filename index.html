@@ -1981,6 +1981,7 @@ function cropLoginLogoIcon(img) {
               <select id="pj-years"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
             </div>
             <div class="form-group"><label>Base Fiscal Year</label><input type="text" id="pj-base-fy" value="2082-83" placeholder="e.g. 2082-83" title="Defaults to 2082-83. Edit it if this projection is built off a different year." /></div>
+            <div class="form-group"><label>Audited/Provisional Column As At</label><input type="text" id="pj-base-asat" placeholder="Auto — 2083.03.31" oninput="pjRenderReview()" title="Heads the Audited/Provisional comparison column. Leave blank to follow the base fiscal year; type a date if the statement is drawn to a different one." /></div>
             <div class="form-group"><label>Sales Growth — Year 1 (%)</label><input type="number" id="pj-growth1" value="10" step="0.5" /></div>
             <div class="form-group"><label>Sales Growth — Later Years (%)</label><input type="number" id="pj-growth-rest" value="5" step="0.5" /></div>
             <div class="form-group"><label>NCA % (drawing power)</label><input type="number" id="pj-nca-pct" value="70" min="1" max="100" step="1" /></div>
@@ -3775,9 +3776,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>
 <script src="js/finalAccount.js?v=202608022300"></script>
-<script src="js/projectionEngine.js?v=202608111200"></script>
-<script src="js/projection.js?v=202608111200"></script>
-<script src="js/projectionExport.js?v=202608111200"></script>
+<script src="js/projectionEngine.js?v=202608111400"></script>
+<script src="js/projection.js?v=202608111400"></script>
+<script src="js/projectionExport.js?v=202608111400"></script>
 <script src="js/finStatementEngine.js?v=202608022300"></script>
 <script src="js/finStatement.js?v=202608022300"></script>
 <script src="js/finStatementExport.js?v=202608022300"></script>
