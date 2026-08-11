@@ -803,7 +803,10 @@ function fsShowSheet(key) {
 function fsRenderPreview() {
   if (!fsReport) return;
   const sh = fsReport.sheets.find(s => s.key === fsSheetView) || fsReport.sheets[0];
-  fsEl('fs-preview').innerHTML = `<style>${FSX_PRINT_CSS}</style>` + fsxSheetHtml(sh, fsReport.meta);
+  // Goes through fsxPreviewHtml so the preview carries the same .fsp-root
+  // wrapper the print document does — the stylesheet is scoped to it, and
+  // without the wrapper none of the statement styling would apply here.
+  fsEl('fs-preview').innerHTML = fsxPreviewHtml(sh, fsReport.meta);
 }
 
 // ════════════════════════════════════════════════════════════════
