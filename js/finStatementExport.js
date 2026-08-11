@@ -544,13 +544,15 @@ function fsxBuildReport(out) {
 const fsxIsNum = (v) => typeof v === 'number' && isFinite(v);
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
-// Accounting presentation: brackets for negatives, en-dash for nil.
+// Accounting presentation, matching the Excel number format literally: a
+// leading minus for negatives (never parentheses), en-dash for nil — so the
+// preview, print and Excel all read the same figure the same way.
 function fsxAmt(v) {
   if (v == null || v === '') return '';
   if (!fsxIsNum(v)) return String(v);
   if (Math.abs(v) < 0.005) return '–';
   const s = Math.abs(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return v < 0 ? `(${s})` : s;
+  return v < 0 ? `-${s}` : s;
 }
 
 // PDF-Lib's standard fonts are WinAnsi and THROW on anything they can't encode
@@ -884,45 +886,48 @@ function fsxSheetCol(geom, i, matrix) {
 // which a WinAnsi standard font can. It also guarantees what is previewed is
 // exactly what prints, since both load the identical document.
 
+// Same rules as the Excel sheet (see FSX_SCHEDULE_KEYS / the border notes
+// above fsxWriteWorkbook): Book Antiqua, zero colour, borders on the value
+// cell only and never on a plain item row, medium rule under the header
+// band, no indent on item labels. The preview pane and the print/PDF
+// document both load this exact stylesheet, so they can't drift from each
+// other or from the Excel output.
 const FSX_PRINT_CSS = `
   @page { size: A4 portrait; margin: 14mm 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: 'Calibri','Segoe UI',Arial,sans-serif; color: #111; background: #fff;
-         margin: 0; font-size: 11px; }
+  body { font-family: 'Book Antiqua', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
+         color: #000; background: #fff; margin: 0; font-size: 13px; }
   .fsp-sheet { page-break-after: always; padding-bottom: 6mm; }
   .fsp-sheet:last-child { page-break-after: auto; }
-  .fsp-co { text-align: center; font-size: 15px; font-weight: 700; letter-spacing: .2px; }
-  .fsp-addr { text-align: center; font-size: 11px; color: #333; margin-top: 2px; }
-  .fsp-title { text-align: center; font-size: 13px; font-weight: 700; margin-top: 10px; }
-  .fsp-sub { text-align: center; font-size: 10.5px; margin-top: 2px; }
-  .fsp-fig { text-align: center; font-size: 9.5px; font-style: italic; color: #555; margin-top: 2px; }
-  .fsp-restated { text-align: right; font-size: 9px; font-style: italic; color: #555; margin: 8px 0 0; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  thead th { background: #0B1F3D; color: #fff; font-size: 10px; font-weight: 700;
-             padding: 6px 7px; text-align: right; vertical-align: bottom; }
-  thead th.fsp-lab { text-align: left; }
-  thead th.fsp-note { text-align: center; width: 42px; }
-  td { padding: 3.5px 7px; border-bottom: 1px solid #E4E8F0; }
+  .fsp-co { text-align: center; font-size: 19px; font-weight: 700; }
+  .fsp-addr { text-align: center; font-size: 19px; font-weight: 700; margin-top: 2px; }
+  .fsp-title { text-align: center; font-size: 16px; font-weight: 700; margin-top: 8px; }
+  .fsp-sub { text-align: center; font-size: 14px; font-weight: 700; margin-top: 2px; }
+  .fsp-fig { text-align: right; font-size: 12px; font-weight: 700; margin-top: 3px; }
+  .fsp-restated { text-align: right; font-size: 12px; font-weight: 700; font-style: italic; margin: 6px 0 0; }
+  .fsp-heading { text-align: left; font-size: 16px; font-weight: 700; }
+  .fsp-sched-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; }
+  .fsp-sched-row .fsp-title-sched { font-size: 14px; font-weight: 700; }
+  .fsp-sched-row .fsp-fig { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  thead th { font-size: 13px; font-weight: 700; padding: 6px 7px; text-align: right;
+             vertical-align: bottom; border-bottom: 2px solid #000; }
+  thead th.fsp-lab, thead th.fsp-note { text-align: center; }
+  thead th.fsp-note { width: 42px; }
+  td { padding: 3.5px 7px; border: none; }
   td.fsp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 118px; }
-  td.fsp-note { text-align: center; color: #444; width: 42px; }
-  tr.fsp-head td { font-weight: 700; color: #0B1F3D; padding-top: 9px; border-bottom: none; }
-  tr.fsp-sub td { font-weight: 700; border-bottom: none; }
-  tr.fsp-item td.fsp-lab { padding-left: 18px; }
-  tr.fsp-tot td { font-weight: 700; background: #EBEFF6; border-top: 1px solid #8593A6; }
-  tr.fsp-grand td { font-weight: 700; background: #D8E2ED; border-top: 1px solid #0B1F3D;
-                    border-bottom: 3px double #0B1F3D; }
-  tr.fsp-note-row td { font-style: italic; font-size: 9.5px; color: #444; border-bottom: none; padding-top: 8px; }
-  tr.fsp-kv td { border-bottom: 1px dotted #D8DEE8; }
-  tr.fsp-blank td { height: 7px; border-bottom: none; padding: 0; }
+  td.fsp-note { text-align: center; width: 42px; }
+  tr.fsp-head td, tr.fsp-sub td { font-weight: 700; padding-top: 9px; }
+  tr.fsp-tot td { font-weight: 700; }
+  tr.fsp-tot td.fsp-num { border-top: 1px solid #000; border-bottom: 3px double #000; }
+  tr.fsp-grand td { font-weight: 700; }
+  tr.fsp-grand td.fsp-num { border-bottom: 3px double #000; }
+  tr.fsp-note-row td { font-weight: 700; font-size: 12px; padding-top: 8px; }
+  tr.fsp-blank td { height: 7px; padding: 0; }
   .fsp-sig { margin-top: 16mm; width: 100%; }
-  .fsp-sig td { border: none; font-size: 10.5px; padding: 2px 7px; }
+  .fsp-sig td { border: none; font-size: 13px; padding: 2px 7px; }
   .fsp-sig .fsp-line { padding-bottom: 2px; letter-spacing: 1px; }
-  .fsp-sig .fsp-role { font-weight: 700; }
-  .fsp-meta { margin-top: 6mm; font-size: 10.5px; }
-  .fsp-proof { margin-top: 6mm; font-size: 10px; border: 1px solid #E4E8F0; padding: 6px 8px; }
-  .fsp-proof b { color: #0B1F3D; }
-  .fsp-ok { color: #1A8040; font-weight: 700; }
-  .fsp-bad { color: #BF2929; font-weight: 700; }
+  .fsp-meta { margin-top: 6mm; font-size: 13px; }
   @media print { .fsp-noprint { display: none !important; } }
 `;
 
@@ -939,14 +944,24 @@ function fsxSheetHtml(sh, meta) {
   const out = [];
   out.push('<div class="fsp-sheet">');
   if (!sh.noHeaderBand) {
-    out.push(`<div class="fsp-co">${fsxEsc((meta.company || {}).name)}</div>`);
-    out.push(`<div class="fsp-addr">${fsxEsc((meta.company || {}).address)}</div>`);
+    if (!FSX_SCHEDULE_KEYS[sh.key]) {
+      // Statement sheets carry the company header; schedule sheets never
+      // repeat it — confirmed against the template, whose Sch-BS starts
+      // straight at "3.2 Investment" with nothing above it.
+      out.push(`<div class="fsp-co">${fsxEsc((meta.company || {}).name)}</div>`);
+      out.push(`<div class="fsp-addr">${fsxEsc((meta.company || {}).address)}</div>`);
+      out.push(`<div class="fsp-title">${fsxEsc(sh.title || '')}</div>`);
+      if (sh.subtitle) out.push(`<div class="fsp-sub">${fsxEsc(sh.subtitle)}</div>`);
+      out.push('<div class="fsp-fig">Figures in NPR</div>');
+    } else {
+      // Schedule sheet: optional heading line, then the title and "Figures
+      // in NPR" share one row (title left, figures right) — the template's
+      // own Sch-BS layout.
+      if (sh.heading) out.push(`<div class="fsp-heading">${fsxEsc(sh.heading)}</div>`);
+      out.push(`<div class="fsp-sched-row"><span class="fsp-title-sched">${fsxEsc(sh.title || '')}</span><span class="fsp-fig">Figures in NPR</span></div>`);
+    }
+    if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
   }
-  if (sh.heading) out.push(`<div class="fsp-title">${fsxEsc(sh.heading)}</div>`);
-  out.push(`<div class="fsp-title">${fsxEsc(sh.title || '')}</div>`);
-  if (sh.subtitle) out.push(`<div class="fsp-sub">${fsxEsc(sh.subtitle)}</div>`);
-  out.push('<div class="fsp-fig">Figures in NPR</div>');
-  if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
 
   out.push('<table>');
   if (!sh.noHeaderBand) {
