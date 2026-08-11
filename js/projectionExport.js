@@ -634,9 +634,13 @@ const PJX_PRINT_CSS = `
   html, body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   body{ margin:0; background:#eef1f5; font-family:"Times New Roman",Georgia,serif;
         color:#0d131c; -webkit-font-smoothing:antialiased; }
+  /* Flex column so the signature block can be pushed to the foot of the page
+     (margin-top:auto) instead of floating directly under the last table row —
+     the same mechanic .pjp-cover-frame uses for its date line. */
   .pjp-sheet{
     background:#fff; width:210mm; min-height:297mm; margin:0 auto 18px; padding:14mm 12mm;
     box-shadow:0 2px 14px rgba(15,23,42,.18);
+    display:flex; flex-direction:column;
   }
   .pjp-head{ text-align:center; margin-bottom:12px; }
   .pjp-co{ font-size:16.5pt; font-weight:700; color:#0b1f3d; letter-spacing:.2px; }
@@ -666,7 +670,11 @@ const PJX_PRINT_CSS = `
   tr.pjp-span td{ text-align:center; font-weight:700; color:#0b1f3d; padding:10px 0 5px; border-bottom:0; }
   td.pjp-pass{ color:#15703a; font-weight:700; }
   td.pjp-fail{ color:#a81f1f; font-weight:700; }
-  .pjp-sig{ display:flex; justify-content:space-between; margin-top:28px; font-size:10.5pt; }
+  /* margin-top:auto drops the block to the foot of the page; padding-top is the
+     physical signing band. At the old flat 28px the block sat immediately under
+     the table and signatures written on the dotted lines ran back over the last
+     rows of the statement. */
+  .pjp-sig{ display:flex; justify-content:space-between; margin-top:auto; padding-top:20mm; font-size:10.5pt; }
   .pjp-sig-r{ text-align:right; }
   .pjp-sig-line{ border-top:1px dotted #0d131c; width:150px; margin-bottom:5px; }
   .pjp-sig-r .pjp-sig-line{ margin-left:auto; }
@@ -689,7 +697,11 @@ const PJX_PRINT_CSS = `
   @page{ size:A4; margin:12mm; }
   @media print{
     html, body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .pjp-sheet{ width:auto; min-height:0; margin:0; padding:0; box-shadow:none;
+    /* min-height was 0 here, which left margin-top:auto nothing to push
+       against, so the signature block printed directly under the table. 262mm
+       is the same page height .pjp-cover-frame already proves safe inside the
+       12mm @page margin — larger risks a blank page after every sheet. */
+    .pjp-sheet{ width:auto; min-height:262mm; margin:0; padding:0; box-shadow:none;
       page-break-after:always; break-after:page; }
     .pjp-sheet:last-child{ page-break-after:auto; break-after:auto; }
     .pjp-cover-frame{ height:262mm; }
@@ -855,7 +867,10 @@ async function pjBuildPdfBytes() {
     let nfs = Math.max(5.1, Math.min(9, (colW - 7) / Math.max(widest1pt, 0.001)));
     const twoLine = cols.some(c => c.h2);
     const bandH = twoLine ? 27 : 17;
-    const sigSpace = sig ? 68 : 14;
+    // The dotted rules sit at mB + 42, so the clear band a pen actually gets is
+    // sigSpace − 42. At 68 that was ~26pt (9mm) and signatures ran back onto
+    // the last rows of the statement; 99 gives ~57pt (20mm).
+    const sigSpace = sig ? 99 : 14;
     const headerH = 63 + (address ? 12 : 0) + bandH;
     const avail = H - headerH - mB - sigSpace;
     const stOf = r => Object.assign({}, S[r.kind] || S.plain, r.bold ? { bold: true } : null);
@@ -1259,9 +1274,10 @@ async function pjDownloadExcel() {
         row.commit && row.commit();
       });
 
-      // signature block
+      // signature block — 5 blank rows of signing clearance above the dotted
+      // rules, matching the ~20mm the PDF and print paths now leave.
       if (sec.sig) {
-        const sr = first + sec.rows.length + 2;
+        const sr = first + sec.rows.length + 5;
         const dotted = { style: 'dotted', color: { argb: 'FF1A1E29' } };
         ws.getCell(sr, 1).border = { bottom: dotted };
         ws.getCell(sr, 1 + nC).border = { bottom: dotted };
