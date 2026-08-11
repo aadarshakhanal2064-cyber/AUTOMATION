@@ -86,6 +86,80 @@ Sources correctly unchanged (the solver finds the smallest owner capital that
 satisfies the bank tests), and the balance and cash-flow ties exact at every
 level.
 
+### The Audited/Provisional comparison column must foot on its own (2026-08-11)
+
+Turning on `pj-include-audited` prints a lead column of the client's **own**
+reported figures next to the projected years. It is the first thing a banker
+checks, so it has to satisfy the same three identities the projected years do.
+It did not: verified against `M M Poultry Breeding Pvt Ltd 82.83 Provisional`,
+Total Sources exceeded Total Uses by 5,97,48,356, the current-liability rows
+added to 1,55,48,318 against a printed total of 7,54,34,832, and the P&L ran
+down to 16,32,280 against a reported PBT of 7,53,082. Ten cells were hard-coded
+`null` and printed `–` although the workbook carried a figure for every one.
+
+What the parser now reads, and why each was wrong:
+
+| `model` field | Source | Was |
+|---|---|---|
+| `loans.nonCurrentTotal` / `currentTotal` | **SFP**, the two same-labelled `Loans and Borrowings` rows, told apart by which liability heading precedes them | dead fields, never read |
+| `loans.term` / `overdraft` | Note 3.8, bucketed by its `Non-Current :` / `Current :` headings | headings were skipped without being recorded, so every row was classified by keyword and anything unnamed (`AG WC Loan`, `Demand Loan`) fell through to Long Term Loan |
+| `depreciation` | SOI `Depreciation Expenses` (3.1 PPE `Depreciation Charged` as fallback) | never parsed at all |
+| `expensesPayable` / `dutiesTaxPayable` | Note 3.9, split at its `Duties and taxes:` sub-heading | only the first `Trade Payables` row was read |
+| `financeCostST` / `financeCostLT` | Note 3.14 sub-lines (`OD/CC/STL/DL` vs `TL/PWC/HP`) | the whole finance cost went on the short-term row |
+| `retainedOpening` / `dividendPaid` | Note 3.7 roll-forward | never parsed |
+
+**The SFP is the authority for the loan split, not Note 3.8.** The note's labels
+vary per client and per year; the balance sheet's own two lines cannot. The
+parser reconciles the note detail against them and books any residual, exactly
+as the PPE pools are forced to the SFP fixed-asset total — and warns naming the
+amount. On `Test 1 2081.082 provisional` the note genuinely disagrees with its
+own balance sheet (52,52,145 vs 28,29,090); the SFP figure is what makes Total
+Current Liabilities foot, and the warning surfaces the inconsistency.
+
+**Long Term Loan is the bank portion alone.** A director loan shown inside
+Non-Current Liabilities (`T3`, `Test 2`) is already on the *Lending* row, so
+using the non-current total here counted it twice — Sources overshot by exactly
+the director loan.
+
+**The short-term interest is derived by difference** (`financeCost − LT`) once
+the note is broken out, so the two printed interest rows always add back to the
+note's Total. Bank charges, a subsidy credit or a facility spelled in a way no
+keyword catches otherwise vanish from both rows: `Test 2`'s "Interest/ Loan
+Expenses Term" is not "term loan" and left 34,702 unallocated.
+
+`addl` (Additional Capital) and `pwc` (Permanent Working Capital) stay `null` —
+projection concepts with no counterpart in a filed statement.
+
+**Two statements still do not foot in the P&L, correctly**: `Pashupati Marvel`
+and `Test 1` carry non-operating income and out-of-note SOI expenses, which
+§5.15 excludes from the projection by CA decision. That residual is the
+documented exclusion, not a parsing gap — don't "fix" it.
+
+### IRD row definitions (2026-08-11)
+
+Three were wrong, and each needs its audited value, projected value **and**
+Excel cross-sheet formula changed together or the sheet drifts:
+
+- **Gross Income is turnover**, the P&L's `Income from Sales/Service` — it was
+  `revenue − materials`, i.e. gross *profit*.
+- **Paid up Capital is share capital alone.** The projected column added the
+  solver's Additional Capital, which is not issued capital.
+- **Loan from Bank and Financial Institution is every facility.** The projected
+  column omitted `longTermLoan` entirely (where hire purchase also sits) and
+  counted `directorLending`, which is related-party, not a bank.
+
+### Signature clearance (2026-08-11)
+
+Staff sign the printed report by hand and the signatures ran back over the last
+rows of the statement. All three writers now leave ~20mm above the dotted rules:
+`.pjp-sig` uses `margin-top:auto` + `padding-top:20mm` with `.pjp-sheet` a flex
+column, the PDF's `sigSpace` is 99pt (the rules sit at `mB + 42`, so clearance
+is `sigSpace − 42`), and the Excel gap is 5 rows. **The print `@media` rule must
+keep a real `min-height`** (262mm, the height `.pjp-cover-frame` already proves
+safe inside the 12mm `@page` margin) — it was `0`, which left `margin-top:auto`
+nothing to push against. Measured on the M.M. Poultry report: every sheet fits
+the 273mm printable area, the Balance Sheet being tightest at 270.4mm.
+
 ### `performed_by` column
 
 `db/2026-08-10_projection_performed_by.sql` adds one nullable text column to

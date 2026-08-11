@@ -40,7 +40,7 @@ const PJX_BS_L = {
   depRow: 'b. Depreciation', faTotal: 'Total Fixed Assets', caLabel: '2. Current Assets',
   cash: 'a. Cash at Hand & Bank', debtors: 'b. Sundry Debtors', stock: 'c. Closing Stock',
   caTotal: 'Total Current Assets', clLabel: '3. Current Liabilities', creditors: 'a. Sundry Creditors',
-  provTax: 'b. Provision for tax', expPay: 'c. Expenses Payable', tds: 'd. TDS Payables',
+  provTax: 'b. Provision for tax', expPay: 'c. Expenses Payable', tds: 'd. Duties and Tax Payable',
   stl: 'e. Short Term Loan /OD/CC', clTotal: 'Total Current Liabilities',
   nca: 'Net Current Assets (2-3)', totalUses: 'Total Uses of Funds',
 };
@@ -185,8 +185,20 @@ function pjxBuildReport() {
   // Salary is always admin line 0; the audit-fee line drives both payables.
   const admAuditIdx = Y[0].pl.adminLines.findIndex(l => /audit fee/i.test(l.name));
 
-  // Audited/Provisional comparison figures
-  const termSum = m.loans.term.reduce((s, l) => s + l.amount, 0);
+  // Audited/Provisional comparison figures. These come from the client's own
+  // statement, so the column has to foot on its own terms: Sources = Uses, the
+  // current-liability rows add to their total, and the P&L runs down to the
+  // reported Profit Before Tax. Anything left null here prints "–", so a null
+  // is only correct where the statement genuinely carries no such line
+  // (Additional Capital and Permanent Working Capital are projection concepts).
+  // Long-term debt is the balance sheet's NON-CURRENT loans only; summing the
+  // whole Note 3.8 detail counted the current portion here too, which is what
+  // made Sources exceed Uses by exactly that amount. It is the bank portion
+  // alone: a director/proprietor loan shown inside Non-Current Liabilities
+  // belongs on the Lending row below, and counting the non-current total here
+  // would show it twice. The parser reconciles these two against the balance
+  // sheet, so they always add back to it.
+  const audLT = m.loans.term.reduce((s, l) => s + l.amount, 0);
   const audAdminLine = i => i === 0 ? m.salary : ((m.otherExpenses[i - 1] || {}).amount ?? null);
   const audAdminTotal = m.salary + m.otherExpenses.reduce((s, e) => s + e.amount, 0);
   const audGP = m.revenue.operations - m.materials.total;
@@ -205,18 +217,22 @@ function pjxBuildReport() {
       { k: 'addl', label: T.addlRow, vals: withAud(null, v(x => x.bs.additionalCapital)), kind: 'item', zeroable: true },
       { k: 'reserve', label: PJX_BS_L.reserve, vals: withAud(m.reserves, v(x => x.bs.reserves)), kind: 'item',
         xexpr: (R, c, X) => X('PL', 'transfer') },
-      { k: 'lt', label: PJX_BS_L.lt, vals: withAud(termSum, v(x => x.bs.longTermLoan)), kind: 'plain', zeroable: true },
+      { k: 'lt', label: PJX_BS_L.lt, vals: withAud(audLT, v(x => x.bs.longTermLoan)), kind: 'plain', zeroable: true },
       { k: 'pwc', label: PJX_BS_L.pwc, vals: withAud(null, v(x => x.bs.permanentWC)), kind: 'plain', zeroable: true },
       { k: 'lend', label: T.lendRow, vals: withAud(m.loans.directorLoan, v(x => x.bs.directorLending)), kind: 'plain', zeroable: true },
       { k: 'totalSrc', label: PJX_BS_L.totalSrc, kind: 'grand',
-        vals: withAud(m.shareCapital + m.reserves + termSum + m.loans.directorLoan, v(x => x.bs.totalSources)),
+        vals: withAud(m.shareCapital + m.reserves + audLT + m.loans.directorLoan, v(x => x.bs.totalSources)),
         xsum: ['cap', 'addl', 'reserve', 'lt', 'pwc', 'lend'] },
       { k: 'usesLabel', label: PJX_BS_L.usesLabel, vals: [], kind: 'sec' },
       { k: 'faLabel', label: PJX_BS_L.faLabel, vals: [], kind: 'sec' },
       // Both fetched from the Depreciation schedule's total row for that year.
-      { k: 'wdv', label: PJX_BS_L.wdv, vals: withAud(null, v(x => x.dep.total)), kind: 'item', zeroable: true, keep: true,
+      // In the comparison column there is no schedule to fetch from, so the
+      // written-down value is the reported fixed assets grossed back up by the
+      // year's charge — which is what makes the two rows still net to Total
+      // Fixed Assets, exactly as they do in the projected years.
+      { k: 'wdv', label: PJX_BS_L.wdv, vals: withAud(m.ppeTotal + m.depreciation, v(x => x.dep.total)), kind: 'item', zeroable: true, keep: true,
         xf: ({ X, yi }) => yi < 0 ? null : X('DEP', 'dt' + (yi + 1), 3) },
-      { k: 'depRow', label: PJX_BS_L.depRow, vals: withAud(null, v(x => x.dep.dep)), kind: 'item', zeroable: true, keep: true,
+      { k: 'depRow', label: PJX_BS_L.depRow, vals: withAud(m.depreciation, v(x => x.dep.dep)), kind: 'item', zeroable: true, keep: true,
         xf: ({ X, yi }) => yi < 0 ? null : X('DEP', 'dt' + (yi + 1), 5) },
       { k: 'faTotal', label: PJX_BS_L.faTotal, vals: withAud(m.ppeTotal, v(x => x.bs.fixedAssetsNet)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.wdv}-${c}${R.depRow}` },
@@ -241,7 +257,7 @@ function pjxBuildReport() {
         xexpr: (R, c, X) => X('PL', 'tax') },
       // Both payables are rules over the P&L: expenses payable = audit fee +
       // one month's salary; TDS = 1% of salary + 1.5% of audit fee.
-      { k: 'expPay', label: PJX_BS_L.expPay, vals: withAud(null, v(x => x.bs.expPayable)), kind: 'item', zeroable: true,
+      { k: 'expPay', label: PJX_BS_L.expPay, vals: withAud(m.expensesPayable, v(x => x.bs.expPayable)), kind: 'item', zeroable: true,
         xf: ({ X, yi }) => {
           if (yi < 0 || admAuditIdx < 0) return null;
           const a = X('ADM', 'adm' + admAuditIdx), s = X('ADM', 'adm0');
@@ -250,7 +266,7 @@ function pjxBuildReport() {
           if (Math.abs(Math.round(audit + sal / 12) - Y[yi].bs.expPayable) > 0.5) return null;
           return `ROUND(${a}+${s}/12,0)`;
         } },
-      { k: 'tds', label: PJX_BS_L.tds, vals: withAud(null, v(x => x.bs.tdsPayable)), kind: 'item', zeroable: true,
+      { k: 'tds', label: PJX_BS_L.tds, vals: withAud(m.dutiesTaxPayable, v(x => x.bs.tdsPayable)), kind: 'item', zeroable: true,
         xf: ({ X, yi }) => {
           if (yi < 0 || admAuditIdx < 0) return null;
           const a = X('ADM', 'adm' + admAuditIdx), s = X('ADM', 'adm0');
@@ -259,7 +275,7 @@ function pjxBuildReport() {
           if (Math.abs(Math.round(sal * 0.01 + audit * 0.015) - Y[yi].bs.tdsPayable) > 0.5) return null;
           return `ROUND(${s}*0.01+${a}*0.015,0)`;
         } },
-      { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.overdraft, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
+      { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.currentTotal, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
       { k: 'clTotal', label: PJX_BS_L.clTotal, vals: withAud(m.currentLiabilitiesTotal, v(x => x.bs.totalCurrentLiabilities)), kind: 'tot',
         xsum: ['creditors', 'provTax', 'expPay', 'tds', 'stl'] },
       { k: 'nca', label: PJX_BS_L.nca, vals: withAud(audNCA, v(x => x.bs.netCurrentAssets)), kind: 'tot',
@@ -311,7 +327,10 @@ function pjxBuildReport() {
       { k: 'pbid', label: PJX_PL_L.pbid, vals: withAud(audGP - audAdminTotal, v(x => x.pl.grossProfit - x.pl.adminTotal)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.gp}-${c}${R.adminTotal}` },
       // OD/short-term interest = the OD balance on the Balance Sheet × its rate.
-      { k: 'intST', label: PJX_PL_L.intST, vals: withAud(m.financeCost, v(x => x.pl.interestST)), kind: 'plain', zeroable: true,
+      // In the comparison column, Note 3.14's own split decides which row each
+      // half belongs to; only a statement that does not break the finance cost
+      // out falls back to showing the whole of it here.
+      { k: 'intST', label: PJX_PL_L.intST, vals: withAud(m.financeCostST != null ? m.financeCostST : m.financeCost, v(x => x.pl.interestST)), kind: 'plain', zeroable: true,
         xf: ({ X, yi }) => {
           const st = asm.stLoans || [];
           if (yi < 0 || st.length !== 1) return null;
@@ -320,9 +339,9 @@ function pjxBuildReport() {
           if (!t || !(rate > 0) || Math.abs(bal * rate - Y[yi].pl.interestST) > 0.5) return null;
           return `${t}*${Math.round(rate * 1e6) / 1e6}`;
         } },
-      { k: 'intLT', label: PJX_PL_L.intLT, vals: withAud(null, v(x => x.pl.interestLT)), kind: 'plain', zeroable: true },
+      { k: 'intLT', label: PJX_PL_L.intLT, vals: withAud(m.financeCostLT, v(x => x.pl.interestLT)), kind: 'plain', zeroable: true },
       // Depreciation is fetched from the Depreciation schedule's total row.
-      { k: 'dep', label: PJX_PL_L.dep, vals: withAud(null, v(x => x.pl.dep)), kind: 'plain', zeroable: true, keep: true,
+      { k: 'dep', label: PJX_PL_L.dep, vals: withAud(m.depreciation, v(x => x.pl.dep)), kind: 'plain', zeroable: true, keep: true,
         xf: ({ X, yi }) => yi < 0 ? null : X('DEP', 'dt' + (yi + 1), 5) },
       { k: 'pbt', label: PJX_PL_L.pbt, vals: withAud(m.profitBeforeTax, v(x => x.pl.pbt)), kind: 'grand',
         xexpr: (R, c) => `${c}${R.pbid}-` + ['intST', 'intLT', 'dep'].filter(k => R[k]).map(k => `${c}${R[k]}`).join('-') },
@@ -337,10 +356,11 @@ function pjxBuildReport() {
         } },
       { k: 'pat', label: PJX_PL_L.pat, vals: withAud(m.profitBeforeTax - m.tax, v(x => x.pl.pat)), kind: 'tot',
         xexpr: (R, c) => R.tax ? `${c}${R.pbt}-${c}${R.tax}` : `${c}${R.pbt}` },
-      // Opening retained earnings = last year's "Transferred to Balance Sheet".
-      { k: 'upto', label: PJX_PL_L.upto, vals: withAud(null, v(x => x.pl.retainedOpening)), kind: 'plain', zeroable: true,
+      // Opening retained earnings = last year's "Transferred to Balance Sheet";
+      // in the comparison column it is Note 3.7's own opening balance.
+      { k: 'upto', label: PJX_PL_L.upto, vals: withAud(m.retainedOpening, v(x => x.pl.retainedOpening)), kind: 'plain', zeroable: true,
         xf: ({ R, p, yi }) => (yi > 0 && p && R.transfer) ? `${p}${R.transfer}` : null },
-      { k: 'div', label: PJX_PL_L.div, vals: withAud(null, v(x => x.pl.dividend)), kind: 'plain', zeroable: true, keep: true },
+      { k: 'div', label: PJX_PL_L.div, vals: withAud(m.dividendPaid, v(x => x.pl.dividend)), kind: 'plain', zeroable: true, keep: true },
       { k: 'transfer', label: PJX_PL_L.transfer, vals: withAud(m.reserves, v(x => x.pl.retainedClosing)), kind: 'grand',
         xexpr: (R, c) => `${c}${R.pat}` + (R.upto ? `+${c}${R.upto}` : '') + (R.div ? `-${c}${R.div}` : '') },
     ]),
@@ -484,13 +504,19 @@ function pjxBuildReport() {
       { k: 'ird' + i, label: `${i + 1}.  ${r.en}`, vals: [ird.audited[r.key], ird.projected[r.key]], kind: 'plain',
         xexpr: (R, c, X) => {
           const link = {
-            grossIncome: () => X('PL', 'gp'),
+            // Gross Income is turnover, so it links to the P&L's top line, not
+            // to Gross Profit. Paid-up Capital is share capital alone — the
+            // projection's Additional Capital is not issued capital.
+            grossIncome: () => X('PL', 'sales'),
             pbt: () => X('PL', 'pbt'),
             tax: () => X('PL', 'tax'),
-            paidUpCapital: () => { const a = X('BS', 'cap'), b = X('BS', 'addl'); return a && b ? `${a}+${b}` : a; },
+            paidUpCapital: () => X('BS', 'cap'),
             reserves: () => X('BS', 'reserve'),
-            bankLoan: () => { const p = X('BS', 'pwc'), d = X('BS', 'lend'), s = X('BS', 'stl');
-              return [p, d, s].filter(Boolean).join('+') || null; },
+            // Every facility the company owes a bank: long term (which carries
+            // hire purchase), permanent working capital and the short-term
+            // OD/CC. Director lending is deliberately absent — not a bank.
+            bankLoan: () => { const l = X('BS', 'lt'), p = X('BS', 'pwc'), s = X('BS', 'stl');
+              return [l, p, s].filter(Boolean).join('+') || null; },
             currentLiabilities: () => X('BS', 'clTotal'),
             provision: () => X('PL', 'tax'),
             currentAssets: () => X('BS', 'caTotal'),

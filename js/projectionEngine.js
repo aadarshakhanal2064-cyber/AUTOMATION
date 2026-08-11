@@ -72,11 +72,16 @@ const ProjectionEngine = (() => {
       inventory: { opening: 0, closing: 0 },
       shareCapital: 0,
       reserves: 0,
+      retainedOpening: null, // Note 3.7 "Opening" — the P&L's "profit upto last year"
+      dividendPaid: null,    // Note 3.7 "Less: Drawing/Dividend"
       loans: { term: [], directorLoan: 0, overdraft: 0, nonCurrentTotal: 0, currentTotal: 0 },
       revenue: { operations: 0, nonOperations: 0 },
       materials: { opening: 0, purchases: 0, directCost: 0, directCostItems: [], closing: 0, total: 0 },
       salary: 0,
+      depreciation: 0,       // SOI depreciation charge (3.1 PPE note as fallback)
       financeCost: 0,
+      financeCostST: null,   // Note 3.14 OD/CC/STL/DL sub-line — null when not broken out
+      financeCostLT: null,   // Note 3.14 TL/PWC/HP sub-line — null when not broken out
       otherExpenses: [],     // [{ name, amount }] from Note 3.15 (incl. audit fee)
       auditFee: 0,
       extraExpenses: [],     // SOI expense rows carrying no 3.12–3.15 note (e.g. Incentive)
@@ -86,6 +91,8 @@ const ProjectionEngine = (() => {
       debtors: 0,
       cash: 0,
       creditors: 0,          // trade payables only (Sch-BS 3.9 first row)
+      expensesPayable: null, // Note 3.9 accrued expenses (audit fee payable, salary payable, …)
+      dutiesTaxPayable: null,// Note 3.9 rows under "Duties and taxes:" (TDS payables)
       currentAssetsTotal: 0,
       currentLiabilitiesTotal: 0,
     };
@@ -140,6 +147,30 @@ const ProjectionEngine = (() => {
     model.provisionsNC        = sfpVal(/^provision/, 'Provisions (non-current)', false);
     model.currentLiabilitiesTotal = sfpVal(/total current liabilit/, 'Total Current Liabilities', true);
 
+    // Loans split — the SFP is the AUTHORITY, not Note 3.8's row labels.
+    // The statement carries two rows both labelled "Loans and Borrowings", one
+    // under each liability heading, so they can only be told apart by which
+    // heading they follow. Reading them here means the split is structural for
+    // any file, however the note spells its individual facilities: this shipped
+    // wrong because Note 3.8's "AG WC Loan" and "Demand Loan" matched no
+    // overdraft keyword, so the whole current portion was counted as Long Term
+    // Loan AND left out of Short Term Loan — the comparison column's Sources
+    // exceeded its Uses by exactly that amount.
+    {
+      const loanRe = /loans? (and|&) borrowing/;
+      const grab = (headRe, endRe) => {
+        const head = findRowIdx(gS, headRe, hS.row + 1, hS.labelCol);
+        if (head === -1) return null;
+        const end = findRowIdx(gS, endRe, head + 1, hS.labelCol);
+        const hit = labelValue(gS, loanRe, hS.labelCol, hS.valCol, head + 1, end === -1 ? Infinity : end);
+        return hit ? hit.value : null;
+      };
+      const nc = grab(/non-current liabilit/, /total non-current liabilit/);
+      const cur = grab(/^(i+v?|[0-9]+)?[.)]?\s*current liabilit/, /total current liabilit/);
+      if (nc != null) model.loans.nonCurrentTotal = nc;
+      if (cur != null) model.loans.currentTotal = cur;
+    }
+
     // ── SOI (Statement of Income) ──
     const soi = findSheet(wb, ['SOI', 'Statement of Income', 'Income Statement', 'Profit']);
     if (!soi) { err('Could not find the Income Statement sheet (SOI).'); return { model, issues }; }
@@ -155,6 +186,12 @@ const ProjectionEngine = (() => {
     model.profitBeforeTax     = soiVal(/profit before tax/, 'Profit Before Tax', true);
     model.tax                 = soiVal(/income tax expense/, 'Income Tax Expenses', false);
     model.netProfit           = soiVal(/net profit for/, 'Net Profit For the Year', false);
+    // The depreciation charge is a P&L figure and was never read at all — the
+    // only mention of it in this parser was the exclusion list below, which
+    // keeps the row out of extraExpenses. Without it the comparison column's
+    // Written-down Book Value and Depreciation rows print blank and the P&L
+    // column cannot foot down to Profit Before Tax.
+    model.depreciation        = soiVal(/depreciation/, 'Depreciation Expenses', false);
     {
       // Expense rows that belong to no detail note (e.g. "Incentive Expenses")
       // — everything between "B. EXPENSES" and "Total Expenses" whose label
@@ -216,11 +253,36 @@ const ProjectionEngine = (() => {
       model.salary = hit ? hit.value : 0;
     } else warn('Sch-PL: Note 3.13 (Employee Benefits) not found.');
 
-    // 3.14 Finance Cost
+    // 3.14 Finance Cost — total, plus the short-term/long-term split when the
+    // note breaks it out ("Interest Expenses on OD/CC/STL/DL" vs "… on
+    // TL/PWC/HP"). The report has separate rows for the two, and dropping the
+    // whole finance cost onto the short-term row left the term row blank and
+    // the P&L unable to foot. Both stay null when the note is not broken out,
+    // so those statements keep today's behaviour.
     const s314 = section(/^3\.14/);
     if (s314) {
       const hit = labelValue(gP, /^total$/, s314.labelCol, s314.valCol, s314.titleRow);
       model.financeCost = hit ? hit.value : 0;
+      // Short-term is tested FIRST because "short term" also contains "term".
+      const stRe = /\bod\b|\bcc\b|\bstl\b|\bdl\b|overdraft|short term/;
+      const ltRe = /\btl\b|\bpwc\b|\bhp\b|\bterm\b|hire purchase|permanent working/;
+      let split = false;
+      for (let r = s314.row + 1; r < s314.endRow; r++) {
+        const label = gP[r] && gP[r][s314.labelCol];
+        if (!label) continue;
+        const l = norm(label);
+        if (/^total$/.test(l)) continue;
+        const amount = num(gP[r][s314.valCol]);
+        if (amount === 0) continue;
+        if (stRe.test(l)) { model.financeCostST = (model.financeCostST || 0) + amount; split = true; }
+        else if (ltRe.test(l)) { model.financeCostLT = (model.financeCostLT || 0) + amount; split = true; }
+      }
+      // Whatever the note did not name as long-term is short-term "and others"
+      // — bank charges, a subsidy credit, or a facility spelled in a way no
+      // keyword catches. Deriving the short-term half by difference is what
+      // makes the two printed interest rows always add back to the note's own
+      // Total, so the P&L column still foots down to Profit Before Tax.
+      if (split) model.financeCostST = model.financeCost - (model.financeCostLT || 0);
     }
 
     // 3.15 Other Expenses — every itemized row, in order
@@ -245,32 +307,68 @@ const ProjectionEngine = (() => {
         const h = findHeader(gB, t38);
         if (h) {
           const end = findRowIdx(gB, /total loans and borrowing/, h.row + 1, h.labelCol);
+          // The note's own "Non-Current :" / "Current :" headings decide the
+          // bucket. They used to be skipped without being recorded, so every
+          // row was classified by keyword alone and any facility the keyword
+          // list did not name fell through to Long Term Loan.
+          let sect = null;             // 'nc' | 'cur' | null (no headings seen)
           for (let r = h.row + 1; r < (end === -1 ? h.row + 25 : end); r++) {
             const label = gB[r] && gB[r][h.labelCol];
             if (!label) continue;
             const l = norm(label);
-            if (/^total$|^non-current|^current\s*:?$/.test(l)) continue;
+            if (/^non-current/.test(l)) { sect = 'nc'; continue; }
+            if (/^current\s*:?$/.test(l)) { sect = 'cur'; continue; }
+            if (/^total$/.test(l)) continue;
             const amount = num(gB[r][h.valCol]);
             if (amount === 0) continue;
+            // A related-party loan is one wherever it is shown.
             if (/director|proprietor|partner/.test(l)) model.loans.directorLoan += amount;
+            else if (sect === 'cur') model.loans.overdraft += amount;
+            else if (sect === 'nc') model.loans.term.push({ name: String(label).trim(), amount });
+            // No headings in this note — fall back to the keyword heuristic so
+            // statements laid out the old way keep parsing exactly as before.
             else if (/overdraft|hypothec|\bod\b|\bcc\b|short/.test(l)) model.loans.overdraft += amount;
             else model.loans.term.push({ name: String(label).trim(), amount });
           }
-          model.loans.nonCurrentTotal = model.loans.term.reduce((s, x) => s + x.amount, 0) + model.loans.directorLoan;
-          model.loans.currentTotal = model.loans.overdraft;
         }
       } else warn('Sch-BS: Note 3.8 (Loans & Borrowings) not found — loan split unavailable.');
-      const t39 = findRowIdx(gB, /^3\.9/);
-      if (t39 !== -1) {
-        const h = findHeader(gB, t39);
-        if (h) {
-          const hit = labelValue(gB, /trade payable/, h.labelCol, h.valCol, h.row + 1);
-          if (hit) model.creditors = hit.value;
+      // 3.7 Reserves — the retained-earnings roll-forward. Its "Opening" line
+      // is exactly the P&L's "Profit/loss upto last year", which printed blank
+      // because nothing parsed it.
+      const s37 = WR.noteSection(gB, /^3\.7/);
+      if (s37) {
+        const open = labelValue(gB, /^opening/, s37.labelCol, s37.valCol, s37.row + 1, s37.endRow);
+        if (open) model.retainedOpening = open.value;
+        const div = labelValue(gB, /drawing|dividend/, s37.labelCol, s37.valCol, s37.row + 1, s37.endRow);
+        if (div) model.dividendPaid = div.value;
+      }
+
+      // 3.9 Trade and Other Payables — three buckets, not just the trade line.
+      // Only the first row was read before, so the balance sheet's Expenses
+      // Payable and TDS rows printed blank while Total Current Liabilities
+      // carried the full figure: the column's own a–e rows did not add up to
+      // its total. The note's "Duties and taxes:" sub-heading is what separates
+      // the TDS payables from the accrued expenses.
+      const s39 = WR.noteSection(gB, /^3\.9/);
+      if (s39) {
+        let duties = false;
+        for (let r = s39.row + 1; r < s39.endRow; r++) {
+          const label = gB[r] && gB[r][s39.labelCol];
+          if (!label) continue;
+          const l = norm(label);
+          if (/^duties and tax/.test(l)) { duties = true; continue; }
+          if (/^total$/.test(l)) continue;
+          const amount = num(gB[r][s39.valCol]);
+          if (/trade payable/.test(l)) { model.creditors = amount; continue; }
+          if (amount === 0) continue;
+          if (duties || /\btds\b|duties|tax payable/.test(l)) model.dutiesTaxPayable = (model.dutiesTaxPayable || 0) + amount;
+          else model.expensesPayable = (model.expensesPayable || 0) + amount;
         }
       }
     } else warn('Sch-BS sheet not found — loan/creditor detail unavailable.');
 
     // ── 3.1 PPE — per-pool closing carrying amounts ──
+    let ppeDepCharge = 0;   // the note's own depreciation charge, as an SOI fallback
     const ppe = findSheet(wb, ['3.1 PPE', 'PPE', 'Property']);
     if (ppe) {
       const gPP = grid(ppe, XLSX);
@@ -279,8 +377,10 @@ const ProjectionEngine = (() => {
         // Map header columns to pools by keyword (columns beyond the label col).
         const headerRow = gPP[h.row];
         const colPool = {};
+        let totalCol = -1;
         for (let c = h.labelCol + 1; c < headerRow.length; c++) {
           const pool = classifyPool(headerRow[c]);
+          if (/^total$/.test(norm(headerRow[c])) && totalCol === -1) totalCol = c;
           if (pool && !/total/.test(norm(headerRow[c]))) colPool[c] = pool;
         }
         // Closing carrying amount = the LAST "As at ..." row under "Carrying Amount:".
@@ -294,6 +394,9 @@ const ProjectionEngine = (() => {
             model.ppe[pool] = (model.ppe[pool] || 0) + num(gPP[closingRow][c]);
           }
         } else warn('3.1 PPE: carrying-amount closing row not found.');
+        // "Depreciation Charged for the Year" total, above the carrying block.
+        const depRow = findRowIdx(gPP, /depreciation charged/, h.row, h.labelCol);
+        if (depRow !== -1 && totalCol !== -1) ppeDepCharge = num(gPP[depRow][totalCol]);
       } else warn('3.1 PPE: header row not found.');
     } else warn('3.1 PPE sheet not found — depreciation pools will start empty.');
 
@@ -317,6 +420,48 @@ const ProjectionEngine = (() => {
            + `depreciation schedule and cash flow still tie. Check the column headings in Note 3.1 if this looks wrong.`);
       }
     }
+
+    // Reconcile the Note 3.8 detail against the SFP's own two "Loans and
+    // Borrowings" rows, the same way the PPE pools are forced to the SFP fixed
+    // -asset total above. The SFP wins: it is the statement the client signed,
+    // and the comparison column's Sources = Uses identity is stated in terms of
+    // its figures. Booking the residual keeps that identity true whatever the
+    // note calls an individual facility.
+    {
+      const L = model.loans;
+      const termSum = L.term.reduce((s, x) => s + x.amount, 0);
+      if (L.nonCurrentTotal) {
+        const residual = L.nonCurrentTotal - (termSum + L.directorLoan);
+        if (Math.abs(residual) > 1) {
+          L.term.push({ name: 'Long Term Loan', amount: residual });
+          warn(`Note 3.8's non-current rows total ${(termSum + L.directorLoan).toFixed(2)} against the `
+             + `${L.nonCurrentTotal.toFixed(2)} shown under Non-Current Liabilities on the balance sheet; `
+             + `the ${residual.toFixed(2)} difference has been carried as Long Term Loan so Sources still equal Uses.`);
+        }
+      } else if (termSum || L.directorLoan) {
+        L.nonCurrentTotal = termSum + L.directorLoan;   // no SFP row — trust the note
+      }
+      if (L.currentTotal) {
+        if (Math.abs(L.currentTotal - L.overdraft) > 1) {
+          warn(`Note 3.8's current rows total ${L.overdraft.toFixed(2)} against the ${L.currentTotal.toFixed(2)} `
+             + `shown under Current Liabilities on the balance sheet; the balance sheet figure has been used for `
+             + `Short Term Loan /OD/CC.`);
+        }
+        L.overdraft = L.currentTotal;
+      } else if (L.overdraft) {
+        L.currentTotal = L.overdraft;
+      }
+    }
+
+    // "Profit upto last year" falls out of the reserves roll-forward when Note
+    // 3.7 is absent: closing reserves less this year's profit after tax.
+    if (model.retainedOpening == null) {
+      model.retainedOpening = model.reserves - (model.profitBeforeTax - model.tax);
+    }
+
+    // Depreciation is a P&L figure, but the PPE note carries the same charge —
+    // use it when the income statement wording did not match.
+    if (!model.depreciation && ppeDepCharge) model.depreciation = ppeDepCharge;
 
     // Cross-check: inventory in SFP vs Note 3.12 closing balance.
     if (model.materials.closing && model.inventory.closing &&
@@ -998,26 +1143,37 @@ const ProjectionEngine = (() => {
     }
 
     // IRD sheet data: audited column + projected year 1 (master layout).
+    //
+    // Three definitions the IRD form fixes, and this sheet had wrong:
+    //  · Gross Income is turnover — the P&L's Income from Sales/Service — not
+    //    gross PROFIT, which is what "revenue − cost of materials" computes.
+    //  · Paid-up Capital is the share capital alone. Additional Capital is the
+    //    projection's own balancing injection, not capital the company has
+    //    actually issued, so adding it overstated the figure.
+    //  · Loan from Bank and Financial Institution is every facility. The
+    //    projected column omitted the long-term loan entirely (which is also
+    //    where hire purchase sits) and counted director lending, which is a
+    //    related-party loan and not from a bank at all.
     const ird = {
       audited: {
-        grossIncome: input.revenue.operations - input.materials.total,
+        grossIncome: input.revenue.operations,
         pbt: input.profitBeforeTax,
         tax: input.tax,
         paidUpCapital: input.shareCapital,
         reserves: input.reserves,
-        bankLoan: input.loans.term.reduce((s, l) => s + l.amount, 0) + input.loans.overdraft,
+        bankLoan: input.loans.nonCurrentTotal + input.loans.currentTotal,
         currentLiabilities: input.currentLiabilitiesTotal,
         provision: input.tax,
         currentAssets: input.currentAssetsTotal,
         fixedAssets: input.ppeTotal,
       },
       projected: years[0] ? {
-        grossIncome: years[0].pl.grossProfit,
+        grossIncome: years[0].pl.sales,
         pbt: years[0].pl.pbt,
         tax: years[0].pl.tax,
-        paidUpCapital: years[0].bs.shareCapital + years[0].bs.additionalCapital,
+        paidUpCapital: years[0].bs.shareCapital,
         reserves: years[0].bs.reserves,
-        bankLoan: years[0].bs.permanentWC + years[0].bs.directorLending + years[0].bs.shortTermLoan,
+        bankLoan: years[0].bs.longTermLoan + years[0].bs.permanentWC + years[0].bs.shortTermLoan,
         currentLiabilities: years[0].bs.totalCurrentLiabilities,
         provision: years[0].pl.tax,
         currentAssets: years[0].bs.totalCurrentAssets,
