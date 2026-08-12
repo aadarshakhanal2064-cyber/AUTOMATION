@@ -1463,6 +1463,9 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 .pj-saved-main{ min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pj-saved-title{ font-size: 13.5px; color: var(--text-main); }
 .pj-saved-meta{ font-size: 12px; color: var(--text-faint); }
+/* Load and Delete sit together; shrink:0 keeps them on one line when a long
+   company name pushes the row's text column wide. */
+.pj-saved-actions{ display: flex; gap: 8px; flex-shrink: 0; }
 
 /* ── Number inputs: no spinner arrows ──
    The native up/down stepper sits on top of the right-hand edge of the box

@@ -87,6 +87,12 @@ function pjInit() {
   // Typing over the picked name detaches the screen from that client record,
   // so a later Save can't attach to it.
   pjEl('pj-client-search').addEventListener('input', () => { pjScope.invalidate(); pjSelectedClient = null; });
+  // The company name is what saved projections are stored under, so it — not
+  // just the directory picker — is what surfaces them. This module deliberately
+  // allows projections for names that aren't in the client master, and those
+  // were previously unreachable: nothing ever re-queried after a typed name.
+  const companyEl = pjEl('pj-company');
+  if (companyEl) companyEl.addEventListener('input', pjSavedLookupDebounced);
   pjPopulateStaff();
   pjRenderAdditionsRows();
   pjAddLoanRow('st');          // one starter row for the common case
@@ -148,8 +154,9 @@ const pjScope = WorkflowEngine.createClientScope({
     // standing would offer to "update" another client's record.
     pjSavedList = []; pjLoadedRow = null;
     pjSetTaskMode('new');
-    pjRenderSavedList();
     ['pj-company', 'pj-pan'].forEach(id => { const el = pjEl(id); if (el) el.value = ''; });
+    // After the name is cleared, not before — the empty state reads off it.
+    pjRenderSavedList();
     const fyEl = pjEl('pj-base-fy');
     if (fyEl) fyEl.value = PJ_BASE_FY_DEFAULT;   // back to the default, not blank
     const fileEl = pjEl('pj-file');
@@ -217,52 +224,120 @@ function pjRenderTaskNote() {
 // client_id when there is one; a typed-only company (this module allows
 // projections for non-directory names) falls back to the company name,
 // which is what those rows were saved under.
+//
+// The name match is a case-insensitive CONTAINS, not equality: the point of
+// this list is to answer "have we done this client before?" while the name is
+// being typed, and an exact match answers that only once the last character
+// lands — and misses entirely when the saved row reads "M.M. Poultry Breeding
+// Pvt Ltd" and the typed name is "M.M. Poultry". Each row prints the company
+// it belongs to, so a partial name matching two clients is legible rather than
+// misleading.
+let pjSavedQueryToken = 0;
+
 async function pjLoadSavedForClient() {
-  pjSavedList = [];
-  pjRenderSavedList();
-  const company = (pjEl('pj-company').value || '').trim();
-  if (!pjSelectedClient && !company) return;
+  const company = ((pjEl('pj-company') || {}).value || '').trim();
+  // Below 3 characters nearly every client matches, which is noise, not a list.
+  if (!pjSelectedClient && company.length < 3) {
+    pjSavedList = [];
+    pjRenderSavedList();
+    return;
+  }
+  // Typing fires these faster than they return; only the newest may render, or
+  // an earlier reply can overwrite the list with a shorter prefix's results.
+  const token = ++pjSavedQueryToken;
   try {
     let q = window.sb.from('projection_reports')
       .select('id, client_id, company_name, pan, fiscal_year_base, years, performed_by, created_by, created_at, updated_at')
       .order('updated_at', { ascending: false });
-    q = pjSelectedClient ? q.eq('client_id', pjSelectedClient.id) : q.eq('company_name', company);
+    q = pjSelectedClient
+      ? q.eq('client_id', pjSelectedClient.id)
+      : q.ilike('company_name', `%${company.replace(/[%_]/g, '')}%`);
     const { data, error } = await q;
     if (error) throw error;
+    if (token !== pjSavedQueryToken) return;          // a newer query is in flight
     pjSavedList = data || [];
     // Already in the database ⇒ this is an updation. Auto-switching is the
     // whole point: it's what stops a revision being saved as a duplicate.
-    if (pjSavedList.length && !pjLoadedRow) pjSetTaskMode('update');
+    // Only on a match that is certainly THIS client though — a partial-name
+    // hit may belong to someone else, and the mode drives what Save does.
+    const exact = pjSelectedClient
+      || pjSavedList.some(r => (r.company_name || '').trim().toLowerCase() === company.toLowerCase());
+    if (pjSavedList.length && exact && !pjLoadedRow) pjSetTaskMode('update');
     pjRenderSavedList();
   } catch (e) {
     console.error('projection: could not list saved reports', e);
-    pjRenderSavedList();
+    if (token === pjSavedQueryToken) { pjSavedList = []; pjRenderSavedList(); }
   }
+}
+
+// Typing a company name shouldn't fire a query per keystroke.
+let pjSavedLookupTimer = null;
+function pjSavedLookupDebounced() {
+  clearTimeout(pjSavedLookupTimer);
+  pjSavedLookupTimer = setTimeout(() => pjLoadSavedForClient(), 300);
 }
 
 function pjRenderSavedList() {
   const el = pjEl('pj-saved-list');
   if (!el) return;
+  const company = ((pjEl('pj-company') || {}).value || '').trim();
   if (!pjSavedList.length) {
-    el.innerHTML = pjSelectedClient
-      ? '<div class="pj-saved-empty">No saved projection for this client yet — this will be a new task.</div>'
-      : '';
+    // The box says something whenever a name is on screen. It used to render
+    // nothing at all unless a directory client was picked, so a typed-in
+    // company looked as though the feature did not exist.
+    el.innerHTML = (pjSelectedClient || company.length >= 3)
+      ? '<div class="pj-saved-empty">No saved projection found for this name yet — this will be a new task.</div>'
+      : '<div class="pj-saved-empty">Pick or type a client name to see projections saved for them.</div>';
     return;
   }
-  el.innerHTML = `<div class="pj-saved-head">${pjSavedList.length} saved projection${pjSavedList.length === 1 ? '' : 's'} for this client</div>` +
+  el.innerHTML = `<div class="pj-saved-head">${pjSavedList.length} saved projection${pjSavedList.length === 1 ? '' : 's'}</div>` +
     pjSavedList.map(r => {
       const who = r.performed_by || r.created_by || '—';
       const when = (r.updated_at || r.created_at || '').slice(0, 10);
       const isOpen = pjLoadedRow && pjLoadedRow.id === r.id;
+      // The company is printed because a partial-name search can span clients;
+      // without it two similarly named companies are indistinguishable here.
       return `
         <div class="pj-saved-row${isOpen ? ' open' : ''}">
           <div class="pj-saved-main">
-            <div class="pj-saved-title"><strong>#${r.id}</strong> · Base F.Y. ${escHtml(r.fiscal_year_base || '—')} · ${r.years} year${r.years === 1 ? '' : 's'}</div>
-            <div class="pj-saved-meta">Performed by <strong>${escHtml(who)}</strong>${when ? ' · ' + escHtml(when) : ''}</div>
+            <div class="pj-saved-title"><strong>#${r.id}</strong> · ${escHtml(r.company_name || '—')}</div>
+            <div class="pj-saved-meta">Base F.Y. ${escHtml(r.fiscal_year_base || '—')} · ${r.years} year${r.years === 1 ? '' : 's'}
+              · performed by <strong>${escHtml(who)}</strong>${when ? ' · ' + escHtml(when) : ''}</div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="pjLoadSaved(${r.id})">${isOpen ? 'Reload' : 'Load & Update'}</button>
+          <div class="pj-saved-actions">
+            <button class="btn btn-outline btn-sm" onclick="pjLoadSaved(${r.id})">${isOpen ? 'Reload' : 'Load & Update'}</button>
+            <button class="btn btn-danger btn-sm" onclick="pjDeleteSaved(${r.id})">Delete</button>
+          </div>
         </div>`;
     }).join('');
+}
+
+// Deleting the record that is currently open has to reset the task mode too:
+// pjSavedId would otherwise still point at a row that no longer exists, and the
+// next Save would issue an UPDATE that silently matches nothing.
+async function pjDeleteSaved(id) {
+  const row = pjSavedList.find(r => r.id === id);
+  const name = row ? (row.company_name || '') : '';
+  if (!confirm(`Delete saved projection #${id}${name ? ' for ' + name : ''}? This cannot be undone.`)) return;
+  try {
+    pjStatus('Deleting saved projection…', 'searching');
+    const { error } = await window.sb.from('projection_reports').delete().eq('id', id);
+    if (error) throw error;
+    if (pjSavedId === id || (pjLoadedRow && pjLoadedRow.id === id)) {
+      pjSavedId = null; pjLoadedRow = null;
+      pjSetTaskMode('new');
+      if (pjResult) pjRenderReview();     // the action button must stop saying "Update #id"
+    }
+    await pjLoadSavedForClient();
+    pjStatus(`Saved projection #${id} deleted.`, 'success');
+    AuditLog.record('projection_deleted', {
+      module: 'projection', clientName: name || (pjEl('pj-company').value || ''),
+      status: 'success', recordRef: id,
+    });
+  } catch (e) {
+    console.error(e);
+    pjStatus('Could not delete: ' + escHtml(e.message), 'error');
+  }
 }
 
 // ── Load a saved projection back onto the screen ──
@@ -393,6 +468,10 @@ async function pjHandleFile(input) {
     // fills it when the user has cleared it, never overwrites what is there.
     if (!pjEl('pj-base-fy').value.trim()) pjEl('pj-base-fy').value = PJ_BASE_FY_DEFAULT;
     pjRenderAdditionsRows();
+    // The workbook names the company, so an upload alone is enough to know
+    // whether this client already has projections on file — no need to make
+    // the user re-type a name the statement just supplied.
+    pjLoadSavedForClient();
     pjStatus(`Statement detected — ${issues.length ? issues.length + ' warning(s), see summary.' : 'all figures extracted cleanly.'} Continue to Assumptions.`, 'success');
     AuditLog.record('projection_statement_parsed', { module: 'projection', clientName: model.company.name, status: 'success' });
     pjShowSection('assumptions');

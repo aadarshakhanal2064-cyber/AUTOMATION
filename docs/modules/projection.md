@@ -246,6 +246,40 @@ safe inside the 12mm `@page` margin) — it was `0`, which left `margin-top:auto
 nothing to push against. Measured on the M.M. Poultry report: every sheet fits
 the 273mm printable area, the Balance Sheet being tightest at 270.4mm.
 
+### The saved-projection list is driven by the COMPANY NAME (2026-08-11)
+
+`projection_reports` rows are stored under `company_name`, but the list that
+surfaces them only ever re-queried from `pjScope.load()` — i.e. only when a
+client was picked from the directory autocomplete. Typing a name by hand, or
+letting an upload fill it from the workbook, never triggered a lookup, so the
+one row in the table with a null `client_id` (this module deliberately allows
+projections for non-directory names) was unreachable through the UI entirely.
+
+- **Three triggers now**: the directory picker (as before), a debounced `input`
+  on `pj-company`, and `pjHandleFile()` once the workbook has named the company.
+- **The name match is a case-insensitive CONTAINS**, floored at 3 characters.
+  Equality answered "have we done this client before?" only once the last
+  character landed, and missed outright when the saved row read
+  `M.M. Poultry Breeding Pvt Ltd` and the typed name was `M.M. Poultry`. Each
+  row prints its own `company_name`, so a partial match spanning two clients is
+  legible rather than misleading.
+- **`pjSavedQueryToken` guards the race**: typing fires lookups faster than they
+  return, and without it a slower reply for a shorter prefix lands last and
+  overwrites the correct list.
+- **Auto-switch to Updation only on a certain match** (a directory client, or a
+  row whose name equals the typed one exactly). A partial hit may belong to
+  someone else, and the mode is what `pjSave()` reads.
+- **Delete** (`pjDeleteSaved`) joins Load & Update on every row. Deleting the
+  record currently open resets `pjSavedId`/`pjLoadedRow` and re-renders the
+  review, because a stale `pjSavedId` would make the next Save issue an UPDATE
+  matching nothing. The mode may legitimately return to Updation afterwards if
+  the client still has other saved rows — that is the documented auto-switch,
+  and it is safe because `pjSave()` requires `pjSavedId` as well as the mode.
+  RLS already carried `projection_reports_delete_member`, so no migration.
+- The empty state **always says something** once a name is on screen; it used
+  to render nothing at all unless a directory client was picked, which made the
+  feature look absent for a typed-in company.
+
 ### `performed_by` column
 
 `db/2026-08-10_projection_performed_by.sql` adds one nullable text column to
