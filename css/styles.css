@@ -1439,29 +1439,42 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 
 /* ── Projection Report — Task card (New Task / Updation + staff) ──
    UI-only tracking: none of this reaches the exported report. */
+/* Status line under the Task grid. It reads as a banner across the card rather
+   than a third form-group, which is what made it look like an input with no
+   box beside two real ones. */
 .pj-task-note{
-  display: flex; flex-direction: column; gap: 4px; padding: 8px 0;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 14px; padding: 10px 14px;
+  background: var(--bg-page-alt); border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
   font-size: 12.5px; color: var(--text-muted);
 }
 .pj-task-chip{
-  align-self: flex-start; font-size: 12px; font-weight: 700;
+  font-size: 12px; font-weight: 700;
   padding: 3px 10px; border-radius: 999px;
   background: var(--green-bg); border: 1px solid var(--green-border); color: var(--green-dk);
 }
 .pj-task-sub{ font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
 .pj-saved-head{
+  display: flex; align-items: center; gap: 8px;
   font-size: 11.5px; font-weight: 700; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .3px; margin: 16px 0 8px;
+  text-transform: uppercase; letter-spacing: .3px; margin: 18px 0 10px;
+  padding-top: 16px; border-top: 1px solid var(--border-light);
 }
-.pj-saved-empty{ font-size: 12.5px; color: var(--text-faint); margin-top: 14px; }
+.pj-saved-empty{
+  font-size: 12.5px; color: var(--text-faint);
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-light);
+}
 .pj-saved-row{
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
   margin-bottom: 8px; background: var(--white);
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
+.pj-saved-row:hover{ border-color: var(--accent-blue); box-shadow: var(--shadow-sm); }
 .pj-saved-row.open{ border-color: var(--accent-blue); background: var(--bg-page-alt); }
-.pj-saved-main{ min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pj-saved-title{ font-size: 13.5px; color: var(--text-main); }
+.pj-saved-main{ min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pj-saved-title{ font-size: 13.5px; font-weight: 600; color: var(--text-main); }
 .pj-saved-meta{ font-size: 12px; color: var(--text-faint); }
 /* Load and Delete sit together; shrink:0 keeps them on one line when a long
    company name pushes the row's text column wide. */

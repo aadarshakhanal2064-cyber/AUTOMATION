@@ -312,6 +312,56 @@ function pjRenderSavedList() {
     }).join('');
 }
 
+// Browse EVERY saved projection, not just the ones matching the name on screen
+// — the same "Saved reports" drawer the Audit Report Builder uses, through the
+// shared picker in js/core/documentStore.js. The inline list below the Task
+// card answers "has this client been done before?"; this answers "where is
+// that projection I saved last month?", which is a different question and the
+// reason the drawer lists everything.
+const PJ_SAVED_COLS = 'id, client_id, company_name, pan, fiscal_year_base, years, performed_by, created_by, created_at, updated_at';
+
+function pjOpenSavedDrawer() {
+  DocumentStore.openPicker({
+    label: 'Saved projection reports',
+    empty: 'Nothing saved yet. Use <strong>Save to Database</strong> on a projection and it will be listed here.',
+    fetchRows: async () => {
+      const { data, error } = await window.sb.from('projection_reports')
+        .select(PJ_SAVED_COLS).order('updated_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      return data || [];
+    },
+    describe: r => {
+      const when = r.updated_at || r.created_at;
+      const d = when ? new Date(when) : null;
+      const stamp = d && !isNaN(d)
+        ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      return {
+        title: `${r.company_name || '—'} (Base F.Y. ${r.fiscal_year_base || '—'})`,
+        meta: `${r.years} year${r.years === 1 ? '' : 's'}`
+            + (stamp ? ` · saved ${stamp}` : '')
+            + ` · ${r.performed_by || r.created_by || 'not recorded'}`,
+      };
+    },
+    onChoose: id => pjLoadSaved(id),
+    onDelete: async id => {
+      const { error } = await window.sb.from('projection_reports').delete().eq('id', id);
+      if (error) throw error;
+      // Same orphan guard as the inline list: a stale pjSavedId would make the
+      // next Save issue an UPDATE matching nothing.
+      if (pjSavedId === id || (pjLoadedRow && pjLoadedRow.id === id)) {
+        pjSavedId = null; pjLoadedRow = null;
+        pjSetTaskMode('new');
+        if (pjResult) pjRenderReview();
+      }
+      AuditLog.record('projection_deleted', {
+        module: 'projection', clientName: pjEl('pj-company').value || '', status: 'success', recordRef: id,
+      });
+      pjLoadSavedForClient();      // keep the inline list in step
+    },
+  });
+}
+
 // Deleting the record that is currently open has to reset the task mode too:
 // pjSavedId would otherwise still point at a row that no longer exists, and the
 // next Save would issue an UPDATE that silently matches nothing.

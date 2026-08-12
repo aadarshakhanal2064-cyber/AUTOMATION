@@ -66,7 +66,16 @@ window.DocumentStore = (function () {
   }
 
   // ── Shared picker drawer ──
-  let ctx = null;   // { module, label, onOpen }
+  //
+  // Two kinds of caller:
+  //   · saved_documents modules pass `{ module, onOpen }` and get the default
+  //     list/open/delete against this table.
+  //   · a module whose records live elsewhere (Projection Report → the
+  //     `projection_reports` table, a different shape entirely) passes
+  //     `{ fetchRows, describe, onChoose, onDelete }`. The drawer, its markup
+  //     and its CSS are shared either way — building a second drawer would
+  //     duplicate the same list, empty state and delete confirm.
+  let ctx = null;   // { module, label, onOpen } | { label, fetchRows, describe, onChoose, onDelete }
 
   function el(id) { return document.getElementById(id); }
 
@@ -89,32 +98,44 @@ window.DocumentStore = (function () {
     ctx = null;
   }
 
+  // What a row reads as in the list. The saved_documents shape is the default;
+  // a caller with its own table supplies `describe`.
+  function defaultDescribe(r) {
+    return {
+      title: r.title || r.client_name,
+      meta: `${r.client_name || ''}${r.fiscal_year ? ' · F.Y. ' + r.fiscal_year : ''}`
+          + ` · saved ${fmtWhen(r.updated_at || r.created_at)}`
+          + (r.created_by ? ' · ' + r.created_by : ''),
+    };
+  }
+
   async function refresh() {
     if (!ctx) return;
     const host = el('ds-list');
     host.innerHTML = `<div class="log-empty">Loading…</div>`;
     try {
-      const rows = await list(ctx.module);
+      const rows = ctx.fetchRows ? await ctx.fetchRows() : await list(ctx.module);
       if (!rows.length) {
-        host.innerHTML = `<div class="log-empty">Nothing saved yet. Use <strong>Save to database</strong> on a document and it will be listed here.</div>`;
+        host.innerHTML = `<div class="log-empty">${ctx.empty
+          || 'Nothing saved yet. Use <strong>Save to database</strong> on a document and it will be listed here.'}</div>`;
         return;
       }
+      const describe = ctx.describe || defaultDescribe;
       // Row ids only in the inline handler — never free text (§10 rule 13).
-      host.innerHTML = rows.map(r => `
+      host.innerHTML = rows.map(r => {
+        const d = describe(r) || {};
+        return `
         <div class="ds-item">
           <div class="ds-item-main">
-            <div class="ds-item-title">${escHtml(r.title || r.client_name)}</div>
-            <div class="ds-item-meta">
-              ${escHtml(r.client_name)}${r.fiscal_year ? ' · F.Y. ' + escHtml(r.fiscal_year) : ''}
-              · saved ${escHtml(fmtWhen(r.updated_at || r.created_at))}
-              ${r.created_by ? ' · ' + escHtml(r.created_by) : ''}
-            </div>
+            <div class="ds-item-title">${escHtml(d.title || '')}</div>
+            <div class="ds-item-meta">${escHtml(d.meta || '')}</div>
           </div>
           <div class="ds-item-actions">
             <button class="btn btn-primary btn-sm" onclick="DocumentStore.choose(${r.id})">Open</button>
             <button class="btn btn-danger btn-sm" onclick="DocumentStore.discard(${r.id})">Delete</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     } catch (e) {
       console.error(e);
       host.innerHTML = `<div class="log-empty">Could not load saved documents: ${escHtml(e.message)}</div>`;
@@ -122,7 +143,11 @@ window.DocumentStore = (function () {
   }
 
   async function choose(id) {
-    if (!ctx || !ctx.onOpen) return;
+    if (!ctx) return;
+    // A caller owning its own table loads the record itself — only it knows
+    // how to put that row back on screen.
+    if (ctx.onChoose) { const h = ctx.onChoose; closePicker(); h(id); return; }
+    if (!ctx.onOpen) return;
     const handler = ctx.onOpen;
     try {
       const row = await get(id);
@@ -135,9 +160,10 @@ window.DocumentStore = (function () {
   }
 
   async function discard(id) {
-    if (!confirm('Delete this saved document? This cannot be undone.')) return;
+    if (!confirm('Delete this saved record? This cannot be undone.')) return;
     try {
-      await remove(id);
+      if (ctx && ctx.onDelete) await ctx.onDelete(id);
+      else await remove(id);
       await refresh();
     } catch (e) {
       console.error(e);

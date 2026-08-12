@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608110900">
+<link rel="stylesheet" href="css/styles.css?v=202608111900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1926,8 +1926,14 @@ function cropLoginLogoIcon(img) {
              who is performing it. UI-only — the staff name is deliberately
              never rendered into the exported report. -->
         <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Task</div></div>
-          <div class="form-grid" style="grid-template-columns:1.2fr 1fr 1fr; gap:14px; align-items:start;">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Task</div>
+            <button class="btn btn-outline btn-sm" onclick="pjOpenSavedDrawer()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              Saved reports
+            </button>
+          </div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; align-items:start;">
             <div class="form-group" style="margin:0;">
               <label>Task Type</label>
               <div class="arf-type-picker">
@@ -1946,11 +1952,8 @@ function cropLoginLogoIcon(img) {
               <select id="pj-staff" onchange="pjStaffChanged()"></select>
               <input type="text" id="pj-staff-other" placeholder="Type name" style="display:none; margin-top:8px;" />
             </div>
-            <div class="form-group" style="margin:0;">
-              <label>Status</label>
-              <div id="pj-task-note" class="pj-task-note"></div>
-            </div>
           </div>
+          <div id="pj-task-note" class="pj-task-note"></div>
           <div id="pj-saved-list"></div>
         </div>
 
@@ -3753,7 +3756,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/engineMath.js?v=202608022300"></script>
 <script src="js/core/ocrEngine.js?v=202608022300"></script>
 <script src="js/core/dataCache.js?v=202608022300"></script>
-<script src="js/core/documentStore.js?v=202608022300"></script>
+<script src="js/core/documentStore.js?v=202608111900"></script>
 <script src="js/tabs.js?v=202608022300"></script>
 <script src="js/dashboard.js?v=202608022300"></script>
 <script src="js/registrar.js?v=202608110900"></script>
@@ -3773,7 +3776,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/partyLedger.js?v=202608022300"></script>
 <script src="js/finalAccount.js?v=202608022300"></script>
 <script src="js/projectionEngine.js?v=202608111600"></script>
-<script src="js/projection.js?v=202608111800"></script>
+<script src="js/projection.js?v=202608111900"></script>
 <script src="js/projectionExport.js?v=202608111600"></script>
 <script src="js/finStatementEngine.js?v=202608022300"></script>
 <script src="js/finStatement.js?v=202608120900"></script>

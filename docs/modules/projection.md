@@ -280,6 +280,21 @@ projections for non-directory names) was unreachable through the UI entirely.
   to render nothing at all unless a directory client was picked, which made the
   feature look absent for a typed-in company.
 
+**A "Saved reports" drawer lists EVERY saved projection** (2026-08-11), through
+the shared `DocumentStore` picker — the same drawer the Audit Report Builder
+opens, reached by passing `{fetchRows, describe, onChoose, onDelete}` instead of
+`{module, onOpen}` so it can read `projection_reports`. The two lists answer
+different questions and both are wanted: the inline list under the Task card
+answers *"has this client been done before?"* while the name is being typed;
+the drawer answers *"where is that projection I saved last month?"*, which is
+why it is unfiltered. Deleting from the drawer runs the same orphan guard as
+the inline list.
+
+The Task card was reworked at the same time: the status line moved out of a
+third form-group (where it read as an input with no box beside two real ones)
+into a full-width banner under the grid, and the saved list gained a rule above
+it so it stops running straight into the form.
+
 ### `performed_by` column
 
 `db/2026-08-10_projection_performed_by.sql` adds one nullable text column to
