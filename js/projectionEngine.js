@@ -772,7 +772,15 @@ const ProjectionEngine = (() => {
     for (let y = 1; y <= N; y++) {
       const ov = overrides[y] || {};
       const growth = y === 1 ? g1 : gR;
-      const sales = Math.round((y === 1 ? salesBase : prev.pl.sales) * growth);
+      // Sales is per-year overridable — it is the top line the whole projection
+      // is built from, and the firm regularly knows a year's turnover better
+      // than a flat growth rate does. An override carries forward: the next
+      // year still grows off `prev.pl.sales`, which is now the corrected
+      // figure. It does not move the profit target (that is driven by the prior
+      // year's GP/PAT and debt service), only cost of sales, direct cost and
+      // the debtor-day ratio — so the statement stays self-consistent.
+      const sales = ov.sales != null ? num(ov.sales)
+        : Math.round((y === 1 ? salesBase : prev.pl.sales) * growth);
 
       // Rent & Audit Fee use the stepped '000 schedule; every other admin line
       // grows 5%/yr COMPOUNDED OFF THE PRIOR YEAR's rounded figure — matching

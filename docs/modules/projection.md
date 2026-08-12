@@ -180,21 +180,35 @@ that has a line of its own to distort.
 date. An upload no longer overwrites the field; it only fills it when blank,
 and Clear restores the default rather than blanking it. Still editable.
 
-**Share Capital moved from Step 2 (Assumptions) to Step 3 (Review & Export)**,
-into the Balancing Figures card alongside the other live-editable figures, with
-`oninput="pjRecalcDebounced()"`. It sits *outside* `#pj-overrides`, so the
-debounced re-render that rebuilds that table cannot destroy it mid-typing.
+**Share Capital is a per-year override row, and has no standalone box**
+(2026-08-11). It briefly moved from Step 2 into a single box at the top of the
+Balancing Figures card; that box is now **gone** and the figure is an ordinary
+per-year row in `PJ_OVERRIDE_FIELDS`, because a rights issue lands in a single
+year rather than across the whole projection. An empty box falls back to the
+statement's own parsed figure, the same "blank = automatic" idiom as every
+other lever. `pjApplyModelEdits()` and `pjParsedShareCapital` went with the box
+— nothing rewrites `pjModel.shareCapital` any more, so the parsed value stands
+as the base and the comparison column always shows what the statement said.
 
-**Share Capital is also a per-year override row** (2026-08-11) — first entry in
-`PJ_OVERRIDE_FIELDS`, one input per projected year, because a rights issue
-lands in a single year rather than across the whole projection. An empty box
-falls back to the base figure in the Share Capital box above, the same
-"blank = automatic" idiom as every other lever. In the engine `shareCap` is read
-per year off `ov.shareCapital` and carried on `state`, so `sources`, `equity`,
-`bs.shareCapital` and `cf.capitalIssued` all move together — `prevCap` already
-read the prior year's balance, so the cash flow needed no change. Verified with
-one year raised, and with all three years different: Sources=Uses, CF=BS cash
-and the Sources rows footing to their total hold in every case.
+In the engine `shareCap` is read per year off `ov.shareCapital` and carried on
+`state`, so `sources`, `equity`, `bs.shareCapital` and `cf.capitalIssued` all
+move together — `prevCap` already read the prior year's balance, so the cash
+flow needed no change.
+
+**Sales is a per-year override row too** (2026-08-11) — the top line the whole
+projection is built from, and the firm regularly knows a year's turnover better
+than a flat growth rate does. **An override carries forward**: the next year
+still grows off `prev.pl.sales`, which is now the corrected figure, so setting
+year 1 to 12cr makes year 2 12.6cr at 5% growth. It does **not** move the
+profit target — `gpTarget` is driven by the prior year's GP/PAT and by debt
+service, not by sales — so Gross Profit holds and purchases re-plug COGS around
+the new turnover. Only cost of sales, direct cost (a fixed ratio of sales) and
+the debtor-day ratio follow it.
+
+Verified on the real workbook with one year overridden, all three overridden,
+and sales mixed with a share-capital override: Sources=Uses, CF closing cash =
+BS cash, `Sales − COGS = GP`, `GP − admin − interest − dep = PBT` and
+`opening + purchases + direct − closing = COGS` all hold in every year.
 
 ### The comparison column is headed by a date, not a fiscal year (2026-08-11)
 

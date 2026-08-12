@@ -42,9 +42,6 @@ let pjSavedId = null;        // projection_reports row id once saved
 let pjTaskMode = 'new';      // 'new' | 'update'
 let pjSavedList = [];        // this client's saved projection_reports rows
 let pjLoadedRow = null;      // the saved row currently open, when updating
-// The share capital exactly as parsed from the workbook, so clearing the
-// (now editable) field returns to the statement's own figure rather than 0.
-let pjParsedShareCapital = 0;
 
 function pjStatus(html, type) { showStatus(html, type, 'pj-status-area'); }
 function pjEl(id) { return document.getElementById(id); }
@@ -150,10 +147,9 @@ const pjScope = WorkflowEngine.createClientScope({
     // client just as much as the parsed statement does — leaving them
     // standing would offer to "update" another client's record.
     pjSavedList = []; pjLoadedRow = null;
-    pjParsedShareCapital = 0;
     pjSetTaskMode('new');
     pjRenderSavedList();
-    ['pj-company', 'pj-pan', 'pj-share-capital'].forEach(id => { const el = pjEl(id); if (el) el.value = ''; });
+    ['pj-company', 'pj-pan'].forEach(id => { const el = pjEl(id); if (el) el.value = ''; });
     const fyEl = pjEl('pj-base-fy');
     if (fyEl) fyEl.value = PJ_BASE_FY_DEFAULT;   // back to the default, not blank
     const fileEl = pjEl('pj-file');
@@ -286,7 +282,6 @@ async function pjLoadSaved(id) {
     }
     pjModel = inputs.parsedModel;
     pjParseIssues = [];
-    pjParsedShareCapital = pjModel.shareCapital || 0;
     pjLoadedRow = data;
     pjSavedId = data.id;
     pjSetTaskMode('update');
@@ -324,7 +319,6 @@ function pjApplyAssumptions(asm, ui) {
   if (ui.statementType) set('pj-statement-type', ui.statementType);
   const inc = pjEl('pj-include-audited');
   if (inc) inc.checked = !!asm.includeAudited;
-  pjEl('pj-share-capital').value = pjModel ? Math.round(pjModel.shareCapital || 0) : '';
 
   pjSetLoans('st', asm.stLoans); pjSetLoans('lt', asm.ltLoans);
   pjSetLoans('pwc', asm.pwcLoans); pjSetLoans('hp', asm.hpLoans);
@@ -399,10 +393,6 @@ async function pjHandleFile(input) {
     // fills it when the user has cleared it, never overwrites what is there.
     if (!pjEl('pj-base-fy').value.trim()) pjEl('pj-base-fy').value = PJ_BASE_FY_DEFAULT;
     pjRenderAdditionsRows();
-    // Seed the editable capital box from the workbook, and remember the
-    // parsed figure so clearing the box can return to it.
-    pjParsedShareCapital = model.shareCapital || 0;
-    pjEl('pj-share-capital').value = Math.round(pjParsedShareCapital) || '';
     pjStatus(`Statement detected — ${issues.length ? issues.length + ' warning(s), see summary.' : 'all figures extracted cleanly.'} Continue to Assumptions.`, 'success');
     AuditLog.record('projection_statement_parsed', { module: 'projection', clientName: model.company.name, status: 'success' });
     pjShowSection('assumptions');
@@ -516,21 +506,12 @@ function pjCalculate() {
   AuditLog.record('projection_generated', { module: 'projection', clientName: pjEl('pj-company').value, status: 'success', detail: { years: pjEl('pj-years').value } });
 }
 
-// Share Capital is the one figure on the statement the firm regularly has to
-// correct by hand — the workbook's own capital line is often stale (a rights
-// issue since the audit, or a figure sitting in the wrong note), and every
-// downstream total keys off it. It's therefore an editable input rather than
-// a read-only parsed figure. Blank means "use what the workbook said", which
-// is why the parsed value is kept rather than the box being seeded once.
-function pjApplyModelEdits() {
-  if (!pjModel) return;
-  const raw = (pjEl('pj-share-capital').value || '').trim();
-  const v = parseFloat(raw);
-  pjModel.shareCapital = (raw === '' || isNaN(v)) ? pjParsedShareCapital : v;
-}
-
+// Share Capital used to have a single box here that rewrote the parsed figure
+// for every year at once. It is now a per-year row in the Balancing Figures
+// table instead (PJ_OVERRIDE_FIELDS), because a rights issue lands in one year
+// rather than across the projection — so the parsed figure stands as the base
+// and each year overrides it on its own.
 function pjRun(keepOverrides) {
-  pjApplyModelEdits();
   pjRunAsm(pjCollectAsm(keepOverrides));
 }
 
@@ -609,6 +590,7 @@ function pjRenderRatioStrip() {
 // Share Capital is per-year because a rights issue lands in a single year — an
 // empty box falls back to the base figure in the Share Capital box above.
 const PJ_OVERRIDE_FIELDS = [
+  { field: 'sales',             label: 'Income from Sales/Service' },
   { field: 'shareCapital',      label: 'Share Capital' },
   { field: 'cash',              label: 'Cash at Hand & Bank' },
   { field: 'creditors',         label: 'Sundry Creditors' },
@@ -620,7 +602,7 @@ const PJ_OVERRIDE_FIELDS = [
 function pjRenderOverrides() {
   const ov = (pjResult.asm && pjResult.asm.overrides) || {};
   const auto = (yr, f) => ({
-    shareCapital: yr.bs.shareCapital,
+    sales: yr.pl.sales, shareCapital: yr.bs.shareCapital,
     cash: yr.bs.cash, creditors: yr.bs.creditors, closingStock: yr.pl.closingStock,
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
   })[f];
