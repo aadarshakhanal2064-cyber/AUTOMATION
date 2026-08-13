@@ -20,13 +20,27 @@
 //  usable message. The JWT is verified below instead, together with the
 //  membership check the gateway cannot do.
 //
+//  TWO TRANSPORTS, chosen by which secrets exist — Gmail SMTP wins when both
+//  are set. Gmail is the better one for this firm and the reason is not
+//  convenience: the sender is a @gmail.com address, so mail relayed by a third
+//  party (Brevo) fails SPF/DKIM alignment and banks tend to spam-file it,
+//  whereas mail sent through Gmail's own servers genuinely originates there and
+//  aligns. Brevo also blocks unrecognised IPs, which a serverless function
+//  cannot satisfy — its egress address rotates.
+//
+//  Brevo is kept rather than deleted so switching back is a secrets change, not
+//  a redeploy.
+//
 //  Secrets (set in Dashboard → Project Settings → Edge Functions, never committed):
-//    BREVO_API_KEY   the provider key
-//    MAIL_FROM       the verified sender address
-//    MAIL_FROM_NAME  display name on the message  (optional)
+//    GMAIL_USER          the Gmail address to send from
+//    GMAIL_APP_PASSWORD  a Google App Password (NOT the account password)
+//    BREVO_API_KEY       fallback transport — the provider key
+//    MAIL_FROM           fallback sender address (Brevo path only)
+//    MAIL_FROM_NAME      display name on the message  (optional, both paths)
 // ════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.7';
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -75,6 +89,47 @@ async function sendViaBrevo(opts: {
   }
 }
 
+// Gmail's own SMTP. Port 465 with implicit TLS rather than 587/STARTTLS —
+// one fewer negotiation step to fail behind a serverless egress.
+async function sendViaGmail(opts: {
+  user: string; pass: string; fromName: string;
+  to: string; subject: string; html: string;
+  fileName: string; pdfBase64: string;
+}) {
+  const client = new SMTPClient({
+    connection: {
+      hostname: 'smtp.gmail.com',
+      port: 465,
+      tls: true,
+      auth: { username: opts.user, password: opts.pass },
+    },
+  });
+  try {
+    await client.send({
+      from: `${opts.fromName} <${opts.user}>`,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+      attachments: [{
+        filename: opts.fileName,
+        encoding: 'base64',
+        content: opts.pdfBase64,
+        contentType: 'application/pdf',
+      }],
+    });
+  } catch (e) {
+    // Gmail rejects a plain account password with "Username and Password not
+    // accepted"; saying so beats a bare SMTP error, because the fix is an App
+    // Password and nothing about the raw message suggests that.
+    const m = e instanceof Error ? e.message : String(e);
+    throw new Error(/username and password not accepted|invalid login|535/i.test(m)
+      ? 'Gmail rejected the login — GMAIL_APP_PASSWORD must be a Google App Password (16 characters), not the account password'
+      : `Gmail SMTP failed: ${m}`);
+  } finally {
+    try { await client.close(); } catch (_) { /* already closed */ }
+  }
+}
+
 const esc = (s: string) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -83,11 +138,14 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ ok: false, error: 'POST only' }, 405);
 
   try {
+    const gmailUser = Deno.env.get('GMAIL_USER');
+    const gmailPass = Deno.env.get('GMAIL_APP_PASSWORD');
     const apiKey = Deno.env.get('BREVO_API_KEY');
     const fromEmail = Deno.env.get('MAIL_FROM');
     const fromName = Deno.env.get('MAIL_FROM_NAME') ?? 'Shailesh & Associates';
-    if (!apiKey || !fromEmail) {
-      return json({ ok: false, error: 'email is not configured yet — BREVO_API_KEY and MAIL_FROM are not set on this function' }, 503);
+    const transport = (gmailUser && gmailPass) ? 'gmail' : (apiKey && fromEmail) ? 'brevo' : null;
+    if (!transport) {
+      return json({ ok: false, error: 'email is not configured yet — set GMAIL_USER and GMAIL_APP_PASSWORD (or BREVO_API_KEY and MAIL_FROM) on this function' }, 503);
     }
 
     // ── Who is calling ──
@@ -133,16 +191,21 @@ Deno.serve(async (req) => {
         </p>
       </div>`;
 
-    await sendViaBrevo({
-      apiKey, fromEmail, fromName,
+    const common = {
+      fromName,
       to: String(to),
       subject,
       html,
       fileName: String(fileName || 'Projection Report.pdf'),
       pdfBase64: String(pdfBase64),
-    });
+    };
+    if (transport === 'gmail') {
+      await sendViaGmail({ ...common, user: gmailUser!, pass: gmailPass! });
+    } else {
+      await sendViaBrevo({ ...common, apiKey: apiKey!, fromEmail: fromEmail! });
+    }
 
-    return json({ ok: true });
+    return json({ ok: true, transport });
   } catch (e) {
     // The attachment is never logged — it is the client's financial position.
     console.error('send-projection failed:', e instanceof Error ? e.message : e);

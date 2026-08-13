@@ -333,10 +333,33 @@ failed log never turns a delivered email into a reported failure.
 Emailing is gated on validation errors exactly as saving is — a projection
 whose figures don't tie must not leave the firm as a finished document.
 
-**Deliverability caveat**: the firm has no domain, so the sender is a verified
-Gmail address. Sending *as* `@gmail.com` through a third party fails SPF/DKIM
-alignment, and banks with strict filters may spam-file it. A firm domain is the
-real fix; the provider is isolated so that move is cheap.
+**Transport: Gmail SMTP, with Brevo kept as a fallback** (2026-08-11). The
+function picks by which secrets exist — `GMAIL_USER` + `GMAIL_APP_PASSWORD`
+wins, else `BREVO_API_KEY` + `MAIL_FROM` — so switching is a secrets change,
+not a redeploy.
+
+Brevo was built first and abandoned in practice for two reasons, both worth
+recording because they will apply to any hosted provider:
+
+1. **Brevo blocks unrecognised IPs**, and a serverless function has no fixed
+   egress address. Authorising the IP it named would have worked once and
+   failed on the next cold start. `2406:da1a::/32`, `/48`, `/64` and the bare
+   address were all rejected by the dashboard, and Brevo's documented
+   "we emailed you a verification link" flow never fired.
+2. **The firm has no domain**, so the sender is a `@gmail.com` address. Relayed
+   through a third party that fails SPF/DKIM alignment and banks tend to
+   spam-file it. Sent through Gmail's own SMTP it genuinely originates there
+   and aligns — which matters more than anything else here, since every
+   recipient is a bank.
+
+Gmail SMTP therefore solves the delivery problem and the IP problem at once.
+It needs a Google **App Password** (2-Step Verification must be on); the
+function detects a rejected plain password and says so explicitly, because the
+raw SMTP error gives no hint that an App Password is what's required. Limit is
+~500/day against the firm's ~5.
+
+A firm domain remains the better long-term answer — it would allow a proper
+`reports@` sender — but it is no longer load-bearing for deliverability.
 
 ### `performed_by` column
 
