@@ -15,7 +15,12 @@
 //  access"). Without it the publishable key plus any self-serve account would
 //  be enough to send mail under the firm's name.
 //
-//  Secrets (set with `supabase secrets set`, never committed):
+//  verify_jwt is disabled at the platform level ON PURPOSE: the gateway's own
+//  check would reject the request before this file runs, and its 401 carries no
+//  usable message. The JWT is verified below instead, together with the
+//  membership check the gateway cannot do.
+//
+//  Secrets (set in Dashboard → Project Settings → Edge Functions, never committed):
 //    BREVO_API_KEY   the provider key
 //    MAIL_FROM       the verified sender address
 //    MAIL_FROM_NAME  display name on the message  (optional)
