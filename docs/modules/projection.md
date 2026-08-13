@@ -295,6 +295,49 @@ third form-group (where it read as an input with no box beside two real ones)
 into a full-width banner under the grid, and the saved list gained a rule above
 it so it stops running straight into the form.
 
+### Emailing the report to the client (2026-08-11, user decision)
+
+The Review toolbar lost **Preview** and **Download PDF** — the firm previews
+and saves a PDF through *Print / Save as PDF*, so both were redundant to them.
+Note the two PDFs were never identical: Print goes through the browser's print
+engine, Download PDF was drawn by PDF-Lib. **`pjBuildPdfBytes()` is therefore
+kept**, and is now the email's attachment source — it is the only way to
+produce PDF bytes without a user click. `pjPreviewPdf()`, `pjDownloadPdf()` and
+the `pj-viewer` modal are also retained at the user's request; the modal is
+currently unreachable.
+
+**The two `.disabled = false` lines for the removed buttons had to go with
+them.** `pjEl('pj-preview-btn').disabled` throws on a null element, and
+`pjRenderReview()` runs on every re-solve — leaving them would have broken the
+whole review screen, not just the buttons.
+
+**Send path** — `pjSendEmail()` builds the PDF, base64-encodes it in 32KB
+chunks (`String.fromCharCode` on a whole file overflows the argument limit),
+and POSTs it to `supabase/functions/send-projection` with the caller's own
+session token. The function holds the Brevo key as a Supabase secret; the
+browser never has a provider credential, which is what distinguishes this from
+the Gmail integration §15 removed. The provider call is isolated in
+`sendViaBrevo()` so switching providers is one function.
+
+**Two gates, and the second is the one that matters**: a valid JWT proves
+someone signed up with Supabase, not that they work at the firm, so the
+function also checks `app_users` membership — mirroring the RLS philosophy in
+§6. Without it the publishable key plus any self-serve account would be enough
+to send mail under the firm's name.
+
+**Logging**: one `send_logs` row per attempt, written *after* the outcome is
+known. That table is deliberately immutable (§6 — no UPDATE policy), so the
+pending-then-update pattern the old Send Document module used fails here. A
+failed log never turns a delivered email into a reported failure.
+
+Emailing is gated on validation errors exactly as saving is — a projection
+whose figures don't tie must not leave the firm as a finished document.
+
+**Deliverability caveat**: the firm has no domain, so the sender is a verified
+Gmail address. Sending *as* `@gmail.com` through a third party fails SPF/DKIM
+alignment, and banks with strict filters may spam-file it. A firm domain is the
+real fix; the provider is isolated so that move is cheap.
+
 ### `performed_by` column
 
 `db/2026-08-10_projection_performed_by.sql` adds one nullable text column to

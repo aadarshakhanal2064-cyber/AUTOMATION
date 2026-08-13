@@ -675,10 +675,12 @@ function pjRenderReview() {
   // (the workbook carries a Validation sheet listing every finding). Only
   // saving to the database is gated, so bad figures never become a record.
   const hasErrors = pjIssues.some(i => i.level === 'error');
-  pjEl('pj-preview-btn').disabled = false;
   pjEl('pj-print-btn').disabled = false;
   pjEl('pj-excel-btn').disabled = false;
-  pjEl('pj-pdf-btn').disabled = false;
+  // Emailing is gated the same way saving is: a projection whose figures don't
+  // tie must not leave the firm as a finished document.
+  pjEl('pj-send-btn').disabled = hasErrors;
+  pjPrefillEmail();
   const saveBtn = pjEl('pj-save-btn');
   saveBtn.disabled = hasErrors;
   // The button says which of the two it will do, so an updation can never be
@@ -1038,6 +1040,132 @@ async function pjSave() {
   } catch (e) {
     console.error(e);
     pjStatus('Save failed: ' + escHtml(e.message), 'error');
+  }
+}
+
+// ════════════════════════════════════════════
+//  EMAIL THE REPORT TO THE CLIENT
+//
+//  This is the only outbound channel in the app, and it is deliberately NOT
+//  the shape the old Gmail integration had: nothing here authenticates against
+//  a mail provider, and no provider key exists on this page. The browser
+//  builds the PDF, posts it to a Supabase Edge Function, and that function —
+//  which already sits behind the same JWT the rest of the app uses — holds the
+//  key and does the sending. That is what makes a send button possible without
+//  dragging an OAuth stack back in (CLAUDE.md §15).
+// ════════════════════════════════════════════
+
+const PJ_SEND_FN = `${SUPABASE_URL}/functions/v1/send-projection`;
+// Brevo caps a message at 10MB; the PDF is normally ~300KB, so this only ever
+// fires on a pathological report and is here to give a clear reason instead of
+// a provider-side rejection.
+const PJ_MAX_ATTACH_BYTES = 7 * 1024 * 1024;
+
+// A directory client usually already has an address on file; typing it again
+// is how the wrong bank gets a client's figures.
+function pjPrefillEmail() {
+  const el = pjEl('pj-email');
+  if (!el || el.value.trim()) return;            // never overwrite a typed address
+  if (pjSelectedClient && pjSelectedClient.email) el.value = pjSelectedClient.email;
+}
+
+// btoa() takes a binary string, and a PDF blown through String.fromCharCode in
+// one call overflows the argument limit on real files — chunk it.
+function pjBytesToBase64(bytes) {
+  let bin = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  }
+  return btoa(bin);
+}
+
+async function pjSendEmail() {
+  if (!pjResult || !pjModel) { pjStatus('Generate a projection first.', 'error'); return; }
+  const to = (pjEl('pj-email').value || '').trim();
+  // Deliberately loose: the provider is the real validator, and a rule strict
+  // enough to be interesting rejects addresses that genuinely exist.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    pjStatus('Enter a valid client email address.', 'error'); return;
+  }
+  const company = (pjEl('pj-company').value || pjModel.company.name || '').trim();
+  const fyRange = `${pjFyLabel(1)} to ${pjFyLabel(pjResult.years.length)}`;
+  const fileName = `Projection Report ${company} ${pjFyLabel(1)}.pdf`;
+  const btn = pjEl('pj-send-btn');
+  btn.disabled = true;
+  try {
+    pjStatus('Building the PDF…', 'searching');
+    const { bytes } = await pjBuildPdfBytes();
+    if (bytes.length > PJ_MAX_ATTACH_BYTES) {
+      throw new Error(`the PDF is ${(bytes.length / 1048576).toFixed(1)}MB, over the ${PJ_MAX_ATTACH_BYTES / 1048576}MB attachment limit`);
+    }
+
+    pjStatus(`Sending to ${escHtml(to)}…`, 'searching');
+    // The caller's own session token goes with the request: the function
+    // rejects anyone who isn't a signed-in member, so the firm's mail quota
+    // can't be spent by a stranger holding only the publishable key.
+    const { data: sess } = await window.sb.auth.getSession();
+    const token = sess && sess.session ? sess.session.access_token : null;
+    const resp = await fetch(PJ_SEND_FN, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${token || SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({
+        to,
+        company,
+        fiscalYears: fyRange,
+        note: (pjEl('pj-email-note').value || '').trim(),
+        fileName,
+        pdfBase64: pjBytesToBase64(bytes),
+      }),
+    });
+    // A non-JSON body means the function itself fell over; surface the status
+    // rather than a parse error, which says nothing about what went wrong.
+    let out = null;
+    try { out = await resp.json(); } catch (_) { /* handled below */ }
+    if (!resp.ok || !out || !out.ok) {
+      throw new Error((out && out.error) || `send failed (HTTP ${resp.status})`);
+    }
+
+    await pjLogSend({ to, company, fileName, status: 'sent', error: null });
+    pjStatus(`Projection report emailed to <strong>${escHtml(to)}</strong>.`, 'success');
+    AuditLog.record('projection_emailed', {
+      module: 'projection', clientName: company, status: 'success',
+      recordRef: pjSavedId || null, detail: { to, fiscalYears: fyRange },
+    });
+  } catch (e) {
+    console.error(e);
+    await pjLogSend({ to, company, fileName, status: 'error', error: e.message });
+    pjStatus('Could not send: ' + escHtml(e.message), 'error');
+    AuditLog.record('projection_emailed', {
+      module: 'projection', clientName: company, status: 'error', detail: { to, error: e.message },
+    });
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// One row per attempt, written once the outcome is known. `send_logs` is
+// deliberately immutable (§6 — no UPDATE policy), so the pending-then-update
+// pattern the old Send Document module used would fail outright here.
+async function pjLogSend({ to, company, fileName, status, error }) {
+  try {
+    await window.sb.from('send_logs').insert({
+      sent_by: (window.currentUser && window.currentUser.email) || null,
+      client_name: company,
+      client_email: to,
+      doc_type: 'Projection Report',
+      fiscal_year: pjFyLabel(0),
+      file_name: fileName,
+      status,
+      error_msg: error ? String(error).slice(0, 500) : null,
+    });
+  } catch (e) {
+    // A failed log must never turn a delivered email into a reported failure.
+    console.error('projection: could not write send_logs row', e);
   }
 }
 

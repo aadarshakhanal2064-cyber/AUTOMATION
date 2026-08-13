@@ -2078,10 +2078,31 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="action-row">
           <button class="btn btn-primary" id="pj-save-btn" onclick="pjSave()" disabled>Save to Database</button>
-          <button class="btn btn-outline" id="pj-preview-btn" onclick="pjPreviewPdf()" disabled>Preview</button>
           <button class="btn btn-outline" id="pj-print-btn" onclick="pjPrintReport()" disabled>Print / Save as PDF</button>
           <button class="btn btn-outline" id="pj-excel-btn" onclick="pjDownloadExcel()" disabled>Download Excel</button>
-          <button class="btn btn-outline" id="pj-pdf-btn" onclick="pjDownloadPdf()" disabled>Download PDF</button>
+        </div>
+
+        <!-- Email the report to the client. The PDF is built in the browser and
+             posted to a Supabase Edge Function, which holds the mail provider's
+             API key — the key never reaches this page. -->
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Send to Client</div></div>
+          <div class="form-grid" style="grid-template-columns:1.4fr 2fr; gap:14px; align-items:start;">
+            <div class="form-group" style="margin:0;">
+              <label>Client Email</label>
+              <input type="email" id="pj-email" placeholder="name@bank.com.np" autocomplete="off" />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Message <span style="font-weight:400; color:var(--text-faint);">(optional)</span></label>
+              <input type="text" id="pj-email-note" placeholder="Added above the report details in the email body" />
+            </div>
+          </div>
+          <div class="action-row" style="margin-top:14px;">
+            <button class="btn btn-primary" id="pj-send-btn" onclick="pjSendEmail()" disabled>Send Projection Report</button>
+          </div>
+          <div id="pj-email-note-help" class="pj-task-note" style="margin-top:14px;">
+            <span class="pj-task-sub">The bank-ready PDF is attached automatically. Every send is recorded in the send log.</span>
+          </div>
         </div>
       </div>
 
@@ -3776,7 +3797,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/partyLedger.js?v=202608022300"></script>
 <script src="js/finalAccount.js?v=202608022300"></script>
 <script src="js/projectionEngine.js?v=202608111600"></script>
-<script src="js/projection.js?v=202608111900"></script>
+<script src="js/projection.js?v=202608112100"></script>
 <script src="js/projectionExport.js?v=202608111600"></script>
 <script src="js/finStatementEngine.js?v=202608022300"></script>
 <script src="js/finStatement.js?v=202608120900"></script>
