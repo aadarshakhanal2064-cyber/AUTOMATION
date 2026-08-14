@@ -93,6 +93,8 @@ AUTOMATION AI APP/
 │   ├── core/                # 14 reusable engines — §4
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
+├── tools/                   # Dependency-free Node verification harnesses
+│                            # (spbVerify.mjs — Autobooks; see §12)
 ├── supabase/functions/      # Edge Functions — server-side only where a secret
 │                            # must not reach the browser (send-projection, §15).
 │                            # Source is committed; keys are Supabase secrets.
@@ -327,6 +329,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 - Verify in the **real running app** (dev server + browser tools), not just by reading code. Bypass auth via DOM manipulation; mock Drive/Gmail where OAuth can't run.
 - For document generation: render with real inputs; check output structurally (unzip `.docx`, re-read `.xlsx` via ExcelJS). **No Word/LibreOffice here** — ask the user for the final visual check and say so plainly.
+- **A committed harness beats an uncommitted one.** `tools/spbVerify.mjs` exists because Autobooks' comments referenced a headless harness that was never committed — the helper it defined was missing from the browser, and the module threw on every import for a month with nobody noticing. If you write a throwaway script to prove a pipeline, commit it. `node tools/spbVerify.mjs` is mandatory around any change to Autobooks' parsing path.
 - For nontrivial pipeline changes: **proof-of-concept against real documents before implementing** — this project has repeatedly proven assumptions wrong.
 - Regression sweep after every change: activate every tab and registrar sub-panel, confirm rendering, check the console for errors.
 - **Report failures honestly, including what was *not* tested.** Never claim verification that didn't happen.
@@ -349,7 +352,7 @@ The established pattern — **investigate with real evidence → implement only 
 |---|---|---|
 | BM/AGM template-build tooling never committed | High | Exists only as prose in `docs/history/HANDOFF.md`. Any template rebuild starts by recreating it. |
 | CSP keeps `'unsafe-inline'` for scripts | Medium | Full fix = refactoring hundreds of inline `onclick=` handlers off inline script; a separate project. escHtml audit is the mitigation. |
-| No automated tests | Medium | All verification is manual/ad-hoc per §12. |
+| No automated tests | Medium | All verification is manual/ad-hoc per §12, except Autobooks (`tools/spbVerify.mjs`). Autobooks is the model for extending this: dependency-free Node, `vm`-loads the real module with stubbed engines, asserts against a real client workbook. |
 | No self-serve password reset | Low | Deliberate for a handful of users (§15) — an admin resets in the Supabase dashboard. Revisit if staff count grows or resets get frequent; needs custom SMTP, since Supabase's built-in sender is rate-limited. |
 | 4 Company Registrar stubs | Feature gap | UI-only, `moduleComingSoon()`. |
 | Financial Statement per-class depreciation is allocated, not per-asset | Low | A helper allocates figure `M` by opening balance and warns on disagreement; reading the per-class split from the SLM schedule's `pools` jsonb would be exact. |
@@ -390,7 +393,9 @@ The established pattern — **investigate with real evidence → implement only 
 - **Projection never restructures the client's loans to avoid owner capital** (2026-08-02, user decision) — when the current ratio or debt-equity forces Additional Capital, the review panel *states* how much of the short-term facility would have to be shown as a term loan to bring it to nil, and the user re-enters it in Step 2. How a facility is classified is a fact about the client, not a lever the report may pull. Don't make `suggestReclass()` self-applying.
 - **Projection excludes non-operating income and out-of-note SOI expense rows** — matches the CA's real delivered sample.
 - **Autobooks' "As Per VAT Return" figures are typed by the user, never derived** — filed figures genuinely differ from book, and are truncated to whole rupees.
-- **Autobooks never auto-merges parties on PAN** — one PAN spanned two unrelated companies, and one name spanned two real entities.
+- **Autobooks auto-corrects exactly two typo classes and merges nothing else** (2026-08-14, user decision, **narrowing** the earlier "never auto-merges parties on PAN"): a PAN one digit off the party's majority PAN when that majority has ≥5× the rows, and a name spelling ≥0.90 similar to the dominant spelling **under the same valid PAN**. The two cases the old rule protected are untouched — one PAN spanning two *unrelated* companies fails the name gate, and one *name* spanning two real entities is a PAN **split**, which neither detector performs. Everything looser still goes to the review list, unticked. Every auto-fix is logged, shown in the Data Doctor with an **Undo**, written into the Corrections sheet, and cleared by "Reset corrections" — automatic never means invisible. Don't widen the gates without asking.
+- **Autobooks' Capital Purchase is entered separately but filed inside Taxable Purchase** (2026-08-14, user) — `spbReturnTaxable()`/`spbReturnVat()` add it back for every comparison against the filed return, and it is also shown as a memo column. **Taxable Import is its own box and is never folded into taxable.** The purchase-only columns appear in the output only when the uploaded sheet actually had them; don't invent an all-zero column.
+- **Autobooks' `stringSimilarity` must stay DAMERAU-Levenshtein** (`js/utils.js`) — a transposition has to cost one edit, not two. `bharda`↔`bhadra` scores 0.667 plain and 0.833 Damerau, and that one pair was silently dropping a Rs 2,184,000 row out of a client's VAT book. **Run `node tools/spbVerify.mjs` before and after touching Autobooks' parsing path** — the missing-helper bug that killed the module for a month existed precisely because that harness was never committed.
 - **Depreciation's grid is built once per scheme, not per tab open** (2026-08-01) — `depBuildGrid()` writes fresh EMPTY inputs, so the old unguarded `depInit()` wiped figures a user had typed and navigated away from. The guard is the `tbody.dataset.scheme` stamp it already sets. A scheme switch still rebuilds, which is the point.
 - **`xxRefresh()` never invalidates the DataCache; `xxReload()` does** (§4) — they look interchangeable and are not. Refresh-invalidates would make the cache a no-op; reload-forgets makes saves invisible.
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
@@ -469,6 +474,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
 | `docs/engines.md` | On demand | The 14 engines in full. |
 | `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |
+| `tools/spbVerify.mjs` | Run, not read | Autobooks verification harness — `node tools/spbVerify.mjs` (§12). |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |
 | Memory (`~/.claude/projects/.../memory/`) | Index every session | Cross-session behavioural conventions. Module facts live in `docs/`, not here. |

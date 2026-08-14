@@ -1474,6 +1474,10 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="page-header-actions">
           <input type="file" id="spb-file" accept=".xlsx,.xls,.ods,.csv" multiple style="display:none;" onchange="spbHandleFiles(this)" />
+          <button class="btn btn-outline" onclick="spbDownloadTemplate()" title="A blank workbook in the exact format this page reads, with every column explained">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download data-entry format
+          </button>
           <button class="btn btn-outline" onclick="document.getElementById('spb-file').click()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
             Upload Sales / Purchase file
@@ -1500,9 +1504,16 @@ function cropLoginLogoIcon(img) {
             <label>Fiscal Year</label>
             <select id="spb-fy" onchange="spbOnContextChange()"></select>
           </div>
+          <div class="form-group">
+            <label>Registration</label>
+            <select id="spb-regtype" onchange="spbOnContextChange()">
+              <option value="vat">VAT registered</option>
+              <option value="pan">PAN only (no VAT on sales)</option>
+            </select>
+          </div>
         </div>
         <p style="font-size:12.5px; color:var(--text-muted); margin-top:12px;">
-          Accepts one workbook containing both sheets, or two separate files. Expected columns: Date (B.S., e.g. 2081.04.01), Bill No., Party Name, Pan No., Tax Free, Taxable Amount, Vat. Embedded month-total rows are detected and stripped automatically.
+          Accepts one workbook containing both sheets, or two separate files. Expected columns: Date (a B.S. date like 2082.04.01 <em>or</em> just the month name), Bill No., Party Name, Pan No., Tax Free, Taxable Amount, Vat — plus, on the Purchase sheet only, Taxable Import, Import VAT, Capital Purchase and Capital VAT. Embedded month-total rows are detected and stripped automatically, and regenerated in the output. Not sure of the layout? Use <strong>Download data-entry format</strong> above.
         </p>
       </div>
 
@@ -3763,7 +3774,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
 <script src="js/config.js?v=202608110900"></script>
-<script src="js/utils.js?v=202608022300"></script>
+<script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
 <script src="js/core/nepaliLocale.js?v=202608100100"></script>
@@ -3791,7 +3802,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/bmAgmMinutes.js?v=202608022300"></script>
 <script src="js/auditorChange.js?v=202608022300"></script>
 <script src="js/companyProfile.js?v=202608101800"></script>
-<script src="js/salesPurchaseBook.js?v=202608022300"></script>
+<script src="js/salesPurchaseBook.js?v=202608141200"></script>
 <script src="js/confirmationLetters.js?v=202608022300"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>

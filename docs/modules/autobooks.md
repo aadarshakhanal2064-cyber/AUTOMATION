@@ -9,7 +9,32 @@
 ### 5.9 Autobooks (`js/salesPurchaseBook.js`, `spb-` prefix)
 
 > Displayed as **Autobooks** since 2026-07-25 (Automation Hub menu). Everything in code — the file, the `spb-` prefix, the `salesPurchaseBook` module id, every function name — still says Sales & Purchase Book.
-Automated reporting workbook from the two raw books a client maintains (Sales / Purchase: Date, Bill No., Party Name, Pan No., Tax Free, Taxable Amount, Vat — B.S. dates `2081.04.01`). Upload one workbook or two files (sheet names matched by Sales/Bikri · Purchase/Kharid, derived-sheet names skipped so a generated workbook can be re-uploaded); output is a 7-sheet .xlsx via ExcelJS with live formulas: Sales, Sales Summary (party-grouped alphabetical with subtotal rows), Sales Details (one `<Party> Total` row per party, taxable desc, cross-sheet formulas + a Grand Total that ties to the book), the Purchase trio, and Monthly (fiscal-month totals + VAT-return reconciliation).
+Automated reporting workbook from the two raw books a client maintains (Sales / Purchase: Date, Bill No., Party Name, Pan No., Tax Free, Taxable Amount, Vat — B.S. dates `2081.04.01`; the Purchase sheet may also carry Taxable Import, Import VAT, Capital Purchase and Capital VAT). Upload one workbook or two files (sheet names matched by Sales/Bikri · Purchase/Kharid, derived-sheet names skipped so a generated workbook can be re-uploaded); output is a 7-sheet .xlsx via ExcelJS with live formulas: Sales, Sales Summary (party-grouped alphabetical with subtotal rows), Sales Details (one `<Party> Total` row per party, taxable desc, cross-sheet formulas + a Grand Total that ties to the book), the Purchase trio, and Monthly (fiscal-month totals + VAT-return reconciliation).
+
+### 2026-08-14 — the module was completely dead, and what fixing it changed
+
+Autobooks threw on **every** import from 2026-08-10 until this date. Two globals it calls did not exist:
+
+- **`stringSimilarity`** — called in three places and **never defined anywhere in the app**. `spbFuzzyMonthMatch` calls it for any alpha token missing from the alias table, including the word `"total"` in every `TOTAL OF <MONTH>` row, so it threw a `ReferenceError` on the first subtotal row of the first sheet parsed. The module's own comment claimed the parser was "exercised headlessly by the verification harness" — that harness defined the helper and was never committed, which is exactly how this shipped. It now lives in `js/utils.js` as a **Damerau**-Levenshtein ratio; the transposition case is load-bearing (`bharda`↔`bhadra` scores 0.667 under plain Levenshtein and 0.833 under Damerau, and that one pair was dropping a Rs 2,184,000 row out of a real client's purchase book).
+- **`VAT_MONTH_ORDER`** — lived in `js/vatCompliance.js` and was deleted with that module on 2026-08-10 (commit `1353f99`). It is now `SPB_MONTH_NAMES`, local to this module (its only consumer). Spellings match the firm's own reconciled file — `Ashwin`, `Mangshir`, `Baishak` — don't "correct" them.
+
+Both threw inside `reader.onload` **outside** the `try/catch`, so the user got a permanent "⏳ Reading…" and no error. `spbFinishRead()` now wraps the whole downstream pipeline, and the reader has an `onerror` so the pending counter always reaches zero.
+
+**`tools/spbVerify.mjs` is the fix for the root cause** — a dependency-free Node harness that `vm`-loads the real module with stubbed engines and asserts against a real client workbook. Run it before touching the parsing path:
+
+```bash
+node tools/spbVerify.mjs
+```
+
+Measured against `Data entry.xlsx` (Jaya Shree Mahalaxmi Traders 2082.83), the fixes moved these:
+
+| | before | after |
+|---|---|---|
+| Purchase transactions / taxable | 44 / 64,607,457 | **45 / 66,791,457** — ties to the firm's own reconciled Grand Total |
+| Sales transactions / taxable | 264 / 73,802,436.60 | unchanged (must stay unchanged) |
+| Phantom "unreadable date" blockers | 270 | **0** |
+| Month checksums matched | n/a (crashed) | **12/12 on both books** |
+| Data Doctor state | 270 red blockers | 1 amber warning |
 - **The raw sheets embed 12 month-subtotal rows that duplicate the transactions** (a naive sum doubles). Stripped on import (dateless rows matching `/total/i`), regenerated in the output as live SUMs.
 - **"As Per VAT Return" is typed by the user, never derived** — the reference file proved filed figures differ from book by real amounts (up to 3.7M). Filed figures are whole rupees by **truncation** (not rounding), so the reconciliation tolerance is <1 rupee; anything ≥1 flags as a gap (`SPB_ROUNDING_TOLERANCE`). VAT joins the verdict even though only Taxable/Taxfree get printed Diff columns (the firm's layout). Typed figures autosave to localStorage keyed `(company, FY)`.
 - **Party merging is two-level**: trivially-safe normalization (case/whitespace/trailing period/`PVT.LTD` punctuation, `spbSafeKey`) auto-merges; everything looser (shared PAN, similar spelling) goes into a per-name-checkbox review list the user applies per file. PAN suggests but never decides — one PAN in the reference file spans two unrelated companies. Subtotal rows carry a PAN only when the group's rows agree on exactly one.
@@ -19,6 +44,44 @@ Automated reporting workbook from the two raw books a client maintains (Sales / 
 - **Date parsing falls back to B.S. month names** ("Baishakh", "15 Baishakh 2082") when the strict numeric date fails — some clients' books are kept that way instead of pure date-wise, and some have no per-row date at all: the whole "Date" column is headed "Month"/"Months" (`SPB_DATE_HEADER_RE`, also मिति/महिना) and every cell just names the month, sometimes misspelled ("Sharawan", "Chiatra"). Recognized via an exhaustive alias table (Latin + Devanagari; Devanagari digits normalized) plus a fuzzy-similarity fallback (`spbFuzzyMonthMatch`, `stringSimilarity`) for unanticipated typos — never for unrelated text (min length 4, ≥0.75 similarity). A bare month name only resolves if a fiscal year is selected (year inferred from the month's half of the FY); a missing day defaults to the 1st, always reported in the import summary, never a silent guess. The filename is also cross-checked against the selected FY (`spbGuessFyFromText`) and flagged if they disagree, since a wrong FY selection silently mistags every such row's calendar year (month grouping stays correct either way).
 - **Checksum layer**: the stripped embedded subtotals are kept as the client's own independent record and compared per month against the computed totals (`spbComputeChecksums`, tolerance 0.015) — a mismatch means the client's file is internally inconsistent, pointed at the exact month. A pre-generate tie-out (`spbTieOut`) refuses to write a workbook whose transactions/groups/monthly layers disagree. Both reference files pass 24/24 with zero false alarms.
 - **Data Doctor** (`spbBuildIssues`/`spbDoctorAction`): detects bad dates, checksum mismatches, outside-FY rows, VAT≠13%, possible duplicate entries (same party+bill+amount), malformed PANs (suggests the party's valid PAN), fillable blank PANs, and sales bill-number continuity gaps (IRD audit point). Each gets an inline fix or an explicit "keep as-is"; fixes are stored as row-level overrides in `spbOverrides` and **re-parsed from source** (`spbReparse`) — never mutated in place — logged to `spbCorrectionLog`, written into the workbook as a "Corrections" sheet, and recorded via AuditLog. Readiness banner: red = rows excluded, amber = warnings, green = ready.
-- **Column mapping UI** (`spbRenderMapping`): sheets whose headers aren't auto-recognized are kept (header `null`) and the user assigns Date/Party/Taxable etc. by hand — any column layout becomes importable. "Adjust columns" in the import summary re-opens it for override.
+- **Column mapping UI** (`spbRenderMapping`): sheets whose headers aren't auto-recognized are kept (header `null`) and the user assigns Date/Party/Taxable etc. by hand — any column layout becomes importable. "Adjust columns" in the import summary re-opens it for override. The amount half of `SPB_MAP_FIELDS` is derived from `SPB_AMOUNT_FIELDS`, and `spbMapFieldsFor(section)` hides the purchase-only boxes on Sales.
+- **Row liveness** (`spbRowIsLive`): a row counts as data only if it names a date, party or bill, **or** carries a non-zero amount. The old test (`any cell !== null && !== ''`) treated a numeric **0** as content, so the ~100 trailing rows Excel keeps alive with a `=F59*13%` formula each became a red *blocking* "unreadable date" issue — 270 of them on one real file, burying every genuine finding. This is also what lets the generated data-entry template (which pre-fills those formulas) round-trip cleanly.
+- **Blank VAT is filled at 13%; a typed VAT that disagrees is not** (2026-08-14, user). The fill is counted in `stats.vatFilled` and stated on the face of the import summary — it changes the figures, so it is never silent. A present-but-wrong VAT stays a `vatOutliers` Data Doctor card with a one-click fix, because a disagreeing VAT is often how an entry error is caught. `stats.nonNumeric` reports text typed into an amount column (`"here"`, `"name M"` — all seen in a real book); it still reads as 0, but the user is told which cell.
+- **A subtotal's month comes from the rows it sums, not its label.** A real client file labels one block `TOTAL OF SHRAWAN` over Bhadra's rows; keying the checksum off the label checked Shrawan twice and left Bhadra unchecked. `spbMajorityFi()` resolves the block, the label is cross-checked against it (`subtotalLabel` amber issue), and `spbComputeChecksums` compares the client's figure against **the block it covers** rather than the whole fiscal month — exact when a month is written as more than one block.
+- **Fiscal year defaults to a fixed `SPB_FY_DEFAULT = '2082-83'`**, matching `ARF_FY_DEFAULT` / `SM_FY_DEFAULT`. Deriving it from `NepaliLocale.todayBs()` opened a book being written in Shrawan 2083 on F.Y. 2083-84, when every such book is for the year just closed. The FY window itself was already right (`mon >= 4 ? fy : fy + 1`, day accepted to 32 — 2082.04.01–2083.03.32 is one year). When ≥80% of rows fall outside the selected year and agree on one other, a single `fySelector` card offers to switch, instead of one card per row.
+
+### Taxable Import and Capital Purchase (2026-08-14, user decision)
+
+Purchase books may carry four extra columns: `Taxable Import`, `Import VAT`, `Capital Purchase`, `Capital VAT`. Sales keeps the firm's original seven.
+
+- Everything is driven by **`SPB_AMOUNT_FIELDS`** — adding a VAT-return box means adding one entry there, not touching the parser, the tie-out, the grid and the workbook separately. `SPB_HEADER_RULES` is ordered **most specific first** and that order is load-bearing: "Taxable Import" contains *taxable*, and "Import VAT"/"Capital VAT" both contain *vat*.
+- **Capital is entered separately but filed inside Taxable Purchase** — `spbReturnTaxable()`/`spbReturnVat()` add it back, and that is what the Monthly sheet and the on-screen grid compare against the filed return. Capital is still shown, as a *memo* column ("of which Capital"), so the staff member can see what went into the total. Import is its own box on the return and is **never** folded into taxable.
+- `spbVrModel(section)` describes the comparison once and is consumed by both `spbRenderVrGrid` and `spbSheetMonthly`, so the screen and the workbook cannot show different columns. `spbBookLayout(section)` does the same for the Book/Summary/Details sheets.
+- The extra columns appear in the output **only when the uploaded sheet had them** (`spbSectionAmountKeys` reads `header.col`). Printing an all-zero Capital column on every book would be noise, and inventing a column the source never had is the sort of silent difference this module exists to avoid. Existing 7-column books import and export byte-identically.
+- `spbTieOut()` covers every amount column. A new box that failed to reach the party groups or the monthly totals would otherwise print a wrong workbook silently.
+- `spbVr` carries a slot for every comparable field regardless of section, and `spbVrLoadDraft` **tops up** an older `{t,v,f}`-shaped localStorage draft rather than discarding it — a staff member who typed twelve months of a filed return must not lose it to an upgrade.
+
+### PAN-only clients (`spb-regtype`)
+
+A client registered for PAN and not VAT charges no VAT on **sales** but still pays 13% on purchases from a registered vendor. The selector defaults from the client's `tax_registration_type` (a property of the client — **not** `vat_status`, §15) and is always assigned, never conditionally, so a client with the field blank can't inherit the previous client's setting. In PAN-only mode the sales blank-VAT fill is off and a non-zero sales VAT raises a `panOnlyVat` card.
+
+### Download data-entry format (`spbDownloadTemplate`)
+
+A blank workbook in exactly the layout the importer reads: **Sales** (7 columns) and **Purchase** (11), 300 rows with the 13% VAT formulas pre-wired, a month dropdown on the Date column, and a **"How to fill"** sheet covering the date formats, the 2082.04.01–2083.03.32 fiscal-year rule, what Tax Free / Import / Capital mean, and the PAN-only case. Downloads through `DocumentEngine.downloadBlob` so it lands in the Activity Log. `spbClassifySheet` returns null for "How to fill", so a filled template re-uploads without that sheet being misread.
+
+### Auto-corrected typos (`spbAutoFix`) — narrows a §15 rule
+
+Two classes are applied automatically (2026-08-14, user decision):
+
+| Detector | Gate |
+|---|---|
+| `panOutlier` — one party name, 2+ valid PANs | minority PAN is edit distance ≤ 1 from the majority **and** the majority has ≥5× its rows |
+| `nameTypo` — one valid PAN, several spellings | `stringSimilarity(fuzzyKey) ≥ 0.90`, both names ≥ 6 chars after normalization |
+
+This **narrows** "Autobooks never auto-merges parties on PAN"; it does not reverse it. The two cases that rule protects are untouched — one PAN spanning two *unrelated* companies fails the name gate, and one *name* spanning two real entities is a PAN **split**, which neither detector performs. Everything looser still goes to the review list, unticked.
+
+Every auto-fix runs through `spbSetOverride(..., auto=true)`, so it is logged, exported in the Corrections sheet, and cleared by "Reset corrections" — and it appears in the Data Doctor as an `autoFix` card **with an Undo**, so "automatic" never means "invisible". `spbAutoUndone` stops a reparse silently reapplying what the user rejected. `spbReparse` parses, auto-fixes, then parses once more (never a loop — the second parse already has the overrides). On the reference file this collapses `Dipika Trade link`, `Arpit Traders`/`Arpit Trades` and `Shreeganga And Sons Trader(s)` into one party each, and catches three single-digit PAN typos.
+
+**`js/salesPurchaseBook.js` is now ~2,360 lines** (CLAUDE.md §10 rule 5). The Excel-generation half (`SPB_MONEY` onward) is ~600 of them; when it passes ~900 on its own, split it into `salesPurchaseBookExport.js` following the `finStatement.js` / `finStatementExport.js` precedent.
 - **Workbook styling**: every total row is highlighted — yellow (`SPB_FILL_YELLOW`) for month/party subtotals and Monthly totals, amber for Details Grand Totals, light red across Monthly mismatch months; credit-note negatives in red font; auto-filters on all header rows.
 
