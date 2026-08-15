@@ -76,6 +76,8 @@ window.DocumentStore = (function () {
   //     and its CSS are shared either way — building a second drawer would
   //     duplicate the same list, empty state and delete confirm.
   let ctx = null;   // { module, label, onOpen } | { label, fetchRows, describe, onChoose, onDelete }
+  let allRows = []; // the last fetch, unfiltered — search re-filters this, never re-fetches
+  let query = '';
 
   function el(id) { return document.getElementById(id); }
 
@@ -88,6 +90,9 @@ window.DocumentStore = (function () {
 
   async function openPicker(options) {
     ctx = options;
+    query = '';
+    const searchEl = el('ds-search');
+    if (searchEl) searchEl.value = '';
     el('ds-drawer-title').textContent = options.label || 'Saved documents';
     el('ds-drawer').classList.add('open');
     await refresh();
@@ -96,6 +101,8 @@ window.DocumentStore = (function () {
   function closePicker() {
     el('ds-drawer').classList.remove('open');
     ctx = null;
+    allRows = [];
+    query = '';
   }
 
   // What a row reads as in the list. The saved_documents shape is the default;
@@ -114,32 +121,66 @@ window.DocumentStore = (function () {
     const host = el('ds-list');
     host.innerHTML = `<div class="log-empty">Loading…</div>`;
     try {
-      const rows = ctx.fetchRows ? await ctx.fetchRows() : await list(ctx.module);
-      if (!rows.length) {
-        host.innerHTML = `<div class="log-empty">${ctx.empty
-          || 'Nothing saved yet. Use <strong>Save to database</strong> on a document and it will be listed here.'}</div>`;
-        return;
-      }
-      const describe = ctx.describe || defaultDescribe;
-      // Row ids only in the inline handler — never free text (§10 rule 13).
-      host.innerHTML = rows.map(r => {
-        const d = describe(r) || {};
-        return `
-        <div class="ds-item">
-          <div class="ds-item-main">
-            <div class="ds-item-title">${escHtml(d.title || '')}</div>
-            <div class="ds-item-meta">${escHtml(d.meta || '')}</div>
-          </div>
-          <div class="ds-item-actions">
-            <button class="btn btn-primary btn-sm" onclick="DocumentStore.choose(${r.id})">Open</button>
-            <button class="btn btn-danger btn-sm" onclick="DocumentStore.discard(${r.id})">Delete</button>
-          </div>
-        </div>`;
-      }).join('');
+      allRows = ctx.fetchRows ? await ctx.fetchRows() : await list(ctx.module);
+      renderList();
     } catch (e) {
       console.error(e);
       host.innerHTML = `<div class="log-empty">Could not load saved documents: ${escHtml(e.message)}</div>`;
     }
+  }
+
+  // Filters the already-fetched rows against `query` — search re-filters
+  // in memory rather than re-fetching, so typing stays instant and the
+  // Supabase side of a caller's `fetchRows` never needs to know search
+  // exists. Matched against what the row actually RENDERS AS (title + meta)
+  // rather than a hardcoded field name, since callers' row shapes differ
+  // (saved_documents' client_name vs projection_reports' company_name) —
+  // this is what lets one search box work for every caller with no changes
+  // to any of them.
+  function filterRows(rows) {
+    const q = query.trim();
+    if (!q) return rows;
+    const describe = ctx.describe || defaultDescribe;
+    const indexed = rows.map(r => {
+      const d = describe(r) || {};
+      return { _row: r, _text: `${d.title || ''} ${d.meta || ''}` };
+    });
+    return SearchEngine.buildIndex(indexed, ['_text']).search(q).map(x => x.item._row);
+  }
+
+  function renderList() {
+    const host = el('ds-list');
+    if (!allRows.length) {
+      host.innerHTML = `<div class="log-empty">${ctx.empty
+        || 'Nothing saved yet. Use <strong>Save to database</strong> on a document and it will be listed here.'}</div>`;
+      return;
+    }
+    const rows = filterRows(allRows);
+    if (!rows.length) {
+      host.innerHTML = `<div class="log-empty">No saved records match "${escHtml(query.trim())}".</div>`;
+      return;
+    }
+    const describe = ctx.describe || defaultDescribe;
+    // Row ids only in the inline handler — never free text (§10 rule 13).
+    host.innerHTML = rows.map(r => {
+      const d = describe(r) || {};
+      return `
+      <div class="ds-item">
+        <div class="ds-item-main">
+          <div class="ds-item-title">${escHtml(d.title || '')}</div>
+          <div class="ds-item-meta">${escHtml(d.meta || '')}</div>
+        </div>
+        <div class="ds-item-actions">
+          <button class="btn btn-primary btn-sm" onclick="DocumentStore.choose(${r.id})">Open</button>
+          <button class="btn btn-danger btn-sm" onclick="DocumentStore.discard(${r.id})">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function search(q) {
+    query = q || '';
+    renderList();
   }
 
   async function choose(id) {
@@ -171,5 +212,5 @@ window.DocumentStore = (function () {
     }
   }
 
-  return { save, list, get, remove, openPicker, closePicker, choose, discard, refresh };
+  return { save, list, get, remove, openPicker, closePicker, choose, discard, refresh, search };
 })();
