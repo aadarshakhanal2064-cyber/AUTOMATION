@@ -448,8 +448,9 @@ function smReadFilters() {
   };
 }
 
-function smApplyFilters() {
-  if (!smTable) return;
+// Shared by the table AND the exports, so what's on screen and what leaves
+// the app can never disagree (the ARF / Work Done idiom).
+function smCurrentFilteredRows() {
   let rows = smMemos.filter(m => {
     if (smFilters.firm && m.firm_key !== smFilters.firm) return false;
     if (smFilters.category && m.nature_category !== smFilters.category) return false;
@@ -463,7 +464,12 @@ function smApplyFilters() {
     const fuse = SearchEngine.buildIndex(rows, ['memo_number', 'client_name', 'client_pan', 'nature_category', 'nature_subcategory', 'nature_other', 'description']);
     rows = fuse.search(q).map(r => r.item);
   }
-  smTable.replaceData(rows);
+  return rows;
+}
+
+function smApplyFilters() {
+  if (!smTable) return;
+  smTable.replaceData(smCurrentFilteredRows());
 }
 function smOnFilterChange() { smReadFilters(); smApplyFilters(); }
 function smClearFilters() {
@@ -472,6 +478,97 @@ function smClearFilters() {
   });
   smFilters = { ...SM_FILTERS_EMPTY };
   smApplyFilters();
+}
+
+// ── Print / Preview / Export — acts on whichever view is showing (Memos or
+// Pending Memos), the ARF / Work Done idiom, so what prints or exports
+// always matches what's on screen. ──
+function smBuildMemosModel(rows) {
+  const subtitles = [`Generated ${new Date().toISOString().slice(0, 10)}`];
+  if (smFilters.from || smFilters.to) subtitles.push(`${smFilters.from || 'the beginning'} to ${smFilters.to || 'today'}`);
+  return {
+    title: 'Service Memos',
+    subtitleLines: subtitles,
+    landscape: true,
+    columns: [
+      { label: 'Memo #', w: 1 }, { label: 'Date', w: 0.9 }, { label: 'Client', w: 1.8 },
+      { label: 'Firm', w: 1.1 }, { label: 'Nature', w: 1.6 }, { label: 'F.Y.', w: 0.7 },
+      { label: 'Fee', align: 'r', num: true, w: 0.9 }, { label: 'Total', align: 'r', num: true, w: 0.9 },
+    ],
+    rows: rows.map(m => ({ cells: [
+      m.memo_number, m.memo_date, m.client_name, smFirmName(m), smNatureText(m), m.fiscal_year,
+      Number(m.professional_fee) || 0, Number(m.total_amount) || 0,
+    ] })),
+    _filename: 'Service Memos',
+  };
+}
+
+function smBuildPendingModel(rows) {
+  return {
+    title: 'Service Memo — Pending Memos',
+    subtitleLines: [`Generated ${new Date().toISOString().slice(0, 10)}`,
+      'Verified Audit Report Finalization tracks and saved Projection Reports without a matching fee memo yet.'],
+    landscape: true,
+    columns: [
+      { label: 'Client', w: 1.8 }, { label: 'PAN', w: 1.0 }, { label: 'F.Y.', w: 0.7 },
+      { label: 'Work', w: 1.1 }, { label: 'Detail', w: 2.2 }, { label: 'Done By', w: 1.2 },
+    ],
+    rows: rows.map(r => ({ cells: [
+      r.clientName, r.clientPan, smFyFromArf(r.fiscalYear), SM_KIND_LABELS[r.kind] || r.kind,
+      r.kind === 'audit'
+        ? (r.tracks || []).map(t => SM_ARF_TRACK_LABELS[t] || t).join(', ')
+        : `${r.years || '?'}-year Projected Financial Statements, based on F.Y. ${smFyFromArf(r.fiscalYear)}`,
+      (r.kind === 'audit' ? r.auditor : r.performedBy) || '—',
+    ] })),
+    _filename: 'Service Memo - Pending Memos',
+  };
+}
+
+function smActiveModel() {
+  if (smView === 'pending') {
+    const rows = smFeeDueRows();
+    return rows.length ? smBuildPendingModel(rows) : null;
+  }
+  const rows = smCurrentFilteredRows();
+  return rows.length ? smBuildMemosModel(rows) : null;
+}
+
+async function smExport(kind) {
+  const model = smActiveModel();
+  if (!model) { smStatusMsg('Nothing to export for the current view.', 'info'); return; }
+  try {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
+      module: 'serviceMemo',
+      clientName: smView === 'pending' ? 'Pending Memos' : 'Filtered Memos',
+      sheetName: smView === 'pending' ? 'Pending Memos' : 'Service Memos',
+    });
+  } catch (e) {
+    smStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+  }
+}
+
+// Opens a plain print window over the same model the Excel/PDF export uses
+// (ReportExport.toHtml), so Preview and an exported file can never disagree.
+function smOpenPrintWindow(model) {
+  const w = window.open('', '_blank');
+  if (!w) { smStatusMsg('Allow pop-ups to print.', 'info'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>${escHtml(model.title)}</title>
+    <style>body{font-family:Inter,Arial,sans-serif;margin:28px;color:#1a202c;}
+    table{border-collapse:collapse;width:100%;font-size:11px;}
+    th,td{border:1px solid #d9dce5;padding:5px 8px;}
+    th{background:#f3f5fb;color:#0b1f3d;}
+    @page{size:A4 landscape;margin:12mm;}</style></head>
+    <body>${ReportExport.toHtml(model)}</body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 300);
+  AuditLog.record('service_memo_printed', { module: 'serviceMemo' });
+}
+
+function smPreviewAll() {
+  const model = smActiveModel();
+  if (!model) { smStatusMsg('Nothing to preview for the current view.', 'info'); return; }
+  smOpenPrintWindow(model);
 }
 
 // ── Create / Edit drawer ──

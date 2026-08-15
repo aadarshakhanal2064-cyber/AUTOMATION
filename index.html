@@ -411,6 +411,18 @@ function cropLoginLogoIcon(img) {
             <button id="sm-view-memos" class="rep-view-btn active" onclick="smSetView('memos')">Memos</button>
             <button id="sm-view-pending" class="rep-view-btn" onclick="smSetView('pending')">Pending Memos<span id="sm-pending-count"></span></button>
           </div>
+          <button class="btn btn-outline" onclick="smPreviewAll()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print / Preview
+          </button>
+          <button class="btn btn-outline" onclick="smExport('pdf')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export PDF
+          </button>
+          <button class="btn btn-outline" onclick="smExport('excel')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            Export Excel
+          </button>
           <button class="btn btn-primary" onclick="smOpenCreate()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             New Service Memo
@@ -3795,13 +3807,13 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/engineMath.js?v=202608022300"></script>
 <script src="js/core/ocrEngine.js?v=202608022300"></script>
 <script src="js/core/dataCache.js?v=202608022300"></script>
-<script src="js/core/documentStore.js?v=202608111900"></script>
+<script src="js/core/documentStore.js?v=202608152000"></script>
 <script src="js/tabs.js?v=202608022300"></script>
 <script src="js/dashboard.js?v=202608022300"></script>
 <script src="js/registrar.js?v=202608110900"></script>
 <script src="js/clients.js?v=202608151800"></script>
 <script src="js/billing.js?v=202608151800"></script>
-<script src="js/serviceMemo.js?v=202608151900"></script>
+<script src="js/serviceMemo.js?v=202608152000"></script>
 <script src="js/report.js?v=202608101800"></script>
 <script src="js/notesToAccounts.js?v=202608101800"></script>
 <script src="js/depreciation.js?v=202608151800"></script>
