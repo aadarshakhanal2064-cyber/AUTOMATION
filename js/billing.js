@@ -333,8 +333,12 @@ async function billingOpenCreate(existingRow) {
   document.getElementById('billing-due-date').value = existingRow ? (existingRow.due_date || '') : due.toISOString().slice(0, 10);
   document.getElementById('billing-firm-key').value = existingRow ? existingRow.firm_key : 'shailesh';
 
-  const bs = NepaliLocale.todayBs();
-  const defaultFy = bs ? NepaliLocale.bsFiscal(bs).fy.replace('/', '-') : '';
+  // Anchored to window.FY_DEFAULT_START (config.js), not today's B.S. calendar
+  // year — the old NepaliLocale.bsFiscal() read flips to the NEW fiscal year
+  // the moment Shrawan starts, but most invoices raised in Shrawan are still
+  // for the year that just closed (2026-08-15, same bug family as File In
+  // Out / Autobooks / Depreciation / Confirmation Letters).
+  const defaultFy = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
   document.getElementById('billing-fiscal-year').value = existingRow ? (existingRow.fiscal_year || '') : defaultFy;
 
   if (existingRow) {

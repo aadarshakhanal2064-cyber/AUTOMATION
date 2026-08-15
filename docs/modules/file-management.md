@@ -143,13 +143,23 @@ but filling the year in is what ties a file to a specific work record.
 ## Fiscal Year
 
 `fiscal_year` is dash format (`2081-82`, the majority convention — Bank Entry,
-Party Ledger, Depreciation, Financial Statement) and **auto-derived from Date
-Received** the moment it's picked, via `NepaliLocale.adToBs` →
-`NepaliLocale.bsToStr` → `NepaliLocale.bsFyDash` (the same AD→BS chain Party
-Ledger uses for `service_memos.memo_date`, since `document_register` also
-stores a real Postgres `date`). `fmOnDateReceivedChange()` never overwrites a
-value the user already typed or that was loaded from a saved row. Nullable —
-rows that predate this field are simply blank until edited.
+Party Ledger, Depreciation, Financial Statement), free text, nullable — rows
+that predate this field are simply blank until edited.
+
+**A new intake seeds `FM_FY_DEFAULT`** (`js/fileManagement.js`, reads the
+shared `window.FY_DEFAULT_START` from `config.js`) rather than deriving from
+Date Received (2026-08-15, superseding the original auto-derive design). The
+field used to auto-fill via `NepaliLocale.adToBs` → `NepaliLocale.bsToStr` →
+`NepaliLocale.bsFyDash` off `fm-date-received`, which defaults to today — so
+on any day from Shrawan 1 onward it wrote **next** year's fiscal year (e.g.
+`2083-84` while the firm was still working through `2082-83`), the same
+"today's B.S. date is the wrong default" bug already fixed in Autobooks,
+Audit Report Finalization and Service Memo. `fmOnDateReceivedChange()` and
+`fmFyFromDate()` are unchanged and still wired to the field's `onchange` —
+re-dating an intake to different paperwork still auto-fills the year, it just
+no longer runs on **open**, since the field is no longer blank at that point.
+A loaded record still shows its own stored year (blank if it predates the
+field), never `FM_FY_DEFAULT`.
 
 ## Delivery mode — Online vs Physical on intake
 

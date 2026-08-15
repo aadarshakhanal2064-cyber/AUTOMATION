@@ -68,6 +68,17 @@ function fmUserEmail() { return (window.currentUser && window.currentUser.email)
 function fmStatusMsg(html, type) { showStatus(html, type, 'fm-status-area'); }
 function fmToday() { return new Date().toISOString().slice(0, 10); }
 
+// Reads window.FY_DEFAULT_START (config.js). Added 2026-08-15: a new intake
+// used to seed its Fiscal Year purely from Date Received (fmFyFromDate,
+// below), which on any day after Shrawan 1 wrote NEXT year's fiscal year
+// (e.g. 2083-84 while the firm is still working through 2082-83) — the same
+// "today's B.S. date is the wrong default" bug Autobooks/ARF/Service Memo
+// already fixed. The field stays free-text and fmOnDateReceivedChange() still
+// fires on a date change, so re-dating an intake to a different year's
+// paperwork still works; it just no longer runs on open, since the field is
+// no longer blank.
+const FM_FY_DEFAULT = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
+
 // Calendar days the firm has held (or is still holding) this bundle. Once
 // fully returned, the span is fixed at the last outtake's date rather than
 // growing forever; pending/partial rows are still counting, so "today".
@@ -771,8 +782,7 @@ function fmOpenEntry(existing) {
   fmSetDocTypeQtys(existing ? existing.doc_types : []);
 
   document.getElementById('fm-date-received').value = existing ? existing.date_received : fmToday();
-  document.getElementById('fm-fiscal-year').value = existing ? (existing.fiscal_year || '') : '';
-  if (!existing) fmOnDateReceivedChange();
+  document.getElementById('fm-fiscal-year').value = existing ? (existing.fiscal_year || '') : FM_FY_DEFAULT;
   document.getElementById('fm-client-search').value = existing ? (existing.client_name || '') : '';
   document.getElementById('fm-client-pan').value = existing ? (existing.client_pan || '') : '';
   document.getElementById('fm-brought-name').value = existing ? (existing.brought_by_name || '') : '';

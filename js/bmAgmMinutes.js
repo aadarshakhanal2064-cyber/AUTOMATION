@@ -614,7 +614,7 @@ function bmResetForm() {
   if (!panel) return;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
   document.getElementById('bm-agmTime').value = '11:00';
-  document.getElementById('bm-fiscalYear').value = '2081-82';
+  document.getElementById('bm-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
   document.getElementById('bm-auditorFirm').value = '';
   bmRenderFirmTrigger();
   bmClearExtraShareholders();

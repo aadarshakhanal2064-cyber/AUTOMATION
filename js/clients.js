@@ -208,7 +208,12 @@ function renderClientStats(list) {
 // full unpaginated list and Print/PDF/Excel export — kept out of the cd-grid
 // dashboard entirely so it doesn't compete for space with the breakdown
 // panels below it.
-const CD_NF_FY = '2082/83'; // keep in sync with ARF_FY_DEFAULT in auditReportFinalization.js
+// Derived from window.FY_DEFAULT_START (config.js), same slash format as
+// ARF_FY_DEFAULT in auditReportFinalization.js. Computed inline rather than
+// read from that module's constant because clients.js loads BEFORE
+// auditReportFinalization.js (§2 script order) — ARF_FY_DEFAULT doesn't
+// exist yet at this point in the boot sequence.
+const CD_NF_FY = window.FY_DEFAULT_START + '/' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
 window.cdNonFilerRecords = new Map(); // client_id -> that client's it_return row for CD_NF_FY, if any
 window.cdNfGroups = { notVerified: [], pending: [] }; // filled by cdRenderNonFilers, read by the modal + export
 

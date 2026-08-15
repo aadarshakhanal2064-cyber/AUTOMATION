@@ -21,6 +21,16 @@ const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
 // invoice tax line (and any future consumer), so the figure can't drift.
 window.VAT_STANDARD_RATE = 0.13;
 
+// The B.S. fiscal year the firm is currently working through, as the
+// START year (2082 = F.Y. 2082/83). Every module's own fiscal-year default
+// constant (ARF_FY_DEFAULT, SM_FY_DEFAULT, WD_FY_DEFAULT, PJ_BASE_FY_DEFAULT,
+// SPB_FY_DEFAULT, ACHK_FY_DEFAULT, CD_NF_FY, the "selected" option in the
+// Report Builder / Notes to Accounts / Auditor Change / BM-AGM fiscal-year
+// selects) reads THIS one value, so a year rollover is a single-line change.
+// Per-module FORMATS stay deliberately different (CLAUDE.md §8) — this only
+// unifies the year. Bump this on Shrawan 1 of the next B.S. year.
+window.FY_DEFAULT_START = 2082;
+
 // The local PaddleOCR service (ocr_service/). It runs on each staff member's own
 // machine — GitHub Pages can't host Python — so this is loopback, not a server.
 // Changing the port means updating ocr_service/config.py and the CSP

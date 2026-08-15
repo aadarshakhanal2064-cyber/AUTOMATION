@@ -288,10 +288,13 @@ function depFyLabel(startYear) {
   return startYear + '-' + String((startYear + 1) % 100).padStart(2, '0');
 }
 
+// Anchored to window.FY_DEFAULT_START (config.js) rather than today's B.S.
+// calendar year (2026-08-15) — the old `bs.month >= 4 ? bs.year : bs.year-1`
+// rule flips to the NEW fiscal year the moment Shrawan starts, but the firm
+// is still closing out the PRIOR year's depreciation through most of Shrawan,
+// same failure mode as the File In Out / Autobooks fiscal-year bugs.
 function depCurrentFyStart() {
-  const bs = NepaliLocale.todayBs && NepaliLocale.todayBs();
-  if (bs) return bs.month >= 4 ? bs.year : bs.year - 1;  // Shrawan–Ashadh fiscal year
-  return 2081;  // graceful fallback once the B.S. table runs out
+  return window.FY_DEFAULT_START || 2082;
 }
 
 function depBuildFyOptions() {

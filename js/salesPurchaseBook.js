@@ -130,7 +130,8 @@ function spbFyDot() {
 // — so a book being written in Shrawan 2083 opened on F.Y. 2083-84 when every
 // such book is for 2082-83. Matches ARF_FY_DEFAULT / SM_FY_DEFAULT, which
 // settled the same argument for the same reason.
-const SPB_FY_DEFAULT = '2082-83';
+// Reads window.FY_DEFAULT_START (config.js) — see that constant's comment.
+const SPB_FY_DEFAULT = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
 
 function spbBuildFyOptions() {
   const sel = document.getElementById('spb-fy');

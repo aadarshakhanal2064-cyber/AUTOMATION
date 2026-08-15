@@ -70,8 +70,9 @@ function clInit() {
 function clBuildFyOptions() {
   const sel = document.getElementById('cl-fy');
   if (!sel || sel.dataset.built) return;
-  const bs = NepaliLocale.todayBs && NepaliLocale.todayBs();
-  const cur = bs ? (bs.month >= 4 ? bs.year : bs.year - 1) : 2081;
+  // Anchored to window.FY_DEFAULT_START (config.js), not today's B.S. year —
+  // same reasoning as depCurrentFyStart() in depreciation.js (2026-08-15).
+  const cur = window.FY_DEFAULT_START || 2082;
   let html = '';
   for (let y = cur - 4; y <= cur + 1; y++) {
     const label = y + '-' + String((y + 1) % 100).padStart(2, '0');

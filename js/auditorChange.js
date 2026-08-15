@@ -314,7 +314,7 @@ function acResetForm() {
   const panel = document.getElementById('regd-auditorChange-panel');
   if (!panel) return;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
-  document.getElementById('ac-fiscalYear').value = '2081-82';
+  document.getElementById('ac-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
   document.getElementById('ac-status').innerHTML = '';
   acSetPreviewDoc('resolution');
   acShowPreviewPlaceholder();

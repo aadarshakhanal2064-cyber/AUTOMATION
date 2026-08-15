@@ -18,7 +18,10 @@ ModuleRegistry.register({ id: 'projection', group: 'main', buttonId: null, panel
 // year is regularly a year the firm isn't reporting on, and a projection built
 // in Shrawan is for the year just closed. Same convention as ARF_FY_DEFAULT /
 // SM_FY_DEFAULT. The field stays editable for the cases that differ.
-const PJ_BASE_FY_DEFAULT = '2082-83';
+// Reads window.FY_DEFAULT_START (config.js) — see that constant's comment.
+// Built inline (not via pjFyLabel) because pjFyLabel takes a YEAR OFFSET from
+// the base year, not a raw start year — it would be circular here.
+const PJ_BASE_FY_DEFAULT = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
 
 let pjModel = null;          // parsed InputModel
 let pjParseIssues = [];

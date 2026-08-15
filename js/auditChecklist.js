@@ -35,7 +35,8 @@ const ACHK_STATUSES = {
 
 const ACHK_FY_START = 2077;
 const ACHK_FY_END = 2085;
-const ACHK_FY_DEFAULT = '2082/83';
+// Reads window.FY_DEFAULT_START (config.js) — see that constant's comment.
+const ACHK_FY_DEFAULT = achkFyLabel(window.FY_DEFAULT_START);
 
 // Stat cards double as quick filters — same ARF/File Management idiom.
 const ACHK_FILTERS = {
