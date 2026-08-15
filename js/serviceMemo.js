@@ -33,7 +33,9 @@ let smFilters = { ...SM_FILTERS_EMPTY };
 // date — a memo written in Shrawan is routinely for the year just closed,
 // not the one that just started. Statutory Audit is always for a completed
 // year, so its own suggestion list never offers a year beyond this default.
-const SM_FY_DEFAULT = '2082-83';
+// Reads window.FY_DEFAULT_START (config.js) — see that constant's comment.
+// smFyLabel is a function declaration below, so it's hoisted and safe here.
+const SM_FY_DEFAULT = smFyLabel(window.FY_DEFAULT_START);
 const SM_FY_START = 2077;
 const SM_FY_END = 2085;
 const SM_FY_AUDIT_CAP = 2082;
@@ -101,7 +103,7 @@ async function smRefresh() {
   try {
     smMemos = await DataCache.get(window.LEDGER_KEYS.memosSm, () => sbFetchAll(() => window.sb.from('service_memos')
       .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false })));
-    await smLoadArfVerified();
+    await Promise.all([smLoadArfVerified(), smLoadProjections()]);
     smRenderRecent();
     smRenderTable();
     smRenderPending();
@@ -202,32 +204,88 @@ async function smLoadArfVerified() {
   }
 }
 
+// Saved Projection Reports are the second source for the Audit Fees list
+// (2026-08-15) — a saved report is by itself "billable work done", the same
+// idea as a verified ARF track. Updating an existing report (Projection's own
+// Updation mode) writes to the SAME projection_reports row, so deriving this
+// list straight from the table — rather than storing anything about save
+// events — is what keeps a re-run from ever appearing twice.
+let smProjectionRows = [];
+
+async function smLoadProjections() {
+  try {
+    smProjectionRows = await sbFetchAll(() => window.sb.from('projection_reports')
+      .select('id, client_id, company_name, pan, fiscal_year_base, years, performed_by')
+      .order('fiscal_year_base', { ascending: false }));
+  } catch (e) {
+    smProjectionRows = [];
+  }
+}
+
 // ARF's slash short-year format ('2082/83') -> Service Memo's own dash
 // format ('2082-83'). Same digits, different separator only.
 function smFyFromArf(slash) { return String(slash || '').replace('/', '-'); }
 
-function smPendingAuditRows() {
+// PROJECTION_MEMO_CAT/SUB — which SERVICE_MEMO_TASKS slot a projection-report
+// fee lands in. User decision 2026-08-15: Bank Loan Related / Provisional/
+// Projected already exists in the picklist and matches what this work is for.
+const PROJECTION_MEMO_CAT = 'Bank Loan Related';
+const PROJECTION_MEMO_SUB = 'Provisional/Projected';
+
+function smHasAuditMemo(clientId, fyStart) {
+  return smMemos.some(m => m.nature_category === 'Audit' && m.nature_subcategory === 'Statutory Audit' &&
+    m.client_id === clientId && NepaliLocale.fyStartYear(m.fiscal_year) === fyStart);
+}
+
+function smHasProjectionMemo(clientId, clientNameLower, fyStart) {
+  return smMemos.some(m => {
+    if (m.nature_category !== PROJECTION_MEMO_CAT || m.nature_subcategory !== PROJECTION_MEMO_SUB) return false;
+    if (NepaliLocale.fyStartYear(m.fiscal_year) !== fyStart) return false;
+    return clientId != null ? m.client_id === clientId : String(m.client_name || '').trim().toLowerCase() === clientNameLower;
+  });
+}
+
+// Both fee sources — verified ARF tracks and saved Projection Reports — feed
+// one list, tagged by `kind` so the table and the prefill can tell them apart.
+function smFeeDueRows() {
   const groups = new Map();
   smArfRows.forEach(r => {
     // ARF's client_id is NOT NULL (directory clients only), but guard anyway
     // — a row this module can't attribute to a client can't be memoed either.
     if (r.client_id == null || !smArfTrackVerified(r)) return;
-    const key = r.client_id + '::' + r.fiscal_year;
+    const key = 'audit::' + r.client_id + '::' + r.fiscal_year;
     let g = groups.get(key);
     if (!g) {
-      g = { clientId: r.client_id, clientName: r.client_name, clientPan: r.client_pan, fiscalYear: r.fiscal_year, tracks: [], auditor: r.auditor || '' };
+      g = { kind: 'audit', clientId: r.client_id, clientName: r.client_name, clientPan: r.client_pan,
+        fiscalYear: r.fiscal_year, tracks: [], auditor: r.auditor || '' };
       groups.set(key, g);
     }
     if (!g.tracks.includes(r.return_type)) g.tracks.push(r.return_type);
     if (!g.auditor && r.auditor) g.auditor = r.auditor;
   });
 
-  const hasMemo = (clientId, fyStart) => smMemos.some(m =>
-    m.nature_category === 'Audit' && m.nature_subcategory === 'Statutory Audit' &&
-    m.client_id === clientId && NepaliLocale.fyStartYear(m.fiscal_year) === fyStart);
+  smProjectionRows.forEach(r => {
+    const fy = r.fiscal_year_base;
+    if (!fy) return;
+    // A typed-only projection (no directory client) is grouped by its trimmed,
+    // lower-cased company name instead — the same fallback smOpenCreateFromPending
+    // already uses for the ARF side's missing-from-directory case.
+    const nameLower = String(r.company_name || '').trim().toLowerCase();
+    const key = 'projection::' + (r.client_id != null ? r.client_id : 'name:' + nameLower) + '::' + fy;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        kind: 'projection', clientId: r.client_id, clientName: r.company_name, clientPan: r.pan || '',
+        fiscalYear: fy, years: r.years, performedBy: r.performed_by || '',
+      });
+    }
+  });
 
   return Array.from(groups.values())
-    .filter(g => !hasMemo(g.clientId, NepaliLocale.fyStartYear(g.fiscalYear)))
+    .filter(g => {
+      const fyStart = NepaliLocale.fyStartYear(g.fiscalYear);
+      if (g.kind === 'audit') return !smHasAuditMemo(g.clientId, fyStart);
+      return !smHasProjectionMemo(g.clientId, String(g.clientName || '').trim().toLowerCase(), fyStart);
+    })
     .sort((a, b) => (NepaliLocale.fyStartYear(b.fiscalYear) || 0) - (NepaliLocale.fyStartYear(a.fiscalYear) || 0)
       || String(a.clientName || '').localeCompare(String(b.clientName || '')));
 }
@@ -248,15 +306,17 @@ function smSetView(view) {
   if (view === 'pending' && smPendingTable) setTimeout(() => smPendingTable.redraw(true), 0);
 }
 
+const SM_KIND_LABELS = { audit: 'Statutory Audit', projection: 'Projection Report' };
+
 function smRenderPending() {
-  const rows = smPendingAuditRows();
+  const rows = smFeeDueRows();
   smUpdatePendingBadge(rows.length);
 
   const wrap = document.getElementById('sm-pending-wrap');
   if (!wrap) return;
   if (smPendingTable) { smPendingTable.destroy(); smPendingTable = null; }
   if (!rows.length) {
-    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return, Estimate Return or Tax Clearance already has a Statutory Audit fee memo.</div>';
+    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return, Estimate Return, Tax Clearance or a saved Projection Report already has a matching fee memo.</div>';
     return;
   }
   wrap.innerHTML = '';
@@ -271,9 +331,18 @@ function smRenderPending() {
           return `${escHtml(r.clientName || '—')}<div class="log-sub">PAN ${escHtml(r.clientPan || '—')}</div>`;
         } },
       { title: 'F.Y.', field: 'fiscalYear', width: 90, formatter: c => escHtml(smFyFromArf(c.getValue())) },
-      { title: 'Verified In', field: 'tracks', minWidth: 220, headerSort: false, formatter: c =>
-          c.getValue().map(t => `<span class="log-badge ${SM_ARF_TRACK_BADGES[t] || 'badge-neutral'}">${escHtml(SM_ARF_TRACK_LABELS[t] || t)}</span>`).join(' ') },
-      { title: 'Auditor', field: 'auditor', width: 160, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Work', field: 'kind', width: 130, formatter: c => escHtml(SM_KIND_LABELS[c.getValue()] || c.getValue()) },
+      { title: 'Details', field: 'tracks', minWidth: 220, headerSort: false, formatter: c => {
+          const r = c.getRow().getData();
+          if (r.kind === 'audit') {
+            return (r.tracks || []).map(t => `<span class="log-badge ${SM_ARF_TRACK_BADGES[t] || 'badge-neutral'}">${escHtml(SM_ARF_TRACK_LABELS[t] || t)}</span>`).join(' ');
+          }
+          return escHtml(r.years ? `${r.years}-year projection` : 'Projection');
+        } },
+      { title: 'Auditor / By', field: 'auditor', width: 160, formatter: c => {
+          const r = c.getRow().getData();
+          return escHtml((r.kind === 'audit' ? r.auditor : r.performedBy) || '—');
+        } },
       { title: '', field: 'clientId', headerSort: false, width: 110,
         formatter: () => '<div class="client-actions"><button class="btn btn-outline btn-sm" data-action="add-fee">Add Fee</button></div>',
         cellClick: (e, cell) => {
@@ -284,13 +353,24 @@ function smRenderPending() {
   });
 }
 
-// One click from "audit verified, no fee memo yet" to a prefilled memo —
-// client, Audit / Statutory Audit and the fiscal year are already set; the
-// user only has to type the Professional Fee.
+// One click from "billable work done, no fee memo yet" to a prefilled memo —
+// client, Nature of Task, fiscal year and a description are already set; the
+// user only has to type the Professional Fee. Handles both fee sources.
 function smOpenCreateFromPending(p) {
   const client = (window.clientsList || []).find(c => c.id === p.clientId)
     || { id: p.clientId, name: p.clientName, pan: p.clientPan };
-  smOpenCreate(null, { client, category: 'Audit', subcategory: 'Statutory Audit', fiscalYear: smFyFromArf(p.fiscalYear) });
+  const fy = smFyFromArf(p.fiscalYear);
+  if (p.kind === 'projection') {
+    smOpenCreate(null, {
+      client, category: PROJECTION_MEMO_CAT, subcategory: PROJECTION_MEMO_SUB, fiscalYear: fy,
+      description: `Preparation of Projected Financial Statements${p.years ? ` for ${p.years} years` : ''}, based on F.Y. ${fy}.`,
+    });
+    return;
+  }
+  smOpenCreate(null, {
+    client, category: 'Audit', subcategory: 'Statutory Audit', fiscalYear: fy,
+    description: `Statutory Audit of the Financial Statements for F.Y. ${fy}.`,
+  });
 }
 
 // ── Filters ──
@@ -408,7 +488,7 @@ function smOpenCreate(existing, prefill) {
   document.getElementById('sm-delete-btn').style.display = existing ? '' : 'none';
   document.getElementById('sm-drawer-title').textContent = existing
     ? `Edit ${existing.memo_number || 'Service Memo'}`
-    : (prefill ? 'New Service Memo — Statutory Audit' : 'New Service Memo');
+    : (prefill ? `New Service Memo — ${prefill.subcategory}` : 'New Service Memo');
   document.getElementById('sm-drawer-status').innerHTML = '';
 
   smPopulateCategorySelect();
@@ -426,7 +506,7 @@ function smOpenCreate(existing, prefill) {
   document.getElementById('sm-nature-subcategory').value = existing ? (existing.nature_subcategory || '') : (prefill ? prefill.subcategory : '');
   smOnSubcategoryChange();
   document.getElementById('sm-nature-other').value = existing ? (existing.nature_other || '') : '';
-  document.getElementById('sm-description').value = existing ? (existing.description || '') : '';
+  document.getElementById('sm-description').value = existing ? (existing.description || '') : (prefill ? (prefill.description || '') : '');
   document.getElementById('sm-fee').value = existing ? existing.professional_fee : '';
   document.getElementById('sm-apply-vat').checked = existing ? !!existing.apply_vat : false;
   document.getElementById('sm-remarks').value = existing ? (existing.remarks || '') : '';
