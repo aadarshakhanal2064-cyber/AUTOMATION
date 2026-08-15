@@ -151,10 +151,17 @@ the rows that matter most. Then:
   there's no client record to be pending against.
 - `doc_types` entries that are bare strings (the pre-quantities legacy shape
   `fmDocSummary()` still handles) are read as qty 1; `qty: 0` is ignored.
-- Entries are aggregated to **one row per `(client, fiscal year, work type)`**
-  carrying every contributing `register_no`, the **earliest** `date_received`
-  and days waiting — a client can bring the same register in across several
-  visits, and three register numbers for one outstanding job is one job.
+- **One row per File In Out entry** (2026-08-15, superseding the earlier grain
+  below). Every job the intake implies (still fanned out through
+  `wdWorkTypesForLabel` — one document can legitimately imply two jobs) is
+  carried inside that one row as a `jobs` array, rendered as one badge per
+  job. **This drops the old reverse-aggregation**: several intakes of the same
+  work type for the same client in the same year used to collapse into one
+  row listing every `register_no`; that read as "one job, several visits" but
+  the firm reads the list as "which physical files are still waiting", and a
+  single intake carrying Sales Register + Purchase Register + Stock Book was
+  printing as three separate rows for the same file. Two real intakes still
+  get two rows.
 - Sorted **longest-waiting first**, which is the actual triage order and the
   one thing the paper list could never do.
 - A row whose file has already been returned still appears; "returned but
@@ -188,10 +195,27 @@ because of that, all of them about making emptiness *explainable*:
 ## The Activity Log — cross-module, per client (2026-08-10)
 
 A header button beside *Export Excel* opens a read-only view over
-**`audit_log`**: what anyone at the firm has actually **done for a client,
-across every module** — a projection generated, an invoice raised, a VAT
-filing updated, a file intake recorded — filterable **client-wise**,
-**work/module-wise** and **staff-wise**.
+**`audit_log`**: what anyone at the firm has actually **done for a client**
+— a projection generated, a file intake recorded, a return finalized —
+filterable **client-wise**, **work/module-wise** and **staff-wise**.
+
+**Scoped to seven modules** (`window.ACTIVITY_MODULES`, `js/config.js`,
+2026-08-15): Financial Statement, Projection Report, Confirmation, Autobooks,
+File In Out, Audit Report Finalization and Audit Checklist — the modules that
+make up the firm's per-client work history. Everything else (Bank Entry,
+Billing, Clients, Depreciation, ...) still writes to `audit_log` as before, it
+simply isn't part of what this view answers. This is what keeps the Client
+filter to real directory clients: `audit_log.client_name` is free text, and
+`bankBook` in particular writes a **bank account name**
+("Dallakoti & Company(current)") or a free-typed expense/person particular
+("Bank Charges", "Bank Deposit") into that column — neither is a client, and
+excluding `bankBook` from the scope is what removes them. The Client dropdown
+additionally intersects its options with `window.clientsList` as a second
+guard, so a stray non-client string from an in-scope module still can't
+appear as a filter option (the row itself stays visible in the table).
+`wdActivityInScope()` mirrors `wdActivityIsPersisted()`'s "absent = shown"
+idiom: if `window.ACTIVITY_MODULES` is ever missing, the log falls back to
+showing everything rather than silently going blank.
 
 It lives here rather than on the Dashboard because the Dashboard's feed is a
 10-row "what just happened" glance for the whole firm; this is the searchable

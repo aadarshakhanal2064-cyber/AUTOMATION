@@ -446,6 +446,16 @@ window.ACTIVITY_SAVED_ONLY = {
   report: ['audit_report_saved'],
 };
 
+// The Activity Log is scoped to the seven modules that make up the firm's
+// per-client work history (user decision, 2026-08-15) — everything else
+// (Bank Entry, Billing, Clients, ...) still writes to audit_log as before,
+// it's just not part of what THIS view answers. This is what keeps a bank
+// account name ("Dallakoti & Company(current)") or an expense particular
+// ("Bank Charges") out of the Client filter — those only ever come from
+// bankBook, which isn't in the list.
+window.ACTIVITY_MODULES = ['finStatement', 'projection', 'confirmationLetters',
+  'salesPurchaseBook', 'fileManagement', 'auditReportFinalization', 'auditChecklist'];
+
 // event_type → what a person would call it. Grouped by the module that
 // emits it; see the AuditLog.record() calls across js/.
 window.ACTIVITY_EVENT_LABELS = {

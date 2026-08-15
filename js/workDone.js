@@ -48,7 +48,9 @@ const WD_RECORD_STATUSES = {
 
 const WD_FY_START = 2077;
 const WD_FY_END = 2085;
-const WD_FY_DEFAULT = '2082/83';
+// Reads window.FY_DEFAULT_START (config.js) — see that constant's comment.
+// wdFyLabel is a function declaration below, so it's hoisted and safe here.
+const WD_FY_DEFAULT = wdFyLabel(window.FY_DEFAULT_START);
 
 // Stat cards double as quick filters — the ARF / Audit Checklist idiom.
 const WD_FILTERS = {
@@ -394,9 +396,21 @@ function wdDaysSince(isoDate) {
 // Built from document_register OUTWARD, never from work_done — the commonest
 // pending case by far is a client whose Work Done record doesn't exist yet, so
 // iterating saved records would miss exactly the rows that matter most.
+// ONE ROW PER FILE IN OUT ENTRY (2026-08-15, superseding the earlier
+// per-work-type grain below). The firm reads this list as "which files are
+// still waiting", not "how many jobs are outstanding" — a single intake
+// carrying Sales Register + Purchase Register + Stock Book used to print as
+// three separate rows, which read as three different files. Every job that
+// intake implies is still tracked, just as badges inside the one row.
+//
+// This DROPS the old reverse-aggregation ("several intakes of the same work
+// type in one year collapse into one row, register numbers joined by ', '")
+// — that was a real behaviour, not a bug, but it's the wrong grain for this
+// screen. If two intakes belong together they still each get their own row,
+// because each is a real physical file that was actually handed over.
 function wdPendingRows() {
-  const agg = new Map();
   wdUnknownFyCount = 0;
+  const rows = [];
 
   wdIntakes.forEach(d => {
     // Walk-in intakes (client_id null — File In Out allows them, this module
@@ -404,11 +418,11 @@ function wdPendingRows() {
     if (d.client_id == null) return;
 
     // Each received document can imply more than one job.
-    const jobs = [];
+    const jobTypes = [];
     wdIntakeDocs(d).forEach(t => wdWorkTypesForLabel(t.type).forEach(wt => {
-      if (!jobs.some(j => j.key === wt.key)) jobs.push(wt);
+      if (!jobTypes.some(j => j.key === wt.key)) jobTypes.push(wt);
     }));
-    if (!jobs.length) return;
+    if (!jobTypes.length) return;
 
     const startYear = NepaliLocale.fyStartYear(d.fiscal_year);
     if (startYear == null) wdUnknownFyCount += 1;
@@ -419,7 +433,10 @@ function wdPendingRows() {
       ? wdRecords.filter(r => r.client_id === d.client_id)
       : wdRecords.filter(r => r.client_id === d.client_id && NepaliLocale.fyStartYear(r.fiscal_year) === startYear);
 
-    jobs.forEach(wt => {
+    const jobs = [];
+    let clientName = d.client_name || '—';
+    let clientPan = d.client_pan || '';
+    jobTypes.forEach(wt => {
       // Take the most advanced state across matching records: if ANY of the
       // client's records has this job done, the file isn't waiting on it.
       let state = 'not_started', staff = '', rec = null;
@@ -430,45 +447,30 @@ function wdPendingRows() {
         else if (!rec) { rec = r; staff = it.staff || staff; }
       });
       if (state === 'done') return;
+      if (rec) { clientName = rec.client_name || clientName; clientPan = rec.client_pan || clientPan; }
+      jobs.push({ key: wt.key, label: wt.label, state, staff });
+    });
+    if (!jobs.length) return;
 
-      // One entry per (client, fiscal year, work type): a client can bring the
-      // same register in across several visits, and three register numbers for
-      // one outstanding job is one job, not three.
-      const key = d.client_id + '|' + (startYear == null ? '?' : startYear) + '|' + wt.key;
-      const existing = agg.get(key);
-      if (existing) {
-        if (d.register_no) existing.registerNos.add(d.register_no);
-        if (d.status) existing.fmStatuses.add(d.status);
-        if (d.date_received && (!existing.received || d.date_received < existing.received)) existing.received = d.date_received;
-      } else {
-        agg.set(key, {
-          clientId: d.client_id,
-          clientName: (rec && rec.client_name) || d.client_name || '—',
-          clientPan: (rec && rec.client_pan) || d.client_pan || '',
-          fiscalYear: startYear == null ? '—' : wdFyLabel(startYear),
-          startYear,
-          workKey: wt.key,
-          workLabel: wt.label,
-          state,
-          staff,
-          registerNos: new Set(d.register_no ? [d.register_no] : []),
-          fmStatuses: new Set(d.status ? [d.status] : []),
-          received: d.date_received || '',
-        });
-      }
+    rows.push({
+      intakeId: d.id,
+      clientId: d.client_id,
+      clientName,
+      clientPan,
+      fiscalYear: startYear == null ? '—' : wdFyLabel(startYear),
+      startYear,
+      jobs,
+      staff: Array.from(new Set(jobs.map(j => j.staff).filter(Boolean))).join(', ') || '—',
+      registerNo: d.register_no || '—',
+      fmStatus: d.status || '—',
+      received: d.date_received || '',
+      days: wdDaysSince(d.date_received || ''),
     });
   });
 
-  return Array.from(agg.values())
-    .map(p => ({
-      ...p,
-      registerNo: Array.from(p.registerNos).join(', ') || '—',
-      fmStatus: Array.from(p.fmStatuses).join(', ') || '—',
-      days: wdDaysSince(p.received),
-    }))
-    // Longest-waiting first — the actual triage order, and the one thing the
-    // paper pending list could never do.
-    .sort((a, b) => (b.days == null ? -1 : b.days) - (a.days == null ? -1 : a.days));
+  // Longest-waiting first — the actual triage order, and the one thing the
+  // paper pending list could never do.
+  return rows.sort((a, b) => (b.days == null ? -1 : b.days) - (a.days == null ? -1 : a.days));
 }
 
 // The join is by LABEL TEXT (document_register stores doc_types[].type as the
@@ -541,11 +543,11 @@ function wdRenderPending() {
           return escHtml(r.clientName || '—') + (r.clientPan ? `<br><span style="color:var(--text-faint); font-size:12px;">PAN ${escHtml(r.clientPan)}</span>` : '');
         } },
       { title: 'FY', field: 'fiscalYear', width: 90 },
-      { title: 'Work Type', field: 'workLabel', minWidth: 150 },
-      { title: 'State', field: 'state', width: 130, formatter: c => {
-          const m = wdStateMeta(c.getValue());
-          return `<span class="log-badge ${m.badgeClass}">${m.icon} ${escHtml(m.label)}</span>`;
-        } },
+      { title: 'Work Pending', field: 'jobs', minWidth: 220, headerSort: false, formatter: c =>
+          c.getValue().map(j => {
+            const m = wdStateMeta(j.state);
+            return `<span class="log-badge ${m.badgeClass}">${m.icon} ${escHtml(j.label)}</span>`;
+          }).join(' ') },
       { title: 'Staff', field: 'staff', width: 120, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Register', field: 'registerNo', width: 130, formatter: c => escHtml(c.getValue() || '—') },
       { title: 'Received', field: 'received', width: 110, formatter: c => escHtml(c.getValue() || '—') },
@@ -1180,6 +1182,15 @@ function wdActivityIsPersisted(row) {
   return !allowed || allowed.includes(row.event_type);
 }
 
+// This view covers only the seven modules in window.ACTIVITY_MODULES
+// (2026-08-15) — see the comment there. Falls open (shows everything) if the
+// list is somehow missing, same "never silently hide a module" idiom as
+// wdActivityIsPersisted.
+function wdActivityInScope(row) {
+  const scope = window.ACTIVITY_MODULES;
+  return !scope || !scope.length || scope.includes(row.module);
+}
+
 // ── Merge repeats of the same work on the same client ──
 // Keyed on (client, module, event type): the same job done again for the same
 // client is a repeat; the same job for a DIFFERENT client is separate work.
@@ -1223,7 +1234,7 @@ function wdActivityCollapse(rows) {
 }
 
 function wdActivityBuildEntries() {
-  wdActivityEntries = wdActivityCollapse(wdActivityRows.filter(wdActivityIsPersisted));
+  wdActivityEntries = wdActivityCollapse(wdActivityRows.filter(wdActivityInScope).filter(wdActivityIsPersisted));
 }
 
 function wdActivityOpen() {
@@ -1281,7 +1292,16 @@ function wdActivityPopulateFilters() {
   // events the log now hides would filter to nothing and look broken.
   fill('wd-activity-module', wdActivityEntries.map(r => r.module), 'All modules', wdModuleLabel);
   fill('wd-activity-staff', wdActivityEntries.map(r => r.user_email), 'All staff');
-  fill('wd-activity-client', wdActivityEntries.map(r => r.client_name), 'All clients');
+
+  // audit_log.client_name is free text — a module legitimately logs a bank
+  // account name or an export filename there (bankBook's "Dallakoti &
+  // Company(current)", "Bank Charges"). The filter only offers directory
+  // clients; a non-matching row still shows in the table, it just isn't
+  // reachable from this dropdown. Falls open if clientsList hasn't loaded.
+  const dirNames = new Set((window.clientsList || []).map(c => String(c.name || '').trim().toLowerCase()));
+  const clientOpts = wdActivityEntries.map(r => r.client_name)
+    .filter(n => !dirNames.size || dirNames.has(String(n || '').trim().toLowerCase()));
+  fill('wd-activity-client', clientOpts, 'All clients');
 }
 
 function wdActivityReadFilters() {
