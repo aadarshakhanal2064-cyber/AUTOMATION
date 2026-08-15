@@ -192,16 +192,31 @@ Chain-created follow-on records are stamped with **today**, not the IT return's
 recorded date — they become due when the IT return is verified, which may be
 long after the return itself was logged.
 
-## Stat cards clear the filters
+## Stat cards clear the filters, but keep the fiscal year
 
 Seven cards: Total Records · IT Verified · IT Not Verified · Estimate Verified ·
 Estimate Not Verified · Tax Cleared · Tax Not Cleared. `ARF_FILTERS` drives both
 the counts and the filtering from one definition, so they can't disagree.
 
-**Clicking a card clears every dropdown filter, the date range and the search
-box first.** A
-card's number counts the whole portfolio, so leaving stale filters applied would
-show fewer rows than the card advertises — which reads as a bug.
+**The cards are scoped to the FY filter** (2026-08-15, superseding the earlier
+"a card's number counts the whole portfolio"): `arfRenderStats()` counts over
+`arfRecords.filter(r => r.fiscal_year === arfFilters.fiscalYear)` when a year is
+selected, all records when it's "All Years". Portfolio-wide counting read as
+correct on the surface but made every card — "Estimate Not Verified" especially
+— report a number several years larger than what the firm actually had
+outstanding *right now*, since the table goes back to 2077/78. A caption under
+the grid (`#arf-stat-caption`) always states which is showing.
+
+The FY filter (`arf-filter-fy`) now **opens on `ARF_FY_DEFAULT`** (the firm's
+current working year) instead of "All Years", matching `ARF_FILTERS_EMPTY`.
+"All Years" is still one click away and restores the old portfolio-wide count.
+
+**Clicking a card clears every OTHER dropdown filter, the date range and the
+search box, but keeps the fiscal year** (`arfResetFilterInputs(true)`) — a
+card's own number is now scoped to that year, so wiping it too would make the
+rows it reveals disagree with the number that was just clicked. **Clear
+Filters** (`arfClearFilters()`, calls `arfResetFilterInputs()` with no
+argument) resets the year back to `ARF_FY_DEFAULT` rather than blanking it.
 
 ## Table
 
@@ -320,3 +335,24 @@ end-to-end), and the **visual** appearance of the new chart card and segmented
 picker — the browser pane could not composite a screenshot in this session, so
 layout/spacing was confirmed structurally only. Worth a real save pass and an
 eyeball check after deploying.
+
+### Fiscal-year scoping of the stat cards (2026-08-15)
+
+Verified against a seeded `arfRecords` array in the dev server (4 rows: 2×
+`estimate_return`/`2082/83`, 1× `2081/82`, 1× `2080/81`, all `estimate_verified:
+false`):
+
+- `arf-filter-fy` opened on `2082/83` on load, and `#arf-stat-caption` read
+  "Counts for F.Y. 2082/83".
+- "Estimate Not Verified" read **2** (only the 2082/83 rows), not 4 — the
+  fix's whole point. "Total Records" read 2 for the same reason.
+- Switching the filter to "All Years" restored **4** on both cards and the
+  caption changed to "Counts for all fiscal years".
+- Clicking a stat card with the year set to 2082/83 kept `arf-filter-fy` at
+  `2082/83` afterward (verified via `arfSetFilter('estNotVer')`).
+- **Clear Filters** with the year blank reset it back to `2082/83`
+  (`arfClearFilters()`).
+
+Not re-verified this round: a live authenticated save, and the visual layout
+of the new caption line — structural/DOM checks only, same limitation as the
+prior verification rounds above.

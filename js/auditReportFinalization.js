@@ -40,7 +40,10 @@ const ARF_TYPE_BADGES = {
 
 const ARF_FY_START = 2077;
 const ARF_FY_END = 2085;
-const ARF_FY_DEFAULT = '2082/83';
+// Reads window.FY_DEFAULT_START (config.js) rather than a literal — see that
+// constant's comment. arfFyLabel is a function DECLARATION below, so it's
+// hoisted and safe to call here.
+const ARF_FY_DEFAULT = arfFyLabel(window.FY_DEFAULT_START);
 const ARF_SUBMISSION_DIGITS = 12;
 
 // Stat cards double as quick filters. Each one clears the dropdown filters
@@ -55,7 +58,11 @@ const ARF_FILTERS = {
   taxNotClear: { label: 'Tax Not Cleared',        test: r => r.return_type === 'tax_clearance' && r.tax_clearance !== true },
 };
 
-const ARF_FILTERS_EMPTY = { auditor: '', fiscalYear: '', returnType: '', status: '', from: '', to: '' };
+// The FY filter — and with it the stat cards — defaults to the firm's
+// current working year rather than "All Years" (2026-08-15, user decision):
+// "Estimate Not Verified" etc. otherwise counted the whole portfolio back to
+// 2077/78, which read as far too high for a single year's outstanding work.
+const ARF_FILTERS_EMPTY = { auditor: '', fiscalYear: ARF_FY_DEFAULT, returnType: '', status: '', from: '', to: '' };
 
 let arfRecords = [];
 let arfTable = null;
@@ -160,7 +167,10 @@ function arfPopulateStaticDropdowns() {
   const fyOpts = arfFyOptions().map(fy => `<option value="${fy}">${fy}</option>`).join('');
   arfEl('arf-fiscal-year').innerHTML = fyOpts;
   arfEl('arf-fiscal-year').value = ARF_FY_DEFAULT;
+  // The filter keeps an "All Years" escape hatch but opens ON the working
+  // year, matching ARF_FILTERS_EMPTY — see the stat-card scoping note there.
   arfEl('arf-filter-fy').innerHTML = '<option value="">All Years</option>' + fyOpts;
+  arfEl('arf-filter-fy').value = ARF_FY_DEFAULT;
 
   arfEl('arf-filter-type').innerHTML = '<option value="">All Types</option>' +
     window.ARF_RETURN_TYPES.map(t => `<option value="${t.key}">${escHtml(t.label)}</option>`).join('');
@@ -208,31 +218,41 @@ async function arfRefresh() {
 }
 
 // ── Stat cards (also the quick filters) ──
+// Counts are scoped to arfFilters.fiscalYear (2026-08-15) — "the whole
+// portfolio" read as an inflated, meaningless number for a card like
+// "Estimate Not Verified". Choosing "All Years" in the FY filter restores the
+// old portfolio-wide count; the caption always says which is showing.
 function arfRenderStats() {
   const grid = arfEl('arf-stat-grid');
   if (!grid) return;
+  const base = arfFilters.fiscalYear ? arfRecords.filter(r => r.fiscal_year === arfFilters.fiscalYear) : arfRecords;
   grid.innerHTML = Object.entries(ARF_FILTERS).map(([key, f]) => `
-    <div class="stat-card clickable ${arfActiveFilter === key ? 'active-filter' : ''}" onclick="arfSetFilter('${key}')" title="Show only these — clears the filters below">
-      <div class="stat-num">${arfRecords.filter(f.test).length}</div>
+    <div class="stat-card clickable ${arfActiveFilter === key ? 'active-filter' : ''}" onclick="arfSetFilter('${key}')" title="Show only these — keeps the fiscal year, clears the other filters below">
+      <div class="stat-num">${base.filter(f.test).length}</div>
       <div class="stat-label">${f.label}</div>
     </div>`).join('');
+  const caption = arfEl('arf-stat-caption');
+  if (caption) caption.textContent = arfFilters.fiscalYear ? `Counts for F.Y. ${arfFilters.fiscalYear}` : 'Counts for all fiscal years';
 }
 
-// A card is a fresh start: its number counts the whole portfolio, so leaving
-// stale dropdown filters applied would show fewer rows than the card claims.
+// A card is a fresh start for every OTHER filter, but it keeps the fiscal
+// year — otherwise the card's own number (scoped to that year) would
+// disagree with the rows it then reveals (unscoped, every year).
 function arfSetFilter(key) {
   arfActiveFilter = key;
-  arfResetFilterInputs();
+  arfResetFilterInputs(true);
   arfRenderStats();
   arfApplyFilters();
 }
 
-function arfResetFilterInputs() {
+function arfResetFilterInputs(keepFy) {
+  const fy = keepFy ? arfEl('arf-filter-fy').value : '';
   ['arf-filter-auditor', 'arf-filter-fy', 'arf-filter-type', 'arf-filter-status',
    'arf-filter-from', 'arf-filter-to', 'arf-search'].forEach(id => {
     const el = arfEl(id); if (el) el.value = '';
   });
-  arfFilters = { ...ARF_FILTERS_EMPTY };
+  arfFilters = { ...ARF_FILTERS_EMPTY, fiscalYear: keepFy ? fy : ARF_FY_DEFAULT };
+  arfEl('arf-filter-fy').value = arfFilters.fiscalYear;
 }
 
 // ── Overview chart ──
@@ -357,7 +377,10 @@ function arfApplyFilters() {
   if (arfTable) arfTable.replaceData(rows);
 }
 
-function arfOnFilterChange() { arfReadFilters(); arfApplyFilters(); }
+// The cards are scoped to arfFilters.fiscalYear, so any filter change that
+// can touch that field (arf-filter-fy itself) has to re-render them too, or
+// the cards and the table below would disagree about which year they show.
+function arfOnFilterChange() { arfReadFilters(); arfRenderStats(); arfApplyFilters(); }
 
 function arfClearFilters() {
   arfResetFilterInputs();
