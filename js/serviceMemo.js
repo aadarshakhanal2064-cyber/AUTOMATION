@@ -103,7 +103,7 @@ async function smRefresh() {
   try {
     smMemos = await DataCache.get(window.LEDGER_KEYS.memosSm, () => sbFetchAll(() => window.sb.from('service_memos')
       .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false })));
-    await Promise.all([smLoadArfVerified(), smLoadProjections()]);
+    await Promise.all([smLoadArfVerified(), smLoadProjections(), smLoadFeeSkips()]);
     smRenderRecent();
     smRenderTable();
     smRenderPending();
@@ -204,6 +204,20 @@ async function smLoadArfVerified() {
   }
 }
 
+// A dismissed (client, fiscal year, kind) reminder — see db/2026-08-15_service_memo_fee_skips.sql
+// for why this exists (the Pending Memos list is derived, so "Delete" has
+// nothing to delete without this table).
+let smFeeSkips = [];
+
+async function smLoadFeeSkips() {
+  try {
+    smFeeSkips = await sbFetchAll(() => window.sb.from('service_memo_fee_skips')
+      .select('client_id, client_name, fy_start_year, kind'));
+  } catch (e) {
+    smFeeSkips = [];
+  }
+}
+
 // Saved Projection Reports are the second source for the Audit Fees list
 // (2026-08-15) — a saved report is by itself "billable work done", the same
 // idea as a verified ARF track. Updating an existing report (Projection's own
@@ -245,6 +259,15 @@ function smHasProjectionMemo(clientId, clientNameLower, fyStart) {
   });
 }
 
+// A dismissed reminder (§ smFeeSkips above) never comes back on its own —
+// it's excluded the same way "already has a memo" is, right next to it, so
+// there's exactly one place a group can be dropped from the list.
+function smIsFeeSkipped(g, fyStart) {
+  const nameLower = String(g.clientName || '').trim().toLowerCase();
+  return smFeeSkips.some(s => s.kind === g.kind && s.fy_start_year === fyStart &&
+    (g.clientId != null ? s.client_id === g.clientId : String(s.client_name || '').trim().toLowerCase() === nameLower));
+}
+
 // Both fee sources — verified ARF tracks and saved Projection Reports — feed
 // one list, tagged by `kind` so the table and the prefill can tell them apart.
 function smFeeDueRows() {
@@ -283,6 +306,7 @@ function smFeeDueRows() {
   return Array.from(groups.values())
     .filter(g => {
       const fyStart = NepaliLocale.fyStartYear(g.fiscalYear);
+      if (smIsFeeSkipped(g, fyStart)) return false;
       if (g.kind === 'audit') return !smHasAuditMemo(g.clientId, fyStart);
       return !smHasProjectionMemo(g.clientId, String(g.clientName || '').trim().toLowerCase(), fyStart);
     })
@@ -344,14 +368,44 @@ function smRenderPending() {
           const r = c.getRow().getData();
           return escHtml((r.kind === 'audit' ? r.auditor : r.performedBy) || '—');
         } },
-      { title: '', field: 'clientId', headerSort: false, width: 110,
-        formatter: () => '<div class="client-actions"><button class="btn btn-outline btn-sm" data-action="add-fee">Add Fee</button></div>',
+      { title: '', field: 'clientId', headerSort: false, width: 180,
+        formatter: () => '<div class="client-actions">'
+          + '<button class="btn btn-outline btn-sm" data-action="add-fee">Add Fee</button>'
+          + '<button class="btn btn-outline btn-sm" data-action="dismiss" title="Remove this reminder — it will not come back on its own">Delete</button>'
+          + '</div>',
         cellClick: (e, cell) => {
-          if (!e.target.closest('[data-action="add-fee"]')) return;
-          smOpenCreateFromPending(cell.getRow().getData());
+          const btn = e.target.closest('[data-action]');
+          if (!btn) return;
+          const row = cell.getRow().getData();
+          if (btn.dataset.action === 'add-fee') smOpenCreateFromPending(row);
+          else if (btn.dataset.action === 'dismiss') smDismissFeeDue(row);
         } },
     ],
   });
+}
+
+// Deletes the REMINDER, not a record — there is no service_memos row for a
+// pending item yet. Recorded in service_memo_fee_skips (db/2026-08-15_…sql)
+// so it stays gone across refreshes and for every staff member, not just
+// this browser tab.
+async function smDismissFeeDue(row) {
+  const label = SM_KIND_LABELS[row.kind] || row.kind;
+  if (!confirm(`Remove this ${label} reminder for ${row.clientName || 'this client'} (F.Y. ${smFyFromArf(row.fiscalYear)})? It will not reappear unless the underlying record changes.`)) return;
+  const fyStart = NepaliLocale.fyStartYear(row.fiscalYear);
+  const { error } = await window.sb.from('service_memo_fee_skips').insert({
+    client_id: row.clientId,
+    client_name: row.clientName,
+    fy_start_year: fyStart,
+    kind: row.kind,
+    dismissed_by: smUserEmail(),
+  });
+  if (error) { smStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  AuditLog.record('service_memo_fee_skip_created', {
+    module: 'serviceMemo', clientName: row.clientName,
+    detail: { kind: row.kind, fiscalYear: row.fiscalYear },
+  });
+  await smLoadFeeSkips();
+  smRenderPending();
 }
 
 // One click from "billable work done, no fee memo yet" to a prefilled memo —
