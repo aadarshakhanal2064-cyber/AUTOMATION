@@ -332,14 +332,15 @@ function smRenderPending() {
         } },
       { title: 'F.Y.', field: 'fiscalYear', width: 90, formatter: c => escHtml(smFyFromArf(c.getValue())) },
       { title: 'Work', field: 'kind', width: 130, formatter: c => escHtml(SM_KIND_LABELS[c.getValue()] || c.getValue()) },
-      { title: 'Details', field: 'tracks', minWidth: 220, headerSort: false, formatter: c => {
+      { title: 'Detail', field: 'tracks', minWidth: 260, headerSort: false, formatter: c => {
           const r = c.getRow().getData();
           if (r.kind === 'audit') {
             return (r.tracks || []).map(t => `<span class="log-badge ${SM_ARF_TRACK_BADGES[t] || 'badge-neutral'}">${escHtml(SM_ARF_TRACK_LABELS[t] || t)}</span>`).join(' ');
           }
-          return escHtml(r.years ? `${r.years}-year projection` : 'Projection');
+          const fy = smFyFromArf(r.fiscalYear);
+          return escHtml(`${r.years || '?'}-year Projected Financial Statements, based on F.Y. ${fy}`);
         } },
-      { title: 'Auditor / By', field: 'auditor', width: 160, formatter: c => {
+      { title: 'Done By', field: 'auditor', width: 160, formatter: c => {
           const r = c.getRow().getData();
           return escHtml((r.kind === 'audit' ? r.auditor : r.performedBy) || '—');
         } },
