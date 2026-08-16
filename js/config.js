@@ -505,6 +505,7 @@ window.ACTIVITY_EVENT_LABELS = {
   spb_book_saved: 'Autobooks book saved', spb_register_printed: 'Register printed',
   spb_omitted_added: 'Omitted bill added', spb_omitted_updated: 'Omitted bill updated',
   spb_omitted_deleted: 'Omitted bill deleted', spb_omitted_printed: 'Omitted bills printed',
+  spb_vat_return_imported: 'VAT return figures imported',
   spb_confirmation_printed: 'Confirmation reconciliation printed',
   spb_openings_carried: 'Opening balances carried forward',
   spb_openings_imported: 'Opening balances imported',

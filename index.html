@@ -1595,12 +1595,20 @@ function cropLoginLogoIcon(img) {
       </div>
 
       <div class="card" id="spb-vr-card" style="display:none; margin-top:20px;">
-        <div class="card-header">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
           <div>
             <div class="card-title" style="font-size:14px;">Monthly reconciliation — As Per VAT Return</div>
-            <div class="card-desc">Type each month's figures from the filed VAT returns. "As per Book" is computed from the uploaded sheets; any difference of a rupee or more is flagged as a real gap (sub-rupee differences are the return's whole-rupee truncation). Typed figures autosave per client and fiscal year.</div>
+            <div class="card-desc">The filed figures, month by month. <strong>Upload the VAT Return Detail sheet</strong> to fill them in, or type them by hand. "As per Book" is computed from the uploaded register; any difference of a rupee or more is flagged as a real gap (sub-rupee differences are the return's whole-rupee truncation). Figures autosave per client and fiscal year.</div>
+          </div>
+          <div>
+            <input type="file" id="spb-vr-file" accept=".xlsx,.xls,.ods,.csv" style="display:none;" onchange="spbHandleVatReturnFile(this)" />
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('spb-vr-file').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              Upload VAT return
+            </button>
           </div>
         </div>
+        <div id="spb-vri-status"></div>
         <div id="spb-vr-body"></div>
       </div>
 
@@ -3890,7 +3898,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608162700"></script>
+<script src="js/config.js?v=202608162800"></script>
 <script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3927,6 +3935,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBookConfirm.js?v=202608162200"></script>
 <script src="js/salesPurchaseBookAnnexure.js?v=202608162500"></script>
 <script src="js/salesPurchaseBookReco.js?v=202608162700"></script>
+<script src="js/salesPurchaseBookVatReturn.js?v=202608162800"></script>
 <script src="js/confirmationLetters.js?v=202608151800"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>

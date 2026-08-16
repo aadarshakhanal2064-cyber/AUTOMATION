@@ -579,3 +579,74 @@ Purchase (with omitted bills 250,000 less a 50,000 return) and VAT both foot to
 0.00 as well; a synthetic Rs 5,000 gap is correctly **not** absorbed and is
 flagged unexplained. Both export formats generate.
 `node tools/spbVerify.mjs` still passes 36/36.
+
+---
+
+## VAT return import (`js/salesPurchaseBookVatReturn.js`, 2026-08-16)
+
+Fills the **As Per VAT Return** side of the Monthly reconciliation from the
+firm's own *VAT Return Detail* sheet, instead of twelve months × up to five
+boxes being retyped for every client. Button lives on the Monthly
+reconciliation card; the boxes stay editable afterwards.
+
+### This does not break "typed, never derived"
+
+CLAUDE.md §15 says the As-Per-VAT-Return figures are typed by the user and
+never derived. That rule exists because **filed figures genuinely differ from
+the book** — by millions in the first reference file — so they must never be
+*computed from the register*. These are still the filed figures; they are read
+from the document that records them rather than copied by hand off the same
+document. Nothing in this file looks at the book.
+
+### Three columns are all headed "VAT"
+
+The sheet runs `Taxable Sales · VAT · Tax Free Sales · Taxable Purchase · VAT ·
+Tax Free Purchase · Taxable Import Purchase · Vat · …`, so a VAT column means
+nothing on its own and everything in relation to the taxable column on its left.
+`spbVriMapColumns()` therefore walks the header left to right, and each anchor
+claims the **next bare VAT column to its right**. Header text alone cannot do
+this.
+
+`SPB_VRI_ANCHORS` is ordered **most specific first**, load-bearing for the same
+reason `SPB_HEADER_RULES` is: `/taxable.*purchase/` would swallow *Taxable
+Import Purchase*, and `/tax free.*purchase/` would swallow *Tax Free Import
+Purchase*.
+
+### What it refuses to guess at
+
+- **"Total" and "Opening" rows are skipped by name**, not left to the month
+  matcher. `spbFuzzyMonthMatch` exists precisely because it is willing to guess,
+  and a guess here would corrupt a real month.
+- **Tax Free Import Purchase has no box** in the reconciliation. A non-zero
+  figure there is reported, never silently dropped.
+- **An unrecognized column is named in the summary** rather than ignored.
+- **A typed figure that disagrees with the file is replaced and listed**, month
+  by month, old value → new value. The filed return is the authority for these
+  boxes, but overwriting someone's work quietly is not acceptable.
+- **The sheet's own Total row is checksummed** against the sum of its twelve
+  months — the same idea the raw-book importer applies to embedded subtotals. A
+  mismatch means the uploaded file is internally inconsistent, and it is the
+  file's own arithmetic saying so.
+- **Company name and fiscal year are cross-checked** against the selection above
+  and disagreements are surfaced — writing one client's filed figures onto
+  another's reconciliation is the failure worth catching — but never blocked.
+
+### Verified 2026-08-16 against a real client's three documents
+
+A client whose folder holds the raw book, a *VAT Return Detail* sheet, and a
+hand-reconciled Autobooks workbook — so the import can be checked against
+figures a human already produced from the same return.
+
+| | Result |
+|---|---|
+| Header located | row 5, month column B, past three title lines |
+| Columns mapped | 9, including all three ambiguous VAT columns resolved to `sales.v`, `purchase.v`, `purchase.impVat` |
+| Months read | 12 · 95 figures filled |
+| File's own Total row | ties to the sum of its months, both books |
+| Against the hand-reconciled workbook | **23 of 24** month figures identical |
+
+The 24th is a real discrepancy between two of the firm's own documents, not an
+import fault: the VAT Return Detail sheet's Ashwin taxable sales is Rs 300,000
+higher than the same figure in the reconciled workbook, and the sheet's Total
+row carries the higher number too. The import loads what the document says and
+the reconciliation flags the month — which is the behaviour wanted.
