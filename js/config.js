@@ -501,7 +501,7 @@ window.ACTIVITY_EVENT_LABELS = {
   projection_printed: 'Projection printed', projection_statement_parsed: 'Statement parsed',
   service_memo_created: 'Service memo created', service_memo_updated: 'Service memo updated',
   service_memo_deleted: 'Service memo deleted',
-  spb_correction: 'Autobooks correction',
+  spb_correction: 'Autobooks correction', spb_autofix: 'Autobooks auto-correction',
   spb_book_saved: 'Autobooks book saved', spb_register_printed: 'Register printed',
   spb_omitted_added: 'Omitted bill added', spb_omitted_updated: 'Omitted bill updated',
   spb_omitted_deleted: 'Omitted bill deleted', spb_omitted_printed: 'Omitted bills printed',
