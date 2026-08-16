@@ -212,3 +212,88 @@ Driven through the real pipeline with `the reference client workbook`
 | Purchase taxable, full year | 77,456,337.168 | 77,456,337.168 ✓ |
 
 `node tools/spbVerify.mjs` still passes 36/36 — the parsing path is unchanged.
+
+---
+
+## Omitted bills (M2, 2026-08-16)
+
+A bill that wasn't available when the year's register was entered and closed.
+It surfaces later, is entered on its own screen rather than back-dated into a
+closed month, and still has to reconcile against the party's confirmation.
+
+### The hard part is the party, not the amounts
+
+In the reference file, **three of the seven** omitted-bill parties are spelled
+differently from the same party in the purchase register:
+
+| Party | How the two spellings differ |
+|---|---|
+| A | one extra letter in the company name |
+| B | a different transliteration of the same Nepali name, plus a dropped word |
+| C | the same extra letter as A (a related company) |
+
+In Excel those silently become separate parties and a human reconciles them by
+eye. Here, an omitted bill filed under a new party key would never close the
+difference it exists to explain, and nothing would say so. Their **PANs match
+exactly in every case**, so:
+
+- the party is **picked** from the book's own party list (`spbOmPartyList()`),
+  which sets `party_key` directly;
+- typing a PAN that resolves to **exactly one** party links it automatically;
+- a PAN on **more than one** party offers the candidates as buttons, largest
+  taxable first, instead of refusing and leaving the user to hunt. This is real:
+  the client's own book has PAN-A typed onto both *Party A*
+  (57 rows, Rs 31.9M) and *Party D* (1 row, Rs 25,221 — a
+  data-entry error). Refusing to guess stays right; the dead end did not.
+- a genuinely new party is still allowed, and is labelled as one out loud.
+
+**The bill keeps its own spelling.** `party_name` stores what the user typed —
+the late bill really is spelled differently — while `party_key` is what
+makes the totals combine. The omitted-bill table shows `<bill spelling> →
+<register spelling>` so the join is visible rather than implied. `spbOmSetParty()`
+therefore fills the name box **only** when the party was picked by name from the
+autocomplete; choosing by PAN leaves the typed name alone.
+
+`spbOmPlainName()` strips the `(PAN …)` suffix `spbComputeGroups()` appends to
+disambiguate same-named companies — that suffix is a picker device and must
+never be stored on a bill or printed beside register rows that don't carry it.
+
+### Entry conveniences, both matching the firm's own sheet
+
+- **Bill Total → taxable + VAT.** The reference sheet's columns are TOTAL,
+  TAXABLE, VAT in that order, and 207,774.98 / 1.13 is exactly the
+  183,871.6637 it records. `spbOmFromTotal()` offers that, and **never
+  overwrites a figure already typed** — a bill with a tax-free part doesn't
+  divide out cleanly.
+- **Blank VAT filled at 13%** (`spbOmFillVat`), the same rule the importer
+  applies to an uploaded sheet, and as there a VAT that is present but
+  disagrees is left exactly as typed. Off for sales on a PAN-only client.
+- **Dates accept a bare month name.** The reference sheet writes "Magh",
+  "Asar" with no day or year, so the field goes through the importer's own
+  `spbParseMonthNameDate()` rather than a second date reader.
+
+### Sign, and the two totals
+
+`spbOmittedSign()` gives a return or debit note the opposite sign. The
+omitted-bills table shows "Net effect on the … register" rather than a plain sum
+for exactly that reason, and the register keeps its two total lines.
+
+### Verified 2026-08-16 against the real file
+
+All seven omitted bills entered from **bill totals alone**, party linked by PAN:
+
+| | computed | firm's own workbook |
+|---|---|---|
+| Party A, omitted taxable | 342,973.44 | books-vs-confirmation gap 342,973.44 ✓ |
+| Party F, omitted taxable | 1,040,793.37 | omitted-sheet total 1,040,793.37 ✓ |
+| First bill, taxable / VAT from total 207,774.98 | 183,871.66 / 23,903.32 | 183,871.6637 / 23,903.3163 ✓ |
+
+### `AuditLog` — `record_ref` is a bigint
+
+Every call in this file first passed a descriptive string as `recordRef`, which
+made Postgres reject the insert outright: the **whole event was lost**, not just
+the reference. `record_ref` takes a numeric row id and nothing else; everything
+descriptive belongs in `detail`, and `module: 'salesPurchaseBook'` must be set or
+the event can't be attributed (`window.ACTIVITY_MODULES` scopes on it). Event
+types are `spb_`-prefixed to match `spb_correction`, and their display labels
+live in `window.ACTIVITY_EVENT_LABELS`.

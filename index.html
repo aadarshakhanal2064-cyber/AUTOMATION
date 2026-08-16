@@ -1618,6 +1618,29 @@ function cropLoginLogoIcon(img) {
           <div id="spb-register-body"></div>
         </div>
       </div>
+
+      <!-- ── SECTION: OMITTED BILLS ── -->
+      <div id="spb-sec-omitted" style="display:none;">
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Record an omitted bill</div>
+              <div class="card-desc">A bill that wasn't available when the year's register was entered and closed. It is kept apart from the closed months, shows after the Ashadh total in the register, and still counts toward its party's total so the confirmation can reconcile. <strong>Pick the party from the register</strong> rather than retyping the name — the same party is often spelled differently on a late bill, and picking it is what keeps the two totals together.</div>
+            </div>
+          </div>
+          <div id="spb-omitted-form-host"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Omitted bills on this book</div>
+              <div class="card-desc">Returns and debit notes carry the opposite sign, so the net effect below is what the register's Grand Total actually moves by.</div>
+            </div>
+          </div>
+          <div id="spb-omitted-body"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ── TAB: CONFIRMATION LETTERS ── -->
@@ -3828,7 +3851,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608161000"></script>
+<script src="js/config.js?v=202608161800"></script>
 <script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3860,7 +3883,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBook.js?v=202608161200"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script src="js/salesPurchaseBookLedger.js?v=202608161200"></script>
+<script src="js/salesPurchaseBookLedger.js?v=202608161900"></script>
 <script src="js/confirmationLetters.js?v=202608151800"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>

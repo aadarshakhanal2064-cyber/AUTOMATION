@@ -32,8 +32,9 @@
 // and it follows the actual work: import the book, read the register, record
 // what came back, report it.
 const SPB_SECTION_TABS = [
-  { key: 'import',   label: 'Import',   panel: 'spb-sec-import' },
-  { key: 'register', label: 'Register', panel: 'spb-sec-register' },
+  { key: 'import',   label: 'Import',        panel: 'spb-sec-import' },
+  { key: 'register', label: 'Register',      panel: 'spb-sec-register' },
+  { key: 'omitted',  label: 'Omitted Bills', panel: 'spb-sec-omitted' },
 ];
 
 let spbSection = 'import';
@@ -47,6 +48,7 @@ function spbShowSection(key) {
   });
   spbRenderSectionNav();
   if (key === 'register') spbRenderRegister();
+  if (key === 'omitted') spbRenderOmitted();
 }
 
 function spbRenderSectionNav() {
@@ -81,8 +83,13 @@ function spbLedgerReset() {
   spbBookId = null; spbBookMeta = null;
   spbOmitted = []; spbLedgerParties = {}; spbAdjustments = [];
   spbDirty = false;
+  // The omitted-bill form is built once and kept, so it has to be emptied by
+  // hand here — otherwise the previous client's half-typed bill stays on screen
+  // under the next client's name.
+  if (document.getElementById('spb-om-form')) spbOmResetForm();
   spbShowSection('import');
   spbRenderBookCard();
+  spbRenderOmittedTable();
 }
 
 // ── Book identity ──
@@ -112,7 +119,7 @@ function spbBookIdentity() {
 //  not sending it in the payload. Two round trips, no ambiguity.
 // ════════════════════════════════════════════
 async function spbFindBookRow(ident) {
-  let q = supabaseClient.from('autobooks_books').select('*').eq('fiscal_year', ident.fiscal_year);
+  let q = window.sb.from('autobooks_books').select('*').eq('fiscal_year', ident.fiscal_year);
   q = ident.client_id != null
     ? q.eq('client_id', ident.client_id)
     : q.is('client_id', null).ilike('client_name', ident.client_name);
@@ -179,7 +186,7 @@ const SPB_INSERT_CHUNK = 400;
 
 async function spbInsertChunked(table, rows) {
   for (let i = 0; i < rows.length; i += SPB_INSERT_CHUNK) {
-    const { error } = await supabaseClient.from(table).insert(rows.slice(i, i + SPB_INSERT_CHUNK));
+    const { error } = await window.sb.from(table).insert(rows.slice(i, i + SPB_INSERT_CHUNK));
     if (error) throw error;
   }
 }
@@ -201,13 +208,13 @@ async function spbSaveBook() {
     const payload = spbBookPayload(ident);
     let row;
     if (existing) {
-      const { data, error } = await supabaseClient.from('autobooks_books')
+      const { data, error } = await window.sb.from('autobooks_books')
         .update(payload).eq('id', existing.id).select().limit(1);
       if (error) throw error;
       row = (data && data[0]) || existing;
     } else {
       payload.created_by = (window.currentUser && window.currentUser.email) || null;
-      const { data, error } = await supabaseClient.from('autobooks_books')
+      const { data, error } = await window.sb.from('autobooks_books')
         .insert(payload).select().limit(1);
       if (error) throw error;
       row = data && data[0];
@@ -218,7 +225,7 @@ async function spbSaveBook() {
     // 2. Bill lines. Replace, never merge: the uploaded file IS the register,
     //    so a re-import supersedes it outright. Only kind='regular' is touched
     //    — omitted bills are typed by hand and are not in the uploaded file.
-    const { error: delErr } = await supabaseClient.from('autobooks_entries')
+    const { error: delErr } = await window.sb.from('autobooks_entries')
       .delete().eq('book_id', spbBookId).eq('kind', 'regular');
     if (delErr) throw delErr;
 
@@ -237,9 +244,14 @@ async function spbSaveBook() {
 
     spbDirty = false;
     spbRenderBookCard();
-    AuditLog.record('autobooks_book_saved', {
-      clientName: ident.client_name, fiscalYear: ident.fiscal_year,
-      recordRef: 'Book #' + spbBookId, entries: entries.length,
+    // record_ref is a BIGINT column — a string there fails the insert outright
+    // and the whole event is lost, not just the reference. Numeric id only;
+    // everything descriptive belongs in `detail` (the convention every other
+    // module already follows).
+    AuditLog.record('spb_book_saved', {
+      module: 'salesPurchaseBook', clientName: ident.client_name, recordRef: spbBookId,
+      detail: { fiscalYear: ident.fiscal_year, entries: entries.length,
+                parties: Object.keys(spbLedgerParties).length },
     });
     spbLedgerStatus(`✅ Saved — ${entries.length.toLocaleString('en-US')} bill lines and ` +
       `${Object.keys(spbLedgerParties).length} parties are now stored for ` +
@@ -262,7 +274,7 @@ async function spbSyncPartyRows() {
     spbGroups[key].forEach(g => wanted.push({ section: key, party_key: g.key, party_name: g.display, pan: g.pan || null }));
   });
 
-  const rows = await sbFetchAll(() => supabaseClient.from('autobooks_parties')
+  const rows = await sbFetchAll(() => window.sb.from('autobooks_parties')
     .select('*').eq('book_id', spbBookId).order('id', { ascending: true }));
   const have = new Map(rows.map(r => [r.section + '|' + r.party_key, r]));
 
@@ -275,7 +287,7 @@ async function spbSyncPartyRows() {
 
   if (toInsert.length) await spbInsertChunked('autobooks_parties', toInsert);
   for (const u of toUpdate) {
-    const { error } = await supabaseClient.from('autobooks_parties')
+    const { error } = await window.sb.from('autobooks_parties')
       .update({ party_name: u.party_name, pan: u.pan }).eq('id', u.id);
     if (error) throw error;
   }
@@ -284,7 +296,7 @@ async function spbSyncPartyRows() {
 
 async function spbLoadPartyRows() {
   if (!spbBookId) { spbLedgerParties = {}; return; }
-  const rows = await sbFetchAll(() => supabaseClient.from('autobooks_parties')
+  const rows = await sbFetchAll(() => window.sb.from('autobooks_parties')
     .select('*').eq('book_id', spbBookId).order('id', { ascending: true }));
   spbLedgerParties = {};
   rows.forEach(r => { spbLedgerParties[r.section + '|' + r.party_key] = r; });
@@ -347,7 +359,7 @@ async function spbLoadBook(silent) {
     }
     spbBookId = row.id; spbBookMeta = row;
 
-    const rows = await sbFetchAll(() => supabaseClient.from('autobooks_entries')
+    const rows = await sbFetchAll(() => window.sb.from('autobooks_entries')
       .select('*').eq('book_id', row.id).order('id', { ascending: true }));
 
     spbOmitted = rows.filter(r => r.kind === 'omitted').map(spbTxnFromRow);
@@ -374,7 +386,7 @@ async function spbLoadBook(silent) {
     spbGroups = spbComputeGroups();
     await spbLoadPartyRows();
 
-    const { data: adj, error: adjErr } = await supabaseClient.from('autobooks_adjustments')
+    const { data: adj, error: adjErr } = await window.sb.from('autobooks_adjustments')
       .select('*').eq('book_id', row.id).order('sort_order', { ascending: true });
     if (adjErr) throw adjErr;
     spbAdjustments = adj || [];
@@ -390,6 +402,7 @@ async function spbLoadBook(silent) {
     spbRenderVrGrid();
     spbRenderBookCard();
     spbRenderRegister();
+    spbRenderOmittedTable();
     spbLedgerStatus(`✅ Opened the saved book — ${escHtml(counts.join(' · '))} bill lines` +
       (spbOmitted.length ? ` · ${spbOmitted.length} omitted` : '') + '.', 'success');
     return true;
@@ -705,8 +718,500 @@ function spbPrintRegister() {
   const sub = `${label} Register · F.Y. ${spbVal('spb-fy')}` +
     (spbRegPartyFilter ? ` · party filter: "${spbRegPartyFilter}"` : '');
   spbOpenPrint(spbPrintDoc(label + ' Register', sub, spbRegisterTableHtml(model, { print: true })));
-  AuditLog.record('autobooks_register_printed', {
-    clientName: spbVal('spb-company'), fiscalYear: spbVal('spb-fy'), recordRef: label + ' Register',
+  AuditLog.record('spb_register_printed', {
+    module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: spbBookId,
+    detail: { fiscalYear: spbVal('spb-fy'), register: label, partyFilter: spbRegPartyFilter || null },
+  });
+}
+
+// ════════════════════════════════════════════
+//  OMITTED BILLS
+//
+//  A bill that wasn't available when the year's register was entered and
+//  closed. It surfaces later, is entered here rather than back-dated into a
+//  closed month, and still has to reconcile against the party's confirmation.
+//
+//  THE HARD PART IS THE PARTY, NOT THE AMOUNTS. In the reference file, three of
+//  the seven omitted-bill parties are spelled differently from the same party
+//  in the purchase register — an inserted letter in two of them and a
+//  different transliteration of the same Nepali name in the third. In
+//  Excel those silently become separate
+//  parties and a human reconciles them by eye. Here, an omitted bill filed
+//  under a new party key would never close the difference it exists to
+//  explain, and nothing would say so.
+//
+//  Their PANs match exactly in every case. So the party is PICKED from the
+//  book's own party list (which sets the key directly), and typing a PAN that
+//  resolves to exactly one existing party links it automatically. A genuinely
+//  new party is still allowed — it is just labelled as one, out loud.
+// ════════════════════════════════════════════
+const SPB_BILL_TYPES = [
+  { value: 'sales',           label: 'Sales bill',      section: 'sales',    sign: 1 },
+  { value: 'sales_return',    label: 'Sales return',    section: 'sales',    sign: -1 },
+  { value: 'purchase',        label: 'Purchase bill',   section: 'purchase', sign: 1 },
+  { value: 'purchase_return', label: 'Purchase return', section: 'purchase', sign: -1 },
+];
+
+// The party the form is currently linked to: null while free-typed.
+let spbOmParty = null;
+let spbOmEditId = null;   // set while editing an existing row
+
+function spbOmStatus(html, type) { showStatus(html, type, 'spb-om-status'); }
+
+function spbOmBillType() {
+  return SPB_BILL_TYPES.find(t => t.value === spbVal('spb-om-type')) || SPB_BILL_TYPES[2];
+}
+
+// The parties already in the book, for the register this bill belongs to.
+function spbOmPartyList() {
+  const section = spbOmBillType().section;
+  return ((spbGroups && spbGroups[section]) || []).map(g => ({
+    key: g.key, name: g.display, pan: g.pan || '', taxable: g.taxable || 0,
+  }));
+}
+
+// spbComputeGroups() appends "(PAN …)" to a display name when one safeKey
+// carries several PANs, so the picker can tell two same-named companies apart.
+// That suffix is a UI device, not part of anyone's name — it must not end up
+// stored on a bill or printed in the register beside rows that don't have it.
+function spbOmPlainName(s) {
+  return String(s || '').replace(/\s*\(PAN (?:\d+|not specified)\)\s*$/, '').trim();
+}
+
+// `fillName` only when the user picked the party by NAME (the autocomplete).
+// Choosing by PAN must leave the typed name alone: it is what the bill itself
+// says, and in the reference file the late bill genuinely spells the party
+// one letter differently from the register. Keeping the bill's
+// own spelling is provenance; the key is what makes the totals combine.
+function spbOmSetParty(p, fillName) {
+  spbOmParty = p ? { key: p.key, name: spbOmPlainName(p.name), pan: p.pan } : null;
+  if (p) {
+    const nameEl = document.getElementById('spb-om-party');
+    const panEl = document.getElementById('spb-om-pan');
+    if (nameEl && fillName) nameEl.value = spbOmPlainName(p.name);
+    if (panEl && p.pan && !panEl.value.trim()) panEl.value = p.pan;
+  }
+  spbOmRenderHint();
+}
+
+// A typed PAN that resolves to exactly one party in this register IS the link —
+// it is what reaches a party the register spells differently. One PAN can
+// legitimately span two unrelated companies in this app's data (§15), so an
+// ambiguous PAN links nothing and says why.
+function spbOmOnPanInput() {
+  const pan = spbNormPan(spbVal('spb-om-pan'));
+  if (!spbIsValidPan(pan)) { spbOmRenderHint(); return; }
+  const hits = spbOmPartyList().filter(p => p.pan === pan);
+  if (hits.length === 1 && (!spbOmParty || spbOmParty.key !== hits[0].key)) {
+    spbOmSetParty(hits[0], false);
+    return;
+  }
+  spbOmRenderHint();
+}
+
+function spbOmOnPartyInput() {
+  // Typing over a linked name breaks the link unless it still matches exactly;
+  // the PAN box can re-establish it.
+  const typed = spbVal('spb-om-party');
+  if (spbOmParty && spbSafeKey(typed) !== spbSafeKey(spbOmParty.name)) spbOmParty = null;
+  spbOmRenderHint();
+}
+
+// Candidates offered when a PAN lands on more than one party. Held here rather
+// than encoded into the buttons because a party key contains a NUL separator
+// and arbitrary spacing — it has no business inside an onclick attribute (§10
+// rule 13).
+let spbOmPanCandidates = [];
+
+function spbOmPickCandidate(i) {
+  const p = spbOmPanCandidates[i];
+  if (p) spbOmSetParty(p, false);
+}
+
+function spbOmRenderHint() {
+  const el = document.getElementById('spb-om-hint');
+  if (!el) return;
+  const typed = spbVal('spb-om-party');
+  spbOmPanCandidates = [];
+  if (!typed) { el.innerHTML = ''; return; }
+  if (spbOmParty) {
+    const differs = spbSafeKey(typed) !== spbSafeKey(spbOmParty.name);
+    el.innerHTML = `<span class="log-badge badge-sent">Linked</span> ` +
+      `This bill will be added to <strong>${escHtml(spbOmParty.name)}</strong>` +
+      (spbOmParty.pan ? ` (PAN ${escHtml(spbOmParty.pan)})` : '') + ` in the register.` +
+      ` The bill keeps its own spelling; only the totals combine.` +
+      (differs ? ` <em>The register spells this party differently — that is fine, the totals still combine.</em>` : '');
+    return;
+  }
+  const pan = spbNormPan(spbVal('spb-om-pan'));
+  const hits = spbIsValidPan(pan) ? spbOmPartyList().filter(p => p.pan === pan) : [];
+  if (hits.length > 1) {
+    // A PAN on two parties is real — usually one of them is a typo in the
+    // client's own book (here, 57 rows / Rs 31.9M against 1 row / Rs 25,221).
+    // Refusing to guess is right; making the user hunt for the answer is not,
+    // so the candidates are offered outright, biggest first.
+    spbOmPanCandidates = hits.slice().sort((a, b) => b.taxable - a.taxable);
+    el.innerHTML = `<span class="log-badge badge-amber">Which party?</span> ` +
+      `PAN ${escHtml(pan)} is on ${hits.length} parties in this register, so it can't decide on its own. Pick one:` +
+      `<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">` +
+      spbOmPanCandidates.map((p, i) =>
+        `<button type="button" class="btn btn-outline btn-sm" onclick="spbOmPickCandidate(${i})">` +
+        `${escHtml(p.name)} <span style="color:var(--text-muted);">· ${spbFmt(p.taxable)}</span></button>`).join('') +
+      `</div>`;
+    return;
+  }
+  el.innerHTML = `<span class="log-badge badge-amber">New party</span> ` +
+    `<strong>${escHtml(typed)}</strong> is not in this register. It will be added as a new party.` +
+    ` If it is really one of the existing parties under another spelling, pick it from the list or type its PAN.`;
+}
+
+// The firm enters an omitted bill from the bill's TOTAL and backs out the
+// taxable figure — the reference sheet's own columns are TOTAL, TAXABLE, VAT in
+// that order, and 207,774.98 / 1.13 is exactly the 183,871.6637 it records.
+// Offered as a helper, never as the only way in: a bill with a tax-free part
+// doesn't divide out cleanly and must be typed directly.
+function spbOmFromTotal() {
+  const total = spbNum(spbVal('spb-om-total'));
+  if (!total) return;
+  const taxEl = document.getElementById('spb-om-taxable');
+  const vatEl = document.getElementById('spb-om-vat');
+  if (!taxEl || !vatEl) return;
+  if (taxEl.value.trim() || vatEl.value.trim()) return;   // never overwrite typed figures
+  const free = spbNum(spbVal('spb-om-taxfree'));
+  const taxable = (total - free) / 1.13;
+  taxEl.value = (Math.round(taxable * 100) / 100).toFixed(2);
+  vatEl.value = (Math.round((total - free - taxable) * 100) / 100).toFixed(2);
+}
+
+// Blank VAT beside a taxable figure is completed at 13%, the same rule the
+// importer applies to an uploaded sheet — and, as there, a VAT that is present
+// but disagrees is left exactly as typed.
+function spbOmFillVat() {
+  const vatEl = document.getElementById('spb-om-vat');
+  const taxable = spbNum(spbVal('spb-om-taxable'));
+  if (!vatEl || vatEl.value.trim() || !taxable) return;
+  if (spbIsPanOnly() && spbOmBillType().section === 'sales') return;   // PAN-only: no VAT on sales
+  vatEl.value = (Math.round(taxable * 0.13 * 100) / 100).toFixed(2);
+}
+
+function spbOmResetForm() {
+  spbOmEditId = null; spbOmParty = null;
+  ['spb-om-date', 'spb-om-bill', 'spb-om-party', 'spb-om-pan', 'spb-om-total',
+   'spb-om-taxfree', 'spb-om-taxable', 'spb-om-vat', 'spb-om-note'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  spbOmRenderHint();
+  const btn = document.getElementById('spb-om-submit');
+  if (btn) btn.textContent = 'Add omitted bill';
+  const cancel = document.getElementById('spb-om-cancel');
+  if (cancel) cancel.style.display = 'none';
+}
+
+// Accepts a full B.S. date (2082.11.01) or a bare month name — the reference
+// sheet uses month names alone ("Magh", "Asar"), so both go through the
+// importer's own parser rather than a second date reader.
+function spbOmParseDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return { ok: false, msg: 'Enter a date or a month name (for example 2082.11.01, or Magh).' };
+  const m = s.match(SPB_DATE_RE);
+  if (m) {
+    const mon = parseInt(m[2], 10);
+    const fi = SPB_BS_MONTHS.indexOf(mon);
+    if (fi < 0) return { ok: false, msg: `"${s}" has month ${mon}, which isn't a B.S. month.` };
+    return { ok: true, date: s, fi };
+  }
+  const parsed = spbParseMonthNameDate(s, spbFyStartYear());
+  if (!parsed) return { ok: false, msg: `Couldn't read "${s}" as a date or a B.S. month name.` };
+  const fi = SPB_BS_MONTHS.indexOf(parsed.mon);
+  return { ok: true, date: `${parsed.year}.${String(parsed.mon).padStart(2, '0')}.${String(parsed.day).padStart(2, '0')}`, fi };
+}
+
+async function spbSaveOmitted() {
+  if (!spbBookId) {
+    spbOmStatus('❌ Save the book first (Import tab → Save book to database) — an omitted bill has to hang off a stored book.', 'error');
+    return;
+  }
+  const type = spbOmBillType();
+  const d = spbOmParseDate(spbVal('spb-om-date'));
+  if (!d.ok) { spbOmStatus('❌ ' + escHtml(d.msg), 'error'); return; }
+
+  const name = spbVal('spb-om-party');
+  if (!name) { spbOmStatus('❌ Enter the party name.', 'error'); return; }
+
+  spbOmFromTotal();
+  spbOmFillVat();
+  const taxable = spbNum(spbVal('spb-om-taxable'));
+  const taxfree = spbNum(spbVal('spb-om-taxfree'));
+  if (!taxable && !taxfree) { spbOmStatus('❌ Enter the taxable amount (or the bill total, and it will be worked out).', 'error'); return; }
+
+  const pan = spbNormPan(spbVal('spb-om-pan'));
+  const row = {
+    book_id: spbBookId, section: type.section, kind: 'omitted', bill_type: type.value,
+    bs_date: d.date, fiscal_month: d.fi + 1,
+    bill_no: spbVal('spb-om-bill') || null,
+    party_name: name,
+    // The linked party's key when one was chosen — this is what puts the bill
+    // on the same party as the register despite a different spelling.
+    party_key: spbOmParty ? spbOmParty.key : spbSafeKey(name),
+    pan: pan || null,
+    tax_free: taxfree, taxable, vat: spbNum(spbVal('spb-om-vat')),
+    note: spbVal('spb-om-note') || null,
+    source: 'manual',
+  };
+
+  const btn = document.getElementById('spb-om-submit');
+  if (btn) btn.disabled = true;
+  try {
+    if (spbOmEditId) {
+      const { error } = await window.sb.from('autobooks_entries').update(row).eq('id', spbOmEditId);
+      if (error) throw error;
+    } else {
+      const { error } = await window.sb.from('autobooks_entries').insert(row);
+      if (error) throw error;
+    }
+    AuditLog.record(spbOmEditId ? 'spb_omitted_updated' : 'spb_omitted_added', {
+      module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: spbOmEditId || spbBookId,
+      detail: { fiscalYear: spbVal('spb-fy'), billType: type.label, billNo: row.bill_no,
+                party: name, taxable: row.taxable },
+    });
+    const wasEdit = !!spbOmEditId;
+    spbOmResetForm();
+    await spbReloadOmitted();
+    spbOmStatus(`✅ ${wasEdit ? 'Updated' : 'Added'} — it now shows after the Ashadh total in the ` +
+      `${escHtml(type.section === 'sales' ? 'Sales' : 'Purchase')} register and counts toward that party's total.`, 'success');
+  } catch (err) {
+    console.error('[Autobooks] omitted bill save failed', err);
+    spbOmStatus('❌ Could not save: ' + escHtml(err.message || String(err)), 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function spbReloadOmitted() {
+  if (!spbBookId) { spbOmitted = []; return; }
+  const rows = await sbFetchAll(() => window.sb.from('autobooks_entries')
+    .select('*').eq('book_id', spbBookId).eq('kind', 'omitted').order('id', { ascending: true }));
+  spbOmitted = rows.map(spbTxnFromRow);
+  spbRenderOmittedTable();
+  spbRenderBookCard();
+  if (spbSection === 'register') spbRenderRegisterTable();
+}
+
+function spbOmittedById(id) { return spbOmitted.find(x => x.rowId === id); }
+
+function spbEditOmitted(id) {
+  const x = spbOmittedById(id);
+  if (!x) return;
+  spbOmEditId = id;
+  const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v == null ? '' : v; };
+  set('spb-om-type', x.billType || 'purchase');
+  set('spb-om-date', x.date); set('spb-om-bill', x.bill);
+  set('spb-om-party', x.party); set('spb-om-pan', x.pan);
+  set('spb-om-total', ''); set('spb-om-taxfree', x.taxfree);
+  set('spb-om-taxable', x.taxable); set('spb-om-vat', x.vat);
+  set('spb-om-note', x.note);
+  // Re-link to the party the row was filed under, so an edit can't quietly
+  // move a reconciled bill onto a different party.
+  const hit = spbOmPartyList().find(p => p.key === x.groupKey);
+  spbOmParty = hit ? { key: hit.key, name: spbOmPlainName(hit.name), pan: hit.pan } : null;
+  spbOmRenderHint();
+  const btn = document.getElementById('spb-om-submit');
+  if (btn) btn.textContent = 'Save changes';
+  const cancel = document.getElementById('spb-om-cancel');
+  if (cancel) cancel.style.display = '';
+  document.getElementById('spb-om-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function spbDeleteOmitted(id) {
+  const x = spbOmittedById(id);
+  if (!x) return;
+  if (!confirm(`Delete this omitted bill?\n\n${x.party}\nBill ${x.bill || '—'} · Taxable ${spbFmt(x.taxable)}\n\nIt will stop counting toward that party's total.`)) return;
+  try {
+    const { error } = await window.sb.from('autobooks_entries').delete().eq('id', id);
+    if (error) throw error;
+    AuditLog.record('spb_omitted_deleted', {
+      module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: id,
+      detail: { fiscalYear: spbVal('spb-fy'), billNo: x.bill, party: x.party, taxable: x.taxable },
+    });
+    await spbReloadOmitted();
+    spbOmStatus('✅ Deleted.', 'success');
+  } catch (err) {
+    spbOmStatus('❌ Could not delete: ' + escHtml(err.message || String(err)), 'error');
+  }
+}
+
+// The form is rendered ONCE and kept — re-rendering it on every table refresh
+// would blow away what the user is halfway through typing, and would detach
+// the party autocomplete.
+function spbRenderOmitted() {
+  const host = document.getElementById('spb-omitted-form-host');
+  if (!host) return;
+  if (!host.dataset.built) {
+    host.innerHTML = spbOmFormHtml();
+    host.dataset.built = '1';
+    SearchEngine.attachAutocomplete(
+      document.getElementById('spb-om-party'),
+      document.getElementById('spb-om-party-list'),
+      {
+        getList: () => spbOmPartyList(),
+        keys: ['name', 'pan'],
+        renderItem: p => `<div class="ac-name">${escHtml(p.name)}</div>` +
+          `<div class="ac-email">${escHtml(p.pan ? 'PAN: ' + p.pan : 'No PAN in the register')} · Taxable ${spbFmt(p.taxable)}</div>`,
+        onSelect: p => spbOmSetParty(p, true),
+      });
+  }
+  spbRenderOmittedTable();
+}
+
+function spbOmFormHtml() {
+  return `<div id="spb-om-form">
+    <div class="form-grid" style="gap:16px;">
+      <div class="form-group">
+        <label>Bill Type</label>
+        <select id="spb-om-type" onchange="spbOmParty=null; spbOmRenderHint();">
+          ${SPB_BILL_TYPES.map(t => `<option value="${t.value}"${t.value === 'purchase' ? ' selected' : ''}>${escHtml(t.label)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Date (B.S.)</label>
+        <input type="text" id="spb-om-date" placeholder="2082.11.01 — or just Magh" />
+      </div>
+      <div class="form-group">
+        <label>Bill No.</label>
+        <input type="text" id="spb-om-bill" placeholder="1525" />
+      </div>
+      <div class="form-group" style="position:relative;">
+        <label>Party Name</label>
+        <input type="text" id="spb-om-party" placeholder="Start typing — pick the party from the register" autocomplete="off" oninput="spbOmOnPartyInput()" />
+        <div class="autocomplete-list" id="spb-om-party-list" style="display:none;"></div>
+      </div>
+      <div class="form-group">
+        <label>PAN No.</label>
+        <input type="text" id="spb-om-pan" placeholder="600000000" oninput="spbOmOnPanInput()" />
+      </div>
+      <div class="form-group">
+        <label>Bill Total <span style="font-weight:400; color:var(--text-muted);">(optional)</span></label>
+        <input type="text" id="spb-om-total" inputmode="decimal" placeholder="207774.98" onchange="spbOmFromTotal()" />
+      </div>
+      <div class="form-group">
+        <label>Tax Free</label>
+        <input type="text" id="spb-om-taxfree" inputmode="decimal" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label>Taxable Amount</label>
+        <input type="text" id="spb-om-taxable" inputmode="decimal" placeholder="183871.66" onchange="spbOmFillVat()" />
+      </div>
+      <div class="form-group">
+        <label>Vat</label>
+        <input type="text" id="spb-om-vat" inputmode="decimal" placeholder="23903.32" />
+      </div>
+      <div class="form-group">
+        <label>Note <span style="font-weight:400; color:var(--text-muted);">(optional)</span></label>
+        <input type="text" id="spb-om-note" placeholder="Debit Note" />
+      </div>
+    </div>
+    <div id="spb-om-hint" class="log-sub" style="margin-top:12px;"></div>
+    <p style="font-size:12.5px; color:var(--text-muted); margin-top:10px;">
+      Type the <strong>Bill Total</strong> and leave Taxable and Vat blank to have them worked out at 13%, the way the firm's own omitted-bill sheet records them. A blank Vat beside a taxable figure is filled at 13%; a Vat you type is never changed.
+    </p>
+    <div class="action-row">
+      <button class="btn btn-primary btn-sm" id="spb-om-submit" onclick="spbSaveOmitted()">Add omitted bill</button>
+      <button class="btn btn-outline btn-sm" id="spb-om-cancel" style="display:none;" onclick="spbOmResetForm()">Cancel edit</button>
+    </div>
+    <div id="spb-om-status"></div>
+  </div>`;
+}
+
+function spbRenderOmittedTable() {
+  const el = document.getElementById('spb-omitted-body');
+  if (!el) return;
+  if (!spbBookId) {
+    el.innerHTML = '<p class="log-empty">Save the book first — an omitted bill has to hang off a stored book. Go to <strong>Import</strong> → <em>Save book to database</em>.</p>';
+    return;
+  }
+  if (!spbOmitted.length) {
+    el.innerHTML = '<p class="log-empty">No omitted bills recorded for this book yet.</p>';
+    return;
+  }
+  const bySection = {};
+  spbOmitted.forEach(x => { (bySection[x.section] = bySection[x.section] || []).push(x); });
+
+  let html = '';
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    const rows = bySection[key];
+    if (!rows || !rows.length) return;
+    const signed = rows.map(x => ({ ...x, __sign: spbOmittedSign(x) }));
+    const tot = spbSumOver(signed, [{ key: 'taxfree' }, { key: 'taxable' }, { key: 'vat' }]);
+    const known = new Set(((spbGroups && spbGroups[key]) || []).map(g => g.key));
+    html += `<div style="margin-bottom:22px;">
+      <div style="font-weight:700; color:var(--brand-navy); margin-bottom:10px;">${escHtml(label)} — ${rows.length} bill${rows.length === 1 ? '' : 's'}</div>
+      <div class="table-wrap" style="overflow-x:auto;"><table class="client-table" style="font-size:12.5px;">
+        <thead><tr><th>Date</th><th>Bill No.</th><th>Party</th><th>Pan No.</th><th>Type</th>
+          <th style="text-align:right;">Tax Free</th><th style="text-align:right;">Taxable</th><th style="text-align:right;">Vat</th>
+          <th style="text-align:right;">Actions</th></tr></thead><tbody>`;
+    signed.forEach(x => {
+      const linked = ((spbGroups && spbGroups[key]) || []).find(g => g.key === x.groupKey);
+      const isNew = !known.has(x.groupKey);
+      // A late bill legitimately spells its party differently from the
+      // register. Saying which party it joins is the difference between a
+      // reconciled total and a mystery.
+      const joins = linked && spbSafeKey(spbOmPlainName(linked.display)) !== spbSafeKey(x.party)
+        ? ` <span style="color:var(--text-muted);">&rarr; ${escHtml(spbOmPlainName(linked.display))}</span>` : '';
+      html += `<tr>
+        <td style="white-space:nowrap;">${escHtml(x.date)}</td>
+        <td>${escHtml(String(x.bill == null ? '' : x.bill))}</td>
+        <td>${escHtml(x.party)}${joins}${isNew ? ' <span class="log-badge badge-amber" style="font-size:10px; padding:2px 7px;">new party</span>' : ''}${x.note ? ` <span style="color:var(--text-muted);">· ${escHtml(x.note)}</span>` : ''}</td>
+        <td>${escHtml(x.pan || '')}</td>
+        <td>${escHtml(SPB_BILL_TYPE_LABELS[x.billType] || '')}</td>
+        <td style="text-align:right;">${spbFmt(x.taxfree * x.__sign)}</td>
+        <td style="text-align:right;${x.__sign < 0 ? 'color:var(--red-dk);' : ''}">${spbFmt(x.taxable * x.__sign)}</td>
+        <td style="text-align:right;${x.__sign < 0 ? 'color:var(--red-dk);' : ''}">${spbFmt(x.vat * x.__sign)}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          <button class="btn btn-outline btn-sm" onclick="spbEditOmitted(${x.rowId})">Edit</button>
+          <button class="btn btn-outline btn-sm" onclick="spbDeleteOmitted(${x.rowId})">Delete</button>
+        </td></tr>`;
+    });
+    html += `<tr style="background:#fffbe6; font-weight:700;">
+        <td colspan="5">Net effect on the ${escHtml(label)} register</td>
+        <td style="text-align:right;">${spbFmt(tot.taxfree)}</td>
+        <td style="text-align:right;">${spbFmt(tot.taxable)}</td>
+        <td style="text-align:right;">${spbFmt(tot.vat)}</td>
+        <td></td></tr></tbody></table></div></div>`;
+  });
+  el.innerHTML = html + `<div class="action-row" style="margin-top:0;">
+    <button class="btn btn-outline btn-sm" onclick="spbPrintOmitted()">Print / Preview omitted bills</button>
+  </div>`;
+}
+
+// The auditor's question — "these totals include N bills entered after close;
+// which ones?" — answered as its own sheet rather than only as a band inside
+// the register.
+function spbPrintOmitted() {
+  if (!spbOmitted.length) return;
+  const cols = [{ key: 'taxfree', label: 'Tax Free' }, { key: 'taxable', label: 'Taxable Amount' }, { key: 'vat', label: 'Vat' }];
+  let body = '';
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    const rows = spbOmitted.filter(x => x.section === key).map(x => ({ ...x, __sign: spbOmittedSign(x) }));
+    if (!rows.length) return;
+    const tot = spbSumOver(rows, cols);
+    body += `<h3 style="font-size:12px; margin:16px 0 6px;">${escHtml(label)} — ${rows.length} omitted bill${rows.length === 1 ? '' : 's'}</h3>
+      <table><thead><tr><th>Date</th><th>Bill No.</th><th>Party</th><th>Pan No.</th><th>Type</th>
+      ${cols.map(c => `<th style="text-align:right;">${escHtml(c.label)}</th>`).join('')}</tr></thead><tbody>`;
+    rows.forEach(x => {
+      body += `<tr><td>${escHtml(x.date)}</td><td>${escHtml(String(x.bill == null ? '' : x.bill))}</td>
+        <td>${escHtml(x.party)}${x.note ? ' · ' + escHtml(x.note) : ''}</td><td>${escHtml(x.pan || '')}</td>
+        <td>${escHtml(SPB_BILL_TYPE_LABELS[x.billType] || '')}</td>
+        ${cols.map(c => `<td style="text-align:right;${x.__sign < 0 ? 'color:var(--red-dk);' : ''}">${spbFmt((x[c.key] || 0) * x.__sign)}</td>`).join('')}</tr>`;
+    });
+    body += `<tr style="background:#fffbe6; font-weight:700;"><td colspan="5">Net effect on the ${escHtml(label)} register</td>
+      ${cols.map(c => `<td style="text-align:right;">${spbFmt(tot[c.key])}</td>`).join('')}</tr></tbody></table>`;
+  });
+  spbOpenPrint(spbPrintDoc('Omitted Bills',
+    `Bills received after the register was closed · F.Y. ${spbVal('spb-fy')}`, body));
+  AuditLog.record('spb_omitted_printed', {
+    module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: spbBookId,
+    detail: { fiscalYear: spbVal('spb-fy'), count: spbOmitted.length },
   });
 }
 
