@@ -24,6 +24,29 @@ Two **methods** in one panel, chosen by a top-level toggle (`depSetMethod`, reus
 - **Addition-details helper** — the SLM counterpart of the Income-Tax one, but structurally different: SLM has no pools, so *an addition IS an asset line*. Each helper line (B.S. date, class, particular, **useful life**, amount) becomes a row in the schedule, where the Date of Use drives `Addition = cost`, a full life and the day proration. Three deliberate behaviours: **Apply is a sync, not an append** — every line carries a stable `aid` stamped onto the row it created (`fromAdd`, persisted with the row), so re-applying edits that row instead of duplicating it; **deleting a line never deletes its asset** (removal is the grid's ✕ button — a helper edit must not silently destroy a saved asset); and a date **outside the selected F.Y.** is added *with a warning* rather than skipped, because the row is visible and fixable, and the ✓ column already flags it as inconsistent. Lines persist in `addition_details` (previously hard-coded `[]` for `scheme='slm'`) and are cleared on carry-forward — last year's purchases aren't this year's additions. The Excel block lists only lines dated **inside** the F.Y., so its total always equals the grid's Addition grand total.
 - **Import** seeds the grid from an uploaded "Dep as Books" sheet (header-mapped by keyword, rows matched to classes by particular text). **Generate Excel** writes both sheets via ExcelJS with faithful merges/borders/accounting format, **live formulas + cached results** (so the file reads correctly before recalc), class subtotals, a Grand Total, and the internal Check column.
 
+### The SLM schedule is where useful lives live — Notes to Accounts reads them (2026-08-17)
+
+`depSlmFetchUsefulLives(clientId, fy)` → `{ fiscalYear, rows:[{type, life}] }` is the one
+reader Notes to Accounts calls to fill its **Property, Plant & Equipment — Estimated Useful
+Life** table (`docs/modules/documents.md` §5.6). It lives here, not there, because the shape
+of `pools` and the `DEP_SLM_CLASSES` vocabulary belong to this module; the consumer only ever
+sees `{type, life}` and never learns the table name.
+
+- `depSlmLifeRollup(pools)` collapses the per-asset lines to **one row per class**, in
+  `DEP_SLM_CLASSES` order — the same order and the same names as the 3.1 PPE note's columns,
+  so the note filed with the accounts and the schedule behind it read as one document.
+- A class holding assets on **different lives prints a range** (`10–12 years`) — that is how a
+  note states a mixed class. Fractional lives are real (`6.67 years` is live data) and survive.
+- **Land is labelled `Not depreciated`, never `0 years`** — it sits on the schedule at a zero
+  life, and printing that as a life would be a false claim in a filed note.
+- A class with **no life typed comes back blank**, never falling back to the class default: the
+  note may not state a figure the schedule doesn't. The caller counts the blanks and warns.
+- The lookup **falls back to the most recent earlier fiscal year** (dash-format years sort
+  lexicographically, which is what makes `.lt()` mean "earlier") — a useful life is an
+  accounting policy, not a yearly figure, and the notes are regularly drafted before the
+  year's schedule is saved. The year actually read comes back with the rows so the caller
+  states it; it is never silent.
+
 ### Client identity on every output (2026-08-02)
 
 An **Address** field (`dep-address`) sits beside Client and PAN, auto-filled from the selected client's `clients.address` and editable. `depIdentity()` is the single reader; `depXlHeader()` writes the same three-line block — company / address · PAN / schedule title · F.Y. — onto **rows 1-3 of every generated sheet**, with row 4 the separator and the grid from row 5.

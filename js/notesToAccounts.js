@@ -33,6 +33,20 @@ function selectNtaClient(c){
 
   ntaForgetSavedId();   // different client => a different saved record
   ntaRefresh();
+  ntaFetchPpeFromSlm(false);
+}
+
+// The directory client behind whatever is typed. The SLM depreciation schedule
+// is keyed on client_id, so a hand-typed company that isn't in the directory
+// simply has nothing to read. Exact trimmed name first (what ntaSaveToDb has
+// always matched on), then case-insensitively, then PAN.
+function ntaMatchedClient(){
+  const list = window.clientsList || [];
+  const name = $nta('nta-entityName').value.trim();
+  const pan  = $nta('nta-entityPan').value.trim();
+  return (name && list.find(c => (c.name || '').trim() === name)) ||
+         (name && list.find(c => (c.name || '').trim().toLowerCase() === name.toLowerCase())) ||
+         (pan  && list.find(c => (c.pan  || '').trim() === pan)) || null;
 }
 
 SearchEngine.attachAutocomplete($nta('nta-entityName'), $nta('nta-autocomplete-list'), {
@@ -79,6 +93,56 @@ function ntaGetPpeRows(){
   return Array.from(document.querySelectorAll('#nta-ppe-rows .nta-row'))
     .map(r => ({ type: r.querySelector('.nta-ppe-type').value.trim(), life: r.querySelector('.nta-ppe-life').value.trim() }))
     .filter(r => r.type || r.life);
+}
+
+// ── PPE useful life, filled from the SLM depreciation schedule ──
+// Every class and every useful life in this table is already stated, per asset,
+// in Depreciation → As per Accounting Standard (SLM), and that schedule is what
+// the depreciation charge in the accounts was actually computed on. Retyping
+// them here is precisely how a note comes to claim a life the schedule doesn't
+// use, so the table is READ from it: one row per class the client genuinely
+// holds an asset in, named exactly as the 3.1 PPE note names it.
+//
+// Rows are REPLACED, not merged. A row left standing is a class this client
+// doesn't own — and NTA_PPE_DEFAULTS, seeded at load, are generic placeholders
+// (Building 49 years) that are wrong for almost every client. Replacing is also
+// what the rest of this form already does on client select (§9 "always assign").
+// Nothing is touched when there is no schedule to read.
+//
+// Runs on client select and on a fiscal-year change; the button re-runs it
+// after the schedule itself has been edited. A restored saved document applies
+// its state programmatically, which fires no change event — so reopening a set
+// of notes can never have its rows overwritten by this.
+async function ntaFetchPpeFromSlm(manual){
+  const c = ntaMatchedClient();
+  if (!c){
+    if (manual) ntaStatus('Pick the client from the search list first — the depreciation schedule is looked up by client.', 'info');
+    return;
+  }
+  const fy = $nta('nta-fy').value;
+  try {
+    if (manual) ntaStatus('Reading the SLM depreciation schedule…', 'searching');
+    const got = await depSlmFetchUsefulLives(c.id, fy);
+    if (!got || !got.rows.length){
+      ntaStatus(`No saved SLM depreciation schedule for <strong>${escHtml(c.name)}</strong> — the PPE rows below were left as they are. Save one under <strong>Depreciation → As per Accounting Standard (SLM)</strong> to fill this table from it.`, 'info');
+      return;
+    }
+    $nta('nta-ppe-rows').innerHTML = '';
+    got.rows.forEach(r => ntaAddPpeRow(r.type, r.life));
+
+    const n = got.rows.length;
+    const blanks = got.rows.filter(r => !r.life).length;
+    const year = got.fiscalYear === fy
+      ? ''
+      : ` — read from F.Y. ${escHtml(got.fiscalYear)}, since nothing is saved for ${escHtml(fy)}`;
+    const warn = blanks
+      ? ` ⚠️ ${blanks} ${blanks === 1 ? 'class has' : 'classes have'} no useful life on the schedule — type it below, or fix it in Depreciation and fetch again.`
+      : '';
+    ntaStatus(`✅ Filled ${n} PPE ${n === 1 ? 'row' : 'rows'} from the SLM depreciation schedule${year}.${warn}`, blanks ? 'info' : 'success');
+  } catch (err){
+    console.error(err);
+    ntaStatus('❌ Could not read the depreciation schedule: ' + escHtml(err.message), 'error');
+  }
 }
 
 function ntaAddRpRow(party, amount, txnType, relation){
@@ -378,8 +442,11 @@ window.addEventListener('load', () => {
   editView.addEventListener('change', ntaRefresh);
 
   // Programmatic assignment (ntaApplyState) fires no change event, so
-  // restoring a saved set can't trip this.
-  $nta('nta-fy').addEventListener('change', ntaForgetSavedId);
+  // restoring a saved set can't trip either of these.
+  $nta('nta-fy').addEventListener('change', () => {
+    ntaForgetSavedId();
+    ntaFetchPpeFromSlm(false);   // the schedule is per (client, F.Y.)
+  });
 });
 
 // ════════════════════════════════════════════

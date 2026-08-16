@@ -531,6 +531,64 @@ function depSlmReset() {
 }
 
 // ════════════════════════════════════════════
+//  USEFUL LIVES, READ BY NOTES TO ACCOUNTS
+//  The PPE note filed with the financial statements states an estimated useful
+//  life per class — the very figure this schedule already depreciates on. Typed
+//  twice, the two drift; the note is what the client keeps, so it has to be the
+//  schedule's own classes and the schedule's own lives. This reader lives here,
+//  not in notesToAccounts.js, because the shape of `pools` and the class
+//  vocabulary belong to this module — the consumer only ever sees {type, life}.
+// ════════════════════════════════════════════
+
+// "20 years" · "1 year" · "6.67 years" · "4–12 years" when one class holds
+// assets on different lives (a range is how a note states a mixed class).
+function depSlmLifeLabel(lives) {
+  if (!lives.length) return '';
+  const num = n => String(parseFloat(n.toFixed(2)));
+  const span = lives.length === 1 ? num(lives[0]) : num(lives[0]) + '–' + num(lives[lives.length - 1]);
+  return span + (lives.length === 1 && lives[0] === 1 ? ' year' : ' years');
+}
+
+// One row per class the schedule actually holds an asset in, in DEP_SLM_CLASSES
+// order — the same order and the same names as the 3.1 PPE note's columns, so
+// the note and the schedule behind it read as one document. A class with no
+// life typed comes back blank rather than falling back to the class default:
+// the note may not state a figure the schedule doesn't.
+function depSlmLifeRollup(pools) {
+  return depSlmClasses().map(cls => {
+    const rows = (pools || []).filter(r => r && r.classKey === cls.key);
+    if (!rows.length) return null;
+    // Land is on the schedule at a zero life; "0 years" would be a false claim.
+    if (!cls.depreciable) return { type: cls.name, life: 'Not depreciated' };
+    const lives = Array.from(new Set(rows.map(r => depParse(r.life)).filter(n => n > 0))).sort((a, b) => a - b);
+    return { type: cls.name, life: depSlmLifeLabel(lives) };
+  }).filter(Boolean);
+}
+
+// Saved SLM schedule for (client, F.Y.) → useful-life rows. Falls back to the
+// most recent EARLIER year: a useful life is an accounting policy, not a yearly
+// figure, and the notes are regularly drafted before the year's schedule is
+// saved. Which year was actually read comes back with the rows so the caller
+// can say so — never silently. Dash-format years sort lexicographically, which
+// is what makes `.lt()` here mean "an earlier fiscal year".
+async function depSlmFetchUsefulLives(clientId, fy) {
+  if (!window.sb || clientId == null) return null;
+  const base = () => window.sb.from('depreciation_schedules')
+    .select('pools, fiscal_year').eq('client_id', clientId).eq('scheme', 'slm');
+  const { data: cur, error } = await base().eq('fiscal_year', fy).maybeSingle();
+  if (error) throw error;
+  let hit = cur;
+  if (!hit) {
+    const { data: prev, error: e2 } = await base()
+      .lt('fiscal_year', fy).order('fiscal_year', { ascending: false }).limit(1);
+    if (e2) throw e2;
+    hit = (prev && prev[0]) || null;
+  }
+  if (!hit || !hit.pools || !hit.pools.length) return null;
+  return { fiscalYear: hit.fiscal_year, rows: depSlmLifeRollup(hit.pools) };
+}
+
+// ════════════════════════════════════════════
 //  IMPORT — seed the grid from an uploaded "Dep as Books" sheet. Header-mapped by
 //  keyword (tolerant of the firm's inconsistent layouts); rows matched to classes
 //  by particular text. Best-effort: whatever it can read, it fills for review.

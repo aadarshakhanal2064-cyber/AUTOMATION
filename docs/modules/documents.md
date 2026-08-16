@@ -26,6 +26,24 @@ Full Independent Auditor's Report generator. Client search auto-fills from `clie
 ### 5.6 Notes to Accounts (`js/notesToAccounts.js`, `nta-` namespace)
 Significant Accounting Policies & Notes generator. Mirrors report.js 1:1 (same Edit/Preview shape, same two exports, the same print-ready rules and the same Save to database / Saved notes pair — see §5.5). Driven parts: client details, accounting standard (`NTA_ACCOUNTING_STANDARDS`: NAS for MEs / NFRS for SMEs / NAS — `full` wording on first mention, `short` after), depreciation method (SLM/WDV), editable PPE useful-life table (`NTA_PPE_DEFAULTS`), optional Related Party section. The rest is fixed boilerplate policy text.
 
+- **The PPE useful-life table is FILLED FROM the SLM depreciation schedule** (2026-08-17).
+  Every class and every life in that table is already stated, per asset, in Depreciation →
+  As per Accounting Standard (SLM) — and that schedule is what the depreciation charge in the
+  accounts was actually computed on. Typed twice, the two drift, and the note is the document
+  the client keeps. `ntaFetchPpeFromSlm()` calls `depSlmFetchUsefulLives()` (see
+  `modules/depreciation.md`) and rebuilds the rows from what comes back: one row per class the
+  client genuinely holds an asset in, named exactly as the 3.1 PPE note names it.
+  - **Runs on client select and on a fiscal-year change**, plus a ⟳ button for re-running it
+    after the schedule itself is edited. `ntaApplyState()` assigns programmatically and fires
+    no change event, so **reopening a saved set of notes can never have its rows overwritten**.
+  - **Rows are replaced, not merged** — a row left standing is a class this client doesn't own,
+    and the `NTA_PPE_DEFAULTS` seeded at load are generic placeholders (Building *49 years*)
+    that are wrong for almost every client. This is the same "always assign" rule the rest of
+    the form already follows on client select (CLAUDE.md §9).
+  - **Nothing is touched when there is no schedule to read** — the status box says so and names
+    where to save one. Same for a hand-typed company that isn't a directory client: the schedule
+    is keyed on `client_id`, so there is nothing to look up. `ntaMatchedClient()` resolves the
+    typed name (exact, then case-insensitive) or the PAN.
 - **Section B's notes are numbered by a running counter, not by literal text** (2026-08-02). `ntaRenderNotesSection()` owns the six fixed notes and a counter; Related Party takes the next number when ticked, and everything renumbers itself when a note is added, removed or toggled. Writing "1."–"6." into the strings is what made the old block impossible to extend.
 - **"Include additional notes to accounts"** reveals a row editor with two row kinds. A **note** continues the running number (so 6 → 7, 8, 9…); a **bold title** renders as a heading and **resets the counter to 1**, so its own notes read 1, 2, 3 beneath it. Rows are part of the saved state. **Deliberately Notes-only** — the audit report's sections are prescribed by the NSAs and are not the auditor's to extend (CA instruction, 2026-08-02), so no equivalent exists in report.js.
 
