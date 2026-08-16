@@ -96,6 +96,34 @@ function spbLedgerReset() {
   if (typeof spbRenderConfirm === 'function') spbRenderConfirm();
 }
 
+// ── Why the book can't be saved yet, in the user's terms ────────────────────
+// One sentence, one place. The saved-book card and all four gated screens ask
+// this same question, and each was answering it differently — or, worse,
+// answering it by rendering no button at all, which reads as "this app has no
+// save" rather than "you are one step away from it".
+function spbSaveBlockedReason() {
+  if (!spbVal('spb-company')) return 'Pick a client at the top of the Import tab first.';
+  if (!spbVal('spb-fy')) return 'Choose a fiscal year at the top of the Import tab first.';
+  if (!spbData || !SPB_SECTIONS.some(s => spbData[s.key])) {
+    return 'Import a Sales or Purchase file on the Import tab first — there is nothing to save yet.';
+  }
+  return null;
+}
+
+// The empty state for a screen that needs a saved book. It carries a WORKING
+// Save button: telling someone to go to a different tab and press a button
+// there is exactly what made this feature feel missing.
+function spbSaveGateHtml(what) {
+  const why = spbSaveBlockedReason();
+  return `<div class="log-empty" style="padding:30px 22px;">
+    <div style="margin-bottom:6px;">${escHtml(what)} stored against a saved book.</div>
+    <div style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">
+      ${why ? escHtml(why) : 'Save it once and this screen opens — and it stays available whenever you come back to this client.'}
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="spbSaveBook()"${why ? ' disabled' : ''}>Save book to database</button>
+  </div>`;
+}
+
 // ── Book identity ──
 // A book is one (client, fiscal year). The client may be a directory client or
 // a name typed by hand — the same nullable-client_id fallback
@@ -248,6 +276,10 @@ async function spbSaveBook() {
 
     spbDirty = false;
     spbRenderBookCard();
+    // The save was very likely triggered FROM one of the gated screens, so put
+    // the user where they were going rather than making them click the tab again.
+    const back = SPB_SECTION_TABS.find(t => t.key === spbSection);
+    if (back && back.onShow && typeof window[back.onShow] === 'function') window[back.onShow]();
     // record_ref is a BIGINT column — a string there fails the insert outright
     // and the whole event is lost, not just the reference. Numeric id only;
     // everything descriptive belongs in `detail` (the convention every other
@@ -413,6 +445,10 @@ async function spbLoadBook(silent) {
     return true;
   } catch (err) {
     console.error('[Autobooks] load failed', err);
+    // Without this the card keeps whatever it last showed — which, on the very
+    // first lookup, is the "choose a client" empty state. The Save button then
+    // never appears no matter what the user does next.
+    spbRenderBookCard();
     spbLedgerStatus('❌ Could not open the saved book: ' + escHtml(err.message || String(err)), 'error');
     return false;
   }
@@ -436,11 +472,22 @@ function spbRenderBookCard() {
   const el = document.getElementById('spb-book-body');
   if (!el) return;
   const ident = spbBookIdentity();
+  const why = spbSaveBlockedReason();
+  // The button is drawn even when it can't fire. Hiding it entirely was the
+  // whole bug: before a client was picked there was no save affordance on
+  // screen at all, so the four gated tabs looked permanently locked.
   if (!ident) {
-    el.innerHTML = '<p class="log-empty" style="padding:22px;">Choose a client and fiscal year above to save or open a book.</p>';
+    el.innerHTML = `<div class="log-sub" style="margin-bottom:14px;">
+        <span class="log-badge badge-neutral">Not saved</span>
+        &nbsp;${escHtml(why || 'Choose a client and fiscal year above.')}
+      </div>
+      <div class="action-row" style="margin-top:0;">
+        <button class="btn btn-primary btn-sm" id="spb-save-btn" onclick="spbSaveBook()" disabled>Save book to database</button>
+      </div>
+      <div id="spb-ledger-status"></div>`;
     return;
   }
-  const canSave = !!(spbData && SPB_SECTIONS.some(s => spbData[s.key]));
+  const canSave = !why;
   let meta = '';
   if (spbBookId && spbBookMeta) {
     const when = spbBookMeta.updated_at ? new Date(spbBookMeta.updated_at).toLocaleString() : '';
@@ -457,7 +504,7 @@ function spbRenderBookCard() {
     meta = `<div class="log-sub" style="margin-bottom:14px;">
       <span class="log-badge badge-neutral">Not saved</span>
       &nbsp;Nothing is stored for ${escHtml(ident.client_name)}, F.Y. ${escHtml(ident.fiscal_year)} yet.
-      Saving keeps the register, the party list and every confirmation figure so you can come back to them without re-uploading.
+      ${why ? escHtml(why) : 'Saving keeps the register, the party list and every confirmation figure — and it is what opens Confirmation, Annexure-13 and Reconciliation.'}
     </div>`;
   }
   el.innerHTML = meta + `<div class="action-row" style="margin-top:0;">
@@ -1135,7 +1182,7 @@ function spbRenderOmittedTable() {
   const el = document.getElementById('spb-omitted-body');
   if (!el) return;
   if (!spbBookId) {
-    el.innerHTML = '<p class="log-empty">Save the book first — an omitted bill has to hang off a stored book. Go to <strong>Import</strong> → <em>Save book to database</em>.</p>';
+    el.innerHTML = spbSaveGateHtml('Omitted bills are');
     return;
   }
   if (!spbOmitted.length) {

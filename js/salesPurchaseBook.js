@@ -152,6 +152,10 @@ function spbBuildFyOptions() {
 
 function spbInit() {
   spbBuildFyOptions();
+  // Building the FY options can change whether a book is saveable, and the
+  // saved-book card was last drawn at page load when the selector was still
+  // empty. Redraw it, or it sits on "choose a fiscal year" after one is set.
+  if (typeof spbRenderBookCard === 'function') spbRenderBookCard();
 }
 
 // ════════════════════════════════════════════

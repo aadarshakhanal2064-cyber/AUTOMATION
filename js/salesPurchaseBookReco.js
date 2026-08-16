@@ -262,7 +262,7 @@ function spbRenderReco() {
   const el = document.getElementById('spb-reco-body');
   if (!el) return;
   if (!spbBookId) {
-    el.innerHTML = '<p class="log-empty">Save the book first — adjustment lines are stored against it. Go to <strong>Import</strong> → <em>Save book to database</em>.</p>';
+    el.innerHTML = spbSaveGateHtml('Adjustment lines are');
     return;
   }
   if (!spbBook) { el.innerHTML = '<p class="log-empty">No book loaded yet.</p>'; return; }

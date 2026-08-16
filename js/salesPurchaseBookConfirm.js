@@ -276,7 +276,7 @@ function spbRenderConfirm() {
   const el = document.getElementById('spb-confirm-body');
   if (!el) return;
   if (!spbBookId) {
-    el.innerHTML = '<p class="log-empty">Save the book first — confirmation figures are stored against it. Go to <strong>Import</strong> → <em>Save book to database</em>.</p>';
+    el.innerHTML = spbSaveGateHtml('Confirmation figures are');
     return;
   }
   const available = SPB_SECTIONS.filter(s => (spbGroups && spbGroups[s.key]) || spbOmitted.some(x => x.section === s.key));

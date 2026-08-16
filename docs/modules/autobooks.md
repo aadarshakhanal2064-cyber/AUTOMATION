@@ -650,3 +650,27 @@ import fault: the VAT Return Detail sheet's Ashwin taxable sales is Rs 300,000
 higher than the same figure in the reconciled workbook, and the sheet's Total
 row carries the higher number too. The import loads what the document says and
 the reconciliation flags the month — which is the behaviour wanted.
+
+### The save affordance (fixed 2026-08-17, reported from live use)
+
+The four screens that need a saved book (Omitted Bills, Confirmation,
+Annexure-13, Reconciliation) were unreachable in practice, because **the Save
+button was not on screen when it mattered**. Three separate faults:
+
+1. `spbRenderBookCard()` rendered a bare sentence and **no button at all** when
+   `spbBookIdentity()` was null. Before a client was picked there was therefore
+   no save affordance anywhere in the module — which reads as "this app has no
+   save", not "you are one step away from it".
+2. **The card was never redrawn when the tab opened.** `spbInit()` builds the
+   fiscal-year options, which changes the answer to "can this be saved", but the
+   card had last been drawn at page load with the selector still empty. It sat
+   on "choose a client and fiscal year" even after a year was set.
+3. **`spbLoadBook()`'s catch didn't re-render the card**, so any failed lookup
+   pinned it on whatever it last showed — on the first lookup, the empty state.
+
+Now: `spbSaveBlockedReason()` is the single answer to "why can't this save yet",
+used by the card and by all four gated screens; the button is **always drawn**,
+disabled with that reason in place of a vague message; and `spbSaveGateHtml()`
+gives each gated screen its **own working Save button**, so the user saves from
+where they hit the wall instead of being sent to another tab. Saving then
+re-renders the section they were on, rather than leaving them to click back.

@@ -302,7 +302,7 @@ function spbRenderAnn13() {
   const el = document.getElementById('spb-ann-body');
   if (!el) return;
   if (!spbBookId) {
-    el.innerHTML = '<p class="log-empty">Save the book first — the annexure reads the confirmation ledger. Go to <strong>Import</strong> → <em>Save book to database</em>.</p>';
+    el.innerHTML = spbSaveGateHtml('The annexure reads the confirmation ledger, which is');
     return;
   }
   if (!spbGroups || (!spbGroups.sales && !spbGroups.purchase)) {
