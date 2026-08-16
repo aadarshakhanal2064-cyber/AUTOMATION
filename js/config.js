@@ -505,6 +505,12 @@ window.ACTIVITY_EVENT_LABELS = {
   spb_book_saved: 'Autobooks book saved', spb_register_printed: 'Register printed',
   spb_omitted_added: 'Omitted bill added', spb_omitted_updated: 'Omitted bill updated',
   spb_omitted_deleted: 'Omitted bill deleted', spb_omitted_printed: 'Omitted bills printed',
+  spb_confirmation_printed: 'Confirmation reconciliation printed',
+  spb_openings_carried: 'Opening balances carried forward',
+  spb_openings_imported: 'Opening balances imported',
+  spb_ann13_printed: 'Annexure-13 printed',
+  spb_reco_printed: 'Reconciliation statements printed',
+  spb_reco_suggested: 'Reconciliation lines suggested',
   // Historical only — the VAT Compliance module that emitted these was removed
   // 2026-08-10; its audit_log rows remain.
   vat_client_change: 'VAT client change', vat_filing_update: 'VAT filing updated',
