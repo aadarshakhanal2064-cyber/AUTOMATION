@@ -1490,3 +1490,19 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 input[type=number]{ -moz-appearance: textfield; appearance: textfield; }
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
+
+/* ── AUTOBOOKS confirmation ledger ──
+   A compact editable grid: up to ~650 parties, four typed figures each, so
+   the inputs have to be small enough that a row still reads as one line.
+   Amounts are right-aligned with tabular figures for the same reason the
+   depreciation grid is — the columns only foot visually if they line up. */
+.spb-cf-table td, .spb-cf-table th { vertical-align: top; }
+.spb-cf-in {
+  width: 108px; padding: 5px 7px; font-size: 12.5px; text-align: right;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border); border-radius: 7px;   /* smaller than --radius(10px): these sit inside a dense grid row */
+  font-family: 'Inter', sans-serif; background: var(--white);
+}
+.spb-cf-in:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
+.spb-cf-remarks { width: 150px; text-align: left; }
+.spb-cf-table td:nth-child(n+4) { white-space: nowrap; }

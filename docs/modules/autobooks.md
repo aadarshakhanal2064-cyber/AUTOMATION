@@ -297,3 +297,111 @@ descriptive belongs in `detail`, and `module: 'salesPurchaseBook'` must be set o
 the event can't be attributed (`window.ACTIVITY_MODULES` scopes on it). Event
 types are `spb_`-prefixed to match `spb_correction`, and their display labels
 live in `window.ACTIVITY_EVENT_LABELS`.
+
+---
+
+## Confirmation ledger (M3, `js/salesPurchaseBookConfirm.js`, 2026-08-16)
+
+The inbound leg of confirmation work, and the reason Autobooks needed a
+database at all. A signed letter comes back from a customer or supplier stating
+what **they** think the year's taxable trade was; this screen puts that beside
+the firm's own books, party by party.
+
+Not to be confused with the **Confirmation** module (`js/confirmationLetters.js`,
+`cl-`), which generates the letters that go *out*. This records what comes back.
+
+### Books = register + that party's omitted bills
+
+Deliberate, and the single most important line in the module. In the reference
+file every flagged party's gap is explained exactly by a bill that surfaced
+after the register closed. If "Taxable as per books" were the register alone, a
+fully reconciled party would still read as a gap. So `spbConfirmRows()` sums the
+group **plus** its omitted bills (signed), and the on-screen table shows
+`Taxable — Books`, `Omitted` and `Taxable — Total` as three separate columns so
+the arithmetic is visible rather than asserted.
+
+### Rules, all taken from the workbook
+
+| | |
+|---|---|
+| `SPB_CONFIRM_TIER` = 100,000 | the Annexure-13 split. Tiering is on taxable **including** omitted bills — that is the party's real trade for the year. |
+| `SPB_CONFIRM_TOLERANCE` = 1,000 | *"Mark Green if Difference is Less than 1000"* / *"Mark Red if … more than 1000"*. |
+| Difference = **Books − Confirmation** | user decision 2026-08-16, the firm's own reconciled file's convention. Negative = the books are SHORT of what the party confirmed, which is what an omitted bill then fills. |
+
+**A confirmation that hasn't arrived is not a confirmed zero.** `confirmed ==
+null` gives status `pending`, never `ok` — keeping those apart is what stops an
+unanswered party being reported as agreed. The single-party statement says so in
+words on the printed page.
+
+### Tiers are sections, not a sort
+
+The two tiers each get a heading, their own totals row, and a combined Grand
+Total, because Annexure-13 reports them differently. The **<1 lakh tier starts
+folded** (`spbCfShowMinor`) — its heading, count and totals are always visible,
+but a sales register with 650 parties would otherwise render ~2,600 inputs on
+open. Folded, the reference purchase book renders 80.
+
+### Editing saves per field, and never re-renders the table
+
+Every figure here is typed off a signed letter, so each saves on `change` rather
+than behind a Save button someone can walk away from. `spbCfRecompute(idx)`
+patches only the difference cell, the status badge and the totals **in place** —
+a full redraw while someone tabs through 200 parties would throw away their
+focus and scroll position on every field. Tiers key off books taxable, which
+typing can't change, so rows never move and patching stays safe.
+
+A party first met on an **omitted bill** has no `autobooks_parties` row until
+its first edit; `spbCfSetField()` inserts one then. Such parties are listed with
+an "Only on omitted bills" note — leaving them out is how a late party gets
+forgotten.
+
+### Why a party is flagged, when that is knowable (`spbCfHint`)
+
+Two causes account for almost every real difference, and the flag names the
+likely one instead of leaving the user to work it out:
+
+- **books short, no omitted bills** → *"try an omitted bill"*;
+- **the key is still in an unapplied merge suggestion** → *"possible duplicate
+  party — see Import › Possible duplicate parties"*.
+
+The second is not hypothetical. One purchase row in the reference file carries **another party's PAN on a Party A bill**. Autobooks
+correctly splits that party into a 57-row group (Rs 31,904,997.07) and a 1-row group
+(Rs 626,504.45) — an identical name is not proof of one entity (§15) — and the
+confirmation then comes up short by *exactly* that 1-row group. The firm's own
+workbook grouped by name alone, summed to 32,531,501.52 and never saw the typo.
+The merge review already offers the fix; the hint just points at it.
+
+### Opening balances carried forward (`spbCarryForwardOpenings`)
+
+§2.4's carry-forward. Finds the prior year's saved book for the same client,
+matches on `party_key`, and writes last year's `confirmed_closing` into this
+year's `opening_balance`. It **only ever fills a blank** — overwriting an
+opening balance someone already typed would silently rewrite audited work — and
+reports how many were filled, how many parties weren't in last year's book, and
+how many had no closing balance recorded.
+
+### Exports go through `ReportExport`
+
+A plain tabular report, so it uses the engine (CLAUDE.md §8) rather than a
+hand-rolled generator: `section` rows are the tier headings, `total` the tier
+totals, `grand` the combined figure. `ReportExport.download()` builds, saves and
+logs through `DocumentEngine` in one call. The per-party and bulk **statements**
+are separate — they are a document, not a grid — and print through
+`spbPrintDoc()` like every other Autobooks preview.
+
+### Verified 2026-08-16 against the real file
+
+The workbook's own 16 "as per confirmation" figures typed against the purchase
+register, with all 11 omitted bills entered: **14 matched, 1 flagged, 14
+awaiting** of 29 parties.
+
+| Party | Books | + omitted | = total | Confirmed | Diff | |
+|---|---|---|---|---|---|---|
+| Party B | 800,508.97 | 531,132.80 | 1,331,641.77 | 1,331,641.77 | **0.00** | matched |
+| Party G | 202,328.28 | −34,896.00 *(debit note)* | 167,432.28 | 167,432.16 | **0.12** | matched |
+| Party K | 1,965,265.18 | — | 1,965,265.18 | 1,965,265.18 | **0.00** | matched |
+| Party A | 31,904,997.07 | 342,973.44 | 32,247,970.51 | 32,874,474.96 | **−626,504.45** | flagged → the PAN typo above |
+| Party D | 303,429.71 | — | 303,429.71 | *(none)* | — | awaiting |
+
+Both export formats generate (PDF 12 KB, XLSX 10 KB). `node tools/spbVerify.mjs`
+still passes 36/36.

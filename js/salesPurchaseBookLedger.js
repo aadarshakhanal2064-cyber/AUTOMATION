@@ -31,10 +31,13 @@
 // appears before the screen behind it does. Order here is the order on screen,
 // and it follows the actual work: import the book, read the register, record
 // what came back, report it.
+// `onShow` names the function that draws the section, rather than this file
+// growing an if-chain that every later part of Autobooks has to come back and
+// edit. A section registers itself with its own screen.
 const SPB_SECTION_TABS = [
   { key: 'import',   label: 'Import',        panel: 'spb-sec-import' },
-  { key: 'register', label: 'Register',      panel: 'spb-sec-register' },
-  { key: 'omitted',  label: 'Omitted Bills', panel: 'spb-sec-omitted' },
+  { key: 'register', label: 'Register',      panel: 'spb-sec-register', onShow: 'spbRenderRegister' },
+  { key: 'omitted',  label: 'Omitted Bills', panel: 'spb-sec-omitted',  onShow: 'spbRenderOmitted' },
 ];
 
 let spbSection = 'import';
@@ -47,8 +50,8 @@ function spbShowSection(key) {
     if (el) el.style.display = t.key === key ? '' : 'none';
   });
   spbRenderSectionNav();
-  if (key === 'register') spbRenderRegister();
-  if (key === 'omitted') spbRenderOmitted();
+  const tab = SPB_SECTION_TABS.find(t => t.key === key);
+  if (tab && tab.onShow && typeof window[tab.onShow] === 'function') window[tab.onShow]();
 }
 
 function spbRenderSectionNav() {
@@ -90,6 +93,7 @@ function spbLedgerReset() {
   spbShowSection('import');
   spbRenderBookCard();
   spbRenderOmittedTable();
+  if (typeof spbRenderConfirm === 'function') spbRenderConfirm();
 }
 
 // ── Book identity ──
@@ -403,6 +407,7 @@ async function spbLoadBook(silent) {
     spbRenderBookCard();
     spbRenderRegister();
     spbRenderOmittedTable();
+    if (typeof spbRenderConfirm === 'function') spbRenderConfirm();
     spbLedgerStatus(`✅ Opened the saved book — ${escHtml(counts.join(' · '))} bill lines` +
       (spbOmitted.length ? ` · ${spbOmitted.length} omitted` : '') + '.', 'success');
     return true;
@@ -996,6 +1001,9 @@ async function spbReloadOmitted() {
   spbRenderOmittedTable();
   spbRenderBookCard();
   if (spbSection === 'register') spbRenderRegisterTable();
+  // An omitted bill moves its party's books total, which is the very figure a
+  // confirmation is compared against — the reconciliation has to follow.
+  if (spbSection === 'confirm' && typeof spbRenderConfirmTable === 'function') spbRenderConfirmTable();
 }
 
 function spbOmittedById(id) { return spbOmitted.find(x => x.rowId === id); }
