@@ -137,8 +137,14 @@ function wdRecordPendingCount(row) {
 // than hardcoded because one received document can imply more than one job:
 // the firm's real register uses "Purchase & Sales Files" as a single item
 // covering both the sales and the purchase register.
+// Case-insensitive on purpose (2026-08-16) — File In Out's custom doc-type
+// box is free text (§15), and "purchase file" vs "Purchase File" silently
+// matching nothing is a worse failure than a false positive here. Still an
+// exact match on the trimmed word content, not fuzzy — a genuinely new
+// spelling still needs adding to fileLabels below.
 function wdWorkTypesForLabel(label) {
-  return window.WD_WORK_TYPES.filter(t => (t.fileLabels || []).includes(label));
+  const norm = String(label || '').trim().toLowerCase();
+  return window.WD_WORK_TYPES.filter(t => (t.fileLabels || []).some(l => l.toLowerCase() === norm));
 }
 
 // Every doc-type entry on an intake row, normalized. Bare strings are the

@@ -133,6 +133,12 @@ Both are handled rather than wished away:
   `Purchase & Sales Files` as a *single* item covering both registers, so one
   received document legitimately implies two jobs. Older vocabulary is mapped
   alongside current spellings instead of rewriting history.
+- **Matching is case-insensitive** (`wdWorkTypesForLabel()`, 2026-08-16) — a
+  client intake typed `purchase file` (lowercase, into the free-typed custom
+  box) and silently produced zero Pending List rows, since it matched neither
+  `Purchase Register` nor `Purchase & Sales Files` by exact string. Still an
+  exact match on the trimmed word content, just casing-agnostic; a genuinely
+  new spelling still needs adding to `fileLabels`.
 - **An intake with no fiscal year is matched on client across all years** and
   shown as `FY —`, never excluded. The year being unrecorded is not a reason
   to hide a file that is demonstrably sitting in the office. A note above the

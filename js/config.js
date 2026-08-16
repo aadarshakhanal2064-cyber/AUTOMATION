@@ -368,7 +368,7 @@ window.AQC_CHECKLIST_ITEMS = [
 // uses unlimited custom rows instead (the auditChecklist.js mechanism).
 window.WD_WORK_TYPES = [
   { key: 'sales_register',      label: 'Sales Register',        group: 'Books & Records',      fileLabels: ['Sales Register', 'Purchase & Sales Files', 'Sales Book'] },
-  { key: 'purchase_register',   label: 'Purchase Register',     group: 'Books & Records',      fileLabels: ['Purchase Register', 'Purchase & Sales Files', 'Purchase Book'] },
+  { key: 'purchase_register',   label: 'Purchase Register',     group: 'Books & Records',      fileLabels: ['Purchase Register', 'Purchase & Sales Files', 'Purchase Book', 'Purchase File'] },
   { key: 'stock_book',          label: 'Stock Book',            group: 'Books & Records',      fileLabels: ['Stock Book'] },
   { key: 'sp_as_per_vat',       label: 'S/P as per VAT Return', group: 'VAT & Reconciliation' },
   { key: 'vat_reco',            label: 'VAT Reco',              group: 'VAT & Reconciliation' },
