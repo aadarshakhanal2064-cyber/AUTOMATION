@@ -1506,3 +1506,5 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 .spb-cf-in:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
 .spb-cf-remarks { width: 150px; text-align: left; }
 .spb-cf-table td:nth-child(n+4) { white-space: nowrap; }
+/* Annexure-13's Goods/Service pickers sit inside the same dense grid. */
+.spb-ann-kind { padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 7px; font-family: 'Inter', sans-serif; background: var(--white); }

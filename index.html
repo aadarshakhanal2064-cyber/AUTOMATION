@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608162000">
+<link rel="stylesheet" href="css/styles.css?v=202608162200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1652,6 +1652,19 @@ function cropLoginLogoIcon(img) {
             </div>
           </div>
           <div id="spb-confirm-body"></div>
+        </div>
+      </div>
+
+      <!-- ── SECTION: ANNEXURE-13 ── -->
+      <div id="spb-sec-ann13" style="display:none;">
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Annexure-13</div>
+              <div class="card-desc">One row per PAN, combining what was bought from and sold to that party — a party can be both. Only parties transacting Rs 1,00,000 or more on either side are listed, which is what the &ge;/&lt; 1 lakh tiering is for. Choose <strong>Goods</strong> or <strong>Service</strong> per side; the Capital / Others split is taken from the book's own Capital Purchase column rather than asked for, since that is a fact about the bill, not the party.</div>
+            </div>
+          </div>
+          <div id="spb-ann-body"></div>
         </div>
       </div>
     </div>
@@ -3896,9 +3909,10 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBook.js?v=202608161200"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script src="js/salesPurchaseBookLedger.js?v=202608162000"></script>
+<script src="js/salesPurchaseBookLedger.js?v=202608162200"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
-<script src="js/salesPurchaseBookConfirm.js?v=202608162100"></script>
+<script src="js/salesPurchaseBookConfirm.js?v=202608162200"></script>
+<script src="js/salesPurchaseBookAnnexure.js?v=202608162400"></script>
 <script src="js/confirmationLetters.js?v=202608151800"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>

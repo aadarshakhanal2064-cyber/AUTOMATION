@@ -55,6 +55,10 @@ function spbConfirmRows(section) {
   const rows = groups.map(g => ({
     key: g.key, name: spbOmPlainName(g.display), pan: g.pan || '',
     bookTaxfree: g.taxfree || 0, bookTaxable: g.taxable || 0, bookVat: g.vat || 0,
+    // Carried for Annexure-13, which splits purchases into Capital vs Others.
+    // That axis is a property of the BILL (the book's own Capital Purchase
+    // column), not of the party, so it is derived rather than asked for.
+    bookCapital: g.cap || 0,
     fromBook: true,
   }));
   const seen = new Set(rows.map(r => r.key));
@@ -63,7 +67,7 @@ function spbConfirmRows(section) {
     seen.add(x.groupKey);
     rows.push({
       key: x.groupKey, name: x.party, pan: x.pan || '',
-      bookTaxfree: 0, bookTaxable: 0, bookVat: 0, fromBook: false,
+      bookTaxfree: 0, bookTaxable: 0, bookVat: 0, bookCapital: 0, fromBook: false,
     });
   });
 
@@ -80,12 +84,14 @@ function spbConfirmRows(section) {
     r.vat = r.bookVat + r.omVat;
     r.total = r.taxfree + r.taxable + r.vat;
 
+    r.capital = r.bookCapital;   // omitted bills carry no capital column
     const led = spbLedgerParties[section + '|' + r.key] || {};
     r.ledgerId = led.id != null ? led.id : null;
     r.opening = led.opening_balance != null ? Number(led.opening_balance) : null;
     r.confirmed = led.confirmed_taxable != null ? Number(led.confirmed_taxable) : null;
     r.closing = led.confirmed_closing != null ? Number(led.confirmed_closing) : null;
     r.remarks = led.remarks || '';
+    r.ann13 = led.ann13_category || null;
 
     // A confirmation that hasn't arrived is NOT a confirmed zero. Keeping the
     // two apart is what stops an unanswered party being reported as agreed.

@@ -405,3 +405,96 @@ awaiting** of 29 parties.
 
 Both export formats generate (PDF 12 KB, XLSX 10 KB). `node tools/spbVerify.mjs`
 still passes 36/36.
+
+---
+
+## Annexure-13 (M4, `js/salesPurchaseBookAnnexure.js`, 2026-08-16)
+
+The tax annexure the whole ≥/< 1 lakh tiering exists for. Exactly the ten
+columns the template's own header row names, in its order — this is the sheet
+that gets filed, so it carries no working columns.
+
+### One row per PAN, not per party
+
+A party can be both customer and supplier. The reference file's PURCHASE
+CONFIRMATION sheet carries a *Sale Taxable* column for precisely that case
+(Party J, PAN-D: purchased 575,575.50, sold 96,404), and the
+annexure is keyed on the tax ID, so both sides meet on one line.
+
+It follows that **a party with no usable PAN cannot be reported at all**. Those
+are set aside into their own red panel with the party name and the amount at
+stake, and pointed at Data Doctor — the difference between a known omission and
+a silent one. Six such parties in the reference file.
+
+### The four purchase buckets are two axes, and only one is a question
+
+| Axis | Where it comes from |
+|---|---|
+| **Goods vs Service** | a property of what the party supplies — **asked**, defaulting to Goods |
+| **Capital vs Others** | a property of the **bill**. Autobooks already reads a *Capital Purchase* column into `cap`, so this is **derived** |
+
+Asking a user to re-classify a party whose own book already states which rupees
+were capital would be guesswork stacked on fact. A book with no capital column
+lands everything in Others, which is correct. Capital is a **slice of** taxable,
+not an addition to it (§ *Capital is entered separately but filed inside Taxable
+Purchase*), so Others is the remainder — `Capital + Others` always equals the
+party's taxable. Sales has no capital dimension; the annexure has no
+`ServiceSalesCapital`.
+
+Category is stored per `(book, section, party)` in
+`autobooks_parties.ann13_category`. One PAN can cover several party keys, so
+setting a category writes **every** row under that PAN on that side.
+
+### Two bugs this module caught during its own verification
+
+**1. The trade name was picked by name length.** `a.names` counted occurrences
+and broke ties on the longer string, so PAN-A — Rs 32.2M, of which
+99.92% is *Party A* and 0.08% is *Party D* (the mistyped
+PAN, above) — was labelled **Party D**. Filing an annexure line for
+Rs 32.2M under a company that contributed Rs 25,221 is not a cosmetic problem.
+Names are now weighted by **value**.
+
+**2. `a[key] = r` kept one row per side and silently dropped the rest.** When
+two party groups share a PAN, the second overwrote the first — and since
+`qualifies` keys off those totals, PAN-A read as Rs 25,221.60, fell
+below the threshold, and **dropped off the annexure entirely along with its Rs
+32.2M**. Seven PANs were affected; qualifying rows went 33 → 40 once each side
+became a list (`salesRows`/`purchaseRows`) with accumulated totals. The
+regression guard is that every rupee in a bucket must tie back to the taxable it
+came from — it does, to 0.00.
+
+A PAN carrying more than one party name now shows *"One PAN, N names — also
+entered as: … Check this before filing."*
+
+### Threshold, and the escape hatch
+
+A PAN qualifies if **either** side reaches Rs 1,00,000, since a party can be a
+large supplier and a trivial customer and dropping the small side would
+under-report the line. *Include parties below Rs 1,00,000* is one checkbox away
+and off by default (user decision, 2026-08-16).
+
+### Opening balances from a sheet (`spbAnnImportOpenings`)
+
+The template's own *"Upload opening balance of F.Y for Ann-13"*. The
+Confirmation tab's carry-forward covers a client the firm has already run
+through this app; a client's **first** year here has no prior book, and typing
+two hundred opening balances by hand is exactly the work being replaced. The
+header row is located by looking for a *PAN* column and an *opening* column
+anywhere in the first 25 rows, matching is on PAN, and — like the carry-forward
+— it **only ever fills a blank**, reporting what it filled, what already had a
+value, and which PANs aren't in this book.
+
+### Verified 2026-08-16 against the real file
+
+660 PANs, **40 qualifying**, 6 unreportable, 2 parties on both sides.
+
+| Check | Result |
+|---|---|
+| Party J, both sides on one line | purchase 575,575.50 / sales 96,404 — matches PURCHASE CONFIRMATION exactly |
+| Buckets tie back to source taxable | 0.00 difference across all 660 PANs |
+| Capital split (synthetic 1,000,000 of 5,090,019.29) | 1,000,000 Capital + 4,090,019.29 Others = 5,090,019.29 |
+| Goods → Service toggle | moves the full amount between buckets on both sides |
+| Export columns | the template's ten headers, in the template's order |
+
+Both formats generate (PDF ~10 KB, XLSX ~9 KB). `node tools/spbVerify.mjs`
+still passes 36/36.
