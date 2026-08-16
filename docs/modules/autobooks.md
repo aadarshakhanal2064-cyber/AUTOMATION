@@ -85,3 +85,130 @@ Every auto-fix runs through `spbSetOverride(..., auto=true)`, so it is logged, e
 **`js/salesPurchaseBook.js` is now ~2,360 lines** (CLAUDE.md §10 rule 5). The Excel-generation half (`SPB_MONEY` onward) is ~600 of them; when it passes ~900 on its own, split it into `salesPurchaseBookExport.js` following the `finStatement.js` / `finStatementExport.js` precedent.
 - **Workbook styling**: every total row is highlighted — yellow (`SPB_FILL_YELLOW`) for month/party subtotals and Monthly totals, amber for Details Grand Totals, light red across Monthly mismatch months; credit-note negatives in red font; auto-filters on all header rows.
 
+
+---
+
+## The ledger layer (`js/salesPurchaseBookLedger.js`, 2026-08-16)
+
+Autobooks was stateless from launch: upload a raw book, generate a workbook,
+close the tab, everything gone. That is the correct shape for a converter and
+the wrong shape for the work that follows it. A signed confirmation letter
+comes back from a customer or supplier **weeks** after the book was imported,
+one party at a time, and each figure has to sit beside that party's book total
+until the whole list reconciles. Re-uploading the workbook to type one more
+figure is exactly the Excel workflow this module exists to end.
+
+So Autobooks now has a database (`db/2026-08-16_autobooks_ledger.sql`, four
+tables) and the screens that memory makes possible. The new file owns three
+things: the **section switcher**, **save/load of a book**, and the **on-screen
+Register and its print output**.
+
+### Why a second file
+
+`salesPurchaseBook.js` was already ~2,360 lines and this doc already called for
+splitting before growth, not after. The `spb` function prefix and the `spb-`
+element prefix continue unchanged — this is one module in two files, the
+`finStatement.js` / `finStatementExport.js` precedent. The load order is
+load-bearing: the ledger file reads and writes `spbData`, `spbGroups`,
+`spbMergeMap` and friends, so it must come **after**.
+
+Three hooks were added to the original file, all guarded with `typeof … ===
+'function'` so the core still works if the ledger file fails to load:
+`spbReset()` → `spbLedgerReset()`, `spbOnContextChange()` → `spbLedgerOnContext()`,
+`spbReparse()` → `spbLedgerAfterReparse()`.
+
+### Rehydration is the crux
+
+`spbLoadBook()` turns stored bill lines back into parser-shaped transactions and
+then runs them through the module's **own** `spbComputeBook()` /
+`spbComputeGroups()`. Figures are always re-derived; nothing is read back from a
+stored total that could have drifted from its lines. That is also what lets
+every screen downstream have exactly one code path whether the book came from an
+upload or from the database.
+
+A loaded book deliberately gets **no `spbRaw`**. There is no uploaded sheet
+behind it, so Data Doctor, column mapping and reparse are correctly unavailable
+— those answer *"is this file being read correctly"*, and the file was read and
+corrected before it was saved. The corrections travel with the book
+(`correction_log`) and still print in the workbook's Corrections sheet.
+
+`spbLedgerOnContext()` looks for a saved book silently on every client/FY change
+— coming back to a client mid-confirmation is the common case and a mandatory
+"Open" click would be noise — but it **returns early while `spbRaw` is set**, so
+a user mid-correction on a freshly dropped file never has it silently replaced.
+
+### The save contract
+
+| | |
+|---|---|
+| `autobooks_entries`, `kind='regular'` | **Replaced** on every save. The uploaded file *is* the register, so a re-import supersedes it. |
+| `autobooks_entries`, `kind='omitted'` | Untouched. Typed by hand, not in the uploaded file. |
+| `autobooks_parties` | Only **missing** rows are created; `party_name`/`pan` are refreshed (a later merge improves both). `confirmed_taxable` / `opening_balance` / `confirmed_closing` are **never** written by a save — they came off a signed letter. |
+
+That one-way contract is why `autobooks_parties` stores no book figures at all:
+storing them would let the two drift after a re-import.
+
+Rows insert in chunks of 400 (`SPB_INSERT_CHUNK`) — a real client-year runs to
+~1,600 lines and one request that size is both slower and harder to recover from
+than five. Reads go through `sbFetchAll()`, since a sales register alone
+routinely exceeds PostgREST's 1,000-row cap (the reference file: 989 lines).
+
+### `book_key` is a generated column
+
+A book is one (client, fiscal year), and the client may be a directory client
+*or* a name typed by hand — Autobooks legitimately gets used on a company before
+anyone adds it to the directory, the same nullable-`client_id` fallback
+`service_memo_fee_skips` uses. A plain `UNIQUE (client_id, fiscal_year)` would
+not constrain the typed-name case at all, because NULL never conflicts with NULL
+in Postgres. Hence `coalesce('c:'||client_id, 'n:'||lower(client_name)) || '|' ||
+fiscal_year`, generated and uniquely indexed.
+
+Saving is **select-then-insert-or-update**, not a PostgREST upsert: the
+uniqueness that matters lives in a generated column, which an upsert would have
+to name as its conflict target while not sending it in the payload. Two round
+trips, no ambiguity.
+
+### The Register view
+
+The register as the firm reads it on paper: bills in fiscal-month order, a
+`Total Of <Month>` line after each month, and — after the Ashadh total — the
+omitted bills, exactly where the firm's own template says they belong
+(*"Omiited bill show display in last of Sales Register and Purchase register
+after total of month ashad"*).
+
+- **Two totals, always.** `Register total (excluding omitted bills)` and a Grand
+  Total that names how many omitted bills it includes. An auditor has to be able
+  to see both numbers without arithmetic.
+- **A return / debit note carries the opposite sign** (`spbOmittedSign`). This is
+  not cosmetic: in the reference file Party G's books (202,328.28) exceeded
+  its confirmation (167,432.16) by exactly 34,896, and the explanation was a
+  34,896 **debit note**. Applying the sign closes the gap to 0.12.
+- **`spbLedgerCols()` is value-driven, `spbSectionAmountKeys()` stays
+  header-driven.** They look like duplicates and are not — the workbook must
+  mirror the uploaded layout exactly, while a database-loaded book has no
+  uploaded sheet to consult, so the screen decides a column by whether any row
+  actually carries a figure.
+- `spbRegisterModel()` is shared by the on-screen table and the print view, so
+  the two can never show different figures.
+
+### `spbPrintDoc()` redefines its own design tokens
+
+The print window is standalone — `css/styles.css` is **not** loaded into it — so
+`var(--amber-bg)`, `var(--red-dk)` and `.log-badge` resolve to nothing there.
+Left unfixed, the omitted-bill band prints with no highlight and a credit note's
+negatives print black instead of red: correct on screen, wrong on the only copy
+anyone signs. This is the same failure mode as `.rep-blank-fill` (CLAUDE.md
+§15), which reached a client's printed report. The token block at the top of
+`spbPrintDoc()`'s stylesheet must stay in step with `:root`.
+
+### Verified 2026-08-16 against a real client file
+
+Driven through the real pipeline with `the reference client workbook`
+(989 sales lines / 650 parties, 353 purchase lines / 28 parties):
+
+| | computed | firm's own `Monthly` sheet |
+|---|---|---|
+| Sales taxable, full year | 77,796,847.785 | 77,796,847.785 ✓ |
+| Purchase taxable, full year | 77,456,337.168 | 77,456,337.168 ✓ |
+
+`node tools/spbVerify.mjs` still passes 36/36 — the parsing path is unchanged.

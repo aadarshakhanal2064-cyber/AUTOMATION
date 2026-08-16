@@ -1529,7 +1529,28 @@ function cropLoginLogoIcon(img) {
         </p>
       </div>
 
+      <!-- Autobooks is several screens now, not one very long scroll. The nav
+           is built by spbRenderSectionNav() so a tab can never appear before
+           the screen behind it exists. -->
+      <div class="rep-view-toggle" id="spb-section-nav" style="margin-top:20px;"></div>
+
+      <!-- Outside the section wrappers on purpose: "Generate Workbook" lives in
+           the page header and can be clicked from any section, so its status
+           must never be on a hidden screen. -->
       <div id="spb-status"></div>
+
+      <!-- ── SECTION: IMPORT ── -->
+      <div id="spb-sec-import">
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size:14px;">Saved book</div>
+            <div class="card-desc">Saving stores every bill line, the party list and the import decisions for this client and fiscal year, so you can come back to the confirmations days later without re-uploading anything. A saved book reopens automatically when you pick the client and year again.</div>
+          </div>
+        </div>
+        <div id="spb-book-body"></div>
+      </div>
 
       <div class="card" id="spb-import-card" style="display:none; margin-top:20px;">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1581,6 +1602,21 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
         <div id="spb-vr-body"></div>
+      </div>
+
+      </div><!-- /spb-sec-import -->
+
+      <!-- ── SECTION: REGISTER ── -->
+      <div id="spb-sec-register" style="display:none;">
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Sales / Purchase Register</div>
+              <div class="card-desc">The register as it reads on paper — bills in fiscal-month order with a total after each month. Omitted bills are appended after the Ashadh total, never folded into the month they belong to, and the Grand Total says how many it includes.</div>
+            </div>
+          </div>
+          <div id="spb-register-body"></div>
+        </div>
       </div>
     </div>
 
@@ -3821,7 +3857,10 @@ function cropLoginLogoIcon(img) {
 <script src="js/bmAgmMinutes.js?v=202608151800"></script>
 <script src="js/auditorChange.js?v=202608151800"></script>
 <script src="js/companyProfile.js?v=202608101800"></script>
-<script src="js/salesPurchaseBook.js?v=202608151800"></script>
+<script src="js/salesPurchaseBook.js?v=202608161200"></script>
+<!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
+     salesPurchaseBook.js — it reads and writes that file's module state. -->
+<script src="js/salesPurchaseBookLedger.js?v=202608161200"></script>
 <script src="js/confirmationLetters.js?v=202608151800"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>

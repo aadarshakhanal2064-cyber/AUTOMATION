@@ -731,6 +731,10 @@ function spbReparse() {
   spbRenderDoctor();
   spbRenderSuggestions();
   spbRenderVrGrid();
+  // Everything downstream of the raw sheets has just changed, so the register
+  // and the saved-book card have to follow. Guarded because the ledger layer is
+  // a separate file loaded after this one.
+  if (typeof spbLedgerAfterReparse === 'function') spbLedgerAfterReparse();
 }
 
 function spbReset() {
@@ -745,6 +749,10 @@ function spbReset() {
   });
   document.getElementById('spb-generate-btn').disabled = true;
   spbStatus('', 'info');
+  // The ledger layer (js/salesPurchaseBookLedger.js) holds the saved-book id
+  // and the confirmation figures. A client switch must clear those too, or the
+  // next client's screen would still point at the previous client's book.
+  if (typeof spbLedgerReset === 'function') spbLedgerReset();
 }
 
 // ════════════════════════════════════════════
@@ -2304,7 +2312,13 @@ async function spbGenerateExcel() {
 // FY drives year inference for month-name dates and the outside-FY check,
 // so changing it re-parses from source, not just the reconciliation grid.
 function spbOnContextChange() {
-  if (!spbRaw) return;
+  // With no uploaded sheet in hand there is nothing to re-parse — but there may
+  // well be a SAVED book for the client and year now selected, so the ledger
+  // layer still gets a look.
+  if (!spbRaw) {
+    if (typeof spbLedgerOnContext === 'function') spbLedgerOnContext();
+    return;
+  }
   spbVr = spbBlankVr();
   spbVrLoadDraft();
   spbReparse();
