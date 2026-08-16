@@ -498,3 +498,84 @@ value, and which PANs aren't in this book.
 
 Both formats generate (PDF ~10 KB, XLSX ~9 KB). `node tools/spbVerify.mjs`
 still passes 36/36.
+
+---
+
+## Reconciliation statements (M5, `js/salesPurchaseBookReco.js`, 2026-08-16)
+
+The year-end statements that prove the filed returns and the books tell the same
+story, and name every reason they don't. Three of them — Sales, Purchase, VAT —
+laid out exactly as the firm's own Reco sheet is.
+
+**Distinct from the Monthly grid**, which compares month by month. This is one
+statement for the year, with ad-hoc adjustment lines, because which mistakes
+exist varies per client and per year. Nothing is hardcoded to a month.
+
+### It runs from the return to the books, so an adjustment is `book − return`
+
+Verified against the reference sheet before writing a line of it: its Ashadh
+adjustment of 87,710.14 is book 887,710.14 less return 800,000, and its Jestha
+line of −50,000 is book 200,000 less return 250,000.
+
+⚠ **This is the opposite sign to the Monthly grid**, which prints a uniform
+`Return − Book` difference. Each is internally consistent and neither is
+changing — the same "formats differ per module, don't unify without asking"
+rule as the fiscal-year formats (CLAUDE.md §8).
+
+### Both anchors are derived, never typed
+
+The return figure is the one already entered in the Monthly reconciliation grid
+(stored on the book); the books figure is computed from the register. An
+override would create a second source of truth for a number this app already
+holds — and *"the real figure differs, here is why"* is exactly what an
+adjustment line is for. When no filed figures have been entered the statement
+says so and points at the Monthly grid, rather than quietly reading nil.
+
+### Rounding, and what is never absorbed
+
+*"if Difference is less than 1000 then round off Difference"* — the sheet's own
+note. Below Rs 1,000 the residual is absorbed as Rounding Effect; **at or above
+it, nothing is absorbed** and the Net Difference stands on the face of the
+statement with a red note naming the amount. A gap of a thousand rupees is not
+rounding.
+
+`spbRecoSuggestable()` uses the same threshold the parser already uses for a
+real gap (`SPB_ROUNDING_TOLERANCE`, 0.999) rather than suggesting sub-rupee
+lines: the filed return is truncated to whole rupees, so a 19-paisa gap is not a
+"calculation mistake" worth a named line. On the reference sheet this is exactly
+right — Falgun +0.19 and Chaitra −0.07 stay unnamed and net to the **0.12
+Rounding Effect the sheet itself prints**.
+
+### Automatic lines vs typed lines
+
+Omitted bills appear as an **automatic** line (`Purchase omitted in Maskebari`),
+derived from the Omitted Bills screen rather than stored — a figure copied
+across would drift the moment one was edited there. Everything else is a free
+text description and a plain amount, added by hand or by *Suggest from monthly
+differences*, which creates ordinary editable lines (the firm does this
+arithmetic by hand today; the button is the same sums without the retyping).
+
+### A bug the third statement caught
+
+The VAT statement's `books` anchor omitted the VAT on omitted bills while its
+automatic line subtracted that VAT from the **return** side — the two ends of
+the statement were built differently and it could never foot. Sales and Purchase
+had always added their omitted figure to books; VAT now does too.
+
+### Verified 2026-08-16 — reproduces the template's Reco sheet cell for cell
+
+Driven from the template's own Monthly figures:
+
+| | computed | the template's Reco sheet |
+|---|---|---|
+| Sales as Per Maskebari | 8,368,605.00 | 8,368,605 ✓ |
+| Suggested adjustments | Jestha −50,000 · Ashadh +87,710.14 · Jestha exempt −120,000 · Ashadh exempt +10,000 | the same four lines, same wording ✓ |
+| Less: Rounding Effect | 0.12 | 0.12 ✓ |
+| After Adjustment | 8,296,315.26 | 8,296,315.26 ✓ |
+| Sales as Per Accounts | 8,296,315.26 | 8,296,315.26 ✓ |
+| **Net Difference** | **0.00** | **0** ✓ |
+
+Purchase (with omitted bills 250,000 less a 50,000 return) and VAT both foot to
+0.00 as well; a synthetic Rs 5,000 gap is correctly **not** absorbed and is
+flagged unexplained. Both export formats generate.
+`node tools/spbVerify.mjs` still passes 36/36.

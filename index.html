@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608162200">
+<link rel="stylesheet" href="css/styles.css?v=202608162500">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1665,6 +1665,19 @@ function cropLoginLogoIcon(img) {
             </div>
           </div>
           <div id="spb-ann-body"></div>
+        </div>
+      </div>
+
+      <!-- ── SECTION: RECONCILIATION ── -->
+      <div id="spb-sec-reco" style="display:none;">
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Reconciliation statements</div>
+              <div class="card-desc">Three year-end statements proving the filed returns and the books agree, and naming every reason they don't. Each runs from the filed figure to the books, so an adjustment is <strong>book &minus; return</strong>. A residual below Rs 1,000 is absorbed as rounding; at or above that it stays on the face of the statement as a real unexplained difference. Adjustment lines are free text because which mistakes exist varies per client and per year.</div>
+            </div>
+          </div>
+          <div id="spb-reco-body"></div>
         </div>
       </div>
     </div>
@@ -3912,7 +3925,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBookLedger.js?v=202608162200"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
 <script src="js/salesPurchaseBookConfirm.js?v=202608162200"></script>
-<script src="js/salesPurchaseBookAnnexure.js?v=202608162400"></script>
+<script src="js/salesPurchaseBookAnnexure.js?v=202608162500"></script>
+<script src="js/salesPurchaseBookReco.js?v=202608162700"></script>
 <script src="js/confirmationLetters.js?v=202608151800"></script>
 <script src="js/bankBook.js?v=202608022300"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>
