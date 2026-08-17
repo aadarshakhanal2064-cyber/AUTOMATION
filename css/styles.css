@@ -1409,6 +1409,140 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
 }
 .wd-received-doc.implies{ background: var(--green-bg); border-color: var(--green-border); color: var(--green-dk); font-weight: 600; }
 
+/* ── Work Done — To-Do List (third view; js/workDoneTodo.js) ──
+   Built from the .wd-item-row language above rather than a new one: same
+   grid-not-flex reasoning (columns must line up VERTICALLY down the list to
+   be scannable), same tinted-row idiom, same control sizing. What differs is
+   that these rows live on a full-width page instead of an 860px drawer, so
+   there is room for the extra due/priority columns. */
+
+/* Quick-add bar. The primary surface — a to-do that needs a drawer is a
+   to-do that never gets written down. */
+.wt-quickadd{
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  padding: 18px 22px; margin-bottom: 18px;
+}
+.wt-quickadd-head{
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .3px; margin-bottom: 12px;
+}
+/* Nature of Work gets the widest track — it is the only required field and
+   the one people type most. */
+.wt-quickadd-grid{
+  display: grid; gap: 10px; align-items: end;
+  grid-template-columns: 140px minmax(0, 1.3fr) minmax(0, 1.8fr) 140px minmax(0, 1fr) 130px auto;
+}
+.wt-quickadd-grid input, .wt-quickadd-grid select{ margin: 0; }
+.wt-q-actions{ display: flex; gap: 8px; align-items: center; }
+.wt-quickadd-hint{ font-size: 12px; color: var(--text-faint); margin: 12px 0 0; }
+.wt-opt{ font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-faint); font-size: 11px; }
+/* Same 1280px breakpoint as the rows below, deliberately: measured at ~1000px
+   the seven-across bar squeezed Staff to 70px, which is narrower than any of
+   the names it offers. One breakpoint for the whole view. */
+@media (max-width: 1280px){
+  .wt-quickadd-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wt-q-nature-group{ grid-column: 1 / -1; }
+  .wt-q-actions{ grid-column: 1 / -1; }
+}
+
+/* An overdue count is the one number on this screen that should catch the
+   eye without being clicked. */
+.wt-stat-alarm .stat-num{ color: var(--red-dk); }
+.wt-alarm-dot{
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--red-dk); margin-left: 6px; vertical-align: middle;
+}
+
+/* Sections — folded state is a real, counted heading, never a hidden row set
+   (the Autobooks confirmation-tier rule). */
+.wt-section{ margin-bottom: 14px; }
+.wt-section-head{
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: none; padding: 6px 2px; cursor: pointer;
+  font-family: inherit; text-align: left;
+}
+.wt-caret{ font-size: 11px; color: var(--text-faint); width: 10px; }
+.wt-section-title{
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .3px;
+}
+.wt-section-count{
+  font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  background: var(--bg-page-alt); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 8px;
+}
+.wt-section.tone-overdue .wt-section-title, .wt-section.tone-overdue .wt-section-count{ color: var(--red-dk); }
+.wt-section.tone-today .wt-section-title,   .wt-section.tone-today .wt-section-count{ color: var(--amber-dk); }
+.wt-rows{ display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+/* Row. Nine tracks: tick · state · main (work + client) · staff · due ·
+   priority · remarks · save tick · delete. */
+.wt-row{
+  display: grid; align-items: center; gap: 10px; padding: 8px 12px;
+  grid-template-columns: 30px 128px minmax(0, 1.6fr) 130px 150px 118px minmax(0, 1.3fr) 16px 34px;
+  background: var(--white); border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: background .15s, border-color .15s;
+}
+/* The left edge carries how late it is, so urgency reads down the list
+   without any row having to shout. */
+.wt-row.due-overdue{ border-left-color: var(--red-dk); background: var(--red-bg); }
+.wt-row.due-today{   border-left-color: var(--amber-dk); background: var(--yellow-bg); }
+.wt-row.due-week{    border-left-color: var(--accent-blue); }
+.wt-row.due-done{    background: var(--green-bg); border-color: var(--green-border); border-left-color: var(--green-dk); }
+.wt-row.due-done .wt-nature{ text-decoration: line-through; color: var(--text-muted); }
+/* Priority is a tie-breaker within a day, so it is a marker on the row, not
+   a second background colour competing with the due-date tint. */
+.wt-row.pri-high .wt-nature{ font-weight: 700; }
+
+.wt-tick{
+  width: 22px; height: 22px; border-radius: 50%; padding: 0;
+  /* Heavier than --border: an empty circle at the row's left edge has to read
+     as a control to click, not as part of the row's outline. */
+  border: 2px solid #b9c0d0; background: var(--white);
+  cursor: pointer; font-size: 13px; line-height: 1; color: transparent;
+}
+.wt-tick:hover{ border-color: var(--green-dk); color: var(--green-border); }
+.wt-tick.is-done{ background: var(--green-dk); border-color: var(--green-dk); color: var(--white); }
+
+.wt-state, .wt-pri{ margin: 0; width: 100%; min-width: 0; }
+.wt-main{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wt-nature{ margin: 0; min-width: 0; font-weight: 600; }
+/* The client is context for the work, not the headline — smaller and quieter,
+   and it borrows the borderless treatment so the row doesn't read as a form. */
+.wt-client{ margin: 0; min-width: 0; font-size: 12px; padding: 4px 8px; color: var(--text-muted); }
+.wt-staff, .wt-remarks{ margin: 0; min-width: 0; }
+.wt-due-cell{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wt-due{ margin: 0; width: 100%; min-width: 0; }
+.wt-due-note{ font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+.wt-row.due-overdue .wt-due-note{ color: var(--red-dk); font-weight: 600; }
+.wt-row.due-today .wt-due-note{ color: var(--amber-dk); font-weight: 600; }
+.wt-done-stamp{ font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+.wt-del{ padding: 4px 8px; }
+
+/* Autosave indicator. Deliberately tiny and per-row: the whole point of
+   saving automatically is that it stays out of the way until it fails. */
+.wt-save{ font-size: 12px; text-align: center; color: transparent; transition: color .2s; }
+.wt-save-saving{ color: var(--text-faint); }
+.wt-save-saved{ color: var(--green-dk); }
+.wt-save-error{ color: var(--red-dk); }
+
+/* Narrow screens tighten the fixed tracks rather than reflowing any cell onto
+   a second line — the columns lining up vertically is the whole reason this
+   is a grid, and a wrapped row breaks that for every row below it. */
+@media (max-width: 1280px){
+  .wt-row{
+    gap: 8px;
+    /* The two selects keep their full width even here — measured, 112px clips
+       "🟡 In Progress" and 104px clips "🔵 Normal", and a select that clips
+       reads as a broken control rather than a tight one. The flexible text
+       tracks give the space up instead. */
+    grid-template-columns: 26px 128px minmax(0, 1.4fr) 104px 126px 110px minmax(0, 1fr) 14px 30px;
+  }
+}
+
 /* ── Work Done — Activity Log (cross-module view over audit_log) ──
    Wide because it carries six columns of real content; capped at 96vw so it
    still fits a laptop screen, and its body scrolls rather than the page. */

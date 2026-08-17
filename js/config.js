@@ -398,6 +398,22 @@ window.WD_STATES = [
 // Audit Report Finalization, so adding a staff member stays ONE config edit
 // for both modules. Deliberately not copied into a WD_STAFF constant.
 
+// ── Work Done → To-Do List (js/workDoneTodo.js, table work_todos) ──
+// Priority is the ONE axis the to-do list adds that no other module has, and
+// it is deliberately three values rather than five: the sections already sort
+// by how late a task is, so priority only has to break ties within a day.
+// The keys are CHECK-constrained in the database — add a value here and the
+// constraint needs the same edit (db/2026-08-17_work_todos.sql).
+//
+// The to-do list reuses window.WD_STATES for status (same three keys, so all
+// three Work Done views read one vocabulary) and window.ARF_STAFF for who it
+// is assigned to — neither is copied here.
+window.WD_TODO_PRIORITIES = [
+  { key: 'high',   label: 'High',   icon: '🔴' },
+  { key: 'normal', label: 'Normal', icon: '🔵' },
+  { key: 'low',    label: 'Low',    icon: '⚪' },
+];
+
 // ── Activity Log vocabulary (Work Done → Activity Log, js/workDone.js) ──
 // audit_log stores the raw ModuleRegistry id in `module` and a snake_case
 // verb in `event_type`. Both are developer vocabulary; these two maps are
@@ -518,6 +534,12 @@ window.ACTIVITY_EVENT_LABELS = {
   vat_status_change: 'VAT status change',
   wd_created: 'Work record created', wd_updated: 'Work record updated',
   wd_deleted: 'Work record deleted', wd_printed: 'Work record printed',
+  // To-Do List. Only these three are logged — a to-do autosaves on every
+  // field edit, and logging each one would add hundreds of rows a week to a
+  // table that already only grows. Created / completed / deleted is what a
+  // history of the list actually needs.
+  wd_todo_created: 'To-do added', wd_todo_completed: 'To-do completed',
+  wd_todo_deleted: 'To-do deleted',
 };
 
 window.REP_FY_DATES = {

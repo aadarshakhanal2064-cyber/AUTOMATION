@@ -36,7 +36,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608162500">
+<link rel="stylesheet" href="css/styles.css?v=202608170900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2894,6 +2894,7 @@ function cropLoginLogoIcon(img) {
       <div class="wd-view-toggle">
         <button class="rep-view-btn active" id="wd-view-records" onclick="wdSetView('records')">Work Records</button>
         <button class="rep-view-btn" id="wd-view-pending" onclick="wdSetView('pending')">Pending List<span id="wd-pending-count"></span></button>
+        <button class="rep-view-btn" id="wd-view-todo" onclick="wdSetView('todo')">To-Do List<span id="wt-todo-count"></span></button>
       </div>
 
       <div id="wd-records-view">
@@ -2928,6 +2929,73 @@ function cropLoginLogoIcon(img) {
           </p>
           <div id="wd-pending-note"></div>
           <div id="wd-pending-wrap"><div class="log-empty">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- TO-DO LIST — the firm's own task list (js/workDoneTodo.js, work_todos).
+           Everything here saves itself: there is deliberately no Save button.
+           The three datalists back the typeable client / staff / nature boxes,
+           and are refilled from the live data by wtPopulateDatalists(). -->
+      <div id="wd-todo-view" style="display:none;">
+        <datalist id="wt-client-datalist"></datalist>
+        <datalist id="wt-staff-datalist"></datalist>
+        <datalist id="wt-nature-datalist"></datalist>
+
+        <div class="wt-quickadd">
+          <div class="wt-quickadd-head">Add a to-do</div>
+          <div class="wt-quickadd-grid">
+            <div class="form-group" style="margin:0;">
+              <label>Date</label>
+              <input type="date" id="wt-q-date" title="Defaults to today" />
+            </div>
+            <div class="form-group" style="margin:0; position:relative;">
+              <label>Client <span class="wt-opt">optional</span></label>
+              <input type="text" id="wt-q-client" placeholder="Search name or PAN…" autocomplete="off" onkeydown="wtQuickKey(event)" />
+              <div class="autocomplete-list" id="wt-q-client-autocomplete" style="display:none;"></div>
+            </div>
+            <div class="form-group wt-q-nature-group" style="margin:0;">
+              <label>Nature of Work</label>
+              <input type="text" id="wt-q-nature" list="wt-nature-datalist" placeholder="What needs doing — press Enter to add" onkeydown="wtQuickKey(event)" />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Due <span class="wt-opt">optional</span></label>
+              <input type="date" id="wt-q-due" onkeydown="wtQuickKey(event)" />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Staff <span class="wt-opt">optional</span></label>
+              <input type="text" id="wt-q-staff" list="wt-staff-datalist" placeholder="Assign to…" onkeydown="wtQuickKey(event)" />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Priority</label>
+              <select id="wt-q-priority"></select>
+            </div>
+            <div class="form-group wt-q-actions" style="margin:0;">
+              <button class="btn btn-primary" onclick="wtQuickAdd()">+ Add To-Do</button>
+              <button class="btn btn-outline btn-sm" onclick="wtClearQuickAdd()" title="Clear the bar, including the client and staff it keeps between adds">Clear</button>
+            </div>
+          </div>
+          <p class="wt-quickadd-hint">The date fills in as today. Client, due date and staff are optional — <strong>Enter</strong> files the to-do and keeps the client, date and staff ready for the next one.</p>
+        </div>
+
+        <div class="stat-grid compact" id="wt-stat-grid"></div>
+
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
+            <div class="search-bar-wrap" style="flex:1; min-width:240px; max-width:380px;">
+              <span class="sb-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              </span>
+              <input type="text" class="search-bar" id="wt-search" placeholder="Search work, client, staff, remarks…" oninput="wtRender()" />
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="wtClearFilters()">Clear Filters</button>
+          </div>
+          <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:16px;">
+            <div class="form-group" style="margin:0;"><label>Staff</label><input type="text" id="wt-filter-staff" list="wt-staff-datalist" placeholder="All staff" onchange="wtOnFilterChange()" /></div>
+            <div class="form-group" style="margin:0;"><label>Status</label><select id="wt-filter-status" onchange="wtOnFilterChange()"></select></div>
+            <div class="form-group" style="margin:0;"><label>Priority</label><select id="wt-filter-priority" onchange="wtOnFilterChange()"></select></div>
+          </div>
+          <div id="wt-status-area"></div>
+          <div id="wt-list"><div class="log-empty">Loading…</div></div>
         </div>
       </div>
     </div>
@@ -3901,7 +3969,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608162800"></script>
+<script src="js/config.js?v=202608170900"></script>
 <script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3953,7 +4021,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>
 <script src="js/auditChecklist.js?v=202608151800"></script>
-<script src="js/workDone.js?v=202608161000"></script>
+<script src="js/workDone.js?v=202608170900"></script>
+<!-- AFTER workDone.js — registers the To-Do List onto that file's WD_VIEWS. -->
+<script src="js/workDoneTodo.js?v=202608170900"></script>
 <script src="js/auth.js?v=202608022300"></script>
 
 </body>

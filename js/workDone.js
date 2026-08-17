@@ -229,19 +229,64 @@ async function wdRefresh() {
   } catch (e) {
     wdStatusMsg('❌ Failed to load work records: ' + escHtml(e.message || String(e)), 'error');
   }
+  // Registered views reload themselves. Outside the try/catch and awaited
+  // separately so a To-Do List failure can't blank the work records, and a
+  // work-records failure can't stop the to-dos loading — they read different
+  // tables and neither depends on the other.
+  await Promise.all(WD_VIEWS.filter(v => v.onRefresh).map(v => v.onRefresh()));
 }
 
-// ── View toggle (Work Records ⇄ Pending List) ──
+// ── View toggle (Work Records ⇄ Pending List ⇄ To-Do List) ──
+// A REGISTRY rather than a hardcoded pair, so a sibling file can add a
+// section without editing this one — the salesPurchaseBookConfirm.js idiom
+// (CLAUDE.md §5 load order). js/workDoneTodo.js registers the To-Do List
+// this way; nothing below knows how many views there are.
+//
+// Each entry supplies: the toggle button and pane ids, its Tabulator instance
+// (or null if it doesn't use one), the ReportExport model the header's
+// Print/PDF/Excel buttons should build while it is showing, and the two
+// AuditLog fields that export is attributed with.
+const WD_VIEWS = [
+  {
+    id: 'records', btnId: 'wd-view-records', paneId: 'wd-records-view',
+    table: () => wdTable,
+    model: () => {
+      wdReadFilters();
+      const rows = wdCurrentFilteredRows();
+      return rows.length ? wdBuildModel(rows) : null;
+    },
+    exportAs: { clientName: 'Filtered Records', sheetName: 'Work Done' },
+  },
+  {
+    id: 'pending', btnId: 'wd-view-pending', paneId: 'wd-pending-view',
+    table: () => wdPendingTable,
+    model: () => {
+      const rows = wdPendingRows();
+      return rows.length ? wdBuildPendingModel(rows) : null;
+    },
+    exportAs: { clientName: 'Pending List', sheetName: 'Pending' },
+  },
+];
+
+// Called from a sibling file at load time, before any view is shown.
+function wdRegisterView(view) { WD_VIEWS.push(view); }
+
+function wdActiveView() { return WD_VIEWS.find(v => v.id === wdView) || WD_VIEWS[0]; }
+
 function wdSetView(view) {
   wdView = view;
-  wdEl('wd-view-records').classList.toggle('active', view === 'records');
-  wdEl('wd-view-pending').classList.toggle('active', view === 'pending');
-  wdEl('wd-records-view').style.display = view === 'records' ? '' : 'none';
-  wdEl('wd-pending-view').style.display = view === 'pending' ? '' : 'none';
+  WD_VIEWS.forEach(v => {
+    const btn = wdEl(v.btnId);
+    if (btn) btn.classList.toggle('active', v.id === view);
+    const pane = wdEl(v.paneId);
+    if (pane) pane.style.display = v.id === view ? '' : 'none';
+  });
+  const cur = wdActiveView();
   // Tabulator lays out to zero width while hidden, so the newly-shown table
   // needs a redraw once it actually has a box to measure.
-  const t = view === 'records' ? wdTable : wdPendingTable;
+  const t = cur.table && cur.table();
   if (t) setTimeout(() => t.redraw(true), 0);
+  if (cur.onShow) cur.onShow();
 }
 
 function wdUpdatePendingBadge(count) {
@@ -1065,26 +1110,20 @@ function wdBuildPendingModel(rows) {
 }
 
 // Whichever view is on screen is what the header buttons act on, so Print,
-// PDF and Excel always match what the user is looking at.
-function wdActiveModel() {
-  if (wdView === 'pending') {
-    const rows = wdPendingRows();
-    return rows.length ? wdBuildPendingModel(rows) : null;
-  }
-  wdReadFilters();
-  const rows = wdCurrentFilteredRows();
-  return rows.length ? wdBuildModel(rows) : null;
-}
+// PDF and Excel always match what the user is looking at. Each view owns its
+// own model builder (WD_VIEWS above), so adding a section can't leave the
+// export silently pointed at the wrong one.
+function wdActiveModel() { return wdActiveView().model(); }
 
 async function wdExport(kind) {
-  const model = wdActiveModel();
+  const view = wdActiveView();
+  const model = view.model();
   if (!model) { wdStatusMsg('Nothing to export for the current view.', 'info'); return; }
   try {
     const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
     await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
       module: 'workDone',
-      clientName: wdView === 'pending' ? 'Pending List' : 'Filtered Records',
-      sheetName: wdView === 'pending' ? 'Pending' : 'Work Done',
+      ...view.exportAs,
     });
   } catch (e) {
     wdStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');

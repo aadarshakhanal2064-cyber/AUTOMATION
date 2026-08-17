@@ -1,6 +1,7 @@
 # Work Done (§5.23)
 
-**Code:** `js/workDone.js` · **Prefix:** `wd-` · **Table:** `work_done`
+**Code:** `js/workDone.js` + `js/workDoneTodo.js` · **Prefix:** `wd-` (`wt-` for the To-Do List)
+**Tables:** `work_done`, `work_todos`
 **Where:** sidebar, after Audit Checklist · **Registry id:** `workDone`
 
 Digitizes the firm's paper "Work done Module" sheet: one page per client per
@@ -314,11 +315,109 @@ those events had written a **null client name** — visible in the live table as
 `projection_saved` / `projection_printed` rows with no client against them.
 Fixed at all call sites in the same change; historical rows keep their nulls.
 
+## The To-Do List (2026-08-17)
+
+**Code:** `js/workDoneTodo.js` · **Prefix:** `wt-` · **Table:** `work_todos`
+**Migration:** `db/2026-08-17_work_todos.sql`
+
+The third view. The other two answer questions about work already committed
+to a record — Work Records is one page per client per fiscal year, the Pending
+List is derived and never typed. Neither can hold *"ring the client about the
+missing Falgun bills before Thursday"*: short-lived, free-typed, possibly not
+a catalogue work type, possibly not against a fiscal year, and quite possibly
+six at once for the same client — which `work_done`'s UNIQUE
+`(client_id, fiscal_year)` forbids outright. Hence one row per task, in its
+own table.
+
+### Its own file, registered onto Work Done's view toggle
+
+`workDone.js` was already ~1,500 lines (CLAUDE.md §10 rule 5), so this is a
+sibling file that pushes onto that file's **`WD_VIEWS`** array — the
+`salesPurchaseBookConfirm.js` idiom. Its `<script>` tag **must come after
+`workDone.js`**. Each registered view supplies its button/pane ids, its
+Tabulator instance (or `null`), its `onShow`/`onRefresh` hooks, the
+`ReportExport` model the header buttons should build while it is showing, and
+the two AuditLog fields that export is attributed with. `wdSetView()` and
+`wdActiveModel()` iterate the registry and know nothing about how many views
+exist.
+
+### What makes it a to-do list rather than a form
+
+- **Adding one takes a line, not a drawer.** Every other module opens a drawer
+  to create a record — right for a service memo, wrong for "call Ram about the
+  bank statement". The quick-add bar is the primary surface and **Enter files
+  the task**. Client, date and staff **stay filled after an add**, because
+  people add three tasks for one client in a row; what describes *this* task
+  (nature, due, priority) clears. Client uses the real fuzzy
+  `SearchEngine.attachAutocomplete` (name or PAN) since it's the main entry
+  point.
+- **There is no Save button anywhere.** Selects and dates persist on `change`;
+  text persists on `change`, which fires on blur only when the value actually
+  differs — so typing never round-trips per keystroke, and `oninput` only ever
+  touches the in-memory model. A failed write **reloads from the server**
+  rather than leaving the screen asserting a change that didn't land. Feedback
+  is a per-row tick, not a status message: the point of autosave is that it
+  stays out of the way until it fails.
+- **It sorts by what's actually late.** Sections are Overdue → Due Today → Due
+  This Week (next 7 days, not the calendar week) → Later → No Due Date →
+  Completed. Within a section: due date, then priority, then oldest.
+
+### Three combo boxes, no "Other" mechanism
+
+Client, staff and nature of work are all `<input list="…">` backed by
+datalists refilled from live data (`wtPopulateDatalists()`) — the
+`bbPopulateExpenseNames` idiom, which stops the vocabulary fragmenting on
+near-duplicate spellings without ever refusing a value. Nature is seeded from
+the 16 `WD_WORK_TYPES` labels plus everything already typed, so a to-do that
+later becomes a Work Records row is likely to be spelled the same way.
+
+Staff deliberately does **not** use the select + "Other" pattern Work Done's
+own rows use. That pattern needs a second revealed input and the transient
+`_other` flag, which has shipped as a bug twice (Audit Checklist, then Work
+Done). `ARF_STAFF` is still the source, so adding a staff member remains one
+config edit.
+
+### Gotchas
+
+- **`status` is stored here**, unlike every neighbouring module. They derive
+  because the underlying fact lives elsewhere and a copy could drift; a to-do
+  has no underlying fact — its state *is* the record. Keys are `WD_STATES`
+  verbatim so all three views read one vocabulary.
+- **`completed_at` is CHECK-tied to `status` in Postgres** (`done ⇔ stamped`).
+  Sending one without the other is rejected by the database, which is the
+  point: a reopened task can never keep a stale completion stamp.
+- **`client_id` is nullable / ON DELETE SET NULL**, unlike `work_done`'s NOT
+  NULL + RESTRICT — internal tasks and walk-ins have to be recordable, or
+  staff go back to paper for exactly the tasks most likely to be forgotten.
+- **`wtPristine` exists because of a real bug.** Rejecting a blank description
+  re-rendered from a model that `oninput` had already overwritten with the
+  blank, painting it straight back. The `onfocus` snapshot is what makes the
+  restore possible; with no snapshot it reloads rather than guessing.
+- **`wtAutoDate` guards the "date auto-comes as today" behaviour.** `wtInit()`
+  runs once, so a tab left open overnight would keep offering yesterday — the
+  same class of bug as File In Out's and Autobooks' stale fiscal-year defaults
+  (CLAUDE.md §15). It remembers the value last written automatically, so
+  re-seeding on every open can tell an untouched box from a date the user
+  chose. **Clear blanks the box first**, because Clear is the one action that
+  means "including that one" — it was a silent no-op on the date until that
+  was fixed in verification.
+- **Only created / completed / deleted are logged.** A to-do autosaves on
+  every field edit and `audit_log` only grows; logging each edit would add
+  hundreds of rows a week. `recordRef` is the numeric row id — a descriptive
+  string there kills the whole event (CLAUDE.md §15).
+- **Nothing is folded by default.** The Open bucket already excludes completed
+  work, so the unbounded section that would have justified it never renders
+  beside the open work anyway. Folding stays available for Later / No Due
+  Date, and a folded section keeps its heading and count.
+- The toggle button shows the **open** count, plus a red dot when anything is
+  overdue — a number alone can't say that six of the twelve are late.
+
 ## Views, filters and export
 
-A segmented toggle (`.rep-view-btn`) switches between **Work Records** and
-**Pending List (N)**; the header Print / PDF / Excel buttons act on whichever
-view is showing, so what you export always matches what you're looking at.
+A segmented toggle (`.rep-view-btn`) switches between **Work Records**,
+**Pending List (N)** and **To-Do List (N)**; the header Print / PDF / Excel
+buttons act on whichever view is showing, so what you export always matches
+what you're looking at.
 
 - Four stat cards (Total / Complete / In Progress / Not Started) double as
   quick filters and clear the other filters when clicked.
@@ -333,6 +432,9 @@ view is showing, so what you export always matches what you're looking at.
 - Exports flatten `items` into three text cells (Done / In Progress / Not
   Started, each `label (staff) — remarks`) rather than one column per type,
   since custom rows make the count vary per record.
+- The To-Do List's export is **grouped exactly as the screen groups it**, with
+  the section named on each row in a leading *When* column — a printed copy
+  sorted differently from the screen is one nobody trusts.
 
 ## Resolved: the "Complete never fires" limitation
 
@@ -458,3 +560,56 @@ via the Supabase MCP:
   derived **Complete**.
 - Layout re-measured (no overflow, chip tints correct) and all 21 modules
   still switch cleanly.
+
+### Third pass (2026-08-17) — the To-Do List
+
+Migration applied and verified against the Postgres catalog **before any JS
+was written against it**: all 16 columns with correct types/nullability/
+defaults, RLS enabled, all four `private.is_app_user()` policies, the
+`set_wt_updated_at` trigger, four indexes plus the pkey, all three CHECKs, and
+the FK reading `confdeltype=n` (SET NULL).
+
+Exercised in the dev server with the auth wall bypassed and the data layer
+stubbed so the **real `wtLoad()` / `wtRender()` / `wtPatch()` paths** ran
+against six seeded tasks spanning every section (CLAUDE.md §2/§12 — no real
+Supabase session in this sandbox):
+
+- **Sectioning and day maths**: overdue / today / this week / later / no due
+  date all landed correctly, with "5 days late", "today", "in 4 days", "in 25
+  days" computed right; toggle badge read `(5)` with the overdue dot showing.
+- **Quick add**: a typed name matching the directory resolved to its
+  `client_id` **and PAN**; a name matching nothing kept the text with a null
+  id; a blank description was refused; client/staff stayed filled after the
+  add while nature/due/priority cleared. `AuditLog` fired with a **numeric**
+  `recordRef` and `module: 'workDone'`.
+- **Focus retention**: typing character-by-character into remarks kept focus
+  and the caret, tracked the model, and wrote **nothing** until blur — then
+  committed exactly `{remarks, updated_by}`.
+- **The `completed_at` invariant**: ticking stamped it and moved the row into
+  the Completed bucket; unticking cleared it back to null.
+- **Re-sectioning**: changing a due date to yesterday moved that row into
+  Overdue; staff filter, fuzzy search and the stat cards all narrowed
+  correctly; delete removed the row and logged it.
+- **Exports**: real binaries generated — 2.9 KB `.pdf`, 7.5 KB `.xlsx` — over
+  a fixture deliberately containing an em-dash (`Walk-in — Sita Sharma`),
+  since PDF-Lib's standard fonts are WinAnsi-only and `pdfSafe()` is what
+  catches it. All three views' models verified through `wdActiveView()`,
+  including the Pending List export fix (`Purchase Register (In Progress,
+  Aadarsha)` where it previously emitted `undefined`).
+- **The view registry**: each of the three views showed exactly one active
+  button and one visible pane; state survived a full tab round-trip
+  (`tabs.js` re-runs init on every open).
+- **Layout measured, not eyeballed**, at both 1512px and 1280px: no element
+  overflows its row, no select clips its longest option, the body never
+  scrolls horizontally, and the overdue tint/left-border resolve to real
+  colours. **Two issues were found and fixed during this pass**: the narrow
+  breakpoint clipped `🟡 In Progress` at 112px and `🔵 Normal` at 104px, and
+  the quick-add bar stayed seven-across below 1280px, squeezing Staff to 70px.
+- **Regression sweep**: all 20 main panels and all 5 registrar sub-panels
+  switch and render with no console errors.
+
+**Not verified:** a live authenticated insert/update/delete against Supabase
+end to end; the delete `confirm()` was stubbed to true rather than clicked;
+and the **visual appearance** — the browser pane could not composite a
+screenshot in this session, so everything above is structural and measured.
+Worth a real save pass and an eyeball check after deploying.
