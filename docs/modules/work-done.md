@@ -435,6 +435,14 @@ what you're looking at.
 - The To-Do List's export is **grouped exactly as the screen groups it**, with
   the section named on each row in a leading *When* column — a printed copy
   sorted differently from the screen is one nobody trusts.
+- **The Pending List's export was broken from 2026-08-15 to 2026-08-17.**
+  `wdBuildPendingModel()` still read `p.workLabel` / `p.state`, the
+  pre-2026-08-15 per-work-type row shape, so both cells exported `undefined`
+  while the on-screen table read correctly — the grain change to a `jobs[]`
+  array never reached the export, and nothing errored. Now one *Work Pending*
+  cell built by `wdPendingJobText()`, the flat equivalent of the badges on
+  screen. Verified against seeded intakes: `Purchase Register (In Progress,
+  Aadarsha)` where it previously emitted `undefined`.
 
 ## Resolved: the "Complete never fires" limitation
 

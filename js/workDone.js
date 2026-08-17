@@ -1084,6 +1084,19 @@ function wdBuildModel(rows, titleSuffix) {
   };
 }
 
+// One text cell for the row's whole jobs[] array. The export used to carry a
+// 'Work Type' and a 'State' column reading p.workLabel / p.state, which were
+// the pre-2026-08-15 per-work-type row shape — since the grain became one row
+// per intake carrying jobs[], both cells had been exporting `undefined` while
+// the on-screen table read correctly. The screen renders the same array as
+// badges; this is the flat equivalent.
+function wdPendingJobText(p) {
+  return (p.jobs || []).map(j => {
+    const who = j.staff ? `, ${j.staff}` : '';
+    return `${j.label} (${wdStateMeta(j.state).label}${who})`;
+  }).join('; ') || '—';
+}
+
 function wdBuildPendingModel(rows) {
   const subtitles = ['Files received in File In Out whose work is not yet done', `Generated ${wdToday()}`];
   if (wdUnknownFyCount) {
@@ -1096,13 +1109,13 @@ function wdBuildPendingModel(rows) {
     columns: [
       { label: 'Waiting (days)', align: 'r', num: true, w: 0.9 },
       { label: 'Client', w: 2.0 }, { label: 'PAN', w: 1.0 }, { label: 'FY', w: 0.75 },
-      { label: 'Work Type', w: 1.5 }, { label: 'State', w: 1.0 }, { label: 'Staff', w: 1.0 },
+      { label: 'Work Pending', w: 2.5 }, { label: 'Staff', w: 1.0 },
       { label: 'Register No', w: 1.2 }, { label: 'Received', w: 1.0 }, { label: 'File Status', w: 1.0 },
     ],
     rows: rows.map(p => ({ cells: [
       p.days == null ? '—' : p.days,
       p.clientName, p.clientPan, p.fiscalYear,
-      p.workLabel, wdStateMeta(p.state).label, p.staff || '—',
+      wdPendingJobText(p), p.staff || '—',
       p.registerNo, p.received || '—', p.fmStatus,
     ] })),
     _filename: 'Work Done - Pending List',
