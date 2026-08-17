@@ -184,7 +184,18 @@ function depSetMethod(m) {
     ? 'Depreciation as per Accounting Standard (SLM) — per-asset, day-accurate straight-line with the 3.1 PPE note and year-over-year carry-forward.'
     : "Depreciation as per Income Tax — pool depreciation (reducing balance). Enter each pool's opening value, additions and disposals; totals calculate automatically.";
   depStatus('', 'info');
-  depReloadForContext();
+  const reload = depReloadForContext();
+  // Coming back to the Income-Tax method, pull the SLM addition lines across
+  // (see depSyncAdditionsFromSlm). It has to wait on the reload: that rebuilds
+  // this table from the saved sheet and would otherwise wipe the sync. Quiet
+  // unless something actually moved — but then it must speak, because the user
+  // has to check the pool on each new line.
+  if (m === 'incometax' && reload && typeof reload.then === 'function') {
+    reload.then(() => {
+      const r = depSyncAdditionsFromSlm(false);
+      if (r && (r.created || r.removed)) depStatus(depSlmSyncMessage(r), 'success');
+    });
+  }
 }
 
 function depBuildGrid() {
@@ -375,6 +386,73 @@ function depAddLine() {
   tbody.appendChild(tr);
 }
 
+// ── SLM addition lines → this helper ──────────────────────────────────────
+// The same purchases are entered once, on the SLM side, where an addition IS
+// an asset line. Re-typing each one here to bucket it into a pool is the same
+// list twice, and the second copy is the one that quietly ends up a rupee off.
+// So date / particular / amount are copied across and only the POOL is left to
+// the user (user decision, 2026-08-17) — the two vocabularies don't line up
+// one-for-one and which pool an asset belongs in is a tax judgement, not a
+// lookup. The pool is nonetheless PRE-SELECTED from DEP_SLM_CLASSES.itPool,
+// since every pool's own name states the classes it covers; it stays a
+// suggestion the user can change, and a re-sync never touches it again.
+//
+// A sync, not an append — the same idiom as depSlmApplyAdditions(). Each row
+// this creates carries its SLM line's `aid` in data-slm-aid, so re-running
+// updates that row instead of duplicating it. Rows typed by hand here have no
+// aid and are never touched. A row whose SLM line has GONE is removed (unlike
+// the SLM side, where a helper line's asset survives): the only work invested
+// in one of these rows is the pool choice, whereas a stale line silently
+// inflates the year's additions in a tax computation. The count is reported.
+function depSyncAdditionsFromSlm(manual) {
+  const tbody = document.getElementById('dep-add-tbody');
+  if (!tbody) return null;
+  const lines = (typeof depSlmCollectAdditions === 'function' ? depSlmCollectAdditions() : [])
+    .filter(l => l.aid);
+
+  const byAid = {};
+  lines.forEach(l => { byAid[l.aid] = l; });
+
+  let created = 0, updated = 0, removed = 0;
+  Array.from(tbody.children).forEach(tr => {
+    const aid = depParse(tr.dataset.slmAid);
+    if (aid && !byAid[aid]) { tr.remove(); removed++; }
+  });
+
+  lines.forEach(l => {
+    let tr = tbody.querySelector(`tr[data-slm-aid="${l.aid}"]`);
+    const fresh = !tr;
+    if (fresh) { depAddLine(); tr = tbody.lastElementChild; tr.dataset.slmAid = l.aid; }
+    tr.querySelector('.dep-add-date').value = l.date || '';
+    tr.querySelector('.dep-add-particular').value = l.particular || '';
+    tr.querySelector('.dep-add-amount').value = l.amount || '';
+    if (fresh) {
+      const cls = (window.DEP_SLM_CLASSES || []).find(c => c.key === l.classKey);
+      const sel = tr.querySelector('.dep-add-pool');
+      if (cls && cls.itPool && Array.from(sel.options).some(o => o.value === cls.itPool)) sel.value = cls.itPool;
+      created++;
+    } else updated++;
+  });
+
+  const res = { created, updated, removed, total: lines.length };
+  if (manual) depStatus(depSlmSyncMessage(res), res.total ? 'success' : 'info');
+  return res;
+}
+
+function depSlmSyncMessage(res) {
+  if (!res || !res.total) {
+    return res && res.removed
+      ? `🗑️ ${res.removed} line(s) removed — their SLM addition no longer exists. Nothing left to pull across.`
+      : '⚠️ No addition lines on the SLM side to pull across. Enter them under <strong>As per Accounting Standard (SLM) → Addition details</strong> first.';
+  }
+  const parts = [];
+  if (res.created) parts.push(`${res.created} line(s) added`);
+  if (res.updated) parts.push(`${res.updated} refreshed`);
+  if (res.removed) parts.push(`${res.removed} removed`);
+  return `✅ ${parts.join(', ')} from the SLM addition details — date, particular and amount filled in. ` +
+    `<strong>Check the Pool on each line</strong> (pre-selected from the asset class) and then Apply to schedule.`;
+}
+
 function depApplyAdditions() {
   const buckets = {};
   let skipped = 0;
@@ -495,6 +573,10 @@ function depCollectAdditions() {
       key: tr.querySelector('.dep-add-pool').value,
       particular: tr.querySelector('.dep-add-particular').value.trim(),
       amount: amt,
+      // Which SLM addition line this row was pulled from, if any. Persisted so
+      // that reloading a saved sheet keeps the link — without it the next sync
+      // would see no linked rows and duplicate every one of them.
+      slmAid: depParse(tr.dataset.slmAid) || null,
     });
   });
   return lines;
@@ -543,6 +625,7 @@ function depApplyAdditionLines(lines) {
     tr.querySelector('.dep-add-pool').value = l.key || '';
     tr.querySelector('.dep-add-particular').value = l.particular || '';
     tr.querySelector('.dep-add-amount').value = l.amount || '';
+    if (l.slmAid) tr.dataset.slmAid = l.slmAid;   // keeps the SLM link across a reload
   });
 }
 
@@ -817,8 +900,6 @@ const DEP_PRINT_CSS = `
   .dp-block h4{ font-size:11pt; font-weight:700; color:#0b1f3d; margin-bottom:6px; }
   .dp-page{ page-break-after:always; }
   .dp-page:last-child{ page-break-after:auto; }
-  .dp-sign{ display:flex; justify-content:space-between; margin-top:34px; font-size:10pt; }
-  .dp-sign div{ border-top:1px dotted #000; padding-top:4px; width:190px; text-align:center; }
   @page{ size:A4 landscape; margin:10mm; }
   @media print{
     body{ padding:0; }
@@ -838,9 +919,10 @@ function depPrintHead(title) {
   </div>`;
 }
 
-function depSignBlock() {
-  return `<div class="dp-sign"><div>Prepared By</div><div>Checked By</div><div>For the Client</div></div>`;
-}
+// There is deliberately no Prepared By / Checked By / For the Client block on
+// either method's printout (removed 2026-08-17, user decision) — nobody at the
+// firm signs a depreciation schedule, so the rules were three empty lines on
+// every page.
 
 // Opens the built document in a blob tab and prints it. Shared by both
 // methods so the pop-up handling and the auto-print timing live in one place.
@@ -904,7 +986,6 @@ function depPrint() {
         <tbody>${body}${totals}</tbody>
       </table>
       ${depPrintAdditionsHtml()}
-      ${depSignBlock()}
     </div>`;
 
   depOpenPrintDoc(title, html);

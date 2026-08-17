@@ -360,6 +360,15 @@ function depSlmApplyAdditions() {
     : '⚠️ No addition lines with both a B.S. date and an amount to apply.';
   if (noDate) msg += ` (${noDate} line(s) skipped — missing or invalid B.S. date.)`;
   if (offYear) msg += ` ⚠️ ${offYear} line(s) fall outside F.Y. ${escHtml(fyLbl)} — added, but they won't count as this year's addition until the date or the fiscal year is corrected.`;
+
+  // The same purchases belong in the Income-Tax addition helper, which is
+  // hidden right now — so the copy is made silently here and reported in a
+  // sentence, rather than waiting for the user to remember to go and press
+  // something after switching method.
+  const sync = typeof depSyncAdditionsFromSlm === 'function' ? depSyncAdditionsFromSlm(false) : null;
+  if (sync && (sync.created || sync.updated || sync.removed)) {
+    msg += ` 📋 ${sync.total} line(s) mirrored into the Income-Tax addition details — only the Pool is left to choose there.`;
+  }
   depStatus(msg, done.length ? 'success' : 'info');
 }
 
@@ -731,7 +740,6 @@ function depSlmPrint() {
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
-      ${depSignBlock()}
     </div>`;
 
   // ── 3.1 PPE note ──
@@ -777,11 +785,14 @@ function depSlmPrint() {
             ${row(`As at ${escHtml(closeLbl)}`, (b, d) => d.carryClose, true)}
           </tbody>
         </table>
-        ${depSignBlock()}
       </div>`;
   }
 
-  depOpenPrintDoc(title + (fyLbl ? ' — F.Y. ' + fyLbl : ''), gridPage + notePage);
+  // The 3.1 PPE note leads (2026-08-17, user decision) — it is the page that
+  // goes into the financial statements, and the per-asset schedule is the
+  // working behind it. `.dp-page` breaks between them, so the note always gets
+  // a page to itself.
+  depOpenPrintDoc(title + (fyLbl ? ' — F.Y. ' + fyLbl : ''), notePage + gridPage);
 }
 
 async function depSlmGenerateExcel() {
@@ -802,8 +813,15 @@ async function depSlmGenerateExcel() {
   const HEADFILL = 'FFF3F5FB';
   const TOTFILL = 'FFEEF1FA';
 
-  // ───────────── Sheet 1: Dep as Books ─────────────
+  // Both sheets are created here, before either is populated, because
+  // ExcelJS orders tabs by the order addWorksheet() was called and the note
+  // has to open first (2026-08-17, user decision) — it is the page that goes
+  // into the financial statements; the per-asset schedule is the working
+  // behind it. Populating order below is unchanged.
+  const ps = wb.addWorksheet('3.1 PPE');
   const ws = wb.addWorksheet('Dep as Books');
+
+  // ───────────── Sheet 2: Dep as Books ─────────────
   ws.columns = [
     { width: 20 }, { width: 26 }, { width: 12 }, { width: 8 }, { width: 8 }, { width: 12 },
     { width: 15 }, { width: 15 }, { width: 13 }, { width: 12 }, { width: 15 },
@@ -940,8 +958,7 @@ async function depSlmGenerateExcel() {
     });
   }
 
-  // ───────────── Sheet 2: 3.1 PPE note ─────────────
-  const ps = wb.addWorksheet('3.1 PPE');
+  // ───────────── Sheet 1: 3.1 PPE note (created above, first tab) ─────────────
   const by = depSlmPpeAggregate(fyStart);
   const cols = depSlmClasses().filter(c => { const b = by[c.key]; return b.costOpen || b.add || b.dispCost || b.depOpen || b.charge || b.closeWDV; });
   const nCols = cols.length;
@@ -1020,7 +1037,7 @@ async function depSlmGenerateExcel() {
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fname = ('Depreciation as per Books (SLM) ' + (company ? company + ' ' : '') + (fyLbl || '')).trim() + '.xlsx';
     DocumentEngine.downloadBlob(blob, fname, { module: 'depreciation', clientName: company || null });
-    depStatus('✅ Excel generated (Dep as Books + 3.1 PPE) and downloaded.', 'success');
+    depStatus('✅ Excel generated (3.1 PPE + Dep as Books) and downloaded.', 'success');
   } catch (err) {
     depStatus('❌ Could not generate the file: ' + escHtml(err.message), 'error');
   }

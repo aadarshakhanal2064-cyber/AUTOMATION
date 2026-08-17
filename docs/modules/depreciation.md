@@ -53,6 +53,44 @@ An **Address** field (`dep-address`) sits beside Client and PAN, auto-filled fro
 
 The `3.1 PPE` sheet previously opened straight on its own title with **no company on it anywhere**, which made a note that had been detached and filed with the financial statements impossible to attribute; `Dep as Books` and the Income-Tax sheet carried the name but no address. Shifting the grids down one row re-based every formula automatically (they are written from the row counters, not hardcoded) — verified by reading a generated workbook back through ExcelJS.
 
+### Output order and the signature block (2026-08-17, user decisions)
+
+- **The 3.1 PPE note comes first, in both outputs** — Excel tab 1 and printed page 1, with the
+  per-asset schedule behind it. The note is the page that goes into the financial statements;
+  the schedule is the working paper supporting it. In `depSlmGenerateExcel()` **both worksheets
+  are created up front**, before either is populated, because ExcelJS orders tabs by
+  `addWorksheet()` call order — the population code below is unchanged and still reads top to
+  bottom as schedule-then-note. `depSlmPrint()` simply concatenates `notePage + gridPage`;
+  `.dp-page` already breaks between them, so the note keeps a page to itself.
+- **There is no Prepared By / Checked By / For the Client block on either method's printout.**
+  Nobody at the firm signs a depreciation schedule, so the rules printed as three empty lines on
+  every page. `depSignBlock()` and the `.dp-sign` CSS are gone from `DEP_PRINT_CSS`.
+
+### SLM addition lines feed the Income-Tax addition helper (2026-08-17)
+
+`depSyncAdditionsFromSlm()` (in `depreciation.js`, which owns `dep-add-tbody`) copies each SLM
+addition line's **date, particular and amount** across; only the **Pool** is left to the user.
+The same purchases were being typed twice, and the second copy is the one that ends up a rupee off.
+
+- **The pool is pre-selected from `DEP_SLM_CLASSES[].itPool`** but never re-touched afterwards.
+  It is a suggestion, not a derivation — which pool an asset belongs in is a tax judgement —
+  but it is a well-founded one: each Income-Tax pool's own name states the classes it covers
+  (Pool B is *"Furniture, Fixture & Office Equipment"*, Pool D *"Plant & Machinery & Other
+  Assets"*), which is why both `office` and `furniture` map to B and `machine` to D.
+- **A sync, not an append**, the same idiom as `depSlmApplyAdditions()`: each row carries its
+  SLM line's `aid` in `data-slm-aid`, so re-running updates that row rather than duplicating it,
+  and a **pool the user has changed survives every re-sync**.
+- **Rows typed by hand here have no aid and are never touched.** A row whose SLM line has been
+  **deleted is removed** — deliberately unlike the SLM side, where a helper line's asset
+  survives: the only work invested in one of these rows is the pool choice, whereas a stale line
+  silently inflates the year's additions in a tax computation. The count is always reported.
+- **`slmAid` is persisted in `addition_details`.** Without it a saved sheet reloads with no
+  links, and the next sync duplicates every line. No migration — the column is jsonb.
+- Runs automatically on **Apply to schedule** on the SLM side (reported in that status line,
+  since the Income-Tax table is hidden at that moment) and on **switching back to the Income-Tax
+  method**, where it waits on `depReloadForContext()` — that rebuilds the table from the saved
+  sheet and would otherwise wipe the sync. The `⟳ Pull from SLM additions` button re-runs it.
+
 ### Save as PDF / Print (2026-08-02)
 
 `depPrint()` (delegating to `depSlmPrint()` when SLM is active) builds a self-contained HTML document and opens it in a blob tab that auto-prints — the same mechanism as the Audit Report and Notes to Accounts (§8), so "Save as PDF" is the browser's own PDF writer and needs no extra library. **A4 landscape**: portrait squeezes the twelve money columns into an unreadable ribbon. SLM prints two pages, the asset schedule then the 3.1 PPE note, each carrying the full identity block.

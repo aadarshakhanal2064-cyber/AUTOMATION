@@ -596,15 +596,22 @@ window.NTA_PPE_DEFAULTS = [
 // mirroring NTA_PPE_DEFAULTS where a class matches; Land is never depreciated.
 // `kw` drives Excel-import row→class matching (same tolerant approach as the
 // Income-Tax pools). Order here is the display + PPE-note column order.
+// `itPool` is the DEP_POOL_DEFS key this class lands in when an SLM addition
+// line is copied across to the Income-Tax addition helper (depreciation.js
+// `depSyncAdditionsFromSlm`). It is a SUGGESTION the user can change, but not a
+// guess: each Income-Tax pool's own name states the classes it covers — Pool B
+// is "Furniture, Fixture & Office Equipment" and Pool D is "Plant & Machinery &
+// Other Assets", which is why both `office` and `furniture` map to B, and
+// `machine` to D.
 window.DEP_SLM_CLASSES = [
-  { key: 'land',      name: 'Land',                   depreciable: false, life: 0,  kw: ['land'] },
-  { key: 'building',  name: 'Building & Structures',  depreciable: true,  life: 49, kw: ['building', 'structure'] },
-  { key: 'machine',   name: 'Machine & Other Assets', depreciable: true,  life: 10, kw: ['machine', 'plant', 'other asset'] },
-  { key: 'vehicle',   name: 'Vehicles',               depreciable: true,  life: 14, kw: ['vehicle'] },
-  { key: 'office',    name: 'Office Equipment',       depreciable: true,  life: 4,  kw: ['office equip', 'equipment'] },
-  { key: 'furniture', name: 'Furniture & Fixtures',   depreciable: true,  life: 4,  kw: ['furniture', 'fixture'] },
-  { key: 'software',  name: 'Software',               depreciable: true,  life: 5,  kw: ['software'] },
-  { key: 'leasehold', name: 'Leasehold Assets',       depreciable: true,  life: 5,  kw: ['leasehold', 'leashold'] },
+  { key: 'land',      name: 'Land',                   depreciable: false, life: 0,  itPool: 'land',      kw: ['land'] },
+  { key: 'building',  name: 'Building & Structures',  depreciable: true,  life: 49, itPool: 'building',  kw: ['building', 'structure'] },
+  { key: 'machine',   name: 'Machine & Other Assets', depreciable: true,  life: 10, itPool: 'plant',     kw: ['machine', 'plant', 'other asset'] },
+  { key: 'vehicle',   name: 'Vehicles',               depreciable: true,  life: 14, itPool: 'vehicle',   kw: ['vehicle'] },
+  { key: 'office',    name: 'Office Equipment',       depreciable: true,  life: 4,  itPool: 'furniture', kw: ['office equip', 'equipment'] },
+  { key: 'furniture', name: 'Furniture & Fixtures',   depreciable: true,  life: 4,  itPool: 'furniture', kw: ['furniture', 'fixture'] },
+  { key: 'software',  name: 'Software',               depreciable: true,  life: 5,  itPool: 'software',  kw: ['software'] },
+  { key: 'leasehold', name: 'Leasehold Assets',       depreciable: true,  life: 5,  itPool: 'leasehold', kw: ['leasehold', 'leashold'] },
 ];
 
 window.CLIENT_ENTITY_TO_REP_PROFILE = {

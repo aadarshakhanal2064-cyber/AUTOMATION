@@ -1358,7 +1358,7 @@ function cropLoginLogoIcon(img) {
         <div class="card-header" style="justify-content:space-between; display:flex; align-items:center;">
           <div>
             <div class="card-title" style="font-size:14px;">Addition details <span style="font-weight:500; color:var(--text-muted);">(optional)</span></div>
-            <div class="card-desc">Itemize each purchase with its B.S. date; "Apply" buckets them into the three Addition columns automatically (Shrawan–Paush at full value, Magh–Chaitra at ⅔, Baishakh–Ashadh at ⅓).</div>
+            <div class="card-desc">Itemize each purchase with its B.S. date; "Apply" buckets them into the three Addition columns automatically (Shrawan–Paush at full value, Magh–Chaitra at ⅔, Baishakh–Ashadh at ⅓). Purchases entered under the SLM method are pulled in here automatically — date, particular and amount filled, <strong>the Pool left for you to check</strong>.</div>
           </div>
         </div>
         <div class="table-wrap" style="padding:0; box-shadow:none; border:1px solid var(--border); margin-top:12px;">
@@ -1371,6 +1371,7 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="action-row" style="margin-top:16px;">
           <button class="btn btn-outline btn-sm" onclick="depAddLine()">＋ Add line</button>
+          <button class="btn btn-outline btn-sm" onclick="depSyncAdditionsFromSlm(true)" title="Re-read the addition details entered under As per Accounting Standard (SLM) — fills date, particular and amount; your Pool choices are kept">⟳ Pull from SLM additions</button>
           <button class="btn btn-primary btn-sm" onclick="depApplyAdditions()">Apply to schedule</button>
           <button class="btn btn-danger btn-sm" onclick="depReset()" style="margin-left:auto;">Reset all</button>
         </div>
@@ -3969,7 +3970,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608170900"></script>
+<script src="js/config.js?v=202608171400"></script>
 <script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3993,8 +3994,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/serviceMemo.js?v=202608152000"></script>
 <script src="js/report.js?v=202608101800"></script>
 <script src="js/notesToAccounts.js?v=202608171000"></script>
-<script src="js/depreciation.js?v=202608151800"></script>
-<script src="js/depreciationSlm.js?v=202608171000"></script>
+<script src="js/depreciation.js?v=202608171400"></script>
+<script src="js/depreciationSlm.js?v=202608171400"></script>
 <script src="js/bmAgmMinutes.js?v=202608151800"></script>
 <script src="js/auditorChange.js?v=202608151800"></script>
 <script src="js/companyProfile.js?v=202608101800"></script>
