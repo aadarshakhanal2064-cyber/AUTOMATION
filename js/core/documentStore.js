@@ -92,7 +92,13 @@ window.DocumentStore = (function () {
     ctx = options;
     query = '';
     const searchEl = el('ds-search');
-    if (searchEl) searchEl.value = '';
+    if (searchEl) {
+      searchEl.value = '';
+      // Search matches the whole rendered row, not just the client name, so a
+      // caller whose rows carry more than that can say so. Default keeps the
+      // wording every existing caller already had.
+      searchEl.placeholder = options.searchPlaceholder || 'Search by client name…';
+    }
     el('ds-drawer-title').textContent = options.label || 'Saved documents';
     el('ds-drawer').classList.add('open');
     await refresh();
@@ -145,6 +151,15 @@ window.DocumentStore = (function () {
       const d = describe(r) || {};
       return { _row: r, _text: `${d.title || ''} ${d.meta || ''}` };
     });
+    // Plain substring FIRST, Fuse only as the fallback. Fuse is typo-tolerant,
+    // which is right for a half-remembered company name and actively wrong for
+    // a fiscal year: at threshold 0.3 with ignoreLocation, "2078" scores as a
+    // match against "2082-83" and a four-digit year returns the whole list. An
+    // exact substring is never a worse match than a fuzzy one, so when any row
+    // literally contains what was typed, those rows ARE the answer.
+    const needle = q.toLowerCase();
+    const exact = indexed.filter(x => x._text.toLowerCase().includes(needle));
+    if (exact.length) return exact.map(x => x._row);
     return SearchEngine.buildIndex(indexed, ['_text']).search(q).map(x => x.item._row);
   }
 

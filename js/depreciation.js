@@ -171,7 +171,7 @@ let depSlmBuilt = false;
 // selectors, Save/Delete buttons and the carry-forward banner are SHARED; the
 // header Import/Generate buttons and depReloadForContext/depSave/depDelete
 // branch on depMethod and delegate to the depSlm* engine when method === 'slm'.
-function depSetMethod(m) {
+function depSetMethod(m, skipReload) {
   if (m !== 'incometax' && m !== 'slm') return;
   depMethod = m;
   document.getElementById('dep-method-incometax').classList.toggle('active', m === 'incometax');
@@ -184,6 +184,7 @@ function depSetMethod(m) {
     ? 'Depreciation as per Accounting Standard (SLM) — per-asset, day-accurate straight-line with the 3.1 PPE note and year-over-year carry-forward.'
     : "Depreciation as per Income Tax — pool depreciation (reducing balance). Enter each pool's opening value, additions and disposals; totals calculate automatically.";
   depStatus('', 'info');
+  if (skipReload) return;
   const reload = depReloadForContext();
   // Coming back to the Income-Tax method, pull the SLM addition lines across
   // (see depSyncAdditionsFromSlm). It has to wait on the reload: that rebuilds
@@ -247,7 +248,10 @@ function depRecalc() {
 }
 
 // ── Scheme toggle (segmented control) ──
-function depSetScheme(scheme) {
+// `skipReload` is for depLoadSaved(), which sets client, year, scheme and
+// method together and wants ONE reload at the end — not one per setter racing
+// the others onto the same grid.
+function depSetScheme(scheme, skipReload) {
   if (scheme !== 'normal' && scheme !== 'special') return;
   depScheme = scheme;
   document.getElementById('dep-scheme-normal').classList.toggle('active', scheme === 'normal');
@@ -262,7 +266,7 @@ function depSetScheme(scheme) {
   depBuildGrid();
   depClearIncomeTaxData();
   depCarryBanner('');
-  depReloadForContext();
+  if (!skipReload) depReloadForContext();
 }
 
 // Blanks the Income-Tax working only (pool inputs + addition lines). Split
@@ -359,6 +363,113 @@ const depScope = WorkflowEngine.createClientScope({
 });
 
 function depSelectClient(c) { depScope.select(c); }
+
+// ════════════════════════════════════════════
+//  SAVED SCHEDULES — every saved sheet in one searchable list
+//  The client picker answers "show me this client's schedule for this year";
+//  it cannot answer "where is that schedule I did last month", which needs the
+//  client and the year known up front. This is the Saved-notes drawer of the
+//  document builders, over this module's own table — the shared DocumentStore
+//  picker takes `{fetchRows, describe, onChoose, onDelete}` for exactly this
+//  (the Projection Report idiom, §4), so the drawer, the empty state, the
+//  delete confirm and the SEARCH BOX all come with it rather than being built
+//  a second time here.
+// ════════════════════════════════════════════
+const DEP_SAVED_COLS = 'id, client_id, company_name, pan, scheme, fiscal_year, created_by, created_at, updated_at';
+
+function depSchemeLabel(scheme) {
+  if (scheme === 'slm') return 'Accounting Standard (SLM)';
+  if (scheme === 'special') return 'Income Tax — Special Industries';
+  return 'Income Tax';
+}
+
+function depOpenSavedDrawer() {
+  DocumentStore.openPicker({
+    label: 'Saved depreciation schedules',
+    searchPlaceholder: 'Search by client, fiscal year, PAN or method…',
+    empty: 'Nothing saved yet. Pick a client, fill in a schedule and use <strong>💾 Save to database</strong> — it will be listed here.',
+    fetchRows: async () => {
+      const { data, error } = await window.sb.from('depreciation_schedules')
+        .select(DEP_SAVED_COLS).order('updated_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      return data || [];
+    },
+    // Search matches whatever a row RENDERS as, so putting the scheme, the
+    // year and the PAN in here is also what makes them searchable.
+    describe: r => {
+      const when = r.updated_at || r.created_at;
+      const d = when ? new Date(when) : null;
+      const stamp = d && !isNaN(d)
+        ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      return {
+        // Scheme belongs in the TITLE, not only the meta line: one client and
+        // one fiscal year can carry three separate sheets (Income Tax, Special
+        // Industries and SLM), and three list rows reading identically are
+        // unpickable.
+        title: `${r.company_name || '—'} — F.Y. ${r.fiscal_year || '—'} · ${depSchemeLabel(r.scheme)}`,
+        meta: (r.pan ? 'PAN ' + r.pan : 'No PAN on the sheet')
+            + (stamp ? ` · saved ${stamp}` : '')
+            + ` · ${r.created_by || 'not recorded'}`,
+      };
+    },
+    onChoose: id => depLoadSaved(id),
+    onDelete: async id => {
+      const { error } = await window.sb.from('depreciation_schedules').delete().eq('id', id);
+      if (error) throw error;
+    },
+  });
+}
+
+// The F.Y. dropdown spans current−3 … current+6 only, so an older saved sheet
+// has no option to select and `sel.value = fy` would silently leave the year
+// alone — quietly loading a DIFFERENT sheet than the one clicked. Add the year
+// rather than refuse it, and keep the list in order.
+function depSetFyOption(fy) {
+  const sel = document.getElementById('dep-fy');
+  if (!sel || !fy) return;
+  if (!Array.from(sel.options).some(o => o.value === fy)) {
+    const opt = document.createElement('option');
+    opt.value = fy; opt.textContent = fy;
+    sel.appendChild(opt);
+    Array.from(sel.options)
+      .sort((a, b) => a.value.localeCompare(b.value))
+      .forEach(o => sel.appendChild(o));   // appendChild MOVES an existing node
+  }
+  sel.value = fy;
+}
+
+// Put a saved sheet back on screen. Deliberately does not re-implement the
+// load: it sets the three things that IDENTIFY a sheet — client, fiscal year,
+// method/scheme — and lets depReloadForContext() fetch it exactly as picking
+// the client by hand would, so there is one loader, not two that can drift.
+// Going through depScope.select() LAST is what makes it safe: the scope clears
+// both workings before loading, so a sheet opened for one client can never sit
+// beside the previous client's assets (§9). Everything before it passes
+// skipReload, so only that one select triggers a fetch.
+async function depLoadSaved(id) {
+  try {
+    depStatus('Opening saved schedule…', 'searching');
+    const { data: row, error } = await window.sb.from('depreciation_schedules')
+      .select('id, client_id, company_name, pan, scheme, fiscal_year').eq('id', id).single();
+    if (error) throw error;
+
+    depSetFyOption(row.fiscal_year);
+    if (row.scheme === 'slm') depSetMethod('slm', true);
+    else { depSetScheme(row.scheme, true); depSetMethod('incometax', true); }
+
+    // The directory row carries the address, which the saved sheet doesn't;
+    // fall back to what was saved so a since-deleted client still opens.
+    const c = (window.clientsList || []).find(x => x.id === row.client_id)
+      || { id: row.client_id, name: row.company_name || '', pan: row.pan || '', address: '' };
+    depScope.select(c);
+
+    depStatus(`📂 Opened <strong>${escHtml(row.company_name || 'schedule')}</strong> — F.Y. ${escHtml(row.fiscal_year)} · ${escHtml(depSchemeLabel(row.scheme))}.`, 'success');
+  } catch (e) {
+    console.error(e);
+    depStatus('❌ Could not open that schedule: ' + escHtml(e.message), 'error');
+  }
+}
 
 // Fiscal year changed — same client, different sheet.
 function depOnFyChange() { depScope.refresh(); }

@@ -53,6 +53,33 @@ An **Address** field (`dep-address`) sits beside Client and PAN, auto-filled fro
 
 The `3.1 PPE` sheet previously opened straight on its own title with **no company on it anywhere**, which made a note that had been detached and filed with the financial statements impossible to attribute; `Dep as Books` and the Income-Tax sheet carried the name but no address. Shifting the grids down one row re-based every formula automatically (they are written from the row counters, not hardcoded) — verified by reading a generated workbook back through ExcelJS.
 
+### Saved schedules drawer (2026-08-17)
+
+`depOpenSavedDrawer()` lists **every** saved sheet — both methods, all three schemes — in the
+shared `DocumentStore` picker, with the search box that comes with it. The client picker answers
+*"show me this client's schedule for this year"*; it cannot answer *"where is that schedule I did
+last month"*, which is the question this drawer exists for. It uses the
+`{fetchRows, describe, onChoose, onDelete}` form over `depreciation_schedules` — the Projection
+Report idiom — so no second drawer, empty state or delete confirm was built.
+
+- **The scheme goes in the row TITLE, not just the meta line.** One client and one fiscal year
+  can carry three separate sheets (Income Tax, Special Industries, SLM); three list rows reading
+  identically are unpickable. Search matches whatever a row renders as, so putting the scheme,
+  year and PAN there is also what makes them searchable.
+- **`depLoadSaved()` re-implements no loading.** It sets the three things that *identify* a
+  sheet — client, fiscal year, method/scheme — and lets `depReloadForContext()` fetch it exactly
+  as picking the client by hand would, so there is one loader rather than two that can drift.
+  Every setter before the end is passed **`skipReload`** (added to `depSetMethod`/`depSetScheme`
+  for this) so four setters don't race four fetches onto the same grid.
+- **`depScope.select()` is called LAST, deliberately.** The scope clears *both* workings before
+  loading, so a sheet opened for one client can never sit beside the previous client's assets
+  (§9). Setting `depClientId` directly here would have leaked exactly that.
+- **`depSetFyOption()` adds a year the dropdown doesn't carry.** The F.Y. list spans
+  current−3 … current+6, so an older saved sheet had no option to select and `sel.value = fy`
+  would silently leave the year alone — quietly loading a *different* sheet than the one clicked.
+- A client since removed from the directory still opens: the saved row's own `company_name`/`pan`
+  are the fallback (only the address, which the sheet doesn't store, is lost).
+
 ### Output order and the signature block (2026-08-17, user decisions)
 
 - **The 3.1 PPE note comes first, in both outputs** — Excel tab 1 and printed page 1, with the
