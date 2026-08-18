@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (23 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (26 tables, §6).
 
 ---
 
@@ -180,7 +180,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**23 tables** (from-nothing build: `db/00_bootstrap.sql`): `app_users` · `clients` (346 rows) · `client_shareholders` · `send_logs` · `audit_log` · `service_memos` · `service_memo_fee_skips` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done` · `work_todos` (added 2026-08-17 — `db/2026-08-17_work_todos.sql`) · `autobooks_books` · `autobooks_entries` · `autobooks_parties` · `autobooks_adjustments` (added 2026-08-16 — `db/2026-08-16_autobooks_ledger.sql`). (`vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`; `invoices`, `invoice_items`, `invoice_payments` and `firm_bank_details` dropped 2026-08-18 with Billing — `db/2026-08-18_drop_billing.sql`.)
+**26 tables** (from-nothing build: `db/00_bootstrap.sql` — **now one migration behind, see below**): `organizations` · `org_members` · `org_firms` (all three added 2026-08-18 by Stage 2 Phase 1 — `db/2026-08-18_stage2_phase1_tenant_scaffold.sql`) · `app_users` · `clients` (346 rows) · `client_shareholders` · `send_logs` · `audit_log` · `service_memos` · `service_memo_fee_skips` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done` · `work_todos` (added 2026-08-17 — `db/2026-08-17_work_todos.sql`) · `autobooks_books` · `autobooks_entries` · `autobooks_parties` · `autobooks_adjustments` (added 2026-08-16 — `db/2026-08-16_autobooks_ledger.sql`). (`vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`; `invoices`, `invoice_items`, `invoice_payments` and `firm_bank_details` dropped 2026-08-18 with Billing — `db/2026-08-18_drop_billing.sql`.)
 
 ### Trigger-owned logic (never replicate in JS)
 
@@ -207,7 +207,18 @@ Show the SQL (annotated migration + rollback as files under `db/`) → apply via
 
 **`db/00_bootstrap.sql` is the from-nothing build** (2026-08-18) — the whole schema, no data. The dated migrations **cannot** rebuild the database on their own: nine tables and three functions predate the workflow and are never created by any of them, so `db/*.sql` in date order fails on the first migration. Use the bootstrap for a NEW Supabase project or disaster recovery; never against a live one. Regenerate it from the live schema rather than hand-patching, and keep it in step when a migration changes the schema. Detail: `docs/database.md` §6.5.
 
-### RLS — ENABLED on all 23 tables (since 2026-07-16)
+### Multi-tenant conversion — IN PROGRESS (Stage 2, started 2026-08-18)
+
+The app is being converted from one firm to ~10. Full scope: the published plan at `https://claude.ai/code/artifact/c372d471-8003-4d50-8bd7-92197ee2094c`.
+
+**Phase 1 is applied to production and staging.** It is deliberately **additive — nothing is enforced yet**: 22 tenant-owned tables carry a **nullable** `org_id` defaulting to `private.current_org_id()`, and the 82 pre-existing policies are **untouched**, so every query behaves exactly as it did before. Phase 2 backfills; Phase 3 sets NOT NULL and rewrites the policies.
+
+- **`private.current_org_id()`** is the one place tenancy is decided — reads `org_members` by JWT email, `STABLE` + `SECURITY DEFINER` (so a policy calling it can't recurse). Returns NULL for an unknown email, an inactive member **or a suspended organisation**, which is what will make suspension block at the database rather than in the UI.
+- **One organisation, several firms.** Shailesh & Associates and Dallakoti & Company are one practice, not two tenants — `clients` has no firm column, so the 346 clients are shared. `firm_key` therefore stays exactly as it is and is scoped by org, not replaced; `org_firms` holds all five letterheads.
+- **`db/00_bootstrap.sql` does not yet include any of this.** Regenerate it when Phase 3 lands, not per phase.
+- **A new table still needs RLS + policies in its own migration** (below) — and from Phase 3 on, an `org_id` too.
+
+### RLS — ENABLED on all 26 tables (since 2026-07-16; the 3 new ones from birth)
 
 **Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only; `send_logs`/`audit_log` are immutable. (A fourth admin-only rule, `firm_bank_details` writes, went with Billing on 2026-08-18.)
 
@@ -335,7 +346,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 ## 13. Security Practices
 
-- **RLS is the server-side enforcement layer** (§6) — enabled on all 23 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
+- **RLS is the server-side enforcement layer** (§6) — enabled on all 26 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.** Membership is not yet *ownership*: until Stage 2 Phase 3, any member still sees every row, which is correct for one firm and is the thing being fixed.
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
 - **CSP** (meta tag in `index.html`; `connect-src` is now Supabase alone — every Google origin went 2026-08-01, the two OCR loopback origins 2026-08-18) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
 - Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk).
