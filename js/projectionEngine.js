@@ -838,11 +838,20 @@ const ProjectionEngine = (() => {
       // repayment, else the projection can't service its debt. Solved through
       // the same GP target (a 5% cushion keeps it strictly greater).
       const debtService = principalAt(y);
-      const gpTarget = Math.round(Math.max(
-        prevGP * LIMITS.profitGrowth,
-        gpForTargetNp(prevNP * LIMITS.profitGrowth, deductions, asm.taxProfile),
-        debtService > 0 ? gpForTargetNp(debtService * LIMITS.profitGrowth, deductions, asm.taxProfile) : 0,
-      ));
+      // Profit Before Tax is per-year overridable. It is normally an OUTPUT of
+      // the bottom-up rules above, so an override inverts the relationship:
+      // Gross Profit becomes `pbt + deductions` and purchases re-plug COGS to
+      // reach it, exactly as they do for a solved target. The bank tests are
+      // deliberately NOT relaxed to accommodate a typed figure — a PBT that
+      // breaks the ≥5% growth rule or fails debt service still fails
+      // validation, which is the point of showing it.
+      const gpTarget = ov.pbt != null
+        ? Math.round(num(ov.pbt)) + deductions
+        : Math.round(Math.max(
+            prevGP * LIMITS.profitGrowth,
+            gpForTargetNp(prevNP * LIMITS.profitGrowth, deductions, asm.taxProfile),
+            debtService > 0 ? gpForTargetNp(debtService * LIMITS.profitGrowth, deductions, asm.taxProfile) : 0,
+          ));
       const pbt = gpTarget - deductions;
       const tax = Math.round(taxFor(pbt, asm.taxProfile));
       const pat = pbt - tax;

@@ -195,6 +195,19 @@ In the engine `shareCap` is read per year off `ov.shareCapital` and carried on
 move together — `prevCap` already read the prior year's balance, so the cash
 flow needed no change.
 
+**Profit Before Tax is a per-year override row** (2026-08-18) — normally an
+OUTPUT of the bottom-up rules, so an override INVERTS the relationship: Gross
+Profit becomes `pbt + deductions` and purchases re-plug COGS to reach it,
+exactly as they do for a solved target. It carries forward like the others,
+since the next year's target keys off `prev.pl.pat`.
+
+**The bank tests are deliberately NOT relaxed to accommodate a typed figure.**
+A PBT that breaks the ≥5%/yr growth rule or fails the rule-1 debt-service test
+still fails validation — verified: PBT forced to 5,00,000 on the reference file
+raises "Net profit after tax does not exceed the Term + Permanent-WC
+repayment". Surfacing that is the point of letting the figure be typed; a
+solver that quietly bent its rules around it would be worse than no override.
+
 **Sales is a per-year override row too** (2026-08-11) — the top line the whole
 projection is built from, and the firm regularly knows a year's turnover better
 than a flat growth rate does. **An override carries forward**: the next year
