@@ -19,7 +19,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 
 ## 1. Quick Orientation
 
-**Stack in one line:** static HTML/CSS/vanilla-JS single-page app (no framework, no build step, no bundler), talking directly to Supabase Postgres (publishable key) and Supabase Auth (email + password), hosted on GitHub Pages. **The browser calls no third-party API** — the one outbound integration, Projection Report email, goes through a Supabase Edge Function that holds the provider key server-side (§15), so no credential and no non-Supabase origin ever reaches this page.
+**Stack in one line:** static HTML/CSS/vanilla-JS single-page app (no framework, no build step, no bundler), talking directly to Supabase Postgres (publishable key) and Supabase Auth (email + password), hosted on GitHub Pages. **No third-party APIs at all** since Google auth was dropped 2026-08-01.
 
 **Hard rules that must never be broken:**
 
@@ -98,9 +98,6 @@ AUTOMATION AI APP/
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
 ├── tools/                   # Dependency-free Node verification harnesses
 │                            # (spbVerify.mjs — Autobooks; see §12)
-├── supabase/functions/      # Edge Functions — server-side only where a secret
-│                            # must not reach the browser (send-projection, §15).
-│                            # Source is committed; keys are Supabase secrets.
 ├── ocr_service/             # Optional local FastAPI + PaddleOCR service — §2
 │                            # (venv/ is gitignored; not deployed with the app)
 ├── docs/                    # On-demand documentation — §17
@@ -366,8 +363,7 @@ The established pattern — **investigate with real evidence → implement only 
 ## 15. Deliberate Decisions — Do NOT "Fix"
 
 - **Auth is Supabase email + password, and the app has no Google dependency at all** (2026-08-01, user decision) — see §7. Accounts are admin-created with signup disabled; there is deliberately no self-serve password reset. Don't reintroduce Google OAuth, Drive, Gmail, the `Integrations` engine or any Google origin in the CSP without an explicit ask.
-- **Billing does not email invoices** (2026-08-01) — it downloads the PDF for the staff member to attach. That was the last Gmail caller. Never re-add a send button *of that shape*; Gmail/OAuth stays gone. **This does not forbid outbound email as such** — see the Projection Report note below, which sends without any OAuth, any Google origin, or any key in the browser. Billing itself is unchanged and still has no send button.
-- **Projection Report emails via a Supabase Edge Function, not a browser integration** (2026-08-11, user decision) — `supabase/functions/send-projection` holds the mail provider key as a Supabase secret and is the *only* outbound channel in the app. The browser builds the PDF and posts it; it never holds a provider credential, so the OAuth stack the §15 Billing decision was protecting against never comes back. The function checks **membership of `app_users`, not merely a valid JWT** — authentication alone proves someone signed up with Supabase, not that they work here, and without that check the publishable key plus any self-serve account could spend the firm's mail quota. Sends are recorded in the long-dormant `send_logs` table, **one row written after the outcome is known** because that table is deliberately immutable (no UPDATE policy), so the old pending-then-update pattern would fail. No CSP change was needed — Edge Functions share the already-allowed `*.supabase.co` origin. **The transport is Gmail SMTP, with Brevo kept as a fallback** and chosen by which secrets exist, so switching is a secrets change rather than a redeploy: a hosted provider relaying a `@gmail.com` sender fails SPF/DKIM alignment (banks spam-file it) and Brevo additionally blocks unrecognised IPs, which a serverless function can never satisfy because its egress address rotates. Gmail needs a Google **App Password**, not the account password.
+- **Billing does not email invoices** (2026-08-01) — it downloads the PDF for the staff member to attach. That was the last Gmail caller. Never re-add a send button as a "convenience"; it drags the whole OAuth stack back in.
 - **Preeti → Mangal (Unicode) template conversion** — explicit user decision. Never revert to Preeti.
 - **Billing QR is a static uploaded image** — never add a QR-generation library or a scannable-looking placeholder.
 - **Invoice status is trigger-owned** — never set `paid`/`partially_paid` from JS.
