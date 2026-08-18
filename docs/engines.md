@@ -72,7 +72,7 @@ Two rules go with it, and they are what the point-fixes enforce:
 
 Consumers: Depreciation (both workings share one scope), Financial Statement,
 Projection, Autobooks, Confirmation Letters. Modules whose picker lives in a
-record-creation drawer (Billing, Bank Entry, Service Memo) reset on form open
+record-creation drawer (Bank Entry, Service Memo) reset on form open
 instead and need no scope; Party Ledger and Final Account regenerate their whole
 view every time and are already safe.
 

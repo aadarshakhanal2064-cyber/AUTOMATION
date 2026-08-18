@@ -17,8 +17,9 @@ window.AUTH_URL_PARAMS = {
 const SUPABASE_URL = 'https://rennqzmwyhkdsizvlqwd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
 
-// Nepal's standard VAT rate — the one source for the Billing module's
-// invoice tax line (and any future consumer), so the figure can't drift.
+// Nepal's standard VAT rate. Service Memo's optional VAT line is the only
+// consumer since Billing was removed (2026-08-18); kept here rather than
+// inlined so a rate change stays one edit.
 window.VAT_STANDARD_RATE = 0.13;
 
 // The B.S. fiscal year the firm is currently working through, as the
@@ -424,7 +425,6 @@ window.MODULE_LABELS = {
   auditorChange: 'Auditor Change',
   auditReportFinalization: 'Audit Report Finalization',
   bankBook: 'Bank Entry',
-  billing: 'Billing',
   bmAgmMinutes: 'BM/AGM Minutes',
   clients: 'Clients',
   companyProfile: 'Company Profile',
@@ -441,9 +441,10 @@ window.MODULE_LABELS = {
   salesPurchaseBook: 'Autobooks',
   serviceMemo: 'Service Memo',
   // Removed modules (VAT Return 2026-07-14, VAT Compliance 2026-08-10,
-  // OCR Extract 2026-08-18). Kept because their audit_log rows survive the
-  // module — dropping the label would print a raw code id in the Activity Log
-  // for work the firm really did.
+  // OCR Extract and Billing 2026-08-18). Kept because their audit_log rows
+  // survive the module — dropping the label would print a raw code id in the
+  // Activity Log for work the firm really did.
+  billing: 'Billing',
   ocrExtract: 'OCR Extract',
   vatCompliance: 'VAT Compliance',
   vatReturn: 'VAT Return',
@@ -469,7 +470,7 @@ window.ACTIVITY_SAVED_ONLY = {
 
 // The Activity Log is scoped to the seven modules that make up the firm's
 // per-client work history (user decision, 2026-08-15) — everything else
-// (Bank Entry, Billing, Clients, ...) still writes to audit_log as before,
+// (Bank Entry, Clients, Depreciation, ...) still writes to audit_log as before,
 // it's just not part of what THIS view answers. This is what keeps a bank
 // account name ("Dallakoti & Company(current)") or an expense particular
 // ("Bank Charges") out of the Client filter — those only ever come from
@@ -502,9 +503,6 @@ window.ACTIVITY_EVENT_LABELS = {
   final_account_printed: 'Final account printed',
   finstatement_generated: 'Financial statement generated', finstatement_saved: 'Financial statement saved',
   finstatement_printed: 'Financial statement printed', finstatement_py_parsed: 'Prior-year statement parsed',
-  firm_bank_details_updated: 'Firm bank details updated',
-  invoice_created: 'Invoice created', invoice_deleted: 'Invoice deleted',
-  invoice_payment_recorded: 'Invoice payment recorded', invoice_status_change: 'Invoice status change',
   notes_to_accounts_saved: 'Notes to Accounts saved',
   party_opening_saved: 'Party opening balance saved',
   projection_generated: 'Projection generated', projection_saved: 'Projection saved',
@@ -522,6 +520,12 @@ window.ACTIVITY_EVENT_LABELS = {
   spb_ann13_printed: 'Annexure-13 printed',
   spb_reco_printed: 'Reconciliation statements printed',
   spb_reco_suggested: 'Reconciliation lines suggested',
+  // Historical only — the Billing module that emitted these was removed
+  // 2026-08-18; its 17 audit_log rows remain.
+  firm_bank_details_updated: 'Firm bank details updated',
+  invoice_created: 'Invoice created', invoice_deleted: 'Invoice deleted',
+  invoice_payment_recorded: 'Invoice payment recorded',
+  invoice_status_change: 'Invoice status change',
   // Historical only — the module that emitted this was removed 2026-08-18;
   // its six audit_log rows remain.
   ocr_extract_run: 'OCR extraction run',

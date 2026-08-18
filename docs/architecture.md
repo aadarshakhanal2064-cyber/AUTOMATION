@@ -26,7 +26,7 @@ Later files depend on globals set up by earlier ones. Order in `index.html`:
 ```
 CDN libraries → config.js → utils.js → js/core/* (12 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, vatCompliance,
-  billing, report, notesToAccounts, depreciation,
+  report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, bankBook,
   partyLedger, finalAccount, finStatement) → auth.js (LAST — triggers the boot sequence)
 ```
@@ -51,7 +51,7 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 | `jszip` | 3.10.1 | ZIP handling |
 | `docx-preview` | 0.3.7 | Live in-browser preview of generated Word docs |
 | `fuse.js` | 7.0.0 | Fuzzy search (SearchEngine) |
-| `pdf-lib` | 1.17.1 | PDF construction (Billing invoices) |
+| `pdf-lib` | 1.17.1 | PDF construction (Service Memo; was Billing invoices too until 2026-08-18) |
 | `tabulator-tables` | 6.3.0 | Clients directory table (TableEngine) |
 | `chart.js` | 4.4.0 | Dashboard doughnut chart |
 | `html-docx-js` | 0.3.1 | HTML → OOXML .docx export (Report, Notes to Accounts) |
@@ -117,7 +117,7 @@ Pre-built tokenized `.docx` in `assets/templates/` filled through `DocumentEngin
 ### 9.2 Word/PDF via HTML (Report Builder, Notes to Accounts)
 The document is rendered as styled HTML in a preview root, then exported two ways: `htmlDocx.asBlob(html, {margins})` for `.docx`, and a standalone print window (auto-`window.print()` after 300ms) for PDF. Print CSS controls pagination — verify page breaks after any layout change.
 
-### 9.3 PDF via PDF-Lib (Billing invoices)
+### 9.3 PDF via PDF-Lib (Service Memo)
 Drawn programmatically: firm letterhead, line items, bank details, QR image (or dashed placeholder).
 
 ### 9.4 Excel via ExcelJS (Depreciation, Sales & Purchase Book, Bank Book)
@@ -132,7 +132,7 @@ All B.S. date / Devanagari digit / fiscal-year / lakh-crore formatting goes thro
 
 | Format | Used by |
 |---|---|
-| `2081-82` (dash) | Send Document, Report Builder, Notes, Billing |
+| `2081-82` (dash) | Send Document, Report Builder, Notes |
 | `2083/84` (slash) | Audit Report Finalization, Audit Checklist, Work Done |
 | `2083.084` (dot, 3-digit) | Drive year folders (Send Document folder walk) |
 | `2081.2082` (dot, full 4-digit) | Sales & Purchase Book sheet titles (`spbFyDot()`) |

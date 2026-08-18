@@ -12,9 +12,9 @@
 
 ## 6. Database (Supabase Postgres)
 
-Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-08-10** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
+Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-08-18** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
 
-### 6.1 Tables (22)
+### 6.1 Tables (23)
 
 | Table | Purpose / key columns |
 |---|---|
@@ -23,10 +23,6 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 | `client_shareholders` | Extra shareholders beyond `clients.shareholder_name`. `client_id` (FK, cascade delete), `name`, `sort_order`. |
 | `send_logs` | **Historical archive — no reader, no writer since 2026-08-01.** Was the Send Document audit trail; both that module and the Send Logs viewer were removed, and the table was deliberately kept rather than dropped so the history survives. Client name/email snapshotted (not FK'd — immutable trail). `status` `sent`/`error`/`pending`. Readable via the Supabase dashboard. |
 | `audit_log` | App-wide event log (AuditLog engine). `event_type`, `module`, `status`, `user_email`, `client_name`, `record_ref` (bigint), `detail` (jsonb). Feeds the Dashboard. History starts 2026-07-08 (table created after the engine). |
-| `firm_bank_details` | PK `firm_key`. `invoice_prefix` (NOT NULL — see upsert gotcha §5.3), bank fields, `qr_image`. One row per firm. |
-| `invoices` | `invoice_number` (unique, trigger-assigned), `client_id`/`firm_key` FKs, `status` CHECK (`draft`/`sent`/`partially_paid`/`paid`/`void`), amounts numeric, `tax_rate` default 0.13. |
-| `invoice_items` | Line items: `description`, `quantity`, `rate`, `amount`, `sort_order`. |
-| `invoice_payments` | `amount > 0` CHECK, `method` CHECK (`cash`/`bank_transfer`/`qr`/`cheque`/`other`). |
 | `service_memos` | Internal service records (§5.13). One row per memo (no line-item/payments subtable). `memo_number` (trigger-assigned `SM-{firm}-{id}`), `memo_prefix` (NOT NULL, from config), `firm_key`, `firm_other` (typed name for the "other" firm), `client_id` (**nullable** FK → clients, on delete set null), client name/pan/address snapshots, `nature_category`/`nature_subcategory`/`nature_other`, `description`, `fiscal_year`, `professional_fee`/`apply_vat`/`vat_amount`/`total_amount`, `remarks`. **No payment columns** — `payment_status`/`amount_received`/`payment_date` were dropped 2026-07-26; collection lives in `bank_transactions` (§5.13). Member-CRUD RLS. `set_service_memo_number` AFTER INSERT trigger + shared `set_updated_at`. `db/2026-07-21_service_memos.sql`, `db/2026-07-26_financial_suite.sql`. |
 | `service_memo_fee_skips` | Dismissed entries from Service Memo's **Pending Memos** list (§5.13) — that list is derived (never stored twice), so this is the one thing that IS stored: a specific reminder someone deliberately said no to. `client_id` (**nullable** FK → clients, on delete cascade — a typed-only projection still dismisses, matched on `client_name` instead), `client_name`, `fy_start_year` (**int, normalized** via `NepaliLocale.fyStartYear()` — not ARF's slash or Projection's dash string, so the join can't drift), `kind` CHECK (`audit`/`projection`), `dismissed_by`, `created_at`. **No UPDATE policy** — a skip is created or deleted, never edited. Member SELECT/INSERT/DELETE RLS. `db/2026-08-15_service_memo_fee_skips.sql`. |
 | `depreciation_schedules` | Saved depreciation working for carry-forward (§5.8). `client_id` (FK, cascade), `scheme` CHECK (`normal`/`special`/`slm`), `fiscal_year` (text, dash format), `company_name`/`pan` snapshots, `pools` jsonb (Income-Tax: per-pool inputs + closing WDV; **SLM: per-asset line array** + carry-forward snapshots → next year's Opening), `addition_details` jsonb (Income-Tax only; `[]` for SLM), `created_by`. Unique on `(client_id, scheme, fiscal_year)`. Manual save only. `slm` added by `db/2026-07-21_slm_scheme.sql`. |
@@ -43,8 +39,6 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 
 ### 6.2 Trigger-owned logic (never replicate in JS)
 
-- `sync_invoice_payment_totals()` — recomputes `invoices.amount_paid`/`status` from `invoice_payments` on every insert/update/delete.
-- `set_invoice_number` — AFTER INSERT, assigns `{SA|DC}-{id padded}`; re-fetch the row after insert.
 - `set_service_memo_number` — AFTER INSERT on `service_memos`, assigns `{memo_prefix}-{id padded}` (prefix sent from JS config); re-fetch after insert (§5.13).
 - `set_document_register_number` — AFTER INSERT on `document_register`, assigns `FM-{id padded}`; re-fetch after insert (§5.20).
 
@@ -62,24 +56,23 @@ Supabase/PostgREST caps a single select at **1000 rows** — any query that can 
 
 Show the SQL (annotated migration + rollback script as files under `db/`) → apply via the Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
 
-**`db/00_bootstrap.sql` builds the whole schema from nothing** (added 2026-08-18) — 27 tables, 5 trigger functions, the 3 `private` auth helpers, 3 RPCs, 56 indexes, 20 triggers, 94 policies, 18 table comments, and no data at all. Use it to stand the app up on a **new** Supabase project (a second firm, a test instance, a handover) or to rebuild after a disaster; never against a live project, since every statement is a bare `CREATE` that errors on the first object that already exists.
+**`db/00_bootstrap.sql` builds the whole schema from nothing** (added 2026-08-18) — 23 tables, 3 trigger functions, the 3 `private` auth helpers, 1 RPC, 49 indexes, 17 triggers, 82 policies, 18 table comments, and no data at all. Use it to stand the app up on a **new** Supabase project (a second firm, a test instance, a handover) or to rebuild after a disaster; never against a live project, since every statement is a bare `CREATE` that errors on the first object that already exists.
 
-It exists because **the dated migrations cannot do this on their own.** They are an incremental history starting 2026-07-16, and nine tables predate it — `app_users`, `clients`, `client_shareholders`, `invoices`, `invoice_items`, `invoice_payments`, `firm_bank_details`, `audit_log`, `send_logs` — along with three functions that `2026-07-16_rls_lockdown.sql` only ever ALTERs and never creates (`set_updated_at`, `set_invoice_number`, `sync_invoice_payment_totals`). All twelve were built by hand in the dashboard before the workflow existed. Running `db/*.sql` in date order against an empty project therefore fails on the first migration, because 14 triggers reference a `set_updated_at` that isn't there.
+It exists because **the dated migrations cannot do this on their own.** They are an incremental history starting 2026-07-16, and five surviving tables predate it — `app_users`, `clients`, `client_shareholders`, `audit_log`, `send_logs` — along with `set_updated_at`, which `2026-07-16_rls_lockdown.sql` only ever ALTERs and never creates. (Four more such tables and two more such functions existed until Billing was removed on 2026-08-18.) All were built by hand in the dashboard before the workflow existed. Running `db/*.sql` in date order against an empty project therefore fails on the first migration, because 14 triggers reference a `set_updated_at` that isn't there.
 
-The bootstrap's **order is load-bearing**: `private.is_app_user()` and the 3 RPCs are `LANGUAGE sql`, so Postgres validates their bodies at CREATE time and every table they read must already exist. Tables come before functions, not after.
+The bootstrap's **order is load-bearing**: `private.is_app_user()` and the RPC are `LANGUAGE sql`, so Postgres validates their bodies at CREATE time and every table they read must already exist. Tables come before functions, not after.
 
 It is **generated from the live schema, which stays the authority** — regenerate rather than hand-patch if the two ever disagree, and keep it in step when a later migration changes the schema. Verified 2026-08-18 by applying it to a scratch schema on the live project and diffing every column, constraint, index, trigger and policy against `public` (zero differences beyond the physical `attnum` gaps that historical DROP COLUMNs left in `document_register` and `service_memos`), then exercising all five triggers on the rebuilt tables. `db/00_bootstrap_rollback.sql` drops everything it made — **destructive, empty projects only**.
 
-One known divergence: `public.get_vat_fy_stats(text)` exists live but is **deliberately excluded**. It reads `vat_filings`, dropped 2026-08-10 with the VAT Compliance module, so it is already broken and would fail at CREATE time on a fresh project. Nothing in `js/` calls it.
+**No known divergence** as of 2026-08-18: the object inventory of the file and of the live schema hash identically (178 objects). The previous divergence, the broken `public.get_vat_fy_stats(text)`, was itself dropped by `db/2026-08-18_drop_billing.sql`.
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
 All tables have RLS **enabled** (base migration `db/2026-07-16_rls_lockdown.sql` covered the original 10; `depreciation_schedules`, `service_memos`, the Bank Book pair `bank_accounts`/`bank_transactions`, `projection_reports`, `financial_statements` and `service_memo_fee_skips` added their own member-CRUD policies in `db/2026-07-17_depreciation_schedules.sql`, `db/2026-07-21_service_memos.sql`, `db/2026-07-22_bank_book.sql`, `db/2026-07-22_projection_reports.sql`, `db/2026-07-26_financial_statements.sql`, `db/2026-08-01_document_register.sql` and `db/2026-08-15_service_memo_fee_skips.sql`). The permission model:
 
 - **Membership, not authentication, grants access.** Anyone who can complete Supabase sign-in holds an `authenticated` JWT — so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema, matching `lower(auth.jwt()->>'email')` against `app_users`). `anon` has no policies → zero access.
-- **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies); **`firm_bank_details` writes are admin-only** (deliberate tightening, user-approved 2026-07-16 — bank details + payment QR are the payment-fraud target; `billing.js` renders the settings read-only for staff).
-- Triggers (`set_invoice_number`, `sync_invoice_payment_totals`) run as the invoking member — the member UPDATE policy on `invoices` is what lets them work. Don't remove it.
-- The 4 RPCs are EXECUTE-revoked for `anon`; `get_db_storage_usage` (SECURITY DEFINER) additionally guards internally on `is_app_user()`.
+- **Policy matrix mirrors the UI's permission model**: members get working CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only (Add/Import/Delete are admin-gated UI); `send_logs` SELECT is own-rows-or-admin and INSERT requires `sent_by` = own email (no spoofing); `send_logs`/`audit_log` are immutable (no UPDATE/DELETE policies). A fourth admin-only rule, `firm_bank_details` writes, went with Billing on 2026-08-18.
+- The one remaining RPC, `get_db_storage_usage` (SECURITY DEFINER), is EXECUTE-revoked for `anon` and additionally guards internally on `is_app_user()`. **Supabase's linter flags it** as a SECURITY DEFINER function any signed-in user can call: it returns whole-database size, which is a cross-tenant inference channel the moment there is more than one tenant.
 - When adding a **new table**: enable RLS + add membership policies in the same migration, or the app can't read it at all.
 
 ---

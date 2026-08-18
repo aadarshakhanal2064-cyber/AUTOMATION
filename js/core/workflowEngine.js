@@ -95,7 +95,7 @@ window.WorkflowEngine = (function () {
     return { set, zoomIn: () => set(level + step), zoomOut: () => set(level - step), getLevel: () => level };
   }
 
-  // Status lifecycle for record-tracking modules (File In Out, Billing,
+  // Status lifecycle for record-tracking modules (File In Out and
   // Audit Report Finalization): one definition of statuses + display
   // metadata, and one
   // transition() choke point every status change goes through — so the badge

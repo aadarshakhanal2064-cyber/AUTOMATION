@@ -210,7 +210,7 @@ filterable **client-wise**, **work/module-wise** and **staff-wise**.
 2026-08-15): Financial Statement, Projection Report, Confirmation, Autobooks,
 File In Out, Audit Report Finalization and Audit Checklist — the modules that
 make up the firm's per-client work history. Everything else (Bank Entry,
-Billing, Clients, Depreciation, ...) still writes to `audit_log` as before, it
+Clients, Depreciation, ...) still writes to `audit_log` as before, it
 simply isn't part of what this view answers. This is what keeps the Client
 filter to real directory clients: `audit_log.client_name` is free text, and
 `bankBook` in particular writes a **bank account name**

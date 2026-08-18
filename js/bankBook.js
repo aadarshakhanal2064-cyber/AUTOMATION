@@ -13,7 +13,8 @@
 //  the two can never disagree — this is the module's key integrity rule.
 //
 //  Running balances are derived here at read time (opening_balance + ordered
-//  receipts − payments), never stored — same discipline as billing overdue.
+//  receipts − payments), never stored — the same derive-don't-store discipline
+//  the removed Billing module used for its overdue figures.
 //  Modeled on serviceMemo.js (TableEngine list, client autocomplete, AuditLog).
 // ════════════════════════════════════════════
 ModuleRegistry.register({ id: 'bankBook', group: 'main', buttonId: null, panelId: 'tab-bankBook-panel' });

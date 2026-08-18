@@ -2,10 +2,11 @@
 //  SERVICE MEMO
 //  Internal service record + fee tracking — the firm's guarantee that no
 //  professional work is completed without a recorded fee to collect. This is
-//  deliberately NOT an accounting/tax invoice (that is Billing, js/billing.js,
-//  which carries bank details, a payment QR and a reconciled payments table).
-//  A memo is one lightweight row: who did what work for which client, and the
-//  fee. Modeled on billing.js but simpler — no line-item or payments subtable.
+//  deliberately NOT an accounting/tax invoice. Billing was the module that
+//  issued those — bank details, a payment QR, a reconciled payments table —
+//  and it was removed 2026-08-18 as unused, leaving this the firm's only
+//  fee record. A memo is one lightweight row: who did what work for which
+//  client, and the fee. No line-item or payments subtable, deliberately.
 //
 //  A memo records the work and the fee, NOT the collection. Money actually
 //  received is entered once, as a Bank Entry "Fee Receipt", and the two sides
@@ -756,7 +757,10 @@ async function smDeleteMemo(row) {
   await smReload();
 }
 
-// ── PDF (formal Service Memo — reuses the PDF-Lib approach of billing.js) ──
+// ── PDF (formal Service Memo, drawn with PDF-Lib) ──
+// The approach came from the old billing.js invoice builder (removed
+// 2026-08-18); this is now the app's only PDF-Lib caller, so the WinAnsi
+// fold-to-ASCII rule lives or dies here — standard fonts THROW on Devanagari.
 function smFirmIdentity(memo) {
   const f = window.SERVICE_MEMO_FIRMS[memo.firm_key] || window.SERVICE_MEMO_FIRMS.shailesh;
   const base = f.ref ? window.REP_FIRMS[f.ref] : null;

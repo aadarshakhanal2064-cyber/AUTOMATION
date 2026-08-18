@@ -35,7 +35,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608170900">
+<link rel="stylesheet" href="css/styles.css?v=202608181600">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -104,7 +104,6 @@ function cropLoginLogoIcon(img) {
       </button>
       <div class="topbar-dropdown-menu" id="topbar-fin-menu">
         <button class="topbar-dropdown-item" onclick="openModule('serviceMemo')">Service Memo</button>
-        <button class="topbar-dropdown-item" onclick="openModule('billing')">Billing</button>
         <button class="topbar-dropdown-item" onclick="openModule('partyLedger')">Party Ledger</button>
         <button class="topbar-dropdown-item" onclick="openModule('bankBook')">Bank Entry</button>
         <button class="topbar-dropdown-item" onclick="openModule('finalAccount')">Final Account</button>
@@ -311,10 +310,6 @@ function cropLoginLogoIcon(img) {
             <div class="qa-icon purple"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div>
             Client Directory
           </button>
-          <button class="quick-action-btn" onclick="switchTab('billing'); loadBilling();">
-            <div class="qa-icon amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
-            Billing
-          </button>
         </div>
       </div>
 
@@ -346,53 +341,6 @@ function cropLoginLogoIcon(img) {
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Documents by Module</h3>
           <canvas id="dash-module-chart" height="220"></canvas>
         </div>
-      </div>
-    </div>
-
-    <!-- ── TAB: BILLING ── -->
-    <div id="tab-billing-panel" class="tab-panel">
-      <div class="page-header">
-        <div class="ph-text">
-          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">Billing</span></div>
-          <h2 class="page-title">Billing</h2>
-          <p class="page-subtitle">Track amounts due, record payments, and send invoices.</p>
-        </div>
-        <div class="page-header-actions">
-          <button class="btn btn-outline" onclick="billingOpenSettings()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            Bank Details
-          </button>
-          <button class="btn btn-primary" onclick="billingOpenCreate()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            New Invoice
-          </button>
-        </div>
-      </div>
-
-      <div class="stat-grid compact" id="billing-stat-grid"></div>
-
-      <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:24px; margin-bottom:24px; align-items:start;">
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Amount Due by Client</h3>
-          <div id="billing-ar-wrap"><div class="log-empty">Loading…</div></div>
-        </div>
-        <div class="table-wrap" style="padding:24px;">
-          <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Monthly Income</h3>
-          <canvas id="billing-income-chart" height="220"></canvas>
-        </div>
-      </div>
-
-      <div class="table-wrap" style="padding:24px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:16px; flex-wrap:wrap;">
-          <div class="search-bar-wrap" style="flex:1; min-width:260px; max-width:420px;">
-            <span class="sb-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            </span>
-            <input type="text" class="search-bar" id="billing-search" placeholder="Search by client, invoice # or notes…" oninput="billingFilterTable(this.value)" />
-          </div>
-        </div>
-        <div id="billing-status-area"></div>
-        <div id="billing-table-wrap"><div class="log-empty">Loading…</div></div>
       </div>
     </div>
 
@@ -2964,7 +2912,6 @@ function cropLoginLogoIcon(img) {
 
 
 <!-- IMPORT MODAL -->
-<!-- BILLING — CREATE / EDIT INVOICE DRAWER -->
 <!-- SERVICE MEMO — CREATE / EDIT DRAWER -->
 <div class="modal-overlay drawer-right" id="sm-memo-drawer">
   <div class="modal drawer-panel" style="width:640px;">
@@ -3718,127 +3665,6 @@ function cropLoginLogoIcon(img) {
   </div>
 </div>
 
-<div class="modal-overlay drawer-right" id="billing-invoice-drawer">
-  <div class="modal drawer-panel" style="width:640px;">
-    <div class="modal-header">
-      <h3 id="billing-drawer-title">New Invoice</h3>
-      <button class="modal-close" onclick="billingCloseCreate()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-        <div class="form-group full" id="billing-client-group">
-          <label>Client</label>
-          <input type="text" id="billing-client-search" placeholder="Start typing to search clients…" autocomplete="off" />
-          <div class="autocomplete-list" id="billing-client-autocomplete" style="display:none;"></div>
-          <div id="billing-client-selected" style="margin-top:6px; font-size:12.5px; color:var(--text-muted);"></div>
-        </div>
-        <div class="form-group">
-          <label>Firm Identity</label>
-          <select id="billing-firm-key">
-            <option value="shailesh">Shailesh & Associates</option>
-            <option value="dallakoti">Dallakoti & Company</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Fiscal Year</label>
-          <input type="text" id="billing-fiscal-year" placeholder="e.g. 2082-83" />
-        </div>
-        <div class="form-group">
-          <label>Issue Date</label>
-          <input type="date" id="billing-issue-date" />
-        </div>
-        <div class="form-group">
-          <label>Due Date</label>
-          <input type="date" id="billing-due-date" />
-        </div>
-      </div>
-
-      <h4 style="margin:18px 0 10px; font-size:13.5px; color:var(--brand-navy);">Line Items</h4>
-      <div id="billing-items-wrap"></div>
-      <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="billingAddItemRow()">+ Add Line Item</button>
-
-      <div style="display:flex; justify-content:flex-end; margin-top:16px;">
-        <div style="min-width:260px;">
-          <label class="checkbox-label" style="margin-bottom:10px;">
-            <input type="checkbox" id="billing-apply-vat" checked onchange="billingRenderTotals()" />
-            Add VAT (13%)
-          </label>
-          <div style="display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:4px;"><span>Subtotal</span><span id="billing-total-subtotal">0.00</span></div>
-          <div style="display:flex; justify-content:space-between; font-size:13.5px; margin-bottom:4px;"><span>VAT (13%)</span><span id="billing-total-tax">0.00</span></div>
-          <div style="display:flex; justify-content:space-between; font-size:15px; font-weight:700; color:var(--brand-navy); border-top:1px solid var(--border); padding-top:6px;"><span>Total</span><span id="billing-total-amount">0.00</span></div>
-        </div>
-      </div>
-
-      <div class="form-group full" style="margin-top:14px;">
-        <label>Notes</label>
-        <textarea id="billing-notes" placeholder="Optional notes printed on the invoice…"></textarea>
-      </div>
-
-      <div class="action-row">
-        <button class="btn btn-outline" onclick="billingSaveInvoice('draft')">Save Draft</button>
-        <button class="btn btn-primary" onclick="billingSaveInvoice('sent')">Save &amp; Send</button>
-        <button class="btn btn-outline" onclick="billingCloseCreate()">Cancel</button>
-      </div>
-      <div id="billing-drawer-status"></div>
-    </div>
-  </div>
-</div>
-
-<!-- BILLING — RECORD PAYMENT MODAL -->
-<div class="modal-overlay" id="billing-payment-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>Record Payment</h3>
-      <button class="modal-close" onclick="billingClosePayment()">×</button>
-    </div>
-    <div class="modal-body">
-      <div id="billing-payment-invoice-summary" style="margin-bottom:14px; font-size:13.5px; color:var(--text-muted);"></div>
-      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-        <div class="form-group">
-          <label>Amount</label>
-          <input type="number" id="billing-payment-amount" step="0.01" min="0" />
-        </div>
-        <div class="form-group">
-          <label>Date</label>
-          <input type="date" id="billing-payment-date" />
-        </div>
-        <div class="form-group">
-          <label>Method</label>
-          <select id="billing-payment-method">
-            <option value="bank_transfer">Bank Transfer</option>
-            <option value="cash">Cash</option>
-            <option value="qr">QR Payment</option>
-            <option value="cheque">Cheque</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div class="form-group full">
-          <label>Note</label>
-          <input type="text" id="billing-payment-note" placeholder="Optional" />
-        </div>
-      </div>
-      <div class="action-row">
-        <button class="btn btn-primary" onclick="billingSavePayment()">Save Payment</button>
-        <button class="btn btn-outline" onclick="billingClosePayment()">Cancel</button>
-      </div>
-      <div id="billing-payment-status"></div>
-    </div>
-  </div>
-</div>
-
-<!-- BILLING — BANK DETAILS / SETTINGS MODAL -->
-<div class="modal-overlay" id="billing-settings-modal">
-  <div class="modal" style="max-width:640px;">
-    <div class="modal-header">
-      <h3>Bank Details for Invoices</h3>
-      <button class="modal-close" onclick="billingCloseSettings()">×</button>
-    </div>
-    <div class="modal-body" id="billing-settings-body">
-      <div class="log-empty">Loading…</div>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="import-modal">
   <div class="modal" style="max-width:800px;">
     <div class="modal-header">
@@ -3907,7 +3733,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608181500"></script>
+<script src="js/config.js?v=202608181600"></script>
 <script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3915,19 +3741,18 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/documentEngine.js?v=202608022300"></script>
 <script src="js/core/searchEngine.js?v=202608022300"></script>
 <script src="js/core/tableEngine.js?v=202608022300"></script>
-<script src="js/core/workflowEngine.js?v=202608110900"></script>
+<script src="js/core/workflowEngine.js?v=202608181600"></script>
 <script src="js/core/auditLog.js?v=202608181500"></script>
 <script src="js/core/reportExport.js?v=202608022300"></script>
 <script src="js/core/workbookReader.js?v=202608022300"></script>
 <script src="js/core/engineMath.js?v=202608022300"></script>
 <script src="js/core/dataCache.js?v=202608022300"></script>
 <script src="js/core/documentStore.js?v=202608171700"></script>
-<script src="js/tabs.js?v=202608181500"></script>
+<script src="js/tabs.js?v=202608181600"></script>
 <script src="js/dashboard.js?v=202608181500"></script>
 <script src="js/registrar.js?v=202608110900"></script>
 <script src="js/clients.js?v=202608151800"></script>
-<script src="js/billing.js?v=202608151800"></script>
-<script src="js/serviceMemo.js?v=202608152000"></script>
+<script src="js/serviceMemo.js?v=202608181600"></script>
 <script src="js/report.js?v=202608101800"></script>
 <script src="js/notesToAccounts.js?v=202608171000"></script>
 <script src="js/depreciation.js?v=202608171700"></script>
@@ -3945,7 +3770,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/salesPurchaseBookReco.js?v=202608170900"></script>
 <script src="js/salesPurchaseBookVatReturn.js?v=202608170900"></script>
 <script src="js/confirmationLetters.js?v=202608151800"></script>
-<script src="js/bankBook.js?v=202608022300"></script>
+<script src="js/bankBook.js?v=202608181600"></script>
 <script src="js/partyLedger.js?v=202608022300"></script>
 <script src="js/finalAccount.js?v=202608022300"></script>
 <script src="js/projectionEngine.js?v=202608180900"></script>

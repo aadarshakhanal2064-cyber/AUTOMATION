@@ -26,7 +26,7 @@ module detail irrelevant to whatever the session was actually doing.
 | File | Modules | Code prefixes |
 |---|---|---|
 | [`modules/clients.md`](modules/clients.md) | Clients Directory — CRUD, import wizard, portfolio dashboard, the client master reloads | `ac-`, `cd-`, `nb-` |
-| [`modules/compliance-billing.md`](modules/compliance-billing.md) | Dashboard, Billing — plus the removed VAT Compliance and Send Logs modules | `dash-`, `billing-` |
+| [`modules/compliance-billing.md`](modules/compliance-billing.md) | Dashboard — plus the removed Billing, VAT Compliance and Send Logs modules | `dash-`, `billing-` |
 | [`modules/documents.md`](modules/documents.md) | Send Document, Audit Report Builder, Notes to Accounts, Confirmation Letters | `rep-`, `nta-`, `cl-` |
 | [`modules/registrar.md`](modules/registrar.md) | Company Registrar: BM/AGM Minutes, Auditor Change, Company Profile, the two stubs — plus the removed VAT Return OCR module and three removed stubs | `bm-`, `ac-`, `cp-`, `cr-`, `cs-` |
 | [`modules/financial-management.md`](modules/financial-management.md) | Service Memo, Bank Entry, Party Ledger, Final Account | `sm-`, `bb-`, `pl-`, `fa-` |
