@@ -37,3 +37,10 @@ docs/history/memory-*/
 # git repo, github.com/JuliusBrussee/caveman). Nothing to do with this app —
 # ignored so it can never be swept into a commit by `git add .`.
 caveman/
+
+# Leftover from the removed OCR Extract module (2026-08-18). The tracked files
+# in ocr_service/ are gone; what can remain on a machine that once ran the
+# service is its 880 MB Python venv/ and __pycache__, which used to be ignored
+# by ocr_service/.gitignore — deleted along with everything else. Ignored here
+# so `git add .` can never sweep that into a commit. Safe to delete the folder.
+ocr_service/

@@ -1,7 +1,0 @@
-# Pinned to the versions verified working on Windows + Python 3.12.
-# paddlepaddle publishes no wheel for Python 3.13/3.14 — see README.
-fastapi==0.141.1
-uvicorn[standard]==0.52.0
-python-multipart==0.0.32
-paddlepaddle==3.3.1
-paddleocr==3.7.0

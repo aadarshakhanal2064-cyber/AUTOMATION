@@ -31,12 +31,6 @@ window.VAT_STANDARD_RATE = 0.13;
 // unifies the year. Bump this on Shrawan 1 of the next B.S. year.
 window.FY_DEFAULT_START = 2082;
 
-// The local PaddleOCR service (ocr_service/). It runs on each staff member's own
-// machine — GitHub Pages can't host Python — so this is loopback, not a server.
-// Changing the port means updating ocr_service/config.py and the CSP
-// connect-src in index.html to match, or the browser blocks the call.
-window.OCR_SERVICE_URL = localStorage.getItem('ocrServiceUrl') || 'http://127.0.0.1:8000';
-
 // ── Shared DataCache keys for the ledger tables ──
 // Bank Entry, Party Ledger and Final Account read the same rows; caching them
 // under shared keys is what stops three consecutive tab opens from downloading
@@ -441,15 +435,16 @@ window.MODULE_LABELS = {
   finalAccount: 'Final Account',
   finStatement: 'Financial Statement',
   notesToAccounts: 'Notes to Accounts',
-  ocrExtract: 'OCR Extract',
   partyLedger: 'Party Ledger',
   projection: 'Projection Report',
   report: 'Generate Report',
   salesPurchaseBook: 'Autobooks',
   serviceMemo: 'Service Memo',
-  // Removed modules (VAT Return 2026-07-14, VAT Compliance 2026-08-10). Kept
-  // because their audit_log rows survive the module — dropping the label would
-  // print a raw code id in the Activity Log for work the firm really did.
+  // Removed modules (VAT Return 2026-07-14, VAT Compliance 2026-08-10,
+  // OCR Extract 2026-08-18). Kept because their audit_log rows survive the
+  // module — dropping the label would print a raw code id in the Activity Log
+  // for work the firm really did.
+  ocrExtract: 'OCR Extract',
   vatCompliance: 'VAT Compliance',
   vatReturn: 'VAT Return',
   workDone: 'Work Done',
@@ -511,7 +506,6 @@ window.ACTIVITY_EVENT_LABELS = {
   invoice_created: 'Invoice created', invoice_deleted: 'Invoice deleted',
   invoice_payment_recorded: 'Invoice payment recorded', invoice_status_change: 'Invoice status change',
   notes_to_accounts_saved: 'Notes to Accounts saved',
-  ocr_extract_run: 'OCR extraction run',
   party_opening_saved: 'Party opening balance saved',
   projection_generated: 'Projection generated', projection_saved: 'Projection saved',
   projection_printed: 'Projection printed', projection_statement_parsed: 'Statement parsed',
@@ -528,6 +522,9 @@ window.ACTIVITY_EVENT_LABELS = {
   spb_ann13_printed: 'Annexure-13 printed',
   spb_reco_printed: 'Reconciliation statements printed',
   spb_reco_suggested: 'Reconciliation lines suggested',
+  // Historical only — the module that emitted this was removed 2026-08-18;
+  // its six audit_log rows remain.
+  ocr_extract_run: 'OCR extraction run',
   // Historical only — the VAT Compliance module that emitted these was removed
   // 2026-08-10; its audit_log rows remain.
   vat_client_change: 'VAT client change', vat_filing_update: 'VAT filing updated',

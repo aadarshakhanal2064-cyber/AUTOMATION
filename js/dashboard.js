@@ -44,7 +44,7 @@ function renderDashActivity(events) {
     const badgeClass = e.status === 'error' ? 'badge-error' : 'badge-sent';
     const badgeText = e.status === 'error' ? '❌ Error' : '✅ Success';
     const eventLabel = e.event_type === 'document_generated' ? 'Document generated'
-      : e.event_type === 'ocr_extraction' ? 'OCR extraction' : e.event_type;
+      : e.event_type;
     return `
       <div class="log-item">
         <span class="log-badge ${badgeClass}">${badgeText}</span>

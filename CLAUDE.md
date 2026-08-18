@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (22 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (27 tables, §6).
 
 ---
 
@@ -41,18 +41,18 @@ This file is loaded into **every** session, so it holds only what protects work 
 
 The app itself runs **entirely client-side**, and **Supabase is now its only backend** — `supabase-js` for Postgres (publishable key in `config.js`; RLS enabled on every table, §6) and Supabase Auth for sign-in. Google Drive/Gmail were removed 2026-08-01 along with Google OAuth (§7). State is `window.*` globals — no modules, no state library.
 
-**One exception, added 2026-08-01: `ocr_service/`** — a FastAPI + PaddleOCR process backing the OCR Extract module (§5). It is **optional, local-only, and not deployed** (GitHub Pages can't run Python): each staff member starts it on their own machine with `ocr_service/start.ps1` when they want OCR. Nothing else depends on it — if it's stopped, only that one tab is affected. It does not make this a client/server app; treat it as an optional companion process, and don't move other features onto it without asking. Needs **Python 3.10–3.12** (PaddlePaddle publishes no wheel for 3.13/3.14). Detail: `docs/architecture.md` §2.6 and `ocr_service/README.md`.
+**There is no server-side code at all.** `ocr_service/` — a local FastAPI + PaddleOCR process, the one exception — was removed 2026-08-18 with the OCR Extract module (§15). The browser is the entire application again; don't reintroduce a companion process without asking.
 
 ### Script load order (load-bearing)
 
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (14 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
 → feature modules (dashboard, registrar, clients, vatCompliance,
   billing, report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, salesPurchaseBookLedger, bankBook,
-  partyLedger, finalAccount, finStatement, ocrExtract, fileManagement,
+  partyLedger, finalAccount, finStatement, fileManagement,
   auditReportFinalization, auditChecklist, workDone, workDoneTodo)
 → auth.js (LAST — triggers the boot sequence)
 ```
@@ -93,13 +93,11 @@ AUTOMATION AI APP/
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, fmtAmount
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, email/password sign-in/out, app_users authorization
-│   ├── core/                # 14 reusable engines — §4
+│   ├── core/                # 13 reusable engines — §4
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
 ├── tools/                   # Dependency-free Node verification harnesses
 │                            # (spbVerify.mjs — Autobooks; see §12)
-├── ocr_service/             # Optional local FastAPI + PaddleOCR service — §2
-│                            # (venv/ is gitignored; not deployed with the app)
 ├── docs/                    # On-demand documentation — §17
 │   ├── architecture.md, database.md, engines.md
 │   ├── modules/             # One doc per module group
@@ -129,7 +127,6 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | ReportExport | `reportExport.js` | `toHtml`/`toPdf`/`toExcel`/`download` over one tabular model. Knows nothing about ledgers — callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** (PDF-Lib standard fonts throw on non-WinAnsi characters). |
 | DataCache | `dataCache.js` | `get(key, loader)` / `invalidate(...keys)` / `invalidateAll()`. 60s TTL in front of the shared full-table ledger loads. Caches the **promise**, so concurrent opens share one round-trip; a rejected load is never cached. **Keys live in `config.js` as `window.LEDGER_KEYS` and encode the ORDER BY, not just the table** — Bank Entry and Party Ledger sort `bank_accounts` differently and Final Account renders that array in order. Write paths call a module's `xxReload()` (invalidate + refresh); `xxRefresh()` must never invalidate. |
 | DocumentStore | `documentStore.js` | `save`/`list`/`get`/`remove`/`openPicker` over `saved_documents` — save, browse and re-open for the HTML document builders (Audit Report, Notes to Accounts). Stores **both** the form state (re-editable) and the rendered HTML (reprintable exactly as issued). One shared picker drawer (`ds-` ids); **never caches**. The picker also lists records from **other** tables — pass `{fetchRows, describe, onChoose, onDelete}` instead of `{module, onOpen}` (Projection Report browses `projection_reports`, Depreciation browses `depreciation_schedules`) so there is one drawer, not one per module. Its search tries a **plain substring first** and falls back to Fuse — fuzzy matching is right for a half-remembered name and wrong for a fiscal year (`2078` scored as a hit against `2082-83`, so a year returned the whole list). |
-| OcrEngine | `ocrEngine.js` | `checkHealth`, `extractText(file)` against the local OCR service (`ocr_service/`, §2). Translates a dead-port `fetch()` rejection into an actionable "service not running" message while preserving the API's own error text. Base URL is `window.OCR_SERVICE_URL`. |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§9). No edits to `tabs.js`.
 
@@ -163,7 +160,6 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Generate Report | Automation Hub | `report.js` | `rep-` | `saved_documents` | [documents](docs/modules/documents.md) |
 | Notes to Accounts | Automation Hub | `notesToAccounts.js` | `nta-` | `saved_documents` | [documents](docs/modules/documents.md) |
 | Autobooks | Automation Hub | `salesPurchaseBook.js` + `salesPurchaseBookLedger.js` + `salesPurchaseBookConfirm.js` + `salesPurchaseBookAnnexure.js` + `salesPurchaseBookReco.js` + `salesPurchaseBookVatReturn.js` | `spb-` | `autobooks_books`, `autobooks_entries`, `autobooks_parties`, `autobooks_adjustments` | [autobooks](docs/modules/autobooks.md) |
-| OCR Extract | Automation Hub | `ocrExtract.js` | `ocr-` | *(none)* | [documents](docs/modules/documents.md) |
 
 ### Three modules were renamed — display name only
 
@@ -177,7 +173,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 "Confirmation" is the menu label for Confirmation Letters; the panel keeps the fuller title.
 
-**Two Company Registrar stubs remain** (Company Registration, Company Secretary Appointment — the latter added 2026-08-10) — UI built, logic is `moduleComingSoon()`. **Share Transfer, Increase Capital and PIN Reset were removed** 2026-08-10 by user decision — the firm doesn't do that work; recoverable from git history. **The VAT Return OCR module was removed** 2026-07-14 by user decision; see `docs/modules/registrar.md` for what went with it and how to recover it. **The VAT Compliance module was removed** 2026-08-10 by user decision, along with its `vat_filings` table; see `docs/modules/compliance-billing.md`.
+**Two Company Registrar stubs remain** (Company Registration, Company Secretary Appointment — the latter added 2026-08-10) — UI built, logic is `moduleComingSoon()`. **Share Transfer, Increase Capital and PIN Reset were removed** 2026-08-10 by user decision — the firm doesn't do that work; recoverable from git history. **The VAT Return OCR module was removed** 2026-07-14 by user decision; see `docs/modules/registrar.md` for what went with it and how to recover it. **The VAT Compliance module was removed** 2026-08-10 by user decision, along with its `vat_filings` table; see `docs/modules/compliance-billing.md`. **The OCR Extract module was removed** 2026-08-18 by user decision, taking the whole `ocr_service/` directory with it; see `docs/modules/documents.md` §5.19.
 
 ---
 
@@ -283,7 +279,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `bb-` | Bank Book (Bank Entry) | | `pj-` | Projection Report |
 | `pl-` | Party Ledger | | `fa-` | Final Account |
 | `fs-` | Financial Statement | | `cp-` | Company Profile |
-| `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | `ocr-` | OCR Extract |
+| `nb-`/`cd-` | Clients dashboard (Nature of Business categories / general dashboard) | | | |
 | `fm-` | File In Out (File Management / Document Register in code) | | `ds-` | Saved-documents picker (shared drawer, `js/core/documentStore.js`) |
 | `arf-` | Audit Report Finalization | | `achk-` | Audit Checklist |
 | `wd-` | Work Done | | `wt-` | Work Done → To-Do List (`js/workDoneTodo.js` — its own prefix so the two files can't collide) |
@@ -340,7 +336,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 - **RLS is the server-side enforcement layer** (§6) — enabled on all 27 tables, membership-checked. The publishable key alone grants nothing. **Don't disable it.**
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
-- **CSP** (meta tag in `index.html`; `connect-src` is now just Supabase + the OCR loopback — every Google origin was removed 2026-08-01) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
+- **CSP** (meta tag in `index.html`; `connect-src` is now Supabase alone — every Google origin went 2026-08-01, the two OCR loopback origins 2026-08-18) + **SRI** on every pinned CDN dep + security headers (`vercel.json`). CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
 - Supabase session tokens live in `localStorage` — readable by any successful XSS (residual risk).
 - No secrets in this repo beyond the publishable key. User passwords are Supabase's to store — the app never persists one.
 
@@ -421,10 +417,10 @@ The established pattern — **investigate with real evidence → implement only 
 - **SLM addition lines fill the Income-Tax addition helper, but never its Pool** (2026-08-17, user decision) — the same purchases were typed twice, and the second copy is the one that ends up a rupee off. `depSyncAdditionsFromSlm()` copies date/particular/amount; the **pool is pre-selected** from `DEP_SLM_CLASSES[].itPool` and then never touched again, because which pool an asset belongs in is a tax judgement. The mapping is not a guess — each pool's own name states its classes (B is *"Furniture, Fixture & Office Equipment"*, D is *"Plant & Machinery & Other Assets"*), which is why `office` **and** `furniture` both map to B. It is a **sync, not an append** (`data-slm-aid` per row, the `depSlmApplyAdditions()` idiom): re-running updates, a user-changed pool survives, hand-typed rows are untouched, and a row whose SLM line was **deleted is removed** — deliberately unlike the SLM side, since the only investment in one of these rows is the pool choice while a stale line silently inflates the year's additions in a tax computation. **`slmAid` must stay in `addition_details`** or a reloaded sheet duplicates every line on the next sync.
 - **Depreciation's Saved-schedules drawer sets a sheet's IDENTITY and lets the existing loader fetch it** (2026-08-17) — `depLoadSaved()` sets client, fiscal year and method/scheme, then calls `depScope.select()` **last** so the scope clears both workings before loading; setting `depClientId` directly would leave the previous client's assets beside the new sheet (§9). Every setter before it passes the new `skipReload` flag so four setters don't race four fetches onto one grid. `depSetFyOption()` adds a year the dropdown doesn't carry (it spans current−3…+6) because `sel.value = fy` on a missing option silently loads a *different* sheet than the one clicked. The scheme is in the row **title**, not just the meta line — one client-year can hold three sheets (normal, special, SLM) and identical rows are unpickable.
 - **Depreciation carry-forward is manual-save only** — generating Excel never writes, so testing is safe.
-- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) **The OCR Extract module added 2026-08-01 is not that module returning** — different engine (server-side PaddleOCR, not in-browser Tesseract), general-purpose text extraction, no VAT coupling. That removal decision still stands.
+- **The VAT Return OCR module was removed on purpose** (2026-07-14, user decision) — don't restore it, its four engines, or the `pdfjs-dist`/`tesseract.js` CDN libraries unless the user asks. (`exceljs` legitimately came back for Depreciation.) The general-purpose OCR Extract module that briefly existed 2026-08-01 to 2026-08-18 was **not** that module returning, and it is now gone too — see the entry below. Both removals stand.
+- **The OCR Extract module and the whole `ocr_service/` directory were removed on purpose** (2026-08-18, user decision — it wasn't earning its keep). This took `js/ocrExtract.js`, `js/core/ocrEngine.js`, `ocr_service/` (the project's only server-side code, and the only reason it needed Python at all), `window.OCR_SERVICE_URL`, the Automation Hub menu entry, the `tab-ocrExtract-panel` panel, its `MODULE_INITS` entry, and the two `http://127.0.0.1:8000` / `localhost:8000` origins from the CSP `connect-src` — **which is Supabase alone again, and should stay that way**. The `ocr-` element-ID prefix is now free. Historical `audit_log` rows (`module: 'ocrExtract'`, `event_type: 'ocr_extract_run'` — six of them) remain valid, and `js/config.js` keeps their display labels for the same reason the two removed VAT modules keep theirs: dropping a label prints a raw code id in the Activity Log for work the firm really did. Recoverable from git history. Don't restore it, the FastAPI service, or any other companion process without an explicit ask.
 - **The VAT Compliance module was removed on purpose** (2026-08-10, user decision) — the firm stopped tracking clients' monthly VAT filing status in this app. Removal took `js/vatCompliance.js`, its sidebar tab, its two modals, its `.vatc-*` CSS, and the `vat_filings` table itself (`db/2026-08-10_drop_vat_filings.sql` — data is gone; the rollback restores structure only). **`clients.vat_status` stays** — it's still edited via Company Registrar → Company Profile and is a distinct client property (§15 `tax_registration_type` note), not owned by the module that read/wrote it. Historical `audit_log` rows with `module: 'vatCompliance'` remain valid; `js/config.js` keeps their display labels. Don't restore the module without an explicit ask — it's recoverable from git history.
 - **Share Transfer, Increase Capital and PIN Reset stubs were removed** (2026-08-10, user decision) — the firm doesn't do that work; **Company Secretary Appointment** (`cs-` prefix) was added as a stub in their place, alongside the surviving Company Registration stub. Same `moduleComingSoon()` treatment as before — UI built, logic not yet wired up.
-- **`enable_mkldnn=False` in `ocr_service/ocr_engine.py` is load-bearing** — with oneDNN on, paddlepaddle 3.3.1 aborts mid-inference (`ConvertPirAttribute2RuntimeAttribute not support`). It is not a stray performance flag; re-test before removing it on a paddlepaddle bump.
 - **File In Out (File Management in code) is one row per visit** (2026-08-01) — an intake and everything given back out of it are the same physical custody, so there is no paired "returns" row; it all lives on the intake row (`doc_types` in, `outtakes` out).
 - **File In Out's status is 3-way and DERIVED, never hand-set** (`fmDeriveStatus`, 2026-08-09 second pass) — pending/partial/returned is computed from `doc_types` vs `outtakes` on every change and then written through `fmFlow`, mirroring Audit Report Finalization's "never a stored status column drifting from the raw data" idiom. Don't set `status` directly from a button value.
 - **File In Out replaced single-shot "Hand Over" with repeatable "Outtake" events** (2026-08-09) — the firm doesn't always give everything back at once. Each outtake records exactly which document types/quantities went out, defaulting to (and capped at) what's still remaining. `Undo Last Outtake` only ever pops the most recent event, never an arbitrary earlier one. Don't reintroduce a single all-or-nothing return action.
@@ -470,13 +466,11 @@ The established pattern — **investigate with real evidence → implement only 
 - **Projection's comparison column is headed by its own section's date convention, not a fiscal-year label** (2026-08-11, user decision) — the balance sheet reads `2083.03.31` (overridable via `pj-base-asat` for a statement drawn to a non-standard day), the P&L and Schedule 1 read `2082.2083`; a single `F.Y. 2082-83` used to print beside sibling columns headed `2084.03.31`. The IRD sheet keeps `F.Y.` labels — that page is fiscal-year semantics.
 - **Projection's `performed_by` staff name is UI-only and must never reach the report output** (2026-08-10, explicit user ask) — it identifies who did the work for the firm's own tracking; the bank-facing document has no business carrying it. `pjxBuildReport()` reads only the company/PAN/org-type/comparison/statement-type fields, and that boundary is what keeps this true.
 - **Projection's Share Capital is an editable input, not a read-only parsed figure** (2026-08-10, user ask) — the workbook's capital line is regularly stale, and every downstream total keys off it. **Clearing the box returns to the figure the statement actually carried**, which is why the parsed value is retained separately rather than the box just being seeded. Note this is not the same field as the per-year **Additional Capital** override in the review panel, which was already editable and is solver-owned.
-- **The OCR service is deliberately standalone** — no client picker, no `clients` row, no document pipeline. That's what keeps it optional: a stopped service breaks one tab, nothing else. Don't make another module depend on it without asking.
 - **Saved documents are ONE table with a `module` discriminator** (2026-08-02) — not one table per builder. Every HTML document builder stores the same two things (form state + rendered HTML), so per-module tables would duplicate the schema, the RLS block and the entire save/list/restore UI. Adding a builder means adding one value to the CHECK, not a migration and a drawer.
 - **A saved document stores BOTH its form state and its rendered HTML** — the preview is contenteditable, so the state alone loses every hand-edit, which is exactly the document the firm issued. Don't "simplify" either one away.
 - **Notes to Accounts' PPE useful-life table is READ from the SLM depreciation schedule, not typed** (2026-08-17, user decision) — the classes and lives in that note are the same ones the SLM schedule already depreciates on, so typing them twice is exactly how a filed note comes to claim a life the accounts weren't computed with. `ntaFetchPpeFromSlm()` calls **`depSlmFetchUsefulLives()`**, which lives in `depreciationSlm.js` because the shape of `pools` and the `DEP_SLM_CLASSES` vocabulary belong to that module — Notes only ever sees `{type, life}`. Rows are **replaced, not merged** (a leftover row is a class the client doesn't own, and `NTA_PPE_DEFAULTS` are generic placeholders), but **nothing is touched when there's no schedule to read**, and a restored saved document can't be overwritten because `ntaApplyState()` fires no change event. Three rules in the rollup are not cosmetic: **Land prints `Not depreciated`, never `0 years`**; a class whose assets carry **different lives prints a range** (`10–12 years`), which is how a note states a mixed class; and a class with **no life typed comes back blank rather than falling back to the class default** — the note may not state a figure the schedule doesn't, so the caller counts the blanks and warns instead. The lookup **falls back to the most recent earlier fiscal year and says which year it read** — a useful life is a policy, not a yearly figure, and notes are routinely drafted before the year's schedule is saved.
 - **Additional notes belong to Notes to Accounts only** (2026-08-02, CA instruction) — the audit report's sections are prescribed by the NSAs and are not the auditor's to extend. Don't add an equivalent to `report.js`.
 - **`.rep-blank-fill`'s placeholder styling belongs to `:empty` alone** — styling it grey-italic by default and black only on `:focus` is what made filled Emphasis-of-Matter and KAM text print washed out in every export (none of which has focus). It reached a client's printed report; don't restore the `:focus`-based version.
-- **`OCR_LANG` defaults to `ne` (Nepali/Devanagari), not `en`** — verified 2026-08-01 to read plain English correctly too, so one model serves both. This isn't a preference: `en` has no Devanagari support and returns confident-looking garbage on a Nepali page instead of erroring, which is easy to miss. Don't "optimize" it back to `en` for speed.
 
 ---
 
@@ -507,8 +501,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
 | `docs/database.md` | On demand | All 22 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
-| `docs/engines.md` | On demand | The 14 engines in full. |
-| `ocr_service/README.md` | On demand | The local OCR service — setup, endpoints, the Python-version constraint (§2). |
+| `docs/engines.md` | On demand | The 13 engines in full. |
 | `tools/spbVerify.mjs` | Run, not read | Autobooks verification harness — `node tools/spbVerify.mjs` (§12). |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |

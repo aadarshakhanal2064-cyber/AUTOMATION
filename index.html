@@ -15,10 +15,9 @@
   2026-08-01 when sign-in moved to Supabase email/password — the app no longer
   loads, calls or frames anything of Google's, so allowing those hosts would
   only widen the exfiltration surface for nothing. fonts.googleapis.com /
-  fonts.gstatic.com are the Inter webfont and unrelated to auth. The two
-  loopback entries in connect-src are the local OCR service (ocr_service/),
-  which runs as a separate process on the staff member's own machine; both
-  spellings are listed because 127.0.0.1 and localhost are distinct origins.
+  fonts.gstatic.com are the Inter webfont and unrelated to auth. connect-src
+  is now Supabase alone — the two http://127.0.0.1:8000 / localhost:8000
+  loopback entries went with the OCR Extract module on 2026-08-18.
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
@@ -26,7 +25,7 @@
   style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com;
   font-src 'self' data: https://fonts.gstatic.com;
   img-src 'self' data: blob:;
-  connect-src 'self' https://*.supabase.co http://127.0.0.1:8000 http://localhost:8000;
+  connect-src 'self' https://*.supabase.co;
   frame-src blob:;
   object-src 'none';
   base-uri 'self';
@@ -125,7 +124,6 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openModule('report')">Generate Report</button>
         <button class="topbar-dropdown-item" onclick="openModule('notesToAccounts')">Notes to Accounts</button>
         <button class="topbar-dropdown-item" onclick="openModule('salesPurchaseBook')">Autobooks</button>
-        <button class="topbar-dropdown-item" onclick="openModule('ocrExtract')">OCR Extract</button>
       </div>
     </div>
   </div>
@@ -1797,47 +1795,6 @@ function cropLoginLogoIcon(img) {
         <div id="cl-preview-placeholder" style="display:flex; align-items:center; justify-content:center; min-height:200px; color:var(--text-muted); font-size:13px;">Nothing to preview yet.</div>
         <style id="cl-preview-style"></style>
         <div id="cl-preview-root" style="display:none;"></div>
-      </div>
-    </div>
-
-    <!-- ── TAB: OCR EXTRACT ── -->
-    <div id="tab-ocrExtract-panel" class="tab-panel">
-      <div class="page-header">
-        <div class="ph-text">
-          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">OCR Extract</span></div>
-          <h2 class="page-title">OCR Extract</h2>
-          <p class="page-subtitle">Pull the text out of a scanned PDF or an image. Needs the local OCR service running — start it with <code>ocr_service/start.ps1</code>.</p>
-        </div>
-        <div id="ocr-service-badge"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title" style="font-size:14px;">Choose a file</div>
-          <div class="card-desc">PDF, PNG, JPG, BMP, WEBP or TIFF. Multi-page PDFs are read page by page.</div>
-        </div>
-        <input type="file" id="ocr-file-input" accept=".pdf,.png,.jpg,.jpeg,.bmp,.webp,.tif,.tiff" style="display:none;" onchange="ocrHandleFile(this)" />
-        <button class="btn btn-outline" onclick="document.getElementById('ocr-file-input').click()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-          Choose PDF or image
-        </button>
-        <p id="ocr-file-name" style="font-size:12.5px; color:var(--text-muted); margin-top:12px;">No file selected.</p>
-        <div class="action-row" style="margin-top:16px;">
-          <button class="btn btn-primary" id="ocr-run-btn" onclick="ocrRun()" disabled>Extract Text</button>
-        </div>
-      </div>
-
-      <div id="ocr-status"></div>
-
-      <div class="card" id="ocr-result-card" style="display:none; margin-top:20px;">
-        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
-          <div class="card-title" style="font-size:14px;">Extracted text</div>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-outline btn-sm" onclick="ocrCopyText()">Copy</button>
-            <button class="btn btn-outline btn-sm" onclick="ocrDownloadText()">Download .txt</button>
-          </div>
-        </div>
-        <div id="ocr-result-body"></div>
       </div>
     </div>
 
@@ -3950,7 +3907,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608171400"></script>
+<script src="js/config.js?v=202608181500"></script>
 <script src="js/utils.js?v=202608141200"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -3959,15 +3916,14 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/searchEngine.js?v=202608022300"></script>
 <script src="js/core/tableEngine.js?v=202608022300"></script>
 <script src="js/core/workflowEngine.js?v=202608110900"></script>
-<script src="js/core/auditLog.js?v=202608101800"></script>
+<script src="js/core/auditLog.js?v=202608181500"></script>
 <script src="js/core/reportExport.js?v=202608022300"></script>
 <script src="js/core/workbookReader.js?v=202608022300"></script>
 <script src="js/core/engineMath.js?v=202608022300"></script>
-<script src="js/core/ocrEngine.js?v=202608022300"></script>
 <script src="js/core/dataCache.js?v=202608022300"></script>
 <script src="js/core/documentStore.js?v=202608171700"></script>
-<script src="js/tabs.js?v=202608022300"></script>
-<script src="js/dashboard.js?v=202608022300"></script>
+<script src="js/tabs.js?v=202608181500"></script>
+<script src="js/dashboard.js?v=202608181500"></script>
 <script src="js/registrar.js?v=202608110900"></script>
 <script src="js/clients.js?v=202608151800"></script>
 <script src="js/billing.js?v=202608151800"></script>
@@ -3998,7 +3954,6 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatementEngine.js?v=202608022300"></script>
 <script src="js/finStatement.js?v=202608120900"></script>
 <script src="js/finStatementExport.js?v=202608120900"></script>
-<script src="js/ocrExtract.js?v=202608022300"></script>
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>
 <script src="js/auditChecklist.js?v=202608151800"></script>

@@ -15,7 +15,7 @@ Everything runs client-side in the browser; there is **no server-side code**. Th
 
 - **Supabase Postgres** via `supabase-js` with the publishable key in `config.js`, and **Supabase Auth** (email + password) for sign-in. RLS is enabled on every table (§6).
 
-That is the entire list. Google Drive/Gmail were removed on 2026-08-01 with Google auth (§7), so **Supabase is the only external service the app talks to** — apart from the optional local OCR service on loopback (§2.6).
+That is the entire list. Google Drive/Gmail were removed on 2026-08-01 with Google auth (§7), and the optional local OCR service went on 2026-08-18 with the OCR Extract module, so **Supabase is now the only external service the app talks to** — and the only one the CSP lets it talk to (§8).
 
 State is `window.*` globals (`window.clientsList`, `window.currentUser`, …) — no modules, no state library. Functions attach implicitly to `window`.
 
@@ -70,52 +70,6 @@ All third-party libraries are `<script>` tags in `index.html` — no `package.js
 - **Sign-in needs a real Supabase account.** To test anything past the login screen, bypass the auth wall via direct DOM manipulation — set `window.currentUser = {email, role}`, hide `#loading-screen`/`#auth-section-wrap`, show `#app-section`/`#topbar`/`#sidebar`, and seed `window.clientsList` by hand (RLS returns nothing without a session).
 - **Microsoft Word / LibreOffice are not installed** in the dev environment. Generated `.docx` verification is structural (XML-level) only; the user does the final visual check in Word.
 
-### 2.6 The OCR service (`ocr_service/`) — the one process that isn't the browser
-
-The **only** server-side code in the project, added 2026-08-01 for the OCR Extract
-module (§5). It is a FastAPI app wrapping PaddleOCR: `POST /ocr` takes a PDF or
-image upload and returns the extracted text as JSON, `GET /health` is a liveness
-check. Full setup and endpoint reference: [`ocr_service/README.md`](../ocr_service/README.md).
-
-**It runs locally, per staff member, and is not deployed.** GitHub Pages serves
-static files only — it cannot host Python. So the service is started on demand
-(`ocr_service/start.ps1`, or `start.sh`) on whichever machine wants OCR, in the
-same spirit as each staff member's browser holding their own Supabase session.
-Nothing else in the app depends on it: if it isn't running, the OCR Extract tab
-says so and every other module is unaffected.
-
-This does **not** change the app's architecture. The browser is still the whole
-application; this is a separate optional process it can talk to, not a backend
-the app now requires.
-
-Three things make the browser→service call work, and all three must agree:
-
-| Piece | Where | Note |
-|---|---|---|
-| Service URL | `window.OCR_SERVICE_URL` in `js/config.js` | Defaults to `http://127.0.0.1:8000` |
-| CSP `connect-src` | the meta tag in `index.html` | Lists **both** `127.0.0.1:8000` and `localhost:8000` — distinct origins to a browser. Without this the fetch is blocked before it leaves the page. |
-| CORS allow-list | `ALLOWED_ORIGINS` in `ocr_service/config.py` | The two dev-server ports plus the GitHub Pages origin |
-
-Changing the port means changing all three.
-
-**Python 3.10–3.12 is required** — PaddlePaddle publishes no wheel for 3.13/3.14
-(`pip install paddlepaddle` fails outright with `No matching distribution found`).
-The start scripts look for 3.12 explicitly rather than using whatever `python`
-points at, and say what to install if they can't find one.
-
-**Runs the Nepali (Devanagari) model, not English** (`OCR_LANG=ne` in
-`ocr_service/config.py`) — verified 2026-08-01 to read plain Latin/English text
-correctly too, so one model covers both. This matters because the failure mode
-of the wrong setting is silent: pointed at the English model, a Devanagari page
-doesn't error, it returns confident-looking garbage (real example:
-`'R US RRRH'` for शैलेश एण्ड एसोसिएट्स, scores ~0.5–0.8 vs ~0.95+ for a correct
-read). `ne` costs roughly double the latency of `en` per page.
-
----
-
-
----
-
 ## 7. Authentication & Authorization
 
 **Supabase Auth, email + password.** Google OAuth was removed on 2026-08-01; see the end of this section for what went with it.
@@ -146,7 +100,7 @@ The trigger was removing Send Document, which was the only Drive consumer. Billi
 
 ## 8. External integrations
 
-**None.** Supabase is the only remote service the app calls; the optional local OCR service (§2.6) runs on loopback. This is enforced, not just conventional — the CSP's `connect-src` is `'self' https://*.supabase.co http://127.0.0.1:8000 http://localhost:8000`, so adding an integration to a new host means widening it there first or the call is simply blocked.
+**None.** Supabase is the only remote service the app calls, and since 2026-08-18 it is the only process of any kind — the OCR service that used to sit on loopback went with its module, and with it the project's only server-side code. This is enforced, not just conventional: the CSP's `connect-src` is exactly `'self' https://*.supabase.co`, so adding an integration to a new host means widening it there first or the call is simply blocked.
 
 ---
 

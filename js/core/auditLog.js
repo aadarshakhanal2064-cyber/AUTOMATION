@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════
 //  AUDIT LOG
-//  Cross-cutting event record — document generation and OCR extraction
-//  jobs today, any future module's own events later. Distinct from
+//  Cross-cutting event record — document generation jobs today, any
+//  future module's own events later. Distinct from
 //  logs.js's Send Logs (which is specifically the Send Document feature's
 //  email-send history) — this is the general activity log the Dashboard
 //  reads from. Every call is best-effort: a logging failure must never

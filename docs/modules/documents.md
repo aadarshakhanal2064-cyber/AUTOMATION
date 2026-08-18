@@ -1,7 +1,7 @@
 # Document Builders
 
 > Loaded on demand, not in every session. The always-loaded index is **CLAUDE.md §5**;
-> this file holds the detail for the Audit Report Builder, Notes to Accounts, Confirmation Letters and OCR Extract.
+> this file holds the detail for the Audit Report Builder, Notes to Accounts and Confirmation Letters.
 > Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
 
 ---
@@ -59,14 +59,25 @@ Bulk-generates "Confirmation of Account Balance & Transaction" letters — one p
 - **Template** (`assets/templates/confirmation-letter.docx`) is tokenized from a real firm letter: the per-party body (To/Subject/table/signature) is wrapped in a docxtemplater loop `{{#letters}}...{{/letters}}` with a `{{^last}}`-guarded page break, so **one render function (`clRenderLetters`) serves both outputs** — a combined multi-page `.docx` (all selected letters) and a ZIP of individual `.docx` files (JSZip), one call per party with a single-item array.
 - **Fixed a wording bug present in every real sample** (including the firm's own blank master): the Subject line and the paragraph below it referenced fiscal years one year apart. The template uses one `{{fyLabel}}` token in both places. Also corrected the firm's baked-in "Conformation" → "Confirmation" typo.
 
-### 5.19 OCR Extract (`js/ocrExtract.js`, `ocr-` prefix)
+### 5.19 OCR Extract — REMOVED 2026-08-18
 
-Added 2026-08-01. Upload a scanned PDF or an image, get its text back — copy it
-or download it as `.txt`. Automation Hub tab.
+> **Removed module** (2026-08-18, user decision — it wasn't earning its keep).
+> It uploaded a scanned PDF or image to a local FastAPI + PaddleOCR service and
+> returned the text. The removal took `js/ocrExtract.js`, `js/core/ocrEngine.js`,
+> the whole `ocr_service/` directory (the project's only server-side code),
+> `window.OCR_SERVICE_URL`, the Automation Hub menu entry, the
+> `tab-ocrExtract-panel` panel, its `MODULE_INITS` entry, and the two loopback
+> origins in the CSP `connect-src` — which is Supabase alone again. All of it is
+> recoverable from git history. Historical `audit_log` rows (`module:
+> 'ocrExtract'`, `event_type: 'ocr_extract_run'` — six of them) remain valid and
+> `js/config.js` keeps their display labels, the same treatment the two removed
+> VAT modules got. Don't restore it without an explicit ask.
+
+What it was, and the findings that would apply again to any future OCR attempt:
 
 - **It is the only module backed by a server process.** All the OCR work happens
-  in `ocr_service/` (FastAPI + PaddleOCR), which each staff member runs locally;
-  see `docs/architecture.md` §2.6 and `ocr_service/README.md`. The browser side
+  in `ocr_service/` (FastAPI + PaddleOCR), which each staff member ran locally
+  (that directory and `architecture.md` §2.6 are gone — see git history). The browser side
   is deliberately thin — file picking, calling the service, rendering text.
 - **`js/core/ocrEngine.js` owns the transport**, not this module. Its one real job
   is telling *"the service isn't running"* apart from *"OCR failed"*: a `fetch()`
