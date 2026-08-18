@@ -181,7 +181,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**27 tables:** `app_users` · `clients` (314 rows) · `client_shareholders` · `send_logs` · `audit_log` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `service_memo_fee_skips` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done` · `work_todos` (added 2026-08-17 — `db/2026-08-17_work_todos.sql`) · `autobooks_books` · `autobooks_entries` · `autobooks_parties` · `autobooks_adjustments` (added 2026-08-16 — `db/2026-08-16_autobooks_ledger.sql`). (`vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`.)
+**27 tables** (from-nothing build: `db/00_bootstrap.sql`): `app_users` · `clients` (346 rows) · `client_shareholders` · `send_logs` · `audit_log` · `firm_bank_details` · `invoices` · `invoice_items` · `invoice_payments` · `service_memos` · `service_memo_fee_skips` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done` · `work_todos` (added 2026-08-17 — `db/2026-08-17_work_todos.sql`) · `autobooks_books` · `autobooks_entries` · `autobooks_parties` · `autobooks_adjustments` (added 2026-08-16 — `db/2026-08-16_autobooks_ledger.sql`). (`vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`.)
 
 ### Trigger-owned logic (never replicate in JS)
 
@@ -198,13 +198,15 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 ### Query rules
 
-PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 314 and growing (`loadClients()` was a bare `.select()` until 2026-08-01 — it would have truncated silently, never errored).
+PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 346 and growing (`loadClients()` was a bare `.select()` until 2026-08-01 — it would have truncated silently, never errored).
 
 **The shared ledger tables go through `DataCache` (§4)**, not a bare `sbFetchAll`: `bank_transactions`, `bank_accounts`, `service_memos` and `party_opening_balances` are read by Bank Entry, Party Ledger *and* Final Account, and `tabs.js` re-runs a module's init on every open. Any new write path to those four tables **must invalidate its key** or the save won't show until the TTL expires.
 
 ### Migration workflow
 
 Show the SQL (annotated migration + rollback as files under `db/`) → apply via Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
+
+**`db/00_bootstrap.sql` is the from-nothing build** (2026-08-18) — the whole schema, no data. The dated migrations **cannot** rebuild the database on their own: nine tables and three functions predate the workflow and are never created by any of them, so `db/*.sql` in date order fails on the first migration. Use the bootstrap for a NEW Supabase project or disaster recovery; never against a live one. Regenerate it from the live schema rather than hand-patching, and keep it in step when a migration changes the schema. Detail: `docs/database.md` §6.5.
 
 ### RLS — ENABLED on all 27 tables (since 2026-07-16)
 
@@ -503,6 +505,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
 | `docs/engines.md` | On demand | The 13 engines in full. |
 | `tools/spbVerify.mjs` | Run, not read | Autobooks verification harness — `node tools/spbVerify.mjs` (§12). |
+| `db/00_bootstrap.sql` | Run, not read | Builds the entire schema from nothing — new Supabase project or disaster recovery (§6). Rollback beside it is destructive; empty projects only. |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |
 | Memory (`~/.claude/projects/.../memory/`) | Index every session | Cross-session behavioural conventions. Module facts live in `docs/`, not here. |

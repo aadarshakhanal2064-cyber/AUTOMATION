@@ -56,11 +56,21 @@ Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 202
 
 ### 6.4 Query rules
 
-Supabase/PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 314 and growing.
+Supabase/PostgREST caps a single select at **1000 rows** — any query that can grow past that must use `sbFetchAll()` (`utils.js`) with a stable `.order()`. `clients` is at 346 and growing (314 at the 2026-07-26 reload; re-counted live 2026-08-18).
 
 ### 6.5 Migration workflow
 
 Show the SQL (annotated migration + rollback script as files under `db/`) → apply via the Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
+
+**`db/00_bootstrap.sql` builds the whole schema from nothing** (added 2026-08-18) — 27 tables, 5 trigger functions, the 3 `private` auth helpers, 3 RPCs, 56 indexes, 20 triggers, 94 policies, 18 table comments, and no data at all. Use it to stand the app up on a **new** Supabase project (a second firm, a test instance, a handover) or to rebuild after a disaster; never against a live project, since every statement is a bare `CREATE` that errors on the first object that already exists.
+
+It exists because **the dated migrations cannot do this on their own.** They are an incremental history starting 2026-07-16, and nine tables predate it — `app_users`, `clients`, `client_shareholders`, `invoices`, `invoice_items`, `invoice_payments`, `firm_bank_details`, `audit_log`, `send_logs` — along with three functions that `2026-07-16_rls_lockdown.sql` only ever ALTERs and never creates (`set_updated_at`, `set_invoice_number`, `sync_invoice_payment_totals`). All twelve were built by hand in the dashboard before the workflow existed. Running `db/*.sql` in date order against an empty project therefore fails on the first migration, because 14 triggers reference a `set_updated_at` that isn't there.
+
+The bootstrap's **order is load-bearing**: `private.is_app_user()` and the 3 RPCs are `LANGUAGE sql`, so Postgres validates their bodies at CREATE time and every table they read must already exist. Tables come before functions, not after.
+
+It is **generated from the live schema, which stays the authority** — regenerate rather than hand-patch if the two ever disagree, and keep it in step when a later migration changes the schema. Verified 2026-08-18 by applying it to a scratch schema on the live project and diffing every column, constraint, index, trigger and policy against `public` (zero differences beyond the physical `attnum` gaps that historical DROP COLUMNs left in `document_register` and `service_memos`), then exercising all five triggers on the rebuilt tables. `db/00_bootstrap_rollback.sql` drops everything it made — **destructive, empty projects only**.
+
+One known divergence: `public.get_vat_fy_stats(text)` exists live but is **deliberately excluded**. It reads `vat_filings`, dropped 2026-08-10 with the VAT Compliance module, so it is already broken and would fail at CREATE time on a fresh project. Nothing in `js/` calls it.
 
 ### 6.6 RLS — ENABLED everywhere (since 2026-07-16)
 
