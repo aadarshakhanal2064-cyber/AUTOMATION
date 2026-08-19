@@ -429,7 +429,7 @@ window.MODULE_LABELS = {
   depreciation: 'Depreciation',
   fileManagement: 'File In Out',
   finalAccount: 'Final Account',
-  finStatement: 'Financial Statement',
+  finStatement: 'Audited Statement',
   notesToAccounts: 'Notes to Accounts',
   partyLedger: 'Party Ledger',
   projection: 'Projection Report',

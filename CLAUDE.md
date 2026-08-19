@@ -154,7 +154,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Party Ledger | Financial Management | `partyLedger.js` | `pl-` | `party_opening_balances` | [financial-management](docs/modules/financial-management.md) |
 | Bank Entry | Financial Management | `bankBook.js` | `bb-` | `bank_accounts`, `bank_transactions` | [financial-management](docs/modules/financial-management.md) |
 | Final Account | Financial Management | `finalAccount.js` | `fa-` | *(none — pure view)* | [financial-management](docs/modules/financial-management.md) |
-| Financial Statement | Automation Hub | `finStatement.js` + `finStatementEngine.js` + `finStatementExport.js` | `fs-` | `financial_statements` | [financial-statement](docs/modules/financial-statement.md) |
+| Audited Statement | Automation Hub | `finStatement.js` + `finStatementEngine.js` + `finStatementExport.js` | `fs-` | `financial_statements` | [financial-statement](docs/modules/financial-statement.md) |
 | Projection Report | Automation Hub | `projection.js` + `projectionEngine.js` + `projectionExport.js` | `pj-` | `projection_reports` | [projection](docs/modules/projection.md) |
 | Depreciation | Automation Hub | `depreciation.js` + `depreciationSlm.js` | `dep-` `dep-slm-` | `depreciation_schedules` | [depreciation](docs/modules/depreciation.md) |
 | Confirmation | Automation Hub | `confirmationLetters.js` | `cl-` | *(none)* | [documents](docs/modules/documents.md) |
@@ -162,15 +162,16 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Notes to Accounts | Automation Hub | `notesToAccounts.js` | `nta-` | `saved_documents` | [documents](docs/modules/documents.md) |
 | Autobooks | Automation Hub | `salesPurchaseBook.js` + `salesPurchaseBookLedger.js` + `salesPurchaseBookConfirm.js` + `salesPurchaseBookAnnexure.js` + `salesPurchaseBookReco.js` + `salesPurchaseBookVatReturn.js` | `spb-` | `autobooks_books`, `autobooks_entries`, `autobooks_parties`, `autobooks_adjustments` | [autobooks](docs/modules/autobooks.md) |
 
-### Three modules were renamed — display name only
+### Four modules were renamed — display name only
 
-File names, function prefixes, element-ID prefixes, table names and `ModuleRegistry` ids all keep their originals. This trips up every first encounter with any of the three:
+File names, function prefixes, element-ID prefixes, table names and `ModuleRegistry` ids all keep their originals. This trips up every first encounter with any of the four:
 
 | Menu / page label | Module in code |
 |---|---|
 | **Autobooks** | Sales & Purchase Book — `js/salesPurchaseBook.js`, `spb-` |
 | **Bank Entry** | Bank Book — `js/bankBook.js`, `bb-`, tables `bank_accounts`/`bank_transactions` |
 | **File In Out** | File Management — `js/fileManagement.js`, `fm-`, table `document_register` (renamed 2026-08-09) |
+| **Audited Statement** | Financial Statement — `js/finStatement.js`, `fs-`, table `financial_statements` (renamed 2026-08-19, when the Provisional Statement sibling was added) |
 
 "Confirmation" is the menu label for Confirmation Letters; the panel keeps the fuller title.
 
