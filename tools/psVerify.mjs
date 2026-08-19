@@ -1,11 +1,16 @@
 // ════════════════════════════════════════════════════════════════════════
 //  PROVISIONAL STATEMENT — verification harness
 //
-//  Replays the prior-year column of the firm's own
-//  `Pashupati Marvel Pvt Ltd 82.83 Provisional.xlsx` through
-//  js/provisionalStatementEngine.js, and asserts every derived figure back
-//  against that workbook's OWN cached results — the numbers Excel itself
-//  computed and stored in the file.
+//  Replays the prior-year column of the firm's REFERENCE PROVISIONAL
+//  WORKBOOK through js/provisionalStatementEngine.js, and asserts every
+//  derived figure back against that workbook's OWN cached results — the
+//  numbers Excel itself computed and stored in the file.
+//
+//  The source workbook is a real client's and is NOT in this repo (the
+//  templates directory is gitignored — CLAUDE.md §1 rule 7). Only the
+//  arithmetic travels here, under a neutral handle: what these assertions
+//  prove is that the engine reproduces Excel, and that holds whoever the
+//  figures belong to.
 //
 //  This exists because "100% same output as the Excel file" is a claim that
 //  has to be provable rather than eyeballed, and because the module's whole
@@ -220,7 +225,7 @@ eq('SOCF       Closing cash ties to SFP cash', cf.cashProof, 0, 0.01);
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');
-console.log('  Pashupati Marvel Pvt Ltd 82.83 Provisional.xlsx\n');
+console.log('  reference provisional workbook, F.Y. 2081-82 → 2082-83\n');
 let section = '';
 for (const r of results) {
   const sec = r.label.split(/\s{2,}/)[0].split(' ')[0];

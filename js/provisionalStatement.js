@@ -625,7 +625,7 @@ function psToOut(r) {
         // The Statement of Changes in Equity is NEVER titled "Provisional",
         // even on a provisional set — §15. Of the other three, whether the
         // word is printed is a house choice: the firm's T3 file prints it and
-        // its Pashupati file does not, so it is offered as a switch.
+        // its second reference file does not, so it is offered as a switch.
         const pfx = (psEl('ps-title-provisional') || {}).checked === false ? '' : 'Provisional ';
         return {
           sfp: pfx + 'Statement of Financial Position',

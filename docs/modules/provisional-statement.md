@@ -14,9 +14,10 @@ does it in Excel.
 
 ## 1. Where the rules come from
 
-Reverse-engineered cell-by-cell from the firm's own
-`Pashupati Marvel Pvt Ltd 82.83 Provisional.xlsx` (7 sheets, 1,464 populated
-cells), read via a dependency-free XLSX dumper. **Every formula below is quoted
+Reverse-engineered cell-by-cell from the firm's own **reference provisional
+workbook** (7 sheets, 1,464 populated cells), read via a dependency-free XLSX
+dumper. That file is a real client's and is deliberately **not in this repo** —
+`assets/templates/` is gitignored, because the repo is public (§1 rule 7). **Every formula below is quoted
 from that file**, not inferred. The workbook's own colour code:
 
 | Colour | Meaning in the firm's workbook |
@@ -164,7 +165,7 @@ Projection already uses), or carried from a saved Audited Statement.
 Rendered through the **existing `finStatementExport.js`** — `fsxBuildReport()` →
 `fsxWriteWorkbook()` / `fsxPreviewHtml()`. That layer was already built
 cell-by-cell against a workbook of exactly this family (`T3 Pvt.Ltd 2081.082
-Provisional.xlsx`) and its geometry matches the Pashupati file exactly:
+Provisional.xlsx`) and its geometry matches the reference file exactly:
 
 | Sheet | Label | Note | Current | Prior |
 |---|---|---|---|---|
@@ -183,7 +184,7 @@ implemented there. **Do not fork that file**; extend it if a row type is missing
 
 **All 288 labelled rows across the seven sheets land on the same row numbers as
 the firm's own workbook**, verified by diffing the generated workbook against a
-map extracted from `Pashupati Marvel Pvt Ltd 82.83 Provisional.xlsx`. Getting
+map extracted from the reference provisional workbook. Getting
 there needed five structural corrections to the export layer, every one of
 which also fixes the **Audited Statement**, since both reference files agree:
 
@@ -212,8 +213,8 @@ Two deliberate carries from the source file, both **layout-only**:
   starts, and nil changes no total. This is a different case from the `+0.01`
   cash plug in §4, which moves a figure and is *not* reproduced.
 - whether the word **"Provisional"** appears in the three statement titles is a
-  house choice, not a rule: the firm's T3 file prints it and its Pashupati file
-  does not. It is a checkbox, defaulting to on (§15 keeps the SOCE clean either
+  house choice, not a rule: the firm's T3 file prints it and the second
+  reference file does not. It is a checkbox, defaulting to on (§15 keeps the SOCE clean either
   way).
 
 **The A.D. date in brackets is typed, not converted.** `NepaliLocale` carries

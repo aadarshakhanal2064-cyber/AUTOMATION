@@ -7,9 +7,10 @@
 //  last year by formula, exactly the way the firm's own provisional workbook
 //  does it in Excel.
 //
-//  Every rule here is quoted from the firm's own
-//  `Pashupati Marvel Pvt Ltd 82.83 Provisional.xlsx`, read cell-by-cell; the
-//  source formula sits in a comment beside each one. `tools/psVerify.mjs`
+//  Every rule here is quoted from the firm's own REFERENCE PROVISIONAL
+//  WORKBOOK, read cell-by-cell; the source formula sits in a comment beside
+//  each one. (That workbook is a client's and is not in this repo — the
+//  templates directory is gitignored, CLAUDE.md §1 rule 7.) `tools/psVerify.mjs`
 //  replays that workbook's prior-year column through this engine and asserts
 //  every derived figure back against the workbook's own cached results, so a
 //  change that breaks a rule fails loudly instead of silently reprinting a

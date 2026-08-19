@@ -949,7 +949,7 @@ function fsxLayout(sh) {
   // A blank spacer sits BETWEEN the band and the first data row — the firm's
   // workbooks draw it as a merged empty row (`SFP!B10:H10`), which is why the
   // first heading lands on row 11 rather than 10. Both reference files agree
-  // on this (T3 Pvt.Ltd 2081.082 and Pashupati Marvel 82.83), so it is the
+  // on this (T3 Pvt.Ltd 2081.082 and the second reference file), so it is the
   // layout rather than one workbook's quirk; it was missed when this was
   // first written and every data row below it was one row high.
   const hasRestated = (sh.cols || []).some(c => c.restated);
