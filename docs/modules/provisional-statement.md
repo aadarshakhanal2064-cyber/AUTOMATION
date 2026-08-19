@@ -155,7 +155,9 @@ Setting a rate has to switch the line onto the growth rule, or a line that
 arrived flat silently ignores the rate typed on it. **0% stays `flat`** so the
 exported formula remains `=+F41` rather than `=ROUND(F41*1,0)`.
 
-**+ Add expense line** appends a head the firm's template never listed. It
+**+ Add direct cost** and **+ Add expense line** append heads the firm's
+template never listed — the first into note 3.12 inside Materials Consumed, the
+second into note 3.15. It
 behaves exactly like one read off the prior-year file — same growth rule, same
 override, same place in note 3.15.
 
@@ -205,6 +207,23 @@ Income Tax Paid. Everything marked `grow: true` in `PS_FIGURES` is **seeded at
 last year + the default growth** when the prior-year file is read; the seed only
 ever fills a box the user has not typed into.
 
+**Tax, TDS & VAT** — Advance Tax, the six withholdings and the VAT position are
+each **derived by default and shown greyed**, and each accepts a typed figure.
+A month's TDS is often paid on a different base than the year's accounts show,
+and the preparer has the deposit slips. **A typed line loses its live Excel
+formula and exports as a value** — the honest representation of a figure that
+came off a challan rather than out of the accounts.
+
+**VAT is only asked for a registered client.** A PAN-only client carries no VAT
+row at all, and a registered one prints only the side its return leaves it on;
+figures on both sides raise a warning, because a return normally lands on one.
+
+**Drawings / Dividend Paid and Capital Introduced** feed the Statement of
+Changes in Equity. The word follows the entity — a company pays a dividend, a
+proprietor takes drawings — and `meta.terms.distribution` carries it through to
+both the SOCE and the cash flow. (Matching on the string `'Drawing'` missed
+`'Drawings'`, which printed "Dividend Paid" on a proprietorship's cash flow.)
+
 ### 5.1 Two see-saws
 
 Both follow the same idiom: the side you touch is held, the other becomes the
@@ -216,6 +235,11 @@ balancing figure and carries a **balancing** badge.
    modes cannot drift. `psVerify` round-trips it: hold the profit the forward
    pass produced and the engine hands back the very purchases figure it started
    from.
+
+   **The PBT box opens at last year's margin carried onto this year's turnover**
+   — `profit(CY) = profit(PY) ÷ sales(PY) × sales(CY)`, via
+   `ProvisionalStatementEngine.pbtFromMargin()`. That is the firm's own first
+   guess at a provisional profit; it is a seed, not a rule.
 2. **Trade Receivables balances the balance sheet**, on by default. Profit lands
    in equity, so something on the asset side has to absorb it — the same choice
    the Audited engine makes (§15: cash is seeded, receivables is the plug), and
@@ -262,6 +286,27 @@ it. Two things follow from the omission: `Sch-PL`'s tax row must carry its own
 rate formula (`inc.taxDerive`) since the `X('COI','tax')` fallback would be a
 dead reference, and a self-banded schedule prints no sheet-wide title in
 HTML/PDF either, or the page would carry a heading the Excel does not have.
+
+### 6.0b The print renderer must know every row kind
+
+`fsxSheetHtml` builds the on-screen preview AND the print/PDF document, and it
+is a **separate implementation** from `fsxWriteWorkbook`. Row kinds added for
+Excel therefore have to be taught to it as well, or the printed set quietly
+comes out wrong while the workbook is perfect:
+
+- `band` printed as an ordinary row instead of a note's header;
+- `fignpr` printed as a stray line;
+- worst, a `quad` row carries **four** values into a table sized for **two**, so
+  note 3.6 silently lost its comparative Number/NPR pair.
+
+A sheet carrying quad rows is now laid out on **label + 4 columns**, with every
+ordinary value cell spanning the pair it sits above, so both kinds of row line
+up. The regression check is arithmetic: every `<tr>`'s total colspan must equal
+the table's `<col>` count.
+
+Print hygiene lives in `FSX_PRINT_CSS`: a heading stays with the band and rows
+beneath it (`break-after: avoid`), a total never splits from the lines it sums
+(`break-before: avoid`), and no row breaks across a page.
 
 ### 6.1 Row-for-row alignment
 

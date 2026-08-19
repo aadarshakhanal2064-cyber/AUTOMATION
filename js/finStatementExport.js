@@ -436,7 +436,9 @@ function fsxBuildReport(out) {
       R('Proceeds from Capital introduced during the year', [fi.capital, pc2.capital], 'item', { k: 'cfCap', xf: dFunding('capital') }),
       R('Proceeds/ (Repayment) from Non-Current Borrowings', [fi.nonCurrentBorrowings, pc2.nonCurrentBorrowings], 'item', { k: 'cfNCB', xf: dFunding('loanNC') }),
       R('Proceeds/ (Repayment) from Current Borrowings', [fi.currentBorrowings, pc2.currentBorrowings], 'item', { k: 'cfCB', xf: dFunding('loanC') }),
-      R(T.distribution === 'Drawing' ? 'Drawing' : 'Dividend Paid', [fi.drawing, pc2.drawing], 'item', { k: 'cfDraw' }),
+      // Use the entity's own word verbatim — matching on 'Drawing' missed
+      // 'Drawings', so a proprietorship's cash flow said "Dividend Paid".
+      R(T.distribution || 'Dividend Paid', [fi.drawing, pc2.drawing], 'item', { k: 'cfDraw' }),
       R('Net Cash Flows from Financing Activities', [cf.netFinancing, pc2.netFinancing], 'tot', {
         k: 'cfFinance', xf: ({ R: r, c }) => `SUM(${c}${r.cfCap}:${c}${r.cfDraw})`,
       }),
@@ -1432,6 +1434,7 @@ const FSX_PRINT_CSS = `
   .fsp-root td.fsp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .fsp-root td.fsp-note { text-align: center; width: 46px; }
   .fsp-root col.fsp-c-num { width: 142px; }
+  .fsp-root col.fsp-c-half { width: 71px; }
   .fsp-root col.fsp-c-note { width: 46px; }
   .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; }
   .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; }
@@ -1441,6 +1444,22 @@ const FSX_PRINT_CSS = `
   .fsp-root tr.fsp-tot.fsp-notop td.fsp-num { border-top: none; }
   .fsp-root tr.fsp-note-row td { font-weight: 700; font-size: 12px; padding-top: 8px; }
   .fsp-root tr.fsp-blank td { height: 6px; padding: 0; }
+  /* A note's own band, repeated per 3.x note on a schedule. */
+  .fsp-root tr.fsp-band th { font-size: 13px; font-weight: 700; padding: 6px 7px 4px;
+                             text-align: right; vertical-align: bottom; border-bottom: 2px solid #000; }
+  .fsp-root tr.fsp-band th.fsp-lab { text-align: center; vertical-align: middle; }
+  .fsp-root tr.fsp-band th.fsp-note { text-align: center; }
+  .fsp-root tr.fsp-quadhead th { border-bottom: none; border-top: 1px solid #000; text-align: center; }
+  .fsp-root tr.fsp-quadsub th { text-align: center; font-weight: 400; }
+  .fsp-root tr.fsp-fignpr td { text-align: right; font-size: 12px; font-weight: 700; padding-top: 2px; }
+  /* Keep a note's heading with the band and first rows beneath it, and never
+     split a total off the lines it sums — the two ways a printed schedule
+     comes out looking broken. */
+  .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { break-after: avoid; page-break-after: avoid; }
+  .fsp-root tr.fsp-band th { break-after: avoid; page-break-after: avoid; }
+  .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { break-before: avoid; page-break-before: avoid; }
+  .fsp-root tr { break-inside: avoid; page-break-inside: avoid; }
+  .fsp-root table { break-inside: auto; }
   .fsp-root .fsp-sig { margin-top: 16mm; width: 100%; }
   .fsp-root .fsp-sig td { border: none; font-size: 13px; padding: 2px 7px; }
   .fsp-root .fsp-sig .fsp-line { padding-bottom: 2px; letter-spacing: 1px; }
@@ -1463,6 +1482,13 @@ function fsxEsc(s) {
 function fsxSheetHtml(sh, meta) {
   const nCols = (sh.cols || []).length || 1;
   const hasNote = !!(sh.geom && sh.geom.note);
+  // 3.6 Share Capital splits each year into Number and NPR. When a sheet
+  // carries those rows the whole table is widened to label + 4, and every
+  // ordinary value cell spans the pair it sits above — otherwise the quad rows
+  // run past the end of the table and the columns stop lining up.
+  const hasQuad = (sh.rows || []).some(r => r.kind && r.kind.indexOf('quad') === 0);
+  const unit = hasQuad ? 2 : 1;
+  const valueCells = hasQuad ? 4 : nCols;
   const out = [];
   out.push('<div class="fsp-sheet">');
   if (!sh.noHeaderBand) {
@@ -1494,19 +1520,19 @@ function fsxSheetHtml(sh, meta) {
   // while its sibling wraps onto two.
   out.push('<colgroup><col>');
   if (hasNote) out.push('<col class="fsp-c-note">');
-  for (let i = 0; i < nCols; i++) out.push('<col class="fsp-c-num">');
+  for (let i = 0; i < valueCells; i++) out.push(`<col class="fsp-c-num${hasQuad ? ' fsp-c-half' : ''}">`);
   out.push('</colgroup>');
   if (!sh.noHeaderBand) {
     out.push('<thead><tr>');
     out.push('<th class="fsp-lab">Particulars</th>');
     if (hasNote) out.push('<th class="fsp-note">Notes</th>');
     for (const c of (sh.cols || [])) {
-      out.push(`<th>${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
+      out.push(`<th colspan="${unit}">${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
     }
     out.push('</tr></thead>');
   }
   out.push('<tbody>');
-  const span = 1 + (hasNote ? 1 : 0) + nCols;
+  const span = 1 + (hasNote ? 1 : 0) + valueCells;
   for (const r of sh.rows) {
     if (r.kind === 'blank') { out.push(`<tr class="fsp-blank"><td colspan="${span}"></td></tr>`); continue; }
     if (r.kind === 'note') {
@@ -1514,14 +1540,62 @@ function fsxSheetHtml(sh, meta) {
       out.push(`<tr class="fsp-note-row"><td colspan="${span}">${fsxEsc(r.label)}</td></tr>`);
       continue;
     }
+    // A note's own header band — schedules repeat it under every 3.x heading.
+    if (r.kind === 'band') {
+      out.push('<tr class="fsp-band">');
+      out.push(`<th class="fsp-lab">${fsxEsc(r.label || 'Particulars')}</th>`);
+      if (hasNote) out.push('<th class="fsp-note">Notes</th>');
+      for (const c of (sh.cols || [])) {
+        out.push(`<th colspan="${unit}">${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
+      }
+      out.push('</tr>');
+      continue;
+    }
+    // A standalone "Figures in NPR" line (3.1 PPE puts it on its own row).
+    if (r.kind === 'fignpr') {
+      out.push(`<tr class="fsp-fignpr"><td colspan="${span}">Figures in NPR</td></tr>`);
+      continue;
+    }
+    // The share-capital note splits each year into Number and NPR, so its rows
+    // carry four values across a table sized for two. They are rendered with
+    // their own colspans rather than dropped.
+    if (r.kind === 'quadhead' || r.kind === 'quadsub' || r.kind === 'quad' || r.kind === 'quadtot') {
+      const lead = hasNote ? '<td class="fsp-note"></td>' : '';
+      if (r.kind === 'quadhead') {
+        out.push('<tr class="fsp-band fsp-quadhead">');
+        out.push(`<th class="fsp-lab">${fsxEsc(r.label || 'Type of Shares')}</th>`);
+        if (hasNote) out.push('<th class="fsp-note"></th>');
+        out.push(`<th colspan="2">As at<span class="fsp-hdr-date">${fsxEsc(meta.asAtCy || '')}</span></th>`);
+        out.push(`<th colspan="2">As at<span class="fsp-hdr-date">${fsxEsc(meta.asAtPy || '')}</span></th>`);
+        out.push('</tr>');
+        continue;
+      }
+      if (r.kind === 'quadsub') {
+        out.push('<tr class="fsp-band fsp-quadsub"><th class="fsp-lab"></th>');
+        if (hasNote) out.push('<th class="fsp-note"></th>');
+        ['Number', 'NPR', 'Number', 'NPR'].forEach(t => out.push(`<th>${t}</th>`));
+        out.push('</tr>');
+        continue;
+      }
+      out.push(`<tr class="${r.kind === 'quadtot' ? 'fsp-tot' : 'fsp-item'}">`);
+      out.push(`<td class="fsp-lab">${fsxEsc(r.label || '')}</td>`);
+      out.push(lead);
+      [0, 1, 2, 3].forEach(i => {
+        const v = (r.vals || [])[i];
+        out.push(`<td class="fsp-num">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : '')}</td>`);
+      });
+      out.push('</tr>');
+      continue;
+    }
+
     const cls = 'fsp-' + (r.kind === 'kv' ? 'kv' : r.kind) + (r.noTopRule ? ' fsp-notop' : '');
     out.push(`<tr class="${cls}">`);
     out.push(`<td class="fsp-lab">${fsxEsc(r.label)}</td>`);
     if (hasNote) out.push(`<td class="fsp-note">${fsxEsc(r.note || '')}</td>`);
     for (let i = 0; i < nCols; i++) {
       const v = (r.vals || [])[i];
-      if (r.kind === 'head' || r.kind === 'sub') { out.push('<td class="fsp-num"></td>'); continue; }
-      out.push(`<td class="fsp-num">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : (v == null ? '' : v))}</td>`);
+      if (r.kind === 'head' || r.kind === 'sub') { out.push(`<td class="fsp-num" colspan="${unit}"></td>`); continue; }
+      out.push(`<td class="fsp-num" colspan="${unit}">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : (v == null ? '' : v))}</td>`);
     }
     out.push('</tr>');
   }

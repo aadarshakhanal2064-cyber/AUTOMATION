@@ -237,6 +237,43 @@ eq('see-saw  Materials unchanged',          back.income.materials.total,     out
 eq('see-saw  Total assets unchanged',       back.balance.totalAssets,        out.balance.totalAssets, 0.01);
 eq('see-saw  Balance still nil',            back.balance.balanceGap,         0, 0.01);
 
+// ── manual overrides ──
+// Advance tax, every TDS line and the VAT position can each be typed instead of
+// derived. These assert BOTH directions, because the failure mode is silent: a
+// helper that resolves an override to 0 zeroes the whole statutory block, and
+// the totals still add up — they are just wrong. (That is exactly what a local
+// `pick` shadowing the override helper did the first time this was written.)
+const ov = Engine.derive({
+  py,
+  cy: Object.assign({}, cy, {
+    advanceTax: 1500000,
+    tds: { salary: 50000, rent: 90000 },
+    vatRegistered: true, vatPayable: 250000,
+  }),
+  options: { taxProfile: 'corporate' },
+});
+const ovRecv = k => (ov.balance.receivableLines.find(l => l.key === k) || {}).amount;
+const ovPay  = k => (ov.balance.payableLines.find(l => l.key === k) || {}).amount;
+eq('override  Advance Tax typed',        ovRecv('advanceTax'), 1500000);
+eq('override  TDS-Salary typed',         ovPay('tdsSalary'),     50000);
+eq('override  TDS-Rent typed',           ovPay('tdsRent'),       90000);
+eq('override  TDS-Incentives still derived', ovPay('tdsIncentive'), 1444314);
+eq('override  TDS-Wages still derived',  ovPay('tdsWages'),  12317.217771796981);
+eq('override  VAT Payable appears',      ovPay('vatPayable'),   250000);
+eq('override  balance still nil',        ov.balance.balanceGap,      0, 0.01);
+
+// A PAN-only client carries no VAT row at all — a nil VAT line is a head with
+// no value, which this module drops everywhere else.
+const noVat = Engine.derive({ py, cy, options: { taxProfile: 'corporate' } });
+eq('no VAT    VAT rows absent', noVat.balance.payableLines.filter(l => /^vat/i.test(l.key)).length
+  + noVat.balance.receivableLines.filter(l => /^vat/i.test(l.key)).length, 0);
+
+// ── profit seeded from last year's margin ──
+// profit(CY) = profit(PY) / sales(PY) x sales(CY)
+eq('margin    PBT from last year’s margin',
+   Engine.pbtFromMargin(4249787.5983610004, 79339341.649999976, 101903888.59999999),
+   4249787.5983610004 / 79339341.649999976 * 101903888.59999999, 0.01);
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

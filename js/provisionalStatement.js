@@ -29,7 +29,9 @@ let psCy = {};               // this year's typed figures
 let psRules = {};            // per-line rule overrides
 let psPpeInput = [];         // editable 3.1 PPE grid
 let psLoans = { nc: [], c: [] };
-let psCustom = [];           // expense lines the user added by hand
+let psCustom = [];           // other-expense lines the user added by hand
+let psDirectCustom = [];     // direct-cost lines the user added by hand
+let psTds = {};              // per-line TDS overrides; blank means "derive it"
 // Trade receivables absorbs the balance by default, the way the Audited engine
 // already works (§15). Untick it to type receivables and have any residual
 // reported instead of absorbed.
@@ -115,7 +117,8 @@ const psScope = WorkflowEngine.createClientScope({
     psResult = null; psReport = null;
     psCy = {}; psRules = {}; psPpeInput = []; psDepSource = '';
     psLoans = { nc: [], c: [] };
-    psCustom = []; psSolveFor = 'purchases'; psPlugReceivables = true;
+    psCustom = []; psDirectCustom = []; psTds = {};
+    psSolveFor = 'purchases'; psPlugReceivables = true;
     const f = psEl('ps-py-file'); if (f) f.value = '';
     psRenderPySummary();
     psRenderFigures();
@@ -167,7 +170,7 @@ async function psHandlePyFile(input) {
     psPyIssues = issues;
     psRules = {};
     psPpeInput = [];
-    psCustom = [];
+    psCustom = []; psDirectCustom = []; psTds = {};
 
     if (!psEl('ps-company').value && py.company.name) psEl('ps-company').value = py.company.name;
     if (!psEl('ps-address').value && py.company.address) psEl('ps-address').value = py.company.address;
@@ -403,7 +406,16 @@ const PS_FIGURES = [
   { k: 'cash',             label: 'Cash &amp; Bank Balances',     grow: true,  hint: '' },
   { k: 'tradePayables',    label: 'Trade Payables',               grow: true,  hint: '' },
   { k: 'taxPaid',          label: 'Income Tax Paid',              grow: false, hint: 'Cash-flow only. Blank uses last year&rsquo;s provision.' },
+  { k: 'capitalIntroduced',label: 'Capital Introduced',           grow: false, hint: 'Shown on the Statement of Changes in Equity.' },
+  { k: 'dividend',         label: '@DIST@',                       grow: false, hint: 'Reduces retained earnings on the SOCE. Enter as a positive figure.' },
 ];
+
+// A company pays a dividend; a firm or proprietor takes drawings. Same row on
+// the SOCE either way — only the word changes, and it is the word the audit
+// report and the projection already use for that entity.
+function psDistLabel() {
+  return ((psEl('ps-tax-profile') || {}).value === 'progressive') ? 'Drawings' : 'Dividend Paid';
+}
 
 // Which of the pair was typed last. Editing either one makes the other the
 // balancing figure, so there is never a stale "mode" to remember — the last
@@ -432,6 +444,17 @@ function psSeedFigures() {
     const v = psNum(src[f.k]);
     if (v) psCy[f.k] = Math.round(v * g * 100) / 100;
   });
+
+  // Profit opens at LAST YEAR'S MARGIN carried onto this year's turnover —
+  //   profit(CY) = profit(PY) / sales(PY) x sales(CY)
+  // — which is the firm's own first guess at a provisional profit. It is a
+  // seed, not a rule: the box is editable, and typing in it is what makes
+  // Purchases balance to it.
+  if (psCy.pbtTarget == null) {
+    const seeded = ProvisionalStatementEngine.pbtFromMargin(
+      psPy.soi && psPy.soi.pbt, psPy.soi && psPy.soi.revenueOps, psCy.sales);
+    if (seeded) psCy.pbtTarget = Math.round(seeded * 100) / 100;
+  }
 }
 
 function psRenderFigures() {
@@ -457,7 +480,7 @@ function psRenderFigures() {
         : (psCy[f.k] == null ? '' : psCy[f.k]);
       return `
       <div class="form-group" style="margin:0;">
-        <label>${f.label} ${plugged ? tag(true) : ''}</label>
+        <label>${f.label === '@DIST@' ? escHtml(psDistLabel()) : f.label} ${plugged ? tag(true) : ''}</label>
         <input type="number" step="0.01" id="ps-fig-${f.k}" value="${val}" ${plugged ? 'readonly style="background:var(--bg-subtle);"' : ''}
                oninput="psFigureInput('${f.k}', this.value)" />
         ${f.hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${f.hint}</div>` : ''}
@@ -486,6 +509,7 @@ function psRenderFigures() {
     </div>`;
   psRenderRules();
   psRenderPpe();
+  psRenderTax();
 }
 
 // Editing one end of the see-saw makes the OTHER the balancing figure.
@@ -551,7 +575,12 @@ function psRenderRules() {
     group('Direct costs', [
       { key: 'labour',  name: 'Labour Charges',                 py: psPyDirect('labour'),  def: 'growth' },
       { key: 'freight', name: 'Clearing &amp; Freight Expenses', py: psPyDirect('freight'), def: 'growth' },
-    ]) +
+    ].concat(psDirectCustom.map(d => ({ key: d.key, name: d.name, py: 0, def: 'growth', custom: 'direct' })))) +
+    `<div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+       <input type="text" id="ps-new-direct" placeholder="New direct cost — e.g. Packing Charges"
+              style="max-width:320px;" onkeydown="if(event.key==='Enter'){event.preventDefault();psAddCustomDirect();}" />
+       <button class="btn btn-outline btn-sm" onclick="psAddCustomDirect()">+ Add direct cost</button>
+     </div>` +
     group('Employee benefits', [
       { key: 'salary', name: 'Salary Expenses', py: psPy.salary, def: 'growth' },
     ]) +
@@ -601,7 +630,7 @@ function psRuleRowHtml(l, computed) {
     </td>
     <td style="width:40px;">${typed
       ? `<button class="btn btn-outline btn-sm" title="Back to growth" onclick="psRuleSet('${l.key}','reset','')">↺</button>`
-      : (l.custom ? `<button class="btn btn-outline btn-sm" title="Remove line" onclick="psRemoveCustom('${l.key}')">✕</button>` : '')}</td>
+      : (l.custom ? `<button class="btn btn-outline btn-sm" title="Remove line" onclick="psRemoveCustom('${l.key}','${l.custom === 'direct' ? 'direct' : 'other'}')">✕</button>` : '')}</td>
   </tr>`;
 }
 
@@ -634,13 +663,111 @@ function psAddCustomExpense() {
   psStatus(`Added "${escHtml(name)}" to Other Expenses. Type its figure, or set a growth rate against last year.`, 'success');
 }
 
-function psRemoveCustom(key) {
-  const i = psCustom.findIndex(c => c.key === key);
+function psAddCustomDirect() {
+  const name = (psEl('ps-new-direct') || {}).value.trim();
+  if (!name) { psStatus('Give the direct cost line a name first.', 'error'); return; }
+  psDirectCustom.push({ key: 'direct' + (++psCustomSeq), name });
+  psEl('ps-new-direct').value = '';
+  psRun();
+  psRenderRules();
+  psStatus(`Added "${escHtml(name)}" to Direct costs — it lands in note 3.12, inside Materials Consumed.`, 'success');
+}
+
+function psRemoveCustom(key, where) {
+  const list = where === 'direct' ? psDirectCustom : psCustom;
+  const i = list.findIndex(c => c.key === key);
   if (i < 0) return;
-  psCustom.splice(i, 1);
+  list.splice(i, 1);
   delete psRules[key];
   psRun();
   psRenderRules();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TAX, TDS & VAT — every statutory figure derived by default, typed when the
+//  preparer has the challan. A typed line loses its live Excel formula and
+//  becomes a value, which is the honest representation of a figure that came
+//  off a deposit slip rather than out of the accounts.
+// ════════════════════════════════════════════════════════════════
+
+const PS_TDS_LINES = [
+  { k: 'salary',    label: 'TDS Payable-Salary (SST)',       of: '1% of Employee Benefits' },
+  { k: 'rent',      label: 'TDS Payable-Rent',               of: '10% of Rent' },
+  { k: 'incentive', label: 'TDS on Incentives',              of: '15% of Incentive Expenses' },
+  { k: 'wages',     label: 'TDS Payable-Wages',              of: '1% of Labour Charges' },
+  { k: 'auditFee',  label: 'TDS Payable-Audit fee',          of: '1.5% of Audit Fee' },
+  { k: 'freight',   label: 'TDS Payable-Clearing & Freight', of: '1.5% of Clearing & Freight' },
+];
+
+function psRenderTax() {
+  const host = psEl('ps-tax');
+  if (!host) return;
+  const r = psResult;
+  const derivedAdv = r ? r.advanceTax.derived : 0;
+  const vatOn = !!psCy.vatRegistered;
+
+  const rows = PS_TDS_LINES.map(l => {
+    const typed = psTds[l.k] != null && psTds[l.k] !== '';
+    const shown = r ? r.tds[l.k] : 0;
+    return `<tr>
+      <td>${l.label}<div style="font-size:11px; color:var(--text-muted);">${l.of}</div></td>
+      <td style="text-align:right;">
+        <input type="number" step="0.01" value="${typed ? psTds[l.k] : (r ? Number(shown).toFixed(2) : '')}"
+               onchange="psTdsSet('${l.k}', this.value)"
+               style="width:150px; text-align:right; font-variant-numeric:tabular-nums;${typed ? '' : ' color:var(--text-muted);'}" />
+      </td>
+      <td style="width:40px;">${typed
+        ? `<button class="btn btn-outline btn-sm" title="Back to the rate" onclick="psTdsSet('${l.k}','')">↺</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+
+  const advTyped = psCy.advanceTax != null && psCy.advanceTax !== '';
+  host.innerHTML = `
+    <div class="form-grid" style="grid-template-columns:repeat(2,1fr); gap:14px; align-items:start;">
+      <div class="form-group" style="margin:0;">
+        <label>Advance Tax ${advTyped ? '' : '<span class="log-badge badge-info" style="font-size:10px;">derived</span>'}</label>
+        <input type="number" step="0.01" id="ps-adv-tax" value="${advTyped ? psCy.advanceTax : (r ? Number(r.advanceTax.amount).toFixed(2) : '')}"
+               oninput="psFigureInput('advanceTax', this.value)" />
+        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+          Last year&rsquo;s advance tax less the provision it settled, plus TDS on this year&rsquo;s other income
+          &mdash; ${psFmt(derivedAdv)}. Type over it if you have the challans.
+        </div>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" ${vatOn ? 'checked' : ''} style="width:auto;" onchange="psSetVat(this.checked)" />
+          Client is registered for VAT
+        </label>
+        ${vatOn ? `
+        <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+          <div class="form-group" style="margin:0;"><label>VAT Receivable</label>
+            <input type="number" step="0.01" value="${psCy.vatReceivable == null ? '' : psCy.vatReceivable}"
+                   oninput="psFigureInput('vatReceivable', this.value)" /></div>
+          <div class="form-group" style="margin:0;"><label>VAT Payable</label>
+            <input type="number" step="0.01" value="${psCy.vatPayable == null ? '' : psCy.vatPayable}"
+                   oninput="psFigureInput('vatPayable', this.value)" /></div>
+        </div>
+        <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">Whichever side the return leaves the client on. The other stays blank and prints nothing.</div>`
+        : `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">A PAN-only client carries no VAT line, so none is printed.</div>`}
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:16px;"><table class="client-table">
+      <thead><tr><th style="width:55%;">Withholding</th><th style="text-align:right;">This year</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+function psTdsSet(k, v) {
+  if (v === '') delete psTds[k]; else psTds[k] = psNum(v);
+  psRun();
+  psRenderTax();
+}
+
+function psSetVat(on) {
+  psCy.vatRegistered = !!on;
+  if (!on) { delete psCy.vatReceivable; delete psCy.vatPayable; }
+  psRun();
+  psRenderTax();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -735,6 +862,7 @@ function psCollectInput() {
         key: e.key || ('other' + i), name: e.name, amount: e.amount,
         flat: flat.indexOf(e.key) >= 0,
       })).concat(psCustom.map(c => ({ key: c.key, name: c.name, amount: 0 }))),
+      directExtra: psDirectCustom.map(d => ({ key: d.key, name: d.name, amount: 0 })),
       ppeClasses: psPpeInput,
       receivables: p.sfp && p.sfp.receivables, inventories: p.sfp && p.sfp.inventories,
       payables: p.sfp && p.sfp.payables, cash: p.sfp && p.sfp.cash,
@@ -744,6 +872,7 @@ function psCollectInput() {
     },
     cy: Object.assign({}, psCy, {
       loansNC: psLoans.nc, loansC: psLoans.c,
+      tds: psTds,
     }),
     rules: psRules,
     options: {
@@ -776,6 +905,7 @@ function psRecalcDebounced() {
     psRun();
     psRenderRules();
     psRenderInterest();
+    psRenderTax();
     psSyncSeesaw();
   }, 220);
 }
@@ -830,7 +960,17 @@ function psToOut(r) {
       shareFace: psNum((psEl('ps-face-value') || {}).value) || 100,
       authorisedShares: psNum((psEl('ps-auth-shares') || {}).value) || 0,
       basis: 'provisional',
-      terms: { person: 'Director/Chairman', distribution: 'Dividend Paid', capital: 'Share Capital', entity: 'Private Limited Company' },
+      // The SOCE and the cash flow print whatever word this entity uses, so it
+      // has to follow the tax profile rather than be fixed at the company one.
+      terms: (() => {
+        const prop = (psEl('ps-tax-profile') || {}).value === 'progressive';
+        return {
+          person: prop ? 'Proprietor' : 'Director/Chairman',
+          distribution: psDistLabel(),
+          capital: prop ? 'Capital Account' : 'Share Capital',
+          entity: prop ? 'Proprietorship' : 'Private Limited Company',
+        };
+      })(),
       titles: (() => {
         // The Statement of Changes in Equity is NEVER titled "Provisional",
         // even on a provisional set — §15. Of the other three, whether the

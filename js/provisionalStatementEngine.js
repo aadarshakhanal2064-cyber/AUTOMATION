@@ -41,6 +41,13 @@ const ProvisionalStatementEngine = (() => {
     return isFinite(n) ? n : 0;
   };
   const safeRatio = (a, b) => (Math.abs(b) < 1e-9 ? 0 : a / b);
+  // An override that distinguishes "not entered" from "entered as nil". null,
+  // undefined and '' all mean derive it; 0 means the preparer really does mean
+  // zero. Getting this wrong turns every blank box into a forced nil.
+  const has = v => v !== null && v !== undefined && v !== '';
+  // NOT named `pick` — derive() already has a local `pick(key)` for
+  // other-expense lookup, and the shadowing turned every override into 0.
+  const orDerived = (override, derived) => (has(override) ? num(override) : derived);
 
   // ════════════════════════════════════════════════════════════════
   //  DEFAULTS — every one of these is an editable default, never a
@@ -165,6 +172,14 @@ const ProvisionalStatementEngine = (() => {
   //  figures the preparer actually types.
   // ════════════════════════════════════════════════════════════════
   //
+  // Last year's profit margin carried onto this year's turnover — the firm's
+  // own first guess at a provisional profit, and the default the PBT box opens
+  // at. Exposed so the UI can seed the box without duplicating the arithmetic.
+  //    profit(CY) = profit(PY) / sales(PY) x sales(CY)
+  function pbtFromMargin(pyPbt, pySales, cySales) {
+    return safeRatio(num(pyPbt), num(pySales)) * num(cySales);
+  }
+
   //  input = {
   //    py:      { sales, otherIncome, interestIncome, openingStock, purchases,
   //               labour, freight, closingStock, salary, otherContrib,
@@ -233,6 +248,15 @@ const ProvisionalStatementEngine = (() => {
     const labour  = line('labour',  py.labour,  'turnover');   // `D25 =+F25/F6*D6`
     const freight = line('freight', py.freight, 'turnover');   // `D26 =+F26/F6*D6`
     const closingStock = num(cy.closingStock);
+    // A client's cost of sales carries heads beyond labour and freight —
+    // packing, loading, commission on purchase. Each behaves exactly like the
+    // two named ones: same rules, same override, same place in note 3.12.
+    const directExtra = (py.directExtra || []).map((d, i) => {
+      const key = d.key || ('direct' + i);
+      const l = line(key, d.amount, 'growth', { roundTo: 0 });
+      return { key, name: d.name, py: l.py, amount: l.amount, rule: l.rule, derive: l.derive };
+    });
+    const directExtraTotal = directExtra.reduce((sum, d) => sum + d.amount, 0);
 
     if (closingStock < 0) err('Closing stock is negative.');
 
@@ -337,7 +361,7 @@ const ProvisionalStatementEngine = (() => {
     // cannot drift apart.
     const nonMaterialExpenses = employeeTotal + financeTotal + depreciation
                               + incentive.amount + otherTotal;
-    const stockMovement = openingStock + labour.amount + freight.amount - closingStock;
+    const stockMovement = openingStock + labour.amount + freight.amount + directExtraTotal - closingStock;
 
     let purchases, materialsTotal, pbt;
     if (opt.solveFor === 'purchases' && cy.pbtTarget != null && cy.pbtTarget !== '') {
@@ -376,14 +400,37 @@ const ProvisionalStatementEngine = (() => {
 
     // `H18 =+J18-SOI!H29+SOI!F15*15%` — last year's advance tax, less the tax
     // that year's provision settled, plus this year's TDS on incentive income.
-    const advanceTax = num(py.advanceTax) - num(py.taxExpense) + otherIncome * TDS.incentive;
+    // A typed figure wins: the formula is a good estimate, but the real advance
+    // tax is whatever the client actually deposited and the preparer has the
+    // challans.
+    const advanceTaxDerived = num(py.advanceTax) - num(py.taxExpense) + otherIncome * TDS.incentive;
+    const advanceTax = orDerived(cy.advanceTax, advanceTaxDerived);
+    const advanceTaxTyped = has(cy.advanceTax);
 
-    const tdsSalary    = employeeTotal    * TDS.salary;     // `H92`
-    const tdsRent      = rent             * TDS.rent;       // `H93`
-    const tdsIncentive = incentive.amount * TDS.incentive;  // `H94`
-    const tdsWages     = labour.amount    * TDS.wages;      // `H95`
-    const tdsAuditFee  = auditFee         * TDS.auditFee;   // `H97`
-    const tdsFreight   = freight.amount   * TDS.freight;    // `H98`
+    // A VAT-registered client sits on one side or the other at year end; a
+    // PAN-only client on neither. Both are typed, because the position comes
+    // off the return rather than out of the accounts.
+    const vatRegistered = !!cy.vatRegistered;
+    const vatReceivable = vatRegistered ? num(cy.vatReceivable) : 0;
+    const vatPayable    = vatRegistered ? num(cy.vatPayable) : 0;
+    if (vatRegistered && vatReceivable > 0.005 && vatPayable > 0.005) {
+      warn('Both VAT Receivable and VAT Payable carry a figure. A return normally leaves the client on one side or the other — check which one this year actually is.');
+    }
+
+    // Each withholding is a percentage of the figure it is deducted from, and
+    // each accepts a typed figure instead — a month's TDS is often paid on a
+    // different base than the year's accounts show, and the preparer has the
+    // deposit slips. A typed line loses its live Excel formula and becomes a
+    // value, which is the honest representation of a figure that came from a
+    // challan rather than from the accounts.
+    const t = cy.tds || {};
+    const tdsSalary    = orDerived(t.salary,    employeeTotal    * TDS.salary);     // `H92`
+    const tdsRent      = orDerived(t.rent,      rent             * TDS.rent);       // `H93`
+    const tdsIncentive = orDerived(t.incentive, incentive.amount * TDS.incentive);  // `H94`
+    const tdsWages     = orDerived(t.wages,     labour.amount    * TDS.wages);      // `H95`
+    const tdsAuditFee  = orDerived(t.auditFee,  auditFee         * TDS.auditFee);   // `H97`
+    const tdsFreight   = orDerived(t.freight,   freight.amount   * TDS.freight);    // `H98`
+    const tdsTyped = k => has(t[k]);
 
     // `H89 ='Sch-PL'!D53-H97` — the fee payable is net of its own TDS.
     const auditFeePayable = auditFee - tdsAuditFee;
@@ -396,15 +443,15 @@ const ProvisionalStatementEngine = (() => {
     const payableLines = [
       { key: 'tradePayables',  name: 'Trade Payables',                 amount: tradePayables },
       { key: 'auditFeePayable',name: 'Audit Fee Payable',              amount: auditFeePayable,
-        derive: { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'pay7' } },
+        derive: tdsTyped('auditFee') ? null : { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'pay7' } },
       { key: 'tdsSalary',      name: 'TDS Payable-Salary(SST)',        amount: tdsSalary,
-        derive: { kind: 'pct', sheet: 'SchPL', row: 'empTotal', pct: TDS.salary } },
+        derive: tdsTyped('salary') ? null : { kind: 'pct', sheet: 'SchPL', row: 'empTotal', pct: TDS.salary } },
       { key: 'tdsRent',        name: 'TDS Payable-Rent',               amount: tdsRent,
-        derive: { kind: 'pct', sheet: 'SchPL', row: 'rent', pct: TDS.rent } },
+        derive: tdsTyped('rent') ? null : { kind: 'pct', sheet: 'SchPL', row: 'rent', pct: TDS.rent } },
       { key: 'tdsIncentive',   name: 'TDS on Incentives',              amount: tdsIncentive,
-        derive: { kind: 'pct', sheet: 'SOI', row: 'incentive', pct: TDS.incentive } },
+        derive: tdsTyped('incentive') ? null : { kind: 'pct', sheet: 'SOI', row: 'incentive', pct: TDS.incentive } },
       { key: 'tdsWages',       name: 'TDS Payable-Wages',              amount: tdsWages,
-        derive: { kind: 'pct', sheet: 'SchPL', row: 'matDirect0', pct: TDS.wages } },
+        derive: tdsTyped('wages') ? null : { kind: 'pct', sheet: 'SchPL', row: 'matDirect0', pct: TDS.wages } },
       // The firm's own 3.9 carries a SECOND wages line, left at nil — a spare
       // slot in their template for a further withholding of the same kind.
       // Reproduced because it sets where 3.10 Provisions starts, and it is
@@ -412,9 +459,14 @@ const ProvisionalStatementEngine = (() => {
       // plug, which moves a figure and is deliberately NOT reproduced.)
       { key: 'tdsWagesSpare',  name: 'TDS Payable-Wages',              amount: 0 },
       { key: 'tdsAuditFee',    name: 'TDS Payable-Audit fee',          amount: tdsAuditFee,
-        derive: { kind: 'pct', sheet: 'SchPL', row: 'auditFee', pct: TDS.auditFee } },
+        derive: tdsTyped('auditFee') ? null : { kind: 'pct', sheet: 'SchPL', row: 'auditFee', pct: TDS.auditFee } },
       { key: 'tdsFreight',     name: 'TDS Payable-Clearing & Freight', amount: tdsFreight,
-        derive: { kind: 'pct', sheet: 'SchPL', row: 'matDirect1', pct: TDS.freight } },
+        derive: tdsTyped('freight') ? null : { kind: 'pct', sheet: 'SchPL', row: 'matDirect1', pct: TDS.freight } },
+      // VAT sits on whichever side the client's return leaves it. Only shown
+      // for a VAT-registered client, and only the side that carries a figure —
+      // a nil VAT row on a PAN-only client is a head with no value.
+      ...(vatRegistered && Math.abs(vatPayable) > 0.005
+        ? [{ key: 'vatPayable', name: 'VAT Payable', amount: vatPayable }] : []),
     ];
     const totalPayables = payableLines.reduce((s, l) => s + l.amount, 0);   // `H99`
 
@@ -426,7 +478,6 @@ const ProvisionalStatementEngine = (() => {
     // plug off and the residual is reported instead of absorbed — shown, never
     // forced. Solved below, once equity and liabilities are known.
     const impairment = num(cy.receivableImpairment);
-    const vatReceivable = num(cy.vatReceivable);
 
     const cash = num(cy.cash);
     const inventories = closingStock;                    // `Sch-BS H29 ='Sch-PL'!D28`
@@ -538,6 +589,7 @@ const ProvisionalStatementEngine = (() => {
           directItems: [
             { key: 'labour',  name: 'Labour Charges',              amount: labour.amount,  py: labour.py,  rule: labour.rule,  derive: labour.derive },
             { key: 'freight', name: 'Clearing  & Freight Expenses', amount: freight.amount, py: freight.py, rule: freight.rule, derive: freight.derive },
+            ...directExtra,
           ],
           closing: closingStock, total: materialsTotal,
         },
@@ -570,8 +622,9 @@ const ProvisionalStatementEngine = (() => {
           { key: 'tradeReceivables', name: 'Trade Receivables', amount: tradeReceivables },
           { key: 'impairment',       name: 'Less: Provisions for impairment of trade receivables', amount: impairment },
           { key: 'advanceTax',       name: 'Advance Tax',       amount: advanceTax,
-            derive: { kind: 'advanceTax', pct: TDS.incentive } },
-          { key: 'vatReceivable',    name: 'VAT Receivables',   amount: vatReceivable },
+            derive: advanceTaxTyped ? null : { kind: 'advanceTax', pct: TDS.incentive } },
+          ...(vatRegistered && Math.abs(vatReceivable) > 0.005
+            ? [{ key: 'vatReceivable', name: 'VAT Receivables', amount: vatReceivable }] : []),
         ],
         receivables, cash, totalCA, totalAssets, plugReceivables, tradeReceivables,
         shareCapital, reserves, totalEquity,
@@ -592,13 +645,15 @@ const ProvisionalStatementEngine = (() => {
       },
       tax: { rule: taxRule, base: Math.max(0, pbt), onProfits: tax, priorPeriod: priorPeriodTax, total: taxExpense },
       tds: { salary: tdsSalary, rent: tdsRent, incentive: tdsIncentive, wages: tdsWages, auditFee: tdsAuditFee, freight: tdsFreight },
+      vat: { registered: vatRegistered, receivable: vatReceivable, payable: vatPayable },
+      advanceTax: { amount: advanceTax, typed: advanceTaxTyped, derived: advanceTaxDerived },
       issues,
     };
   }
 
   return {
     GROWTH, FLAT_LINES, PPE_RATES, TDS, CORPORATE_TAX, TAX_SLABS, RULES,
-    xlRound, progressiveTax, applyRule, derive,
+    xlRound, progressiveTax, applyRule, derive, pbtFromMargin,
   };
 })();
 
