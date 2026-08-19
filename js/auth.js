@@ -190,7 +190,16 @@ async function sendPasswordReset() {
 // only path that creates a membership.
 function inviteStatus(msg, type) { showStatus(msg, type, 'invite-status'); }
 
+// Remembered so the invitation survives an email-confirmation round trip.
+// With "Confirm email" ON (it is), signUp() returns no session — the person
+// must click a link in their inbox, and that link lands on the app WITHOUT
+// ?invite=<token>. Without this they would have to find the original message
+// again. Stored under a name that says what it is, and cleared the moment it
+// is used, expired or rejected.
+const INVITE_STASH = 'pendingInviteToken';
+
 function showInviteScreen(token) {
+  try { localStorage.setItem(INVITE_STASH, token); } catch (e) {}
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-section').style.display = 'none';
   document.getElementById('access-denied-wrap').style.display = 'none';
@@ -251,6 +260,7 @@ async function submitInvite() {
 
   // Clear the token from the address bar so a shoulder-surfed or bookmarked
   // URL cannot be replayed, then boot normally.
+  try { localStorage.removeItem(INVITE_STASH); } catch (e) {}
   history.replaceState(null, '', location.pathname);
   await afterSupabaseSignIn(session);
 }
@@ -332,12 +342,38 @@ async function afterSupabaseSignIn(session) {
   // `status` is filtered in SQL rather than checked afterwards so an
   // inactive member reads as "not a member" through this path too, matching
   // current_org_id(), which returns NULL for them.
-  const { data, error } = await window.sb
+  let { data, error } = await window.sb
     .from('org_members')
     .select('email, role, status')
     .ilike('email', email)
     .eq('status', 'active')
     .maybeSingle();
+
+  // Not a member yet, but an invitation was opened on this device? Redeem it.
+  // This is the return leg of the email-confirmation round trip: the confirm
+  // link lands here with a valid session and no ?invite= token, so without
+  // this the person would be told they are not authorised while holding a
+  // perfectly good invitation.
+  //
+  // Safe to attempt unconditionally — accept_invitation() re-checks the token,
+  // its expiry, single use, and that the invited email matches this session.
+  // A stale or foreign token simply fails and is discarded.
+  if (!data) {
+    let stashed = null;
+    try { stashed = localStorage.getItem(INVITE_STASH); } catch (e) {}
+    if (stashed) {
+      const { error: accErr } = await window.sb.rpc('accept_invitation', { p_token: stashed });
+      try { localStorage.removeItem(INVITE_STASH); } catch (e) {}
+      if (!accErr) {
+        ({ data, error } = await window.sb
+          .from('org_members')
+          .select('email, role, status')
+          .ilike('email', email)
+          .eq('status', 'active')
+          .maybeSingle());
+      }
+    }
+  }
 
   if (error || !data) {
     // Not a member — show access denied. Also end the Supabase session:
