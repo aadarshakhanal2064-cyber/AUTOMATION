@@ -72,6 +72,7 @@ const MODULE_INITS = {
   confirmationLetters: () => clInit(),
   salesPurchaseBook:   () => spbInit(),
   orgMembers:          () => omInit(),
+  orgSettings:         () => osInit(),
 };
 
 function openModule(tab) {

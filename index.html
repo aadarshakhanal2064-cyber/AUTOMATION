@@ -45,8 +45,17 @@
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
 // bottom of body, after a dozen blocking CDN scripts) would otherwise define this.
+// Initials are DERIVED from the signed-in organisation, not hardcoded. This
+// used to always render "SA" — correct for Shailesh & Associates and wrong for
+// every other firm on the platform, who would see another practice's mark on
+// their own screen. Before sign-in there is no organisation yet, so it falls
+// back to the platform's own mark, which is the one place that is right.
 function logoFallback(img, fontSize) {
-  img.outerHTML = `<span style="font-weight:800; color:var(--brand-navy); font-size:${fontSize || 28}px; letter-spacing:-0.5px; font-family:'Inter',sans-serif;">SA</span>`;
+  const name = (window.currentOrg && window.currentOrg.name) || '';
+  const mark = name
+    ? (name.match(/[A-Za-zऀ-ॿ]+/g) || []).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    : 'SA';
+  img.outerHTML = `<span style="font-weight:800; color:var(--brand-navy); font-size:${fontSize || 28}px; letter-spacing:-0.5px; font-family:'Inter',sans-serif;">${mark || 'SA'}</span>`;
 }
 
 // The source logo file is a full lockup (icon + firm-name wordmark). The
@@ -178,6 +187,10 @@ function cropLoginLogoIcon(img) {
            to miss. Reuses the same toggleTopbarMenu/closeTopbarMenus
            mechanic as the Registrar/Financial/Automation menus. -->
       <div class="topbar-dropdown-menu topbar-dropdown-menu-right" id="topbar-user-menu">
+        <button class="topbar-dropdown-item" onclick="openModule('orgSettings')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px; margin-right:6px;"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path></svg>
+          Firm Setup
+        </button>
         <button class="topbar-dropdown-item" onclick="openModule('orgMembers')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px; margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           Team
@@ -432,6 +445,58 @@ function cropLoginLogoIcon(img) {
           <canvas id="dash-module-chart" height="220"></canvas>
         </div>
       </div>
+    </div>
+
+    <!-- ── TAB: FIRM SETUP ──
+         Where an organisation enters the details its documents are signed
+         with. Everything here is read back by the document builders through
+         window.REP_FIRMS (js/core/orgIdentity.js), so a change lands on the
+         next audit report without any further wiring. -->
+    <div id="tab-orgSettings-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Account</span><span>›</span><span class="current">Firm Setup</span></div>
+          <h2 class="page-title">Firm Setup</h2>
+          <p class="page-subtitle">The names, registration numbers and signatures printed on your audit reports, notes to accounts and service memos.</p>
+        </div>
+      </div>
+
+      <div id="os-readonly-note" class="status-box status-info" style="display:none; margin-bottom:16px;">
+        Only an owner or admin can change these details. You can see what's set.
+      </div>
+      <div id="os-status" class="status-box" style="display:none; margin-bottom:16px;"></div>
+
+      <div class="card" style="margin-bottom:22px;">
+        <div class="card-header"><h3>Your practice</h3></div>
+        <div style="padding:20px 24px;">
+          <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));">
+            <div class="form-group">
+              <label for="os-org-name">Practice name</label>
+              <input id="os-org-name" placeholder="Shailesh &amp; Associates" />
+            </div>
+            <div class="form-group">
+              <label for="os-staff">Staff names <span style="font-weight:400;color:var(--text-muted);">— one per line</span></label>
+              <textarea id="os-staff" rows="4" placeholder="Aadarsha&#10;Kesav&#10;Dipendra"></textarea>
+            </div>
+          </div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:4px 0 14px;">
+            Staff names fill the “Entered by” and “Checked by” pickers on Audit Report Finalization,
+            Work Done, the To-Do list and Projection. “Other” is always offered as well.
+          </p>
+          <button class="btn btn-primary" id="os-org-save" onclick="osSaveOrg()">Save practice details</button>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h3 style="font-size:15px; margin:0;">Letterheads</h3>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:4px 0 0;">
+            One per name you issue documents under. Most practices need only one.
+          </p>
+        </div>
+        <button class="btn btn-outline" id="os-add-firm" onclick="osAddFirm()">Add a letterhead</button>
+      </div>
+      <div id="os-firms"></div>
     </div>
 
     <!-- ── TAB: TEAM (members + invitations, Stage 3) ── -->
@@ -3969,8 +4034,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/workDoneTodo.js?v=202608170900"></script>
 <!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
      from the topbar user menu, so it needs no nav button. -->
+<script src="js/orgSettings.js?v=202608190300"></script>
 <script src="js/orgMembers.js?v=202608182200"></script>
-<script src="js/auth.js?v=202608190200"></script>
+<script src="js/auth.js?v=202608190300"></script>
 
 </body>
 </html>

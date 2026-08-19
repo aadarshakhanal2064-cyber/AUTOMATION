@@ -500,6 +500,11 @@ async function afterSupabaseSignIn(session) {
   // this fills, and they are empty until it runs (js/core/orgIdentity.js).
   try {
     await OrgIdentity.load();
+    // index.html ships this firm's own logo and registration number baked into
+    // the shell. Replace them with the signed-in organisation's before the app
+    // is revealed, or a second firm sees another practice's mark and
+    // "Firm Registration No. 619" on their own screen.
+    if (typeof osApplyBranding === 'function') osApplyBranding();
   } catch (e) {
     // Without an organisation the app would render blank letterheads and
     // silently produce documents naming nobody. Refuse rather than degrade.
