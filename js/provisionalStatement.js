@@ -34,6 +34,16 @@ let psDepSource = '';        // where the PPE grid came from, for the caption
 
 function psStatus(html, type) { showStatus(html, type, 'ps-status-area'); }
 function psEl(id) { return document.getElementById(id); }
+// The A.D. equivalent the firm prints in brackets ("(16th July 2026)").
+// NepaliLocale owns every calendar conversion in this app but only carries
+// adToBs — there is no B.S.-to-A.D. table — so this is TYPED rather than
+// computed. Inventing a conversion would put a wrong date on a signed
+// statement, which is exactly the error this module exists to prevent.
+function psAdSuffix() {
+  const v = ((psEl('ps-ad-date') || {}).value || '').trim();
+  return v ? ` (${v})` : '';
+}
+
 function psFmt(v) {
   const n = Number(v);
   if (!isFinite(n) || Math.abs(n) < 0.005) return '–';
@@ -586,7 +596,13 @@ function psToOut(r) {
   const fy = (psEl('ps-fy') || {}).value || '';
   const startY = parseInt(String(fy).slice(0, 4), 10);
   const cyEnd = isFinite(startY) ? startY + 1 : null;
-  const asAt = y => (y ? `32nd Ashadh ${y}` : '');
+  const asAt = y => {
+    if (!y) return '';
+    const end = NepaliLocale.fyEndBs(y - 1);
+    const d = (end && end.day) || 31;
+    const sfx = (d % 10 === 1 && d !== 11) ? 'st' : (d % 10 === 2 && d !== 12) ? 'nd' : (d % 10 === 3 && d !== 13) ? 'rd' : 'th';
+    return `${d}${sfx} Ashadh ${y}`;
+  };
   const p = psPy || {};
 
   return {
@@ -597,20 +613,43 @@ function psToOut(r) {
         pan: (psEl('ps-pan') || {}).value || '',
       },
       fy, fyPrev: isFinite(startY) ? `${startY - 1}-${String(startY).slice(2)}` : '',
+      // 3.6 Share Capital states share COUNTS, which the note derives by
+      // dividing the face value into the capital — so it can never disagree
+      // with the balance sheet. Authorised is constitutional, not derivable,
+      // so it is asked for and falls back to the issued count.
+      shareFace: psNum((psEl('ps-face-value') || {}).value) || 100,
+      authorisedShares: psNum((psEl('ps-auth-shares') || {}).value) || 0,
       basis: 'provisional',
-      terms: { person: 'Director', distribution: 'Dividend Paid', capital: 'Share Capital', entity: 'Private Limited Company' },
-      titles: {
-        sfp: 'Provisional Statement of Financial Position',
-        soi: 'Provisional Statement of Income',
+      terms: { person: 'Director/Chairman', distribution: 'Dividend Paid', capital: 'Share Capital', entity: 'Private Limited Company' },
+      titles: (() => {
         // The Statement of Changes in Equity is NEVER titled "Provisional",
-        // even on a provisional set — §15. The other three are.
-        soce: 'Statement of Changes in Equity',
-        socf: 'Provisional Statement of Cash Flows',
-      },
+        // even on a provisional set — §15. Of the other three, whether the
+        // word is printed is a house choice: the firm's T3 file prints it and
+        // its Pashupati file does not, so it is offered as a switch.
+        const pfx = (psEl('ps-title-provisional') || {}).checked === false ? '' : 'Provisional ';
+        return {
+          sfp: pfx + 'Statement of Financial Position',
+          soi: pfx + 'Statement of Income',
+          soce: 'Statement of Changes in Equity',
+          socf: pfx + 'Statement of Cash Flows',
+        };
+      })(),
       asAtCy: asAt(cyEnd), asAtPy: asAt(startY),
       yearEndedCy: asAt(cyEnd), yearEndedPy: asAt(startY),
-      asAtLine: `As at ${asAt(cyEnd)}`,
-      forYearLine: `For the year ended ${asAt(cyEnd)}`,
+      // The period line carries the A.D. equivalent in brackets, the way every
+      // statement the firm issues does.
+      asAtLine: `As at ${asAt(cyEnd)}${psAdSuffix()}`,
+      forYearLine: `For the year ended ${asAt(cyEnd)}${psAdSuffix()}`,
+      // The 3.1 PPE note and the SOCE date their own rows rather than saying
+      // "the year", so both ends of every movement are unambiguous.
+      socOpenLabel: `Balance at 1st Shrawan, ${startY}`,
+      socCloseLabel: `Balance at ${asAt(cyEnd).replace(/ Ashadh /, " Ashadh, ")}`,
+      ppeOpenLabel: `Balance as at 1st Shrawan, ${startY}`,
+      ppeCloseLabel: `Balance at ${asAt(cyEnd).replace(/ Ashadh /, ' Ashadh, ')}`,
+      carryOpenLabel: `As at 1st Shrawan, ${startY}`,
+      carryCloseLabel: `As at ${asAt(cyEnd).replace(/ Ashadh /, ' Ashadh, ')}`,
+      depChargeLabel: `Depreciation Charged for the Year(${String(startY).slice(2)}/${String(cyEnd).slice(2)})`,
+      place: 'Chitwan',
     },
     income: r.income,
     balance: r.balance,

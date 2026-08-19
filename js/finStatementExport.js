@@ -152,6 +152,17 @@ function fsxBuildReport(out) {
   const issues = (out.issues || []).slice();
   const R = (label, vals, kind, extra) => Object.assign({ label, vals: vals || [], kind: kind || 'item' }, extra || {});
   const B = () => ({ label: '', vals: [], kind: 'blank' });
+  // A note's own header band. Schedules repeat this under every 3.x heading,
+  // which is what makes each note read as a table in its own right.
+  const BAND = (label) => ({ label: label || 'Particulars', vals: [], kind: 'band' });
+  // The share-capital note is the one table on Sch-BS that splits each year
+  // into Number and NPR, so it needs its own two-deep header and a four-cell
+  // row. Its columns are D/F (this year) and H/J (last), which is why they are
+  // named on the sheet rather than derived from the sheet's own two-column
+  // geometry.
+  const QHEAD = (label) => ({ label: label || 'Type of Shares', vals: [], kind: 'quadhead' });
+  const QSUB = () => ({ label: '', vals: [], kind: 'quadsub' });
+  const Q = (label, vals, kind) => ({ label, vals: vals || [], kind: kind || 'quad' });
 
   // Fixed-asset classes are resolved first because the statements reference the
   // 3.1 PPE note's TOTAL column, whose index depends on how many classes
@@ -202,6 +213,7 @@ function fsxBuildReport(out) {
   sheets.push({
     key: 'SFP', name: 'SFP', geom: FSX_GEOM.SFP,
     title: m.titles && m.titles.sfp, subtitle: m.asAtLine, sig: true,
+    sigRows: { line: 57, role: 59, date: 61, place: 62 },
     cols: [{ h1: 'As at', h2: cyHead }, { h1: 'As at', h2: pyHead, restated: true }],
     rows: [
       R('A. Assets:', [], 'head'),
@@ -285,6 +297,7 @@ function fsxBuildReport(out) {
   sheets.push({
     key: 'SOI', name: 'SOI', geom: FSX_GEOM.SOI,
     title: m.titles && m.titles.soi, subtitle: m.forYearLine, sig: true,
+    sigRows: { line: 51, role: 53, date: 56, place: 57 },
     cols: [{ h1: 'Year Ended', h2: yrHead }, { h1: 'Year Ended', h2: yrHeadPy, restated: true }],
     rows: [
       R('A. INCOMES:', [], 'head'),
@@ -324,6 +337,7 @@ function fsxBuildReport(out) {
   sheets.push({
     key: 'SOCE', name: 'SOCE', geom: FSX_GEOM.SOCE, matrix: true,
     title: m.titles && m.titles.soce, subtitle: m.forYearLine, sig: true,
+    sigRows: { line: 22, role: 24, date: 29, place: 30 },
     cols: [{ h1: T.capital }, { h1: 'Share Premium' }, { h1: 'Retained Earnings' }, { h1: 'Other Reserves' }, { h1: 'Total' }],
     rows: [
       // A matrix sheet carries formulas in every column, so each of these
@@ -368,6 +382,7 @@ function fsxBuildReport(out) {
   sheets.push({
     key: 'SOCF', name: 'SOCF', geom: FSX_GEOM.SOCF,
     title: m.titles && m.titles.socf, subtitle: m.forYearLine, sig: true,
+    sigRows: { line: 55, role: 57, date: 59, place: 60 },
     cols: [{ h1: 'Year Ended', h2: yrHead }, { h1: 'Year Ended', h2: yrHeadPy }],
     rows: [
       R('Cash Flows From Operating Activities', [], 'head'),
@@ -425,12 +440,15 @@ function fsxBuildReport(out) {
       R('Net Increase in Cash & Cash Equivalents', [cf.netIncrease, pc2.netIncrease], 'tot', {
         k: 'cfNet', xf: ({ R: r, c }) => `${c}${r.cfOper}+${c}${r.cfInvest}+${c}${r.cfFinance}`,
       }),
+      B(),
       R('Cash & Cash Equivalents at the Beginning of the year', [cf.openingCash, pc2.openingCash], 'item', { k: 'cfOpen', xf: ({ X }) => X('SFP', 'cash', 1) }),
+      B(),
       R('Exchanges (Losses)/Gains on Cash & Cash Equivalents', [0, 0], 'item', { k: 'cfFx' }),
+      B(),
       R('Cash & Cash Equivalents at the end of the year', [cf.closingCash, pc2.closingCash], 'grand', {
         k: 'cfClose', xf: ({ R: r, c }) => `${c}${r.cfNet}+${c}${r.cfOpen}+${c}${r.cfFx}`,
       }),
-      B(),
+      B(), B(),
       R('The notes are an integral part of these financial statements.', [], 'note'),
       R('This is the cash flow statement referred to in our report of even date.', [], 'note'),
     ],
@@ -440,32 +458,44 @@ function fsxBuildReport(out) {
   const pt = (out.ppe && out.ppe.totals) || {};
   const across = (get) => [...pc.map(get), pc.reduce((s, c) => s + (get(c) || 0), 0)];
   sheets.push({
-    key: 'PPE', name: '3.1 PPE', geom: FSX_GEOM.PPE, matrix: true,
+    key: 'PPE', name: '3.1 PPE', geom: FSX_GEOM.PPE, matrix: true, firstRow: 2,
     title: '3.1 Property, Plant and Equipment', subtitle: 'Figures in NPR',
     heading: '3. Other Explanatory Notes',
     cols: [...pc.map(c => ({ h1: c.name })), { h1: 'Total' }],
     rows: [
-      R(m.socOpenLabel || 'Balance as at beginning of the year', across(c => c.openCost), 'item', { k: 'costOpen', rowTotal: true }),
+      // The note heads itself: '3. Other Explanatory Notes' on row 2, the note
+      // title on 3, 'Figures in NPR' on 4, then the class band on 6 with a
+      // blank either side — the firm's own 3.1 PPE, row for row.
+      R('3. Other Explanatory Notes', [], 'head'),
+      R('3.1 Property, Plant and Equipment', [], 'sub'),
+      R('Figures in NPR', [], 'fignpr'),
+      B(),
+      BAND(),
+      B(),
+      R(m.ppeOpenLabel || m.socOpenLabel || 'Balance as at beginning of the year', across(c => c.openCost), 'item', { k: 'costOpen', rowTotal: true }),
       R('Additions', across(c => c.additions), 'item', { k: 'additions', rowTotal: true }),
       R('Disposals', across(c => c.disposals), 'item', { k: 'disposals', rowTotal: true }),
-      R(m.socCloseLabel || 'Balance at end of the year', across(c => c.closeCost), 'tot', {
+      R(m.ppeCloseLabel || m.socCloseLabel || 'Balance at end of the year', across(c => c.closeCost), 'tot', {
         k: 'costClose', rowTotal: true, xf: ({ R: r, c }) => `${c}${r.costOpen}+${c}${r.additions}-${c}${r.disposals}`,
       }),
       B(),
       R('Depreciation and Impairment Losses: ', [], 'head'),
-      R(m.socOpenLabel || 'Balance as at beginning of the year', across(c => c.openDep), 'item', { k: 'depOpen', rowTotal: true }),
-      R('Depreciation Charged for the Year', across(c => c.depCharge), 'item', { k: 'depCharge', rowTotal: true }),
+      B(),
+      R(m.ppeOpenLabel || m.socOpenLabel || 'Balance as at beginning of the year', across(c => c.openDep), 'item', { k: 'depOpen', rowTotal: true }),
+      R(m.depChargeLabel || 'Depreciation Charged for the Year', across(c => c.depCharge), 'item', { k: 'depCharge', rowTotal: true }),
       R('Adjustment due to Impairment Losses', across(c => c.impairment), 'item', { k: 'impair', rowTotal: true }),
       R('Disposals', across(c => c.disposalDep), 'item', { k: 'depDisposal', rowTotal: true }),
-      R(m.socCloseLabel || 'Balance at end of the year', across(c => c.closeDep), 'tot', {
+      R(m.ppeCloseLabel || m.socCloseLabel || 'Balance at end of the year', across(c => c.closeDep), 'tot', {
         k: 'depClose', rowTotal: true, xf: ({ R: r, c }) => `${c}${r.depOpen}+${c}${r.depCharge}+${c}${r.impair}-${c}${r.depDisposal}`,
       }),
       B(),
       R('Carrying Amount:', [], 'head'),
-      R('As at beginning of the year', across(c => c.openCarrying), 'item', {
+      B(),
+      R(m.carryOpenLabel || 'As at beginning of the year', across(c => c.openCarrying), 'item', {
         k: 'carryOpen', rowTotal: true, xf: ({ R: r, c }) => `${c}${r.costOpen}-${c}${r.depOpen}`,
       }),
-      R('As at end of the year', across(c => c.closeCarrying), 'grand', {
+      B(),
+      R(m.carryCloseLabel || 'As at end of the year', across(c => c.closeCarrying), 'grand', {
         k: 'carryClose', rowTotal: true, xf: ({ R: r, c }) => `${c}${r.costClose}-${c}${r.depClose}`,
       }),
     ],
@@ -490,8 +520,77 @@ function fsxBuildReport(out) {
   };
   const pyLoan = (re) => pyFind(py.loanItems, re);
 
+  // ── 3.8 loan lines ──
+  // A provisional set names the client's real facilities ("Vehicle Loan(EBL)",
+  // "Director Loan"), which is what the firm's own note lists. The audited
+  // engine has no such list, so it keeps the four standing categories it
+  // solves for — hence the fallback rather than a rewrite.
+  const mkLoanRows = (list, prefix, fallback) => {
+    const rows = [], keys = [];
+    if (list && list.length) {
+      list.forEach((l, i) => {
+        const k = prefix + i;
+        keys.push(k);
+        rows.push(R(l.name || 'Loan', [l.amount || 0, l.py || 0], 'item', { k }));
+      });
+    } else {
+      fallback.forEach((f) => { keys.push(f.k); rows.push(R(f.label, f.vals, 'item', { k: f.k })); });
+    }
+    return { rows, keys };
+  };
+  const ncSpec = mkLoanRows(bal.loanNCLines, 'loanNC', [
+    { k: 'loanTerm', label: 'Term Loan', vals: [(out.rawFigures || {}).H || 0, pyLoan(/term/i)] },
+    { k: 'loanPwc', label: 'PWC Loan', vals: [(out.rawFigures || {}).I || 0, pyLoan(/pwc|permanent/i)] },
+    { k: 'loanHp', label: 'HP Loan', vals: [(out.rawFigures || {}).J || 0, pyLoan(/\bhp\b|hire/i)] },
+    { k: 'loanDir', label: T.person + ' Loan', vals: [(out.levers || {}).directorLoan || 0, pyLoan(/director|proprietor|partner/i)] },
+  ]);
+  const cSpec = mkLoanRows(bal.loanCLines, 'loanC', [
+    { k: 'loanOd', label: 'Bank Overdrafts', vals: [bal.loansCurrent, pySfp.loansC] },
+  ]);
+  const loanNCRows = ncSpec.rows, loanNCKeys = ncSpec.keys;
+  const loanCRows = cSpec.rows, loanCKeys = cSpec.keys;
+
+  // ── 3.6 Share Capital ──
+  // Three sub-tables (authorised, issued, fully paid), each Number x NPR for
+  // both years. Share COUNTS are the face value divided into the capital, so
+  // the note cannot disagree with the balance sheet; authorised is a
+  // constitutional figure the preparer states and defaults to the issued count
+  // when nothing is on file.
+  const capFace = fsxIsNum(m.shareFace) && m.shareFace > 0 ? m.shareFace : 100;
+  const capCy = bal.shareCapital || 0;
+  const capPy = pySfp.shareCapital || 0;
+  const capAddAmt = (out.soce || {}).capital || 0;
+  const capOpenAmt = capCy - capAddAmt;
+  const nShares = (v) => (capFace ? v / capFace : 0);
+  const capAuthNum = fsxIsNum(m.authorisedShares) && m.authorisedShares > 0
+    ? m.authorisedShares : nShares(Math.max(capCy, capPy));
+  const capLabel = `Ordinary shares of NPR Rs. ${capFace} each`;
+  const capitalBlock = [
+    R('Authorised Share Capital:', [], 'sub'),
+    QHEAD(), QSUB(),
+    Q(capLabel, [capAuthNum, capAuthNum * capFace, capAuthNum, capAuthNum * capFace]),
+    Q('Total', [capAuthNum, capAuthNum * capFace, capAuthNum, capAuthNum * capFace], 'quadtot'),
+    B(),
+    R('Issued Share Capital:', [], 'sub'),
+    QHEAD(), QSUB(),
+    Q(capLabel, []),
+    Q('At the beginning of the year', [nShares(capOpenAmt), capOpenAmt, nShares(capPy), capPy]),
+    Q('Issues for cash during the year', [nShares(capAddAmt), capAddAmt, 0, 0]),
+    Q('Total', [nShares(capCy), capCy, nShares(capPy), capPy], 'quadtot'),
+    B(), B(), B(),
+    R('Fully Paid Equity Share Capital', [], 'sub'),
+    QHEAD(), QSUB(),
+    Q(capLabel, []),
+    Q('At the beginning of the year', [nShares(capOpenAmt), capOpenAmt, nShares(capPy), capPy]),
+    Q('Call money received during the year', [nShares(capAddAmt), capAddAmt, 0, 0]),
+    Q('Total', [nShares(capCy), capCy, nShares(capPy), capPy], 'quadtot'),
+    B(), B(),
+  ];
+
   const schBsRows = [
-    R('3.2 Investment', [], 'head'),
+    R('3.2 Investment', [], 'head', { figNpr: true }),
+    B(),
+    BAND(),
     R('Balance as at beginning of the year', [bal.investmentsNC + bal.investmentsC, (pySfp.investmentsNC || 0) + (pySfp.investmentsC || 0)], 'item', { k: 'invOpen' }),
     R('Additions', [0, 0], 'item', { k: 'invAdd' }),
     R('Disposals', [0, 0], 'item', { k: 'invDis' }),
@@ -502,65 +601,89 @@ function fsxBuildReport(out) {
     R('Current portion', [bal.investmentsC, pySfp.investmentsC], 'tot', {
       k: 'invCurrent', xf: ({ R: r, c }) => `${c}${r.invClose}-${c}${r.invNCPortion}`,
     }),
-    B(),
-    R('3.3 Trade & Other Receivables', [], 'head'),
+    B(), B(),
+    R('3.3 Trade & Other Receivables', [], 'head', { figNpr: true }),
+    BAND(),
   ];
+  // The firm's 3.3 strikes a "Trade receivables-net" subtotal immediately
+  // after the impairment provision, and the note's Total then adds the other
+  // receivables to THAT rather than to the gross figure. Emitted only when an
+  // impairment line exists, so a client without one keeps the flat list.
+  const recvImpIdx = recvLines.findIndex(l => l.key === 'impairment' || /impair/i.test(l.name || ''));
+  const recvSumKeys = [];
   recvLines.forEach((l, i) => {
     schBsRows.push(R(l.name, [l.amount, i === 0 ? pySfp.receivables : 0], 'item', {
       k: 'recv' + i, balancing: !!l.balancing,
       xf: l.derive ? fsxDeriveXf(l.derive, ANCHORS) : undefined,
     }));
+    if (i === recvImpIdx && recvImpIdx > 0) {
+      const gross = (recvLines[recvImpIdx - 1] || {}).amount || 0;
+      schBsRows.push(R('Trade receivables-net', [gross - (l.amount || 0), 0], 'tot', {
+        k: 'recvNet',
+        xf: ({ R: r, c }) => `${c}${r['recv' + (recvImpIdx - 1)]}-${c}${r['recv' + recvImpIdx]}`,
+      }));
+      recvSumKeys.length = 0;            // the net subsumes the two above it
+      recvSumKeys.push('recvNet');
+    } else {
+      recvSumKeys.push('recv' + i);
+    }
   });
   schBsRows.push(
     R('Total trade and other receivables', [bal.receivables, pySfp.receivables], 'tot', {
-      k: 'recvTotal', xsum: recvLines.map((_, i) => 'recv' + i),
+      k: 'recvTotal', xsum: recvSumKeys,
     }),
     R('Less: Non-current portion', [0, 0], 'item', { k: 'recvNC' }),
     R('Current portion', [bal.receivables, pySfp.receivables], 'tot', {
       k: 'recvCurrent', xf: ({ R: r, c }) => `${c}${r.recvTotal}-${c}${r.recvNC}`,
     }),
-    B(),
-    R('3.4 Inventories', [], 'head'),
+    B(), B(),
+    R('3.4 Inventories', [], 'head', { figNpr: true }),
+    BAND(),
     R('Raw materials and consumables', [0, 0], 'item', { k: 'invRaw' }),
     R('Work-in-progress', [0, 0], 'item', { k: 'invWip' }),
     R('Finished Goods', [bal.inventories, pySfp.inventories], 'item', { k: 'invFg', xf: ({ X }) => X('SchPL', 'matClosing') }),
     R('Total', [bal.inventories, pySfp.inventories], 'tot', { k: 'invTotal', xsum: ['invRaw', 'invWip', 'invFg'] }),
     B(),
-    R('3.5 Cash & Cash Equivalents', [], 'head'),
-    R('Cash & Bank Balance', [bal.cash, pySfp.cash], 'item', { k: 'cashBank' }),
+    R('Finished goods include an amount of NIL carried at fair value less costs to sell.', [], 'note'),
+    B(),
+    R('3.5 Cash & Cash Equivalents', [], 'head', { figNpr: true }),
+    R('Cash and cash equivalents for purposes of the statement of cash follows comprises :', [], 'note'),
+    B(),
+    BAND(),
+    R('Cash in Hand & Bank Balances', [bal.cash, pySfp.cash], 'item', { k: 'cashBank' }),
     R('Total', [bal.cash, pySfp.cash], 'tot', { k: 'cashTotal', xsum: ['cashBank'] }),
     B(),
-    R('3.6 ' + T.capital, [], 'head'),
-    R('At the beginning of the year', [(bal.shareCapital || 0) - ((out.soce || {}).capital || 0), pyFind(py.capitalItems, /beginning/i) || pySfp.shareCapital], 'item', { k: 'capOpen' }),
-    R('Addition During the Year', [(out.soce || {}).capital || 0, pyFind(py.capitalItems, /addition|issue|call money/i)], 'item', { k: 'capAdd' }),
-    R('Total', [bal.shareCapital, pySfp.shareCapital], 'tot', { k: 'capTotal', xsum: ['capOpen', 'capAdd'] }),
+    R('3.6 ' + T.capital, [], 'head', { figNpr: true }),
     B(),
+    ...capitalBlock,
     R('3.7 Reserves', [], 'head'),
-    // The prior year's own opening is its closing less its result for that
-    // year — the only way to state it without a second comparative file.
-    R('Opening', [(out.soce || {}).open && (out.soce.open.retained || 0),
-                  pyFind(py.reserveItems, /opening/i) || r2((pySfp.reserves || 0) - (pySoi.netProfit || 0))], 'item', { k: 'resOpen' }),
-    R('Add: Profit for the year', [inc.netProfit, pySoi.netProfit], 'item', { k: 'resProfit', xf: ({ X }) => X('SOI', 'np') }),
-    R('Less: ' + T.distribution, [-((out.soce || {}).dividend || 0), -Math.abs(pyFind(py.reserveItems, /drawing|dividend/i))], 'item', { k: 'resDist' }),
-    R('Total', [bal.reserves, pySfp.reserves], 'tot', { k: 'resTotal', xsum: ['resOpen', 'resProfit', 'resDist'] }),
-    B(),
-    R('3.8 Loans Borrowings', [], 'head'),
+    R('The reserves to be included within the Equity are share premium, retained earnings and other reserves', [], 'note'),
+    B(), B(),
+    R('3.8 Loans Borrowings', [], 'head', { figNpr: true }),
+    R('The details of value of loans and borrowings are as follows:', [], 'sub'),
+    BAND(),
     R('Non-Current :', [], 'sub'),
-    R('Term Loan', [(out.rawFigures || {}).H || 0, pyLoan(/term/i)], 'item', { k: 'loanTerm' }),
-    R('PWC Loan', [(out.rawFigures || {}).I || 0, pyLoan(/pwc|permanent/i)], 'item', { k: 'loanPwc' }),
-    R('HP Loan', [(out.rawFigures || {}).J || 0, pyLoan(/\bhp\b|hire/i)], 'item', { k: 'loanHp' }),
-    R(T.person + ' Loan', [(out.levers || {}).directorLoan || 0, pyLoan(/director|proprietor|partner/i)], 'item', { k: 'loanDir' }),
-    R('Total', [bal.loansNonCurrent, pySfp.loansNC], 'tot', { k: 'loanNCTotal', xsum: ['loanTerm', 'loanPwc', 'loanHp', 'loanDir'] }),
+    ...loanNCRows,
+    R('Total', [bal.loansNonCurrent, pySfp.loansNC], 'tot', { k: 'loanNCTotal', xsum: loanNCKeys }),
     R('Current :', [], 'sub'),
-    R('Bank Overdrafts', [bal.loansCurrent, pySfp.loansC], 'item', { k: 'loanOd' }),
-    R('Total', [bal.loansCurrent, pySfp.loansC], 'tot', { k: 'loanCTotal', xsum: ['loanOd'] }),
+    ...loanCRows,
+    R('Total', [bal.loansCurrent, pySfp.loansC], 'tot', { k: 'loanCTotal', xsum: loanCKeys }),
+    B(),
     R('Total loans and borrowings', [(bal.loansNonCurrent || 0) + (bal.loansCurrent || 0), (pySfp.loansNC || 0) + (pySfp.loansC || 0)], 'tot', {
       k: 'loanAll', xsum: ['loanNCTotal', 'loanCTotal'],
     }),
-    B(),
-    R('3.9 Trade and Other Payables', [], 'head'),
+    B(), B(),
+    R('3.9 Trade and Other Payables', [], 'head', { figNpr: true }),
+    BAND(),
   );
+  // The firm's 3.9 separates the two trading payables from the statutory
+  // withholdings with a blank and a "Duties and taxes:" sub-heading.
+  const payDutiesIdx = payLines.findIndex(l => /^tds/i.test(l.name || ''));
   payLines.forEach((l, i) => {
+    if (i === payDutiesIdx && payDutiesIdx > 0) {
+      schBsRows.push(B());
+      schBsRows.push(R('Duties and taxes:', [], 'sub', { italic: true }));
+    }
     const extra = { k: 'pay' + i };
     // An explicit descriptor from the engine wins: it knows which figure the
     // line withholds from, where name-matching only guesses. The regex arm
@@ -573,8 +696,8 @@ function fsxBuildReport(out) {
   });
   schBsRows.push(
     R('Total', [bal.totalPayables, pySfp.payables], 'tot', { k: 'payTotal', xsum: payLines.map((_, i) => 'pay' + i) }),
-    B(),
-    R('3.10 Provisions', [], 'head'),
+    R('3.10 Provisions', [], 'head', { figNpr: true }),
+    BAND(),
     R('Provision for Income Tax', [inc.tax, pySoi.tax], 'item', { k: 'provTax', xf: ({ X }) => X('SOI', 'tax') }),
     R('Total', [inc.tax, pySoi.tax], 'tot', { k: 'provTotal', xsum: ['provTax'] }),
     R('Non-Current Portion', [bal.provisionsNC, pySfp.provisionsNC], 'item', { k: 'provNCPortion' }),
@@ -583,7 +706,7 @@ function fsxBuildReport(out) {
     }),
   );
   sheets.push({
-    key: 'SchBS', name: 'Sch-BS', geom: FSX_GEOM.SchBS,
+    key: 'SchBS', name: 'Sch-BS', geom: FSX_GEOM.SchBS, firstRow: 2, quadCols: ['D', 'F', 'H', 'J'],
     title: 'Schedules to the Statement of Financial Position', subtitle: 'Figures in NPR',
     cols: [{ h1: 'As at', h2: cyHead }, { h1: 'As at', h2: pyHead }],
     rows: schBsRows,
@@ -592,7 +715,8 @@ function fsxBuildReport(out) {
   // ── Sch-PL: income-statement notes 3.11–3.16 ──
   const pyMat = py.materials || {};
   const schPlRows = [
-    R('3.11 Revenue from Operations', [], 'head'),
+    R('3.11 Revenue from Operations', [], 'head', { figNpr: true }),
+    BAND(),
     R('Revenue From Operations:', [], 'sub'),
     R('Sale of Goods', [m.serviceIndustry ? 0 : inc.revenueOps, pySoi.revenueOps], 'item', { k: 'saleGoods' }),
     R('Rendering of Services', [m.serviceIndustry ? inc.revenueOps : 0, 0], 'item', { k: 'saleServices' }),
@@ -600,21 +724,23 @@ function fsxBuildReport(out) {
     R('Revenue From Other Operations:', [], 'sub'),
     R('Commisions & Incentives', [inc.revenueOther, 0], 'item', { k: 'revComm' }),
     R('Sub-Total', [inc.revenueOther, 0], 'tot', { k: 'revOtherSub', xsum: ['revComm'] }),
+    B(),
     R('Total', [(inc.revenueOps || 0) + (inc.revenueOther || 0), pySoi.revenueOps], 'tot', { k: 'revTotal', xsum: ['revOpsSub', 'revOtherSub'] }),
     B(),
     R('Revenue From Non-Operations:', [], 'sub'),
     R('Interest Income', [inc.interestIncome, pySoi.interestIncome], 'item', { k: 'intIncome' }),
-    R('Other Income', [inc.otherIncome, pySoi.otherIncome], 'item', { k: 'othIncome' }),
+    R('Commisions & Incentives', [inc.otherIncome, pySoi.otherIncome], 'item', { k: 'othIncome' }),
     R('Total', [(inc.interestIncome || 0) + (inc.otherIncome || 0), (pySoi.interestIncome || 0) + (pySoi.otherIncome || 0)], 'tot', { k: 'nonOpTotal', xsum: ['intIncome', 'othIncome'] }),
     B(),
-    R('3.12 Material Consumed Expenses', [], 'head'),
+    R('3.12 Materials Consumed Expenses', [], 'head', { figNpr: true }),
+    BAND(),
     // This year's opening stock IS last year's closing — the template's =+F33,
     // reaching across to the comparative column of the row below.
     R('Balance on beginning of the year', [mat.opening, pyMat.opening], 'item', {
       k: 'matOpening', xf: ({ X }) => X('SchPL', 'matClosing', 1),
     }),
     R('Add:  ', [], 'sub'),
-    R('Purchase of goods', [mat.purchases, pyMat.purchases], 'item', { k: 'matPurchase', balancing: true }),
+    R('Purchases of goods', [mat.purchases, pyMat.purchases], 'item', { k: 'matPurchase', balancing: true }),
   ];
   (mat.directItems || []).forEach((it, i) => {
     schPlRows.push(R(it.name, [it.amount, ((pyMat.directItems || [])[i] || {}).amount || 0], 'item',
@@ -632,7 +758,8 @@ function fsxBuildReport(out) {
       },
     }),
     B(),
-    R('3.13 Employee Benefits Expenses', [], 'head'),
+    R('3.13 Employee Benefits Expenses', [], 'head', { figNpr: true }),
+    BAND(),
   );
   (inc.employeeItems || []).forEach((it, i) => {
     schPlRows.push(R(it.name, [it.amount, ((py.employeeItems || [])[i] || {}).amount || 0], 'item', { k: 'emp' + i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
@@ -640,7 +767,17 @@ function fsxBuildReport(out) {
   schPlRows.push(
     R('Total', [inc.employeeTotal, pySoi.employee], 'tot', { k: 'empTotal', xsum: (inc.employeeItems || []).map((_, i) => 'emp' + i) }),
     B(),
-    R('3.14 Finance Cost', [], 'head'),
+    // The related-party disclosure the firm's own 3.13 carries. Nil unless a
+    // director's remuneration is entered, but the note is a disclosure: it has
+    // to appear and say nil rather than be absent.
+    R('Key management personnel compensation:', [], 'sub'),
+    R('Key management personnel are those persons having authority and responsibility for planning, directing and controlling the activities of the entity, including the director.', [], 'note'),
+    BAND(),
+    R('Salary', [inc.kmpSalary || 0, (py.kmpSalary || 0)], 'item', { k: 'kmpSalary' }),
+    R('Total', [inc.kmpSalary || 0, (py.kmpSalary || 0)], 'tot', { k: 'kmpTotal', xsum: ['kmpSalary'] }),
+    B(), B(),
+    R('3.14 Finance Cost', [], 'head', { figNpr: true }),
+    BAND(),
   );
   (inc.financeItems || []).forEach((it, i) => {
     schPlRows.push(R(it.name, [it.amount, ((py.financeItems || [])[i] || {}).amount || 0], 'item', { k: 'fin' + i }));
@@ -648,7 +785,8 @@ function fsxBuildReport(out) {
   schPlRows.push(
     R('Total', [inc.financeTotal, pySoi.financeCost], 'tot', { k: 'finTotal', xsum: (inc.financeItems || []).map((_, i) => 'fin' + i) }),
     B(),
-    R('3.15 Other Expenses', [], 'head'),
+    R('3.15 Other Expenses', [], 'head', { figNpr: true }),
+    BAND(),
   );
   const pyOtherByName = {};
   for (const it of (py.otherItems || [])) pyOtherByName[String(it.name).toLowerCase().trim()] = it.amount;
@@ -663,7 +801,8 @@ function fsxBuildReport(out) {
       xsum: (inc.otherItems || []).map((it, i) => /audit\s*fee/i.test(it.name) ? 'auditFee' : (/\brent\b/i.test(it.name) ? 'rent' : 'oth' + i)),
     }),
     B(),
-    R('3.16 Tax Expenses ', [], 'head'),
+    R('3.16 Tax Expenses ', [], 'head', { figNpr: true }),
+    BAND(),
     R('Tax on profits for the year', [inc.tax, pySoi.tax], 'item', {
       k: 'taxYear',
       // Provisional sets carry the rate live off PBT (the workbook's
@@ -675,7 +814,7 @@ function fsxBuildReport(out) {
     R('Total', [inc.tax, pySoi.tax], 'tot', { k: 'taxTotal', xsum: ['taxYear', 'taxAdj'] }),
   );
   sheets.push({
-    key: 'SchPL', name: 'Sch-PL', geom: FSX_GEOM.SchPL,
+    key: 'SchPL', name: 'Sch-PL', geom: FSX_GEOM.SchPL, firstRow: 3,
     title: 'Schedules to the Statement of Income', subtitle: 'Figure in NPR',
     cols: [{ h1: 'Year Ended', h2: yrHead }, { h1: 'Year Ended', h2: yrHeadPy }],
     rows: schPlRows,
@@ -796,11 +935,12 @@ const FSX_HEADER_SOURCE = { SchBS: 'SFP', SchPL: 'SOI' };
 function fsxLayout(sh) {
   if (sh.noHeaderBand) return { bandRow: null, firstDataRow: 2 };
   if (FSX_SCHEDULE_KEYS[sh.key]) {
-    // row1 (optional) heading, then title+"Figures in NPR" together, then a
-    // short blank spacer, then the header band.
-    const titleRow = sh.heading ? 2 : 1;
-    const bandRow = titleRow + 2;
-    return { bandRow, firstDataRow: bandRow + 1, titleRow, hasCompany: false };
+    // A schedule carries a header band under EVERY note, not one for the whole
+    // sheet — `Sch-PL` bands at rows 4, 21, 32, 39, 45, 52 and 74, one per
+    // 3.x note. So the sheet writes no title block of its own: the row list
+    // holds the headings and the bands, and `firstRow` is simply where the
+    // firm's own file starts (row 3 on Sch-PL, row 2 on Sch-BS and 3.1 PPE).
+    return { bandRow: null, firstDataRow: sh.firstRow || 2, hasCompany: false, selfBanded: true };
   }
   // Statement sheets: rows 2-6 company/address/title/period/"Figures in
   // NPR", row 7 a short blank spacer, row 8 the "Restated" tag ONLY when a
@@ -831,6 +971,9 @@ function fsxSetColumnWidths(ws, sh) {
     const letter = fsxSheetCol(geom, i, !!sh.matrix);
     if (letter) valueCols.add(fsxColNum(letter));
   }
+  // The share-capital note borrows two columns the sheet otherwise uses as
+  // narrow spacers; they carry figures, so they get figure widths.
+  for (const q of (sh.quadCols || [])) valueCols.add(fsxColNum(q));
   let lastCol = labelCol;
   for (const c of valueCols) lastCol = Math.max(lastCol, c);
   if (noteCol) lastCol = Math.max(lastCol, noteCol);
@@ -905,7 +1048,7 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
     const lastCol = Math.max(fsxSetColumnWidths(ws, sh), labelCol);
 
     // ── title block ──
-    if (!sh.noHeaderBand) {
+    if (!sh.noHeaderBand && !layout.selfBanded) {
       const put = (rowNo, col, text, opts, align) => {
         const cell = ws.getCell(rowNo, col);
         cell.value = text || '';
@@ -985,7 +1128,107 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
     for (const r of sh.rows) {
       const rowNo = rn++;
       if (r.kind === 'blank') { ws.getRow(rowNo).height = 6; continue; }
+
+      // A note's own header band: "Particulars" plus the period captions,
+      // medium rule underneath — the same furniture the statement sheets get
+      // once, repeated per note on a schedule.
+      if (r.kind === 'band') {
+        const bc = ws.getCell(rowNo, labelCol);
+        bc.value = r.label || 'Particulars';
+        bc.font = font({ bold: true, size: 12 });
+        bc.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+        bc.border = { bottom: medium };
+        if (geom.note) {
+          const nc2 = ws.getCell(rowNo, fsxColNum(geom.note));
+          nc2.value = 'Notes';
+          nc2.font = font({ bold: true, size: 12 });
+          nc2.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+          nc2.border = { bottom: medium };
+        }
+        (sh.cols || []).forEach((col, i) => {
+          const cn2 = fsxColNum(fsxSheetCol(geom, i, !!sh.matrix) || '');
+          if (!cn2) return;
+          const cell2 = ws.getCell(rowNo, cn2);
+          cell2.value = col.h2 ? `${col.h1}\n${col.h2}` : col.h1;
+          cell2.font = font({ bold: true, size: 12 });
+          cell2.alignment = { horizontal: 'right', wrapText: true, vertical: 'bottom' };
+          cell2.border = { bottom: medium };
+        });
+        ws.getRow(rowNo).height = r.tall === false ? 20 : 36;
+        continue;
+      }
+
+      // ── the share-capital note's two-deep header and four-cell rows ──
+      const qc = sh.quadCols;
+      if (qc && (r.kind === 'quadhead' || r.kind === 'quadsub' || r.kind === 'quad' || r.kind === 'quadtot')) {
+        const qn = qc.map(fsxColNum);
+        if (r.kind === 'quadhead') {
+          const hc = ws.getCell(rowNo, labelCol);
+          hc.value = r.label || 'Type of Shares';
+          hc.font = font({ bold: true, size: 12 });
+          hc.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+          hc.border = { top: thin };
+          [[0, 1, report.meta.asAtCy || ''], [2, 3, report.meta.asAtPy || '']].forEach(([a2, b2, txt]) => {
+            const cell3 = ws.getCell(rowNo, qn[a2]);
+            cell3.value = `As at 
+${txt}`;
+            cell3.font = font({ bold: true, size: 12 });
+            cell3.alignment = { horizontal: 'center', wrapText: true };
+            cell3.border = { top: thin };
+            ws.mergeCells(rowNo, qn[a2], rowNo, qn[b2]);
+          });
+          ws.getRow(rowNo).height = 36;
+          continue;
+        }
+        if (r.kind === 'quadsub') {
+          ['Number', 'NPR', 'Number', 'NPR'].forEach((t, i2) => {
+            const cell3 = ws.getCell(rowNo, qn[i2]);
+            cell3.value = t;
+            cell3.font = font({ size: 12 });
+            cell3.alignment = { horizontal: 'center' };
+            cell3.border = { bottom: medium };
+          });
+          ws.getRow(rowNo).height = 18;
+          continue;
+        }
+        const ql = ws.getCell(rowNo, labelCol);
+        ql.value = r.label || '';
+        ql.font = font({ bold: r.kind === 'quadtot', size: 14 });
+        (r.vals || []).forEach((v, i2) => {
+          if (i2 >= qn.length) return;
+          const cell3 = ws.getCell(rowNo, qn[i2]);
+          cell3.value = fsxIsNum(v) ? v : null;
+          cell3.numFmt = FSX_NUMFMT;
+          cell3.alignment = { horizontal: 'right' };
+          cell3.font = font({ bold: r.kind === 'quadtot', size: 14 });
+          if (r.kind === 'quadtot') cell3.border = { top: thin, bottom: double };
+        });
+        ws.getRow(rowNo).height = 18;
+        continue;
+      }
+
+      // A standalone "Figures in NPR" line — 3.1 PPE puts it on its own row
+      // rather than beside the heading, because its heading is two lines.
+      if (r.kind === 'fignpr') {
+        const fc2 = ws.getCell(rowNo, labelCol);
+        fc2.value = 'Figures in NPR';
+        fc2.font = font({ bold: true, size: 11 });
+        fc2.alignment = { horizontal: 'right' };
+        if (lastCol > labelCol) ws.mergeCells(rowNo, labelCol, rowNo, lastCol);
+        ws.getRow(rowNo).height = 13.35;
+        continue;
+      }
+
       ws.getRow(rowNo).height = 18;   // the template's data-row rhythm
+
+      // A note heading carries "Figures in NPR" at the far right of its own
+      // row, the way every 3.x note on Sch-BS and Sch-PL does.
+      if (r.figNpr && lastCol > labelCol) {
+        const fc = ws.getCell(rowNo, lastCol);
+        fc.value = 'Figures in NPR';
+        fc.font = font({ bold: true, size: 11 });
+        fc.alignment = { horizontal: 'right' };
+      }
 
       const lab = ws.getCell(rowNo, labelCol);
       lab.value = r.label || '';
@@ -1087,7 +1330,8 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
     // ── signature block (prompt §9: notes 12pt bold, signature/date 13pt regular) ──
     if (sh.sig) {
       const T = report.meta.terms || {};
-      let sr = rn + 3;
+      const sg = sh.sigRows;
+      let sr = sg ? sg.line : rn + 3;
       const sigCols = [labelCol, geom.note ? fsxColNum(geom.note) : labelCol + 2, lastCol];
       const names = [T.person || 'Director', 'Accountant',
         report.meta.auditor && report.meta.auditor.name ? 'Registered Auditor' : ''];
@@ -1095,17 +1339,20 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
         if (!names[i]) return;
         ws.getCell(sr, c).value = '…………………………';
         ws.getCell(sr, c).font = font({ size: 13 });
-        ws.getCell(sr + 2, c).value = names[i];
-        ws.getCell(sr + 2, c).font = font({ size: 13 });
+        const roleRow = sg ? sg.role : sr + 2;
+        ws.getCell(roleRow, c).value = names[i];
+        ws.getCell(roleRow, c).font = font({ size: 13 });
       });
       if (report.meta.auditor && report.meta.auditor.name) {
         ws.getCell(sr + 3, lastCol).value = report.meta.auditor.name;
         ws.getCell(sr + 3, lastCol).font = font({ size: 13 });
       }
-      ws.getCell(sr + 4, labelCol).value = 'Date: ' + (report.meta.dateBs || '');
-      ws.getCell(sr + 5, labelCol).value = 'Place: ' + (report.meta.place || 'Chitwan');
-      ws.getCell(sr + 4, labelCol).font = font({ size: 13 });
-      ws.getCell(sr + 5, labelCol).font = font({ size: 13 });
+      const dateRow = sg ? sg.date : sr + 4;
+      const placeRow = sg ? sg.place : sr + 5;
+      ws.getCell(dateRow, labelCol).value = report.meta.dateBs ? ('Date: ' + report.meta.dateBs) : 'Date';
+      ws.getCell(placeRow, labelCol).value = 'Place :' + (report.meta.place || 'Chitwan');
+      ws.getCell(dateRow, labelCol).font = font({ size: 13 });
+      ws.getCell(placeRow, labelCol).font = font({ size: 13 });
     }
 
     if (!sh.noHeaderBand) ws.views = [{ state: 'frozen', ySplit: layout.bandRow, showGridLines: false }];

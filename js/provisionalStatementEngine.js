@@ -354,7 +354,7 @@ const ProvisionalStatementEngine = (() => {
     const payableLines = [
       { key: 'tradePayables',  name: 'Trade Payables',                 amount: tradePayables },
       { key: 'auditFeePayable',name: 'Audit Fee Payable',              amount: auditFeePayable,
-        derive: { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'pay6' } },
+        derive: { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'pay7' } },
       { key: 'tdsSalary',      name: 'TDS Payable-Salary(SST)',        amount: tdsSalary,
         derive: { kind: 'pct', sheet: 'SchPL', row: 'empTotal', pct: TDS.salary } },
       { key: 'tdsRent',        name: 'TDS Payable-Rent',               amount: tdsRent,
@@ -363,6 +363,12 @@ const ProvisionalStatementEngine = (() => {
         derive: { kind: 'pct', sheet: 'SOI', row: 'incentive', pct: TDS.incentive } },
       { key: 'tdsWages',       name: 'TDS Payable-Wages',              amount: tdsWages,
         derive: { kind: 'pct', sheet: 'SchPL', row: 'matDirect0', pct: TDS.wages } },
+      // The firm's own 3.9 carries a SECOND wages line, left at nil — a spare
+      // slot in their template for a further withholding of the same kind.
+      // Reproduced because it sets where 3.10 Provisions starts, and it is
+      // layout only: nil changes no total. (Unlike the workbook's +0.01 cash
+      // plug, which moves a figure and is deliberately NOT reproduced.)
+      { key: 'tdsWagesSpare',  name: 'TDS Payable-Wages',              amount: 0 },
       { key: 'tdsAuditFee',    name: 'TDS Payable-Audit fee',          amount: tdsAuditFee,
         derive: { kind: 'pct', sheet: 'SchPL', row: 'auditFee', pct: TDS.auditFee } },
       { key: 'tdsFreight',     name: 'TDS Payable-Clearing & Freight', amount: tdsFreight,
@@ -392,8 +398,13 @@ const ProvisionalStatementEngine = (() => {
     const provisionsC  = taxExpense;
     const provisionsNC = num(cy.provisionsNC);
 
-    const loansNonCurrent = (cy.loansNC || []).reduce((s, l) => s + num(l.amount), 0);
-    const loansCurrent    = (cy.loansC  || []).reduce((s, l) => s + num(l.amount), 0);
+    // Kept as LINES, not just totals: note 3.8 lists the client's own
+    // facilities by name ("Vehicle Loan(EBL)", "Director Loan"), which is what
+    // the firm's note shows and what makes it checkable against the sanction.
+    const loanNCLines = (cy.loansNC || []).map(l => ({ name: l.name, amount: num(l.amount), py: num(l.py) }));
+    const loanCLines  = (cy.loansC  || []).map(l => ({ name: l.name, amount: num(l.amount), py: num(l.py) }));
+    const loansNonCurrent = loanNCLines.reduce((s, l) => s + l.amount, 0);
+    const loansCurrent    = loanCLines.reduce((s, l) => s + l.amount, 0);
 
     const totalNCL = loansNonCurrent + provisionsNC;
     const totalCL  = loansCurrent + totalPayables + provisionsC;
@@ -501,7 +512,7 @@ const ProvisionalStatementEngine = (() => {
         ],
         receivables, cash, totalCA, totalAssets,
         shareCapital, reserves, totalEquity,
-        loansNonCurrent, provisionsNC, totalNCL,
+        loansNonCurrent, provisionsNC, totalNCL, loanNCLines, loanCLines,
         loansCurrent, payableLines, totalPayables, provisionsC, totalCL,
         totalLiabilities, totalEquityLiab,
         balanceGap,

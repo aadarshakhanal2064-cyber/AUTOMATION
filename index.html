@@ -2415,6 +2415,21 @@ function cropLoginLogoIcon(img) {
                      title="Applied to salary and every other-expense line whose rule is 'Last year + growth %'. Audit Fee and Rent default to flat." />
             </div>
             <div class="form-group"><label>Staff Performing This Task</label><select id="ps-staff"></select></div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; margin:0;">
+                <input type="checkbox" id="ps-title-provisional" checked style="width:auto;" onchange="psRecalcDebounced()" />
+                Print &ldquo;Provisional&rdquo; in statement titles
+              </label>
+            </div>
+            <div class="form-group"><label>Period date in A.D. (optional)</label>
+              <input type="text" id="ps-ad-date" placeholder="e.g. 16th July 2026" oninput="psRecalcDebounced()"
+                     title="Printed in brackets after the B.S. date. Typed, not converted: the app has no B.S.-to-A.D. calendar table, and a guessed date on a signed statement would be worse than none." /></div>
+            <div class="form-group"><label>Face Value per Share (Rs)</label>
+              <input type="number" id="ps-face-value" value="100" step="1" oninput="psRecalcDebounced()"
+                     title="Used by note 3.6 to state share numbers. Share counts are derived from the capital, so the note cannot disagree with the balance sheet." /></div>
+            <div class="form-group"><label>Authorised Shares (number)</label>
+              <input type="number" id="ps-auth-shares" step="1" placeholder="Defaults to issued" oninput="psRecalcDebounced()"
+                     title="The constitutional figure from the company's memorandum. Blank falls back to the issued share count." /></div>
           </div>
         </div>
 
@@ -4156,9 +4171,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/projectionExport.js?v=202608111600"></script>
 <script src="js/finStatementEngine.js?v=202608190900"></script>
 <script src="js/finStatement.js?v=202608190900"></script>
-<script src="js/finStatementExport.js?v=202608191100"></script>
-<script src="js/provisionalStatementEngine.js?v=202608191100"></script>
-<script src="js/provisionalStatement.js?v=202608191100"></script>
+<script src="js/finStatementExport.js?v=202608191600"></script>
+<script src="js/provisionalStatementEngine.js?v=202608191600"></script>
+<script src="js/provisionalStatement.js?v=202608191600"></script>
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>
 <script src="js/auditChecklist.js?v=202608151800"></script>

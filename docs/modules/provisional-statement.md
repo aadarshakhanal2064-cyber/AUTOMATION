@@ -178,3 +178,44 @@ Provisional.xlsx`) and its geometry matches the Pashupati file exactly:
 Book Antiqua throughout, no fills, borders on value cells only, medium-rule
 header band, thin+double subtotal rule, double-only grand total — all already
 implemented there. **Do not fork that file**; extend it if a row type is missing.
+
+### 6.1 Row-for-row alignment
+
+**All 288 labelled rows across the seven sheets land on the same row numbers as
+the firm's own workbook**, verified by diffing the generated workbook against a
+map extracted from `Pashupati Marvel Pvt Ltd 82.83 Provisional.xlsx`. Getting
+there needed five structural corrections to the export layer, every one of
+which also fixes the **Audited Statement**, since both reference files agree:
+
+1. **A blank spacer row between the header band and the first data row.** Every
+   statement's data was one row high without it.
+2. **A schedule bands EVERY note, not the sheet.** `Sch-PL` carries a
+   "Particulars" band at rows 4, 21, 32, 39, 45, 52 and 74 — one per 3.x note —
+   so schedules now write no title block of their own (`selfBanded`) and the
+   row list holds the headings, the bands and the blanks. `firstRow` is where
+   the firm's file starts: row 3 on Sch-PL, row 2 on Sch-BS and 3.1 PPE.
+3. **`3.6 Share Capital` is three sub-tables split Number × NPR**, needing its
+   own `quadhead` / `quadsub` / `quad` row kinds over columns D/F (this year)
+   and H/J (last). Share counts are the face value divided into the capital, so
+   the note cannot disagree with the balance sheet; **authorised** is a
+   constitutional figure and is asked for.
+4. **`3.7 Reserves` is a sentence, not a table** — the roll-forward already has
+   a home in the SOCE, and `SFP!Reserves` points there, so a second table would
+   state the same movement twice.
+5. **Fixed signature rows per statement** (`sigRows`), because the gap below the
+   last note differs per sheet — SOI leaves far more room than SFP.
+
+Two deliberate carries from the source file, both **layout-only**:
+
+- its `3.9` has a **second, nil `TDS Payable-Wages` row** — a spare slot in the
+  firm's template. It is reproduced because it sets where `3.10 Provisions`
+  starts, and nil changes no total. This is a different case from the `+0.01`
+  cash plug in §4, which moves a figure and is *not* reproduced.
+- whether the word **"Provisional"** appears in the three statement titles is a
+  house choice, not a rule: the firm's T3 file prints it and its Pashupati file
+  does not. It is a checkbox, defaulting to on (§15 keeps the SOCE clean either
+  way).
+
+**The A.D. date in brackets is typed, not converted.** `NepaliLocale` carries
+`adToBs` but no B.S.-to-A.D. table, and a guessed date on a signed statement is
+worse than none.
