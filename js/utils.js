@@ -2,8 +2,28 @@
 //  UTILS — shared helper functions
 // ════════════════════════════════════════════
 
+// The app's only XSS defence — the CSP keeps 'unsafe-inline' for scripts, so
+// it cannot stop injected inline script and escaping is what actually covers
+// this (CLAUDE.md §13). Used in 615 places.
+//
+// The apostrophe matters. Without it a value placed inside a SINGLE-quoted
+// attribute — title='...', or any hand-built markup — can close the attribute
+// and add another. No such interpolation exists today (checked: every
+// interpolated attribute in js/ is double-quoted), so this is defence in
+// depth rather than a live fix, and it is exactly the kind of gap that opens
+// quietly the first time someone writes title='${escHtml(x)}'.
+//
+// &#39; rather than &apos;: the latter is not in the HTML 4 entity set and is
+// unreliable in older parsers, while the numeric form is universal. Safe to
+// add because no caller writes escHtml() output into textContent or .value,
+// where an entity would show literally instead of rendering (also checked).
 function escHtml(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
 }
 
 // Supabase/PostgREST caps a single select at 1000 rows — any query that can

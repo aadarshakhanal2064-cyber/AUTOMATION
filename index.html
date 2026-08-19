@@ -32,6 +32,11 @@
   form-action 'self';
   worker-src 'self' blob:;
 "/>
+<!-- Referrer-Policy, delivered the one way a static host allows. Unlike
+     frame-ancestors (see the clickjacking guard in <body>), this directive IS
+     honoured in a meta element. Keeps client names and record ids in the URL
+     from leaking to any third party the browser is sent to. -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
@@ -60,6 +65,36 @@ function cropLoginLogoIcon(img) {
 </script>
 </head>
 <body>
+<script>
+// ── CLICKJACKING GUARD ──────────────────────────────────────────────────────
+// The project previously believed vercel.json's X-Frame-Options was protecting
+// this app. It is not: GitHub Pages never reads that file, and a live check of
+// the response confirms the only security header served is GitHub's own HSTS.
+// Unprotected, another site can load this app in an invisible iframe over its
+// own buttons and harvest clicks from a signed-in user.
+//
+// The obvious fix does NOT work. `frame-ancestors` is REMOVED from any policy
+// delivered through a <meta> tag — the CSP spec has user agents strip
+// frame-ancestors, report-uri and sandbox there — so putting it in the CSP
+// above would read as a fix and protect nothing. X-Frame-Options is an HTTP
+// header, which a static host cannot send either.
+//
+// So on this host, script is the only lever. Runs first thing in <body>, before
+// any UI exists to be clicked. The real fix is a host that can send headers
+// (Stage 5); vercel.json is kept ready for that move, not because it is active.
+(function () {
+  if (window.top === window.self) return;
+  try {
+    window.top.location.replace(window.self.location.href);
+  } catch (e) {
+    // A cross-origin parent blocks the redirect, which is precisely the
+    // hostile case — refuse to render anything worth clicking.
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.textContent = 'This application cannot be opened inside another website.';
+    });
+  }
+})();
+</script>
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
@@ -3870,7 +3905,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
 <script src="js/config.js?v=202608182000"></script>
-<script src="js/utils.js?v=202608141200"></script>
+<script src="js/utils.js?v=202608182300"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
 <script src="js/core/nepaliLocale.js?v=202608100100"></script>
