@@ -158,33 +158,25 @@ window.importDataRows    = [];   // raw row arrays (excludes header row)
 window.importFieldMap    = {};   // { fieldKey: headerIndex | -1 }
 window.importPreviewRows = [];   // processed rows ready for review
 
-// ── Report generator data ──
-window.REP_FIRMS = {
-  shailesh: {
-    name: "Shailesh & Associates", title: "Chartered Accountants",
-    address: "Khairahani-01, Chitwan", email: "shailesh.2214@gmail.com",
-    phone: "9855062760, 056-562760", regNo: "619", mNo: "954",
-    pan: "604101019", copNo: "714",
-    signatoryName: "Shailesh Dallakoti, CA", signatoryTitle: "Proprietor",
-    logo: "assets/logo-lockup.png", // full lockup (icon + firm name + "Chartered Accountants"), transparent bg — no equivalent asset for other firms
-    nameNp: "शैलेश एण्ड एसोसिएट्स", auditorNameNp: "शैलेश डल्लाकोटी", titleNp: "सीए"
-  },
-  dallakoti: {
-    name: "Dallakoti & Company", title: "Registered Auditor",
-    address: "Ratnanagar-02, Chitwan", email: "dac.audit@gmail.com",
-    phone: "9855060014, 056-562760", regNo: '"B" 2716', mNo: "3105",
-    pan: "300336179", copNo: "148",
-    signatoryName: "Devi Prasad Dallakoti, RA", signatoryTitle: "Proprietor",
-    nameNp: "डल्लाकोटी एण्ड कम्पनी", auditorNameNp: "देवी प्रसाद डल्लाकोटी", titleNp: "आर.ए."
-  }
-};
-
-// Devanagari-display view of REP_FIRMS, for the "known firm" quick-fill
-// pickers on BM/AGM Minutes and Auditor Change — one shared source instead
-// of each module hardcoding its own copy of the same two firms/names.
-window.REGD_AUDIT_FIRMS = Object.values(window.REP_FIRMS).map(f => ({
-  firmName: f.nameNp, auditorName: f.auditorNameNp, title: f.titleNp
-}));
+// ── Firm identity — LOADED FROM THE DATABASE, NOT DEFINED HERE ──────────────
+//
+// These six containers used to hold this firm's names, PANs, registration
+// numbers, signatories and staff. They were moved into the `org_firms` and
+// `organizations` tables on 2026-08-18 (Stage 2 of the multi-tenant
+// conversion): with ten firms sharing one deployment, a hardcoded letterhead
+// would print the wrong firm's name on every other firm's reports.
+//
+// js/core/orgIdentity.js fills them after sign-in, and — critically — fills
+// them BY MUTATING THESE EXACT OBJECTS rather than reassigning the globals.
+// js/bmAgmMinutes.js captures window.REGD_AUDIT_FIRMS into a module constant
+// at file load; a reassignment here would leave it holding the empty array
+// forever. Declare them empty, never replace them.
+//
+// They are therefore EMPTY until sign-in completes. Read them inside a
+// function that runs on demand (every current caller already does), never at
+// file load.
+window.REP_FIRMS = {};              // firm_key → letterhead (name, PAN, signatory, Devanagari)
+window.REGD_AUDIT_FIRMS = [];       // Devanagari view of the above, for the BM/AGM + Auditor Change pickers
 
 // ── Service Memo module data ──
 // Four selectable firms (the two audit firms + two sister concerns from the
@@ -199,18 +191,17 @@ window.REGD_AUDIT_FIRMS = Object.values(window.REP_FIRMS).map(f => ({
 //     (service_memos.firm_other) rather than configured. `typed: true` is what
 //     the UI keys the extra input off, so adding another typed firm needs no
 //     code change.
-window.SERVICE_MEMO_FIRMS = {
-  shailesh:  { key: 'shailesh',  name: window.REP_FIRMS.shailesh.name,  prefix: 'SM-SA',   ref: 'shailesh' },
-  dallakoti: { key: 'dallakoti', name: window.REP_FIRMS.dallakoti.name, prefix: 'SM-DC',   ref: 'dallakoti' },
-  rosp:      { key: 'rosp',      name: 'Ratnanagar Offset Screen Print', prefix: 'SM-ROSP', address: '', pan: '', phone: '', email: '' },
-  rtc:       { key: 'rtc',       name: 'Ratnanagar Tax Consultancy',     prefix: 'SM-RTC',  address: '', pan: '', phone: '', email: '' },
-  other:     { key: 'other',     name: 'Other — specify',                prefix: 'SM-OT',   typed: true, address: '', pan: '', phone: '', email: '' },
-};
+// Every firm the organisation can raise a memo under or hold a bank account
+// for — the audit firms plus any sister concerns and the typed "Other" row.
+// Populated from org_firms; see the note above REP_FIRMS. The memo-number
+// trigger is still driven by `prefix` sent from the app, so adding a firm is
+// still a data change and not a migration.
+window.SERVICE_MEMO_FIRMS = {};
 
-// The two audit firms are the only ones the Final Account statements are drawn
-// for (the workbook's Balance Sheet has exactly these two columns) — the sister
-// concerns and "other" can still raise memos and hold bank accounts.
-window.FINAL_ACCOUNT_FIRM_KEYS = ['shailesh', 'dallakoti'];
+// Which firms the Final Account statements are drawn for — the workbook's
+// Balance Sheet has one column per audit firm, and the sister concerns are
+// excluded. Now the `for_final_account` flag on org_firms.
+window.FINAL_ACCOUNT_FIRM_KEYS = [];
 
 // Nature-of-task category → sub-category tree, seeded from the firm's "Work
 // Performed" sheet (typos fixed: "Business", "Income Tax Filing"; "OCR"
@@ -310,15 +301,20 @@ window.ARF_IT_RETURN_TYPES = ['D-2', 'D-3'];
 // Staff selectable as "Entered By" / "Checked By" on both tracks. 'Other'
 // reveals a free-text name box; the typed name REPLACES 'Other' in the saved
 // row — none of the staff columns has a separate *_other column.
-window.ARF_STAFF = ['Aadarsha', 'Kesav', 'Dipendra', 'Other'];
+// Loaded from organizations.staff_names after sign-in (see the REP_FIRMS note
+// above); 'Other' is appended by orgIdentity.js and always sorts last.
+window.ARF_STAFF = [];
 
 // ── Audit Checklist module data ──
-// "Checked by" list for the QC checklist — the two FIRM names (matching
-// REP_FIRMS) plus individual staff, per the CA's own note on the paper form
-// ("Check by Staff list also include Shailesh Dallakoti Name and others").
-// 'Other' reveals a free-text box and the typed name REPLACES 'Other' in the
-// saved row, same convention as ARF_AUDITORS — no separate *_other column.
-window.AQC_STAFF = ['Shailesh & Associates', 'Dallakoti & Company', 'Aadarsha', 'Kesav', 'Dipendra', 'Other'];
+// "Checked by" list for the QC checklist — the FIRM names (from REP_FIRMS)
+// plus individual staff, per the CA's own note on the paper form ("Check by
+// Staff list also include Shailesh Dallakoti Name and others"). 'Other'
+// reveals a free-text box and the typed name REPLACES 'Other' in the saved
+// row, same convention as ARF_AUDITORS — no separate *_other column.
+// DERIVED in orgIdentity.js from the firms + ARF_STAFF, deliberately rather
+// than stored: a second hardcoded copy of the firm names would drift from
+// org_firms the moment one was renamed.
+window.AQC_STAFF = [];
 
 // The fixed checklist template, in display order. A new record seeds
 // items[] from this list (see js/auditChecklist.js), every item unchecked.

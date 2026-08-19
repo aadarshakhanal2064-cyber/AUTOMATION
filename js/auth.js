@@ -163,6 +163,10 @@ function signOut() {
   // Cached ledger rows are this user's data as much as clientsList is — they
   // must not survive into the next person's session on a shared machine.
   DataCache.invalidateAll();
+  // Same reasoning for the firm's identity: once ten organisations share this
+  // app, leaving one firm's letterhead in memory means the next person to sign
+  // in on this machine could see it before their own loads.
+  OrgIdentity.clear();
 
   window.sb.auth.signOut();
 
@@ -183,30 +187,61 @@ function signOut() {
 async function afterSupabaseSignIn(session) {
   const email = session.user.email || '';
 
-  // Membership check — ilike, not eq. private.jwt_email() lowercases before
-  // matching, so a mixed-case address passes RLS; a case-sensitive lookup
-  // here would reject that same user and the two layers would disagree.
+  // Membership check — reads org_members, NOT app_users. The database made
+  // the same move in Stage 2 Phase 3: private.is_app_user() and
+  // private.is_admin() both read org_members now, so looking anywhere else
+  // here would let the app and RLS disagree about who is allowed in — which is
+  // the exact bug class the tenant work exists to remove.
+  //
+  // ilike, not eq: private.jwt_email() lowercases before matching, so a
+  // mixed-case address passes RLS, and a case-sensitive lookup here would
+  // reject that same user.
+  //
+  // `status` is filtered in SQL rather than checked afterwards so an
+  // inactive member reads as "not a member" through this path too, matching
+  // current_org_id(), which returns NULL for them.
   const { data, error } = await window.sb
-    .from('app_users')
-    .select('email, role')
+    .from('org_members')
+    .select('email, role, status')
     .ilike('email', email)
+    .eq('status', 'active')
     .maybeSingle();
 
   if (error || !data) {
-    // Not in app_users — show access denied. Also end the Supabase session:
+    // Not a member — show access denied. Also end the Supabase session:
     // RLS gives non-members zero rows anyway, but a lingering authenticated
     // session has no business persisting for someone we just rejected.
     window.sb.auth.signOut();
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'none';
     document.getElementById('access-denied-msg').textContent =
-      `"${email}" is not registered as an authorised user. Ask your admin to add you in Supabase → app_users.`;
+      `"${email}" is not registered as an authorised user. Ask your admin to add you to your organisation.`;
     document.getElementById('access-denied-wrap').style.display = 'flex';
     return;
   }
 
-  // Authorised — store user
+  // Authorised — store user. 'owner' is an org_members role that app_users
+  // never had; it outranks admin, so it must not read as lesser anywhere the
+  // UI checks for 'admin'.
   window.currentUser = { email: data.email, role: data.role };
+
+  // Load this organisation's letterheads and staff BEFORE any module can
+  // open — every firm picker, report header and memo PDF reads the globals
+  // this fills, and they are empty until it runs (js/core/orgIdentity.js).
+  try {
+    await OrgIdentity.load();
+  } catch (e) {
+    // Without an organisation the app would render blank letterheads and
+    // silently produce documents naming nobody. Refuse rather than degrade.
+    console.error('Org identity failed to load', e);
+    window.sb.auth.signOut();
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('auth-section-wrap').style.display = 'none';
+    document.getElementById('access-denied-msg').textContent =
+      `Your account is not linked to an organisation, so the firm's details could not be loaded. Ask your admin to check your membership.`;
+    document.getElementById('access-denied-wrap').style.display = 'flex';
+    return;
+  }
 
   // Update sidebar UI
   const initial = (session.user.user_metadata?.full_name || email)[0].toUpperCase();
@@ -221,8 +256,11 @@ async function afterSupabaseSignIn(session) {
   document.getElementById('tb-role-badge').textContent  = data.role;
   document.getElementById('topbar').style.display       = 'flex';
 
-  // Show/hide admin-only UI
-  if (window.currentUser.role === 'admin') {
+  // Show/hide admin-only UI. 'owner' is org_members' top role and did not
+  // exist in app_users — checking only for 'admin' would hide Add Client and
+  // Import Clients from the person who owns the organisation. Mirrors
+  // private.is_admin(), which also treats owner as admin.
+  if (window.currentUser.role === 'admin' || window.currentUser.role === 'owner') {
     document.getElementById('add-client-btn').style.display = 'inline-flex';
     document.getElementById('import-client-btn').style.display = 'inline-flex';
   }
