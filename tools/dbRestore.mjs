@@ -104,6 +104,41 @@ async function main() {
     console.log(`${String(rows.length).padStart(6)}  ${table}`);
   }
 
+  // ── The step whose absence made every previous restore quietly broken ──
+  // Rows are replayed WITH their original ids, which is required — the backup's
+  // foreign keys point at those ids. But an explicit id does not advance the
+  // table's identity counter, so without this the counter still sits where it
+  // was and the FIRST ordinary insert after the restore collides with an
+  // existing row. Measured on staging after a restore that verified perfectly:
+  // eleven tables were already past their counter (audit_log 2648 vs 2766,
+  // service_memos 40 vs 51, autobooks_entries 5640 vs 5695...). Row counts
+  // matched, and the database still could not accept a single new record.
+  //
+  // Row-count verification cannot see this, which is why it is done here
+  // rather than left to the check below.
+  console.log('\nResetting identity counters...');
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/reset_identity_sequences`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    const rows = await res.json();
+    const fixed = (rows || []).filter(r => Number(r.was) < Number(r.now_at));
+    if (fixed.length) {
+      fixed.forEach(r => console.log(`  ${r.table_name}: ${r.was} -> ${r.now_at}`));
+      console.log(`  ${fixed.length} table(s) would have failed on their next insert.`);
+    } else {
+      console.log('  All counters already correct.');
+    }
+  } catch (e) {
+    console.error(`  ! COULD NOT RESET COUNTERS: ${e.message}`);
+    console.error('  ! The data is restored but the database will reject new records.');
+    console.error('  ! Apply db/2026-08-18_reset_identity_sequences.sql, then re-run this.');
+    process.exit(1);
+  }
+
   // The verification that makes this a drill rather than a hope.
   console.log('\nVerifying against manifest...');
   let ok = true;

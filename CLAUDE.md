@@ -240,7 +240,18 @@ The app is being converted from one firm to ~10. Full scope: the published plan 
 - **Self-serve password reset now exists** (`sendPasswordReset()`), reversing the old "deliberately no Forgot password link" decision — that was right for one firm with one admin, and does not survive ~60 users whose admins have no dashboard access. The recovery-link half already existed; only the request was missing. Still on built-in SMTP, so it is rate-limited — custom SMTP is Stage 5.
 - Adding a user is now **an invite**, not a dashboard action. An `app_users` row grants nothing.
 
-**Still to do:** `DataCache` is not yet keyed by org (low risk — it is cleared on sign-out); Stage 5's custom SMTP; Stages 4, 6–8.
+### Stage 7 — tenant lifecycle (done 2026-08-18) · `tools/orgAdmin.mjs`
+
+`list` · `create` · `suspend` · `resume` · `export` · `delete`. **A tool, not a screen, deliberately**: putting "delete an organisation" in the app would require a policy letting someone reach another tenant, which is the exact power Stage 2 removes. The service-role key is the authority and never reaches a browser. `TARGET=1` acts on staging.
+
+- **Every destructive path exports first**, unprompted, to `db/backups/`. The go-live checklist requires a departing firm's data can be handed back; making that the same code path as deletion means it is exercised rather than promised.
+- **`delete` counts every table before and after** and reports what changed — the named risk is a cascade reaching further than intended. Rehearsed on staging with a seeded org across 7 tables: every count fell by exactly the seeded amount and nothing else moved.
+- **Suspension is real, not cosmetic** — verified: a suspended org's member gets `current_org_id()` NULL, `is_app_user()` false, and zero rows everywhere. Their sign-in still succeeds; the app is simply empty. No data is touched and `resume` restores access with no session reset.
+- **`create` seeds the first owner directly** rather than inviting — an invitation must be issued by an admin of the org, and at that instant nobody is in it. It also seeds one `org_firms` row, since a firm with no letterhead cannot issue a document. Everyone after the first joins by invitation.
+
+**`DataCache` is now keyed by organisation** — RLS scopes the query, but the cache lives in the browser and outlives it, and on a shared machine a crash is not a sign-out. Callers still pass unscoped keys; the namespacing is internal, so every `xxReload()` is unchanged.
+
+**Still to do:** Stage 4 (auth-event logging), Stage 5 (custom SMTP — the live constraint, since account confirmation and password resets share a few-per-hour project-wide limit; also scheduled backups and the hosting move), Stage 8 (retiring the 338 inline handlers so the CSP can drop `unsafe-inline`).
 
 - **Phase 2's backfill and its proof are one transaction on purpose** (`db/2026-08-18_stage2_phase2_backfill_org_id.sql`). It re-reads every table afterwards and `raise exception`s naming any table still holding NULLs, so a half-filled database cannot reach Phase 3. The failure that matters is not a loud error — it is a table whose policy compares `org_id` while its rows never got one, which looks exactly like data loss and is not.
 - **It is idempotent** (`where org_id is null`) and resolves the org **by slug, never a hardcoded `1`** — identity columns need not start at 1 on a rebuilt database.
@@ -551,7 +562,8 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/engines.md` | On demand | The 13 engines in full. |
 | `tools/spbVerify.mjs` | Run, not read | Autobooks verification harness — `node tools/spbVerify.mjs` (§12). |
 | `tools/tenantVerify.mjs` | Run, not read | Tenant-isolation harness — `node tools/tenantVerify.mjs`. Creates a throwaway org + auth user on **staging**, signs in as them over HTTP (a real JWT, never the service key — that bypasses RLS and would test nothing), and attacks the other org's real row ids across all 22 tenant tables. 65 assertions. **Refuses to run outside staging** unless `ALLOW_NON_STAGING=1`. Run it after any policy or schema change. |
-| `tools/dbBackup.mjs` · `dbRestore.mjs` | Run, not read | The only backup that exists — the free plan has none. `TABLE_ORDER` is explicit and guarded: adding a table without listing it fails the run. |
+| `tools/dbBackup.mjs` · `dbRestore.mjs` | Run, not read | The only backup that exists — the free plan has none. `TABLE_ORDER` is explicit and guarded: adding a table without listing it fails the run. **A restore ends by calling `reset_identity_sequences()`** — rows replay with their original ids, which does not advance the identity counters, so without it the first insert after a restore fails on a duplicate key (11 tables were in that state on staging, while row counts verified perfectly). |
+| `tools/orgAdmin.mjs` | Run, not read | Tenant lifecycle — `list`/`create`/`suspend`/`resume`/`export`/`delete`. Exports before destroying, counts every table around a delete. `TARGET=1` for staging. |
 | `db/00_bootstrap.sql` | Run, not read | Builds the entire schema from nothing — new Supabase project or disaster recovery (§6). Rollback beside it is destructive; empty projects only. |
 | `docs/history/` | Rarely | **Superseded — not current state.** `HANDOFF.md` §4–5 is the only record of the BM/AGM template pipeline. See `docs/history/README.md`. |
 | `README.md` | Never (public front page) | Short public description of the project. |
