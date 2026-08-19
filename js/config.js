@@ -430,6 +430,7 @@ window.MODULE_LABELS = {
   fileManagement: 'File In Out',
   finalAccount: 'Final Account',
   finStatement: 'Audited Statement',
+  provisionalStatement: 'Provisional Statement',
   notesToAccounts: 'Notes to Accounts',
   partyLedger: 'Party Ledger',
   projection: 'Projection Report',
@@ -471,7 +472,7 @@ window.ACTIVITY_SAVED_ONLY = {
 // account name ("Dallakoti & Company(current)") or an expense particular
 // ("Bank Charges") out of the Client filter — those only ever come from
 // bankBook, which isn't in the list.
-window.ACTIVITY_MODULES = ['finStatement', 'projection', 'confirmationLetters',
+window.ACTIVITY_MODULES = ['finStatement', 'provisionalStatement', 'projection', 'confirmationLetters',
   'salesPurchaseBook', 'fileManagement', 'auditReportFinalization', 'auditChecklist'];
 
 // event_type → what a person would call it. Grouped by the module that
@@ -499,6 +500,8 @@ window.ACTIVITY_EVENT_LABELS = {
   final_account_printed: 'Final account printed',
   finstatement_generated: 'Financial statement generated', finstatement_saved: 'Financial statement saved',
   finstatement_printed: 'Financial statement printed', finstatement_py_parsed: 'Prior-year statement parsed',
+  provisional_py_parsed: 'Provisional — prior-year statement read',
+  provisional_excel_generated: 'Provisional statement generated',
   notes_to_accounts_saved: 'Notes to Accounts saved',
   party_opening_saved: 'Party opening balance saved',
   projection_generated: 'Projection generated', projection_saved: 'Projection saved',

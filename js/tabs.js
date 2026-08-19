@@ -68,6 +68,7 @@ const MODULE_INITS = {
   finalAccount:        () => faInit(),
   projection:          () => pjInit(),
   finStatement:        () => fsInit(),
+  provisionalStatement:() => psInit(),
   depreciation:        () => depInit(),
   confirmationLetters: () => clInit(),
   salesPurchaseBook:   () => spbInit(),

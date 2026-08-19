@@ -171,8 +171,9 @@ function fsxBuildReport(out) {
       // These two are the only totals the template draws with a bottom rule
       // alone — a blank spacer row already separates them from what they sum.
       R('Total Liabilities', [bal.totalLiabilities, (pySfp.totalCL || 0) + (pySfp.loansNC || 0) + (pySfp.provisionsNC || 0)], 'tot', { k: 'totalLiab', xsum: ['totalNCL', 'totalCL'], noTopRule: true }),
-      R('Total Equity and Liabilities', [bal.totalEquityLiab, pySfp.totalAssets], 'grand', { k: 'totalEL', xsum: ['totalLiab', 'totalEquity'], noTopRule: true }),
       B(),
+      R('Total Equity and Liabilities', [bal.totalEquityLiab, pySfp.totalAssets], 'grand', { k: 'totalEL', xsum: ['totalLiab', 'totalEquity'], noTopRule: true }),
+      B(), B(),
       R('The notes are an integral part of these financial statements.', [], 'note'),
       R('This is the statement of position referred to in our report of even date.', [], 'note'),
     ],
@@ -180,6 +181,30 @@ function fsxBuildReport(out) {
 
   // ── SOI: Statement of Income ──
   const mat = inc.materials || {};
+
+  // The expense block is built rather than literal because a provisional set
+  // carries an Incentive Expenses line the audited one does not (the firm's
+  // own workbook runs a-f, with Incentive at e). The row is emitted only when
+  // there is an incentive to report, and the a)/b)/c)… lettering is applied
+  // afterwards, so an audited statement still renders exactly a-e as before.
+  // The Total's xsum is derived from the same list, which is what stops the
+  // sum and the rows above it disagreeing when one is edited.
+  const hasIncentive = Math.abs(inc.incentive || 0) > 0.005
+    || Math.abs((pySoi && pySoi.incentive) || 0) > 0.005;
+  const expenseSpec = [
+    { label: 'Materials/Services Consumed Expenses', vals: [mat.total, pySoi.materials], note: '3.12', k: 'materials', xf: ({ X }) => X('SchPL', 'matTotal') },
+    { label: 'Employee Benefit Expenses', vals: [inc.employeeTotal, pySoi.employee], note: '3.13', k: 'employee', xf: ({ X }) => X('SchPL', 'empTotal') },
+    { label: 'Finance Cost', vals: [inc.financeTotal, pySoi.financeCost], note: '3.14', k: 'finance', xf: ({ X }) => X('SchPL', 'finTotal') },
+    { label: 'Depreciation Expenses', vals: [inc.depreciation, pySoi.depreciation], note: '3.1', k: 'dep', xf: ({ X }) => X('PPE', 'depCharge', ppeTotalIdx) },
+    // No note reference: the firm's workbook leaves SOI's incentive row's
+    // Notes cell blank, because there is no 3.x schedule behind it.
+    ...(hasIncentive ? [{ label: 'Incentive Expenses', vals: [inc.incentive, pySoi.incentive], k: 'incentive' }] : []),
+    { label: 'Other Expenses', vals: [inc.otherTotal, pySoi.otherExpenses], note: '3.15', k: 'other', xf: ({ X }) => X('SchPL', 'othTotal') },
+  ];
+  const expenseKeys = expenseSpec.map(e => e.k);
+  const expenseRows = expenseSpec.map((e, i) =>
+    R(`${String.fromCharCode(97 + i)}) ${e.label}`, e.vals, 'item',
+      Object.assign({ k: e.k }, e.note ? { note: e.note } : {}, e.xf ? { xf: e.xf } : {})));
   sheets.push({
     key: 'SOI', name: 'SOI', geom: FSX_GEOM.SOI,
     title: m.titles && m.titles.soi, subtitle: m.forYearLine, sig: true,
@@ -193,12 +218,8 @@ function fsxBuildReport(out) {
       R('Total Income', [inc.totalIncome, pySoi.totalIncome], 'tot', { k: 'totalIncome', xsum: ['rev', 'intInc', 'othInc'] }),
       B(),
       R('B. EXPENSES', [], 'head'),
-      R('a) Materials/Services Consumed Expenses', [mat.total, pySoi.materials], 'item', { note: '3.12', k: 'materials', xf: ({ X }) => X('SchPL', 'matTotal') }),
-      R('b) Employee Benefit Expenses', [inc.employeeTotal, pySoi.employee], 'item', { note: '3.13', k: 'employee', xf: ({ X }) => X('SchPL', 'empTotal') }),
-      R('c) Finance Cost', [inc.financeTotal, pySoi.financeCost], 'item', { note: '3.14', k: 'finance', xf: ({ X }) => X('SchPL', 'finTotal') }),
-      R('d) Depreciation Expenses', [inc.depreciation, pySoi.depreciation], 'item', { note: '3.1', k: 'dep', xf: ({ X }) => X('PPE', 'depCharge', ppeTotalIdx) }),
-      R('e) Other Expenses', [inc.otherTotal, pySoi.otherExpenses], 'item', { note: '3.15', k: 'other', xf: ({ X }) => X('SchPL', 'othTotal') }),
-      R('Total Expenses', [inc.totalExpenses, pySoi.totalExpenses], 'tot', { k: 'totalExpenses', xsum: ['materials', 'employee', 'finance', 'dep', 'other'] }),
+      ...expenseRows,
+      R('Total Expenses', [inc.totalExpenses, pySoi.totalExpenses], 'tot', { k: 'totalExpenses', xsum: expenseKeys }),
       B(),
       R('Profit Before Tax', [inc.pbt, pySoi.pbt], 'tot', {
         k: 'pbt', xf: ({ R: r, c }) => (r.totalIncome && r.totalExpenses) ? `${c}${r.totalIncome}-${c}${r.totalExpenses}` : null,
@@ -209,7 +230,7 @@ function fsxBuildReport(out) {
       R('Net Profit For the Year', [inc.netProfit, pySoi.netProfit], 'grand', {
         k: 'np', xf: ({ R: r, c }) => (r.pbt && r.tax) ? `${c}${r.pbt}-${c}${r.tax}` : null,
       }),
-      B(),
+      B(), B(), B(),
       R('The notes are an integral part of these financial statements.', [], 'note'),
       R('This is the statement of income referred to in our report of even date.', [], 'note'),
     ],
@@ -694,9 +715,16 @@ function fsxLayout(sh) {
   // Statement sheets: rows 2-6 company/address/title/period/"Figures in
   // NPR", row 7 a short blank spacer, row 8 the "Restated" tag ONLY when a
   // column needs it (pushing the band to row 9), else the band is row 8.
+  //
+  // A blank spacer sits BETWEEN the band and the first data row — the firm's
+  // workbooks draw it as a merged empty row (`SFP!B10:H10`), which is why the
+  // first heading lands on row 11 rather than 10. Both reference files agree
+  // on this (T3 Pvt.Ltd 2081.082 and Pashupati Marvel 82.83), so it is the
+  // layout rather than one workbook's quirk; it was missed when this was
+  // first written and every data row below it was one row high.
   const hasRestated = (sh.cols || []).some(c => c.restated);
   const bandRow = hasRestated ? 9 : 8;
-  return { bandRow, firstDataRow: bandRow + 1, hasCompany: true };
+  return { bandRow, firstDataRow: bandRow + 2, hasCompany: true };
 }
 
 // Label ~42 wide, the note column ~16, each value column ~22-23, a single
