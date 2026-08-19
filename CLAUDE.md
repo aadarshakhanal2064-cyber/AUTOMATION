@@ -211,7 +211,11 @@ Show the SQL (annotated migration + rollback as files under `db/`) → apply via
 
 The app is being converted from one firm to ~10. Full scope: the published plan at `https://claude.ai/code/artifact/c372d471-8003-4d50-8bd7-92197ee2094c`.
 
-**Phase 1 is applied to production and staging.** It is deliberately **additive — nothing is enforced yet**: 22 tenant-owned tables carry a **nullable** `org_id` defaulting to `private.current_org_id()`, and the 82 pre-existing policies are **untouched**, so every query behaves exactly as it did before. Phase 2 backfills; Phase 3 sets NOT NULL and rewrites the policies.
+**Phases 1 and 2 are applied to production and staging.** Both are deliberately **additive — nothing is enforced yet**: 22 tenant-owned tables carry a **nullable** `org_id` defaulting to `private.current_org_id()`, every existing row is now stamped with the one organisation, and the 82 pre-existing policies are **untouched**, so every query behaves exactly as it did before. Phase 3 sets NOT NULL and rewrites the policies — that is where behaviour changes.
+
+- **Phase 2's backfill and its proof are one transaction on purpose** (`db/2026-08-18_stage2_phase2_backfill_org_id.sql`). It re-reads every table afterwards and `raise exception`s naming any table still holding NULLs, so a half-filled database cannot reach Phase 3. The failure that matters is not a loud error — it is a table whose policy compares `org_id` while its rows never got one, which looks exactly like data loss and is not.
+- **It is idempotent** (`where org_id is null`) and resolves the org **by slug, never a hardcoded `1`** — identity columns need not start at 1 on a rebuilt database.
+- **Row-count arithmetic, so nobody hunts for missing rows:** `tools/dbBackup.mjs` counts 26 tables; the Phase 2 verify counts the 22 tenant-owned ones. The gap is `app_users` (3, superseded by `org_members`) plus the 3 org tables' own 9 rows.
 
 - **`private.current_org_id()`** is the one place tenancy is decided — reads `org_members` by JWT email, `STABLE` + `SECURITY DEFINER` (so a policy calling it can't recurse). Returns NULL for an unknown email, an inactive member **or a suspended organisation**, which is what will make suspension block at the database rather than in the UI.
 - **One organisation, several firms.** Shailesh & Associates and Dallakoti & Company are one practice, not two tenants — `clients` has no firm column, so the 346 clients are shared. `firm_key` therefore stays exactly as it is and is scoped by org, not replaced; `org_firms` holds all five letterheads.
