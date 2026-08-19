@@ -142,6 +142,23 @@ const ProvisionalStatementEngine = (() => {
     }
   }
 
+  // The Excel-side twin of applyRule: the same rule expressed as a live
+  // formula descriptor, which finStatementExport turns into the cell formula
+  // the firm's own workbook carries. Kept beside applyRule on purpose — if one
+  // gains a rule and the other does not, the exported sheet stops agreeing
+  // with the screen, which is the exact failure this module exists to prevent.
+  function ruleDescriptor(rule, opts) {
+    const o = opts || {};
+    switch (rule) {
+      case 'flat':     return { kind: 'flat' };
+      case 'turnover': return { kind: 'turnover' };
+      case 'driver':   return { kind: 'driver' };
+      case 'growth':   return { kind: 'growth', factor: o.growth == null ? GROWTH : o.growth, roundTo: o.roundTo || 0 };
+      case 'typed':
+      default:         return null;   // a typed figure is a figure, not a formula
+    }
+  }
+
   // ════════════════════════════════════════════════════════════════
   //  DERIVE — the whole current-year column, from the prior year plus the
   //  figures the preparer actually types.
@@ -187,7 +204,8 @@ const ProvisionalStatementEngine = (() => {
       const rule = ov.rule || defRule;
       const o = Object.assign({ growth, salesRatio, driverRatio }, defOpts || {}, ov);
       const amount = applyRule(num(pyAmount), rule, o);
-      return { key, py: num(pyAmount), amount, rule, growth: o.growth, roundTo: o.roundTo };
+      return { key, py: num(pyAmount), amount, rule, growth: o.growth, roundTo: o.roundTo,
+               derive: ruleDescriptor(rule, o) };
     };
 
     // ════════════════════════════════════════════════
@@ -239,7 +257,7 @@ const ProvisionalStatementEngine = (() => {
       const key = e.key || e.name;
       const isFlat = FLAT_LINES.indexOf(e.key) >= 0;
       const l = line(key, e.amount, isFlat ? 'flat' : 'growth', { roundTo: 0 });
-      return { key, name: e.name, py: l.py, amount: l.amount, rule: l.rule, growth: l.growth };
+      return { key, name: e.name, py: l.py, amount: l.amount, rule: l.rule, growth: l.growth, derive: l.derive };
     });
     const otherTotal = otherExpenses.reduce((s, e) => s + e.amount, 0);
     const pick = k => { const e = otherExpenses.find(x => x.key === k); return e ? e.amount : 0; };
@@ -329,15 +347,26 @@ const ProvisionalStatementEngine = (() => {
     const auditFeePayable = auditFee - tdsAuditFee;
 
     const tradePayables = num(cy.tradePayables);
+    // Each statutory line names the cell it withholds from, so the exported
+    // workbook carries the firm's own =+'Sch-PL'!D61*10% rather than a pasted
+    // figure. The fee-payable line subtracts the audit-fee TDS row by KEY
+    // (pay6, its position in this list), never by a literal cell address.
     const payableLines = [
       { key: 'tradePayables',  name: 'Trade Payables',                 amount: tradePayables },
-      { key: 'auditFeePayable',name: 'Audit Fee Payable',              amount: auditFeePayable },
-      { key: 'tdsSalary',      name: 'TDS Payable-Salary(SST)',        amount: tdsSalary },
-      { key: 'tdsRent',        name: 'TDS Payable-Rent',               amount: tdsRent },
-      { key: 'tdsIncentive',   name: 'TDS on Incentives',              amount: tdsIncentive },
-      { key: 'tdsWages',       name: 'TDS Payable-Wages',              amount: tdsWages },
-      { key: 'tdsAuditFee',    name: 'TDS Payable-Audit fee',          amount: tdsAuditFee },
-      { key: 'tdsFreight',     name: 'TDS Payable-Clearing & Freight', amount: tdsFreight },
+      { key: 'auditFeePayable',name: 'Audit Fee Payable',              amount: auditFeePayable,
+        derive: { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'pay6' } },
+      { key: 'tdsSalary',      name: 'TDS Payable-Salary(SST)',        amount: tdsSalary,
+        derive: { kind: 'pct', sheet: 'SchPL', row: 'empTotal', pct: TDS.salary } },
+      { key: 'tdsRent',        name: 'TDS Payable-Rent',               amount: tdsRent,
+        derive: { kind: 'pct', sheet: 'SchPL', row: 'rent', pct: TDS.rent } },
+      { key: 'tdsIncentive',   name: 'TDS on Incentives',              amount: tdsIncentive,
+        derive: { kind: 'pct', sheet: 'SOI', row: 'incentive', pct: TDS.incentive } },
+      { key: 'tdsWages',       name: 'TDS Payable-Wages',              amount: tdsWages,
+        derive: { kind: 'pct', sheet: 'SchPL', row: 'matDirect0', pct: TDS.wages } },
+      { key: 'tdsAuditFee',    name: 'TDS Payable-Audit fee',          amount: tdsAuditFee,
+        derive: { kind: 'pct', sheet: 'SchPL', row: 'auditFee', pct: TDS.auditFee } },
+      { key: 'tdsFreight',     name: 'TDS Payable-Clearing & Freight', amount: tdsFreight,
+        derive: { kind: 'pct', sheet: 'SchPL', row: 'matDirect1', pct: TDS.freight } },
     ];
     const totalPayables = payableLines.reduce((s, l) => s + l.amount, 0);   // `H99`
 
@@ -434,14 +463,14 @@ const ProvisionalStatementEngine = (() => {
         materials: {
           opening: openingStock, purchases,
           directItems: [
-            { key: 'labour',  name: 'Labour Charges',              amount: labour.amount,  py: labour.py,  rule: labour.rule },
-            { key: 'freight', name: 'Clearing  & Freight Expenses', amount: freight.amount, py: freight.py, rule: freight.rule },
+            { key: 'labour',  name: 'Labour Charges',              amount: labour.amount,  py: labour.py,  rule: labour.rule,  derive: labour.derive },
+            { key: 'freight', name: 'Clearing  & Freight Expenses', amount: freight.amount, py: freight.py, rule: freight.rule, derive: freight.derive },
           ],
           closing: closingStock, total: materialsTotal,
         },
         employeeItems: [
-          { key: 'salary',       name: 'Salary Expenses',     amount: salary.amount,       py: salary.py,       rule: salary.rule },
-          { key: 'otherContrib', name: 'Other Contributions', amount: otherContrib.amount, py: otherContrib.py, rule: otherContrib.rule },
+          { key: 'salary',       name: 'Salary Expenses',     amount: salary.amount,       py: salary.py,       rule: salary.rule,       derive: salary.derive },
+          { key: 'otherContrib', name: 'Other Contributions', amount: otherContrib.amount, py: otherContrib.py, rule: otherContrib.rule, derive: otherContrib.derive },
         ],
         employeeTotal, salary: salary.amount,
         financeItems: [
@@ -455,6 +484,10 @@ const ProvisionalStatementEngine = (() => {
         otherItems: otherExpenses,
         otherTotal,
         totalExpenses, pbt, tax: taxExpense, netProfit,
+        // Only the flat corporate rate is expressible as one cell formula;
+        // progressive slabs are a schedule, so those export as a figure and
+        // the COI sheet carries the working.
+        taxDerive: profile === 'corporate' ? { kind: 'taxOnProfit', rate: CORPORATE_TAX } : null,
       },
       balance: {
         ppe: ppeClosing, investmentsNC, otherReceivablesNC, totalNCA,
@@ -462,7 +495,8 @@ const ProvisionalStatementEngine = (() => {
         receivableLines: [
           { key: 'tradeReceivables', name: 'Trade Receivables', amount: tradeReceivables },
           { key: 'impairment',       name: 'Less: Provisions for impairment of trade receivables', amount: impairment },
-          { key: 'advanceTax',       name: 'Advance Tax',       amount: advanceTax },
+          { key: 'advanceTax',       name: 'Advance Tax',       amount: advanceTax,
+            derive: { kind: 'advanceTax', pct: TDS.incentive } },
           { key: 'vatReceivable',    name: 'VAT Receivables',   amount: vatReceivable },
         ],
         receivables, cash, totalCA, totalAssets,

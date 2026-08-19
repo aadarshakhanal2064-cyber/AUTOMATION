@@ -59,6 +59,79 @@ const fsxColLetter = (n) => {
 //   item   ordinary line                       tot    subtotal (tinted, ruled above)
 //   grand  headline total (double-ruled)       note   free text spanning the width
 //   blank  spacer
+// ════════════════════════════════════════════════════════════════
+//  DERIVED-LINE FORMULAS
+//
+//  A provisional set is built by carrying last year forward, and the firm's
+//  own workbook records that as a LIVE formula in the cell rather than a
+//  pasted figure — `=ROUND(F55*1.05,)`, `=+F25/F6*D6`, `=+'Sch-PL'!D61*10%`.
+//  Reproducing those matters beyond cosmetics: it is what lets the preparer
+//  change one cell in Excel and watch the statement re-foot, which is the
+//  whole reason the firm works this way.
+//
+//  A line only gets one when the engine attached a `derive` descriptor, so
+//  audited statements — where every figure is a fact, not a projection —
+//  keep their literal values and are unaffected.
+//
+//  Only the current-year column is wired. The comparative column holds a
+//  signed year's reported figures and must never be restated by a formula
+//  (the same rule `r.pyFooted` already enforces for sums).
+// ════════════════════════════════════════════════════════════════
+function fsxDeriveXf(d, anchors) {
+  if (!d || !d.kind) return null;
+  const a = anchors || {};
+  return (ctx) => {
+    if (ctx.ci !== 0) return null;                  // current-year column only
+    const { c, pyc, rn, R } = ctx;
+    if (!pyc) return null;
+    const pct = (v) => `${+(v * 100).toFixed(6)}%`;
+    switch (d.kind) {
+      case 'flat':
+        return `+${pyc}${rn}`;
+      case 'growth': {
+        const f = d.factor == null ? 1.05 : d.factor;
+        return `ROUND(${pyc}${rn}*${f},${d.roundTo || 0})`;
+      }
+      case 'turnover': {
+        const s = R[a.sales];
+        if (!s) return null;
+        return `+${pyc}${rn}/${pyc}${s}*${c}${s}`;
+      }
+      case 'driver': {
+        const s = R[a.driver];
+        if (!s) return null;
+        return `ROUND(${pyc}${rn}/${pyc}${s}*${c}${s},0)`;
+      }
+      case 'pct': {
+        // A statutory withholding: a percentage of another cell, which may
+        // live on this sheet or another.
+        const ref = d.sheet ? ctx.Xc(d.sheet, d.row) : (R[d.row] ? `${c}${R[d.row]}` : null);
+        return ref ? `+${ref}*${pct(d.pct)}` : null;
+      }
+      case 'net': {
+        // `Sch-BS H89 ='Sch-PL'!D53-H97` — a fee net of its own withholding.
+        const gross = d.sheet ? ctx.Xc(d.sheet, d.row) : (R[d.row] ? `${c}${R[d.row]}` : null);
+        const less = R[d.less] ? `${c}${R[d.less]}` : null;
+        return gross && less ? `${gross}-${less}` : null;
+      }
+      case 'advanceTax': {
+        // `Sch-BS H18 =+J18-SOI!H29+SOI!F15*15%`
+        const pyTax = ctx.Xp('SOI', 'tax');
+        const cyOth = ctx.Xc('SOI', 'othInc');
+        if (!pyTax || !cyOth) return null;
+        return `+${pyc}${rn}-${pyTax}+${cyOth}*${pct(d.pct == null ? 0.15 : d.pct)}`;
+      }
+      case 'taxOnProfit': {
+        // `Sch-PL D75 =+SOI!F27*0.25`
+        const pbt = ctx.Xc('SOI', 'pbt');
+        return pbt ? `+${pbt}*${d.rate == null ? 0.25 : d.rate}` : null;
+      }
+      default:
+        return null;
+    }
+  };
+}
+
 function fsxBuildReport(out) {
   const m = out.meta || {};
   const inc = out.income || {};
@@ -70,6 +143,10 @@ function fsxBuildReport(out) {
   const T = m.terms || { person: 'Director', distribution: 'Dividend Paid' };
 
   const sheets = [];
+  // Row keys the derived-line formulas scale against: turnover-scaled
+  // lines divide by last year's sales and multiply by this year's;
+  // driver-scaled lines do the same against other income.
+  const ANCHORS = { sales: 'saleGoods', driver: 'othIncome' };
   // Copied rather than mutated: the caller's array belongs to the solver, and
   // the comparative-column check below appends findings of its own.
   const issues = (out.issues || []).slice();
@@ -431,6 +508,7 @@ function fsxBuildReport(out) {
   recvLines.forEach((l, i) => {
     schBsRows.push(R(l.name, [l.amount, i === 0 ? pySfp.receivables : 0], 'item', {
       k: 'recv' + i, balancing: !!l.balancing,
+      xf: l.derive ? fsxDeriveXf(l.derive, ANCHORS) : undefined,
     }));
   });
   schBsRows.push(
@@ -484,7 +562,11 @@ function fsxBuildReport(out) {
   );
   payLines.forEach((l, i) => {
     const extra = { k: 'pay' + i };
-    if (/tds on salary/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'empTotal'); return x ? `${x}*1%` : null; };
+    // An explicit descriptor from the engine wins: it knows which figure the
+    // line withholds from, where name-matching only guesses. The regex arm
+    // stays for the audited module, which attaches none.
+    if (l.derive) extra.xf = fsxDeriveXf(l.derive, ANCHORS);
+    else if (/tds on salary/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'empTotal'); return x ? `${x}*1%` : null; };
     else if (/tds on rent/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'rent'); return x ? `${x}*10%` : null; };
     else if (/tds payable-audit/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'auditFee'); return x ? `${x}*1.5%` : null; };
     schBsRows.push(R(l.name, [l.amount, pyPay(l.name)], 'item', extra));
@@ -535,7 +617,8 @@ function fsxBuildReport(out) {
     R('Purchase of goods', [mat.purchases, pyMat.purchases], 'item', { k: 'matPurchase', balancing: true }),
   ];
   (mat.directItems || []).forEach((it, i) => {
-    schPlRows.push(R(it.name, [it.amount, ((pyMat.directItems || [])[i] || {}).amount || 0], 'item', { k: 'matDirect' + i }));
+    schPlRows.push(R(it.name, [it.amount, ((pyMat.directItems || [])[i] || {}).amount || 0], 'item',
+      { k: 'matDirect' + i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
   });
   schPlRows.push(
     R('Less:', [], 'sub'),
@@ -552,7 +635,7 @@ function fsxBuildReport(out) {
     R('3.13 Employee Benefits Expenses', [], 'head'),
   );
   (inc.employeeItems || []).forEach((it, i) => {
-    schPlRows.push(R(it.name, [it.amount, ((py.employeeItems || [])[i] || {}).amount || 0], 'item', { k: 'emp' + i }));
+    schPlRows.push(R(it.name, [it.amount, ((py.employeeItems || [])[i] || {}).amount || 0], 'item', { k: 'emp' + i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
   });
   schPlRows.push(
     R('Total', [inc.employeeTotal, pySoi.employee], 'tot', { k: 'empTotal', xsum: (inc.employeeItems || []).map((_, i) => 'emp' + i) }),
@@ -571,7 +654,8 @@ function fsxBuildReport(out) {
   for (const it of (py.otherItems || [])) pyOtherByName[String(it.name).toLowerCase().trim()] = it.amount;
   (inc.otherItems || []).forEach((it, i) => {
     const key = /audit\s*fee/i.test(it.name) ? 'auditFee' : (/\brent\b/i.test(it.name) ? 'rent' : 'oth' + i);
-    schPlRows.push(R(it.name, [it.amount, pyOtherByName[String(it.name).toLowerCase().trim()] || 0], 'item', { k: key, oi: i }));
+    schPlRows.push(R(it.name, [it.amount, pyOtherByName[String(it.name).toLowerCase().trim()] || 0], 'item',
+      { k: key, oi: i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
   });
   schPlRows.push(
     R('Total', [inc.otherTotal, pySoi.otherExpenses], 'tot', {
@@ -580,7 +664,13 @@ function fsxBuildReport(out) {
     }),
     B(),
     R('3.16 Tax Expenses ', [], 'head'),
-    R('Tax on profits for the year', [inc.tax, pySoi.tax], 'item', { k: 'taxYear', xf: ({ X }) => X('COI', 'tax') }),
+    R('Tax on profits for the year', [inc.tax, pySoi.tax], 'item', {
+      k: 'taxYear',
+      // Provisional sets carry the rate live off PBT (the workbook's
+      // `=+SOI!F27*0.25`); audited sets keep pointing at the COI computation,
+      // which is where an audited year's tax is actually settled.
+      xf: inc.taxDerive ? fsxDeriveXf(inc.taxDerive, ANCHORS) : (({ X }) => X('COI', 'tax')),
+    }),
     R('Adjustments for under provision in prior periods', [0, 0], 'item', { k: 'taxAdj' }),
     R('Total', [inc.tax, pySoi.tax], 'tot', { k: 'taxTotal', xsum: ['taxYear', 'taxAdj'] }),
   );
@@ -947,7 +1037,13 @@ function fsxWriteWorkbook(report, ExcelJSNs) {
           const terms = r.xsum.filter(k => rowsMap[k]).map(k => `${colLetter}${rowsMap[k]}`);
           if (terms.length) formula = terms.join('+');
         } else if (r.xf) {
-          try { formula = r.xf({ R: rowsMap, c: colLetter, ci: i, X: mkX(i), rn: rowNo }) || null; }
+          // `pyc` is the comparative column's letter on THIS sheet. A derived
+          // line's formula reaches sideways into it (`=ROUND(F55*1.05,0)`),
+          // which is how the firm's own workbook grows a line forward, so the
+          // resolver has to hand it over rather than let callers guess a
+          // letter that differs per sheet.
+          const pyLetter = fsxSheetCol(geom, 1, !!sh.matrix);
+          try { formula = r.xf({ R: rowsMap, c: colLetter, ci: i, X: mkX(i), rn: rowNo, pyc: pyLetter, Xc: mkX(0), Xp: mkX(1) }) || null; }
           catch (e) { formula = null; }
         }
 
