@@ -45,6 +45,9 @@ export const TABLE_ORDER = [
   'organizations',
   'org_members',
   'org_firms',
+  // Stage 3. Added here only after assertTableListCurrent() refused to write a
+  // backup without it — which is exactly why that guard exists.
+  'org_invitations',
   'app_users',
   'clients',
   'client_shareholders',
