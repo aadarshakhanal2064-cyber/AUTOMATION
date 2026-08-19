@@ -5,6 +5,7 @@ window.addEventListener('load', () => {
   const showSignInScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('recovery-wrap').style.display = 'none';
+    document.getElementById('invite-wrap').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'flex';
     document.getElementById('auth-email').focus();
   };
@@ -12,6 +13,7 @@ window.addEventListener('load', () => {
   const showRecoveryScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'none';
+    document.getElementById('invite-wrap').style.display = 'none';
     // Belt and braces: if a stale session from this browser was already
     // shown before the recovery session took over, don't leave the app
     // visible underneath.
@@ -40,7 +42,27 @@ window.addEventListener('load', () => {
   // every subsequent sign-in/out. TOKEN_REFRESHED (Supabase's own ~1hr JWT
   // refresh) is intentionally ignored here — the app is already initialized
   // by that point, nothing to redo.
+  // An invitation link is decided by the URL for the same reason a recovery
+  // link is (see above): auth.js runs last, so the event name cannot be
+  // relied on. Read from the snapshot config.js captured before Supabase
+  // could rewrite the URL.
+  const inviteToken = window.AUTH_URL_PARAMS.query.get('invite')
+                   || window.AUTH_URL_PARAMS.hash.get('invite');
+
   window.sb.auth.onAuthStateChange((event, session) => {
+    // Checked before everything else: someone opening an invitation must land
+    // on "join this organisation", not on a sign-in form or — if they happen
+    // to still have an old session — straight into an app they have not
+    // joined yet.
+    if (inviteToken && event !== 'SIGNED_OUT') {
+      showInviteScreen(inviteToken);
+      // Prefill the address if a session is already open, so an existing user
+      // accepting an invite does not retype it.
+      if (session && session.user && session.user.email) {
+        document.getElementById('invite-email').value = session.user.email;
+      }
+      return;
+    }
     if (linkErrorDesc) {
       // An expired or already-used recovery/magic link redirects here with
       // an error instead of a session — surface it once instead of silently
@@ -121,6 +143,116 @@ async function signIn() {
     btn.disabled = false;
     authStatus('❌ ' + escHtml(error.message), 'error');
   }
+}
+
+// Self-serve password reset. This REVERSES the "there is deliberately no
+// Forgot password link" decision, which was made when the firm had a handful
+// of staff and one admin could reset them by hand — that does not survive ten
+// firms and ~60 users, none of whose admins have Supabase dashboard access.
+//
+// The recovery LINK half of this already existed (showRecoveryScreen /
+// submitNewPassword); all that was missing was a way to ask for one.
+//
+// Uses Supabase's built-in SMTP, which is rate-limited to a few messages an
+// hour ACROSS THE WHOLE PROJECT. That is why the message below says to wait
+// rather than implying the address was wrong, and why invitations deliberately
+// do not send mail at all (js/orgMembers.js). Custom SMTP is the fix and is
+// Stage 5 infrastructure work.
+async function sendPasswordReset() {
+  const email = document.getElementById('auth-email').value.trim();
+  if (!email) return authStatus('Enter your email address first, then click Forgot password.', 'info');
+
+  authStatus('<span class="spinner spinner-navy"></span> Sending reset email…', 'searching');
+
+  // redirectTo must land back on this app so the recovery link opens the
+  // "Set a new password" screen rather than Supabase's own page.
+  const { error } = await window.sb.auth.resetPasswordForEmail(email, {
+    redirectTo: location.origin + location.pathname,
+  });
+
+  if (error) return authStatus('❌ ' + escHtml(error.message), 'error');
+
+  // Deliberately does NOT confirm whether the address exists — that would let
+  // anyone test which of a firm's staff have accounts.
+  authStatus('✅ If that address has an account, a reset link is on its way. '
+           + 'Check spam too. If nothing arrives in a few minutes, the mail '
+           + 'limit may have been reached — wait an hour and try again.', 'success');
+}
+
+// ── Accepting an invitation ─────────────────────────────────────────────────
+//
+// Reached by opening ?invite=<token>. The person may not have an account yet,
+// so this screen offers "set a password and join" and calls signUp() first.
+//
+// Signup being enabled is not a hole: an auth account with no org_members row
+// passes every policy's first test and fails the second, so it can read and
+// write nothing anywhere. Access begins at accept_invitation(), which is the
+// only path that creates a membership.
+function inviteStatus(msg, type) { showStatus(msg, type, 'invite-status'); }
+
+function showInviteScreen(token) {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('app-section').style.display = 'none';
+  document.getElementById('access-denied-wrap').style.display = 'none';
+  document.getElementById('recovery-wrap').style.display = 'none';
+  document.getElementById('auth-section-wrap').style.display = 'none';
+  document.getElementById('invite-wrap').style.display = 'flex';
+  document.getElementById('invite-token').value = token;
+}
+
+async function submitInvite() {
+  const token = document.getElementById('invite-token').value;
+  const email = document.getElementById('invite-email').value.trim();
+  const pw    = document.getElementById('invite-password').value;
+  const pw2   = document.getElementById('invite-password-confirm').value;
+
+  if (!email) return inviteStatus('Enter the email address the invitation was sent to.', 'info');
+  if (pw.length < 8) return inviteStatus('Choose a password of at least 8 characters.', 'info');
+  if (pw !== pw2) return inviteStatus("The two passwords don't match.", 'info');
+
+  const btn = document.getElementById('invite-submit');
+  btn.disabled = true;
+  inviteStatus('<span class="spinner spinner-navy"></span> Creating your account…', 'searching');
+
+  // Sign up, or sign in if the account already exists — an invited colleague
+  // may already have had an account (e.g. a previous firm, or a re-invite).
+  let { error } = await window.sb.auth.signUp({ email, password: pw });
+  if (error && /already registered/i.test(error.message)) {
+    ({ error } = await window.sb.auth.signInWithPassword({ email, password: pw }));
+    if (error) {
+      btn.disabled = false;
+      return inviteStatus('❌ That address already has an account, and this password does not match it. '
+                        + 'Sign in instead, or use Forgot password.', 'error');
+    }
+  } else if (error) {
+    btn.disabled = false;
+    return inviteStatus('❌ ' + escHtml(error.message), 'error');
+  }
+
+  // If the project requires email confirmation there is no session yet, so the
+  // membership cannot be created until they confirm. Say so plainly instead of
+  // failing with a confusing "must be signed in".
+  const { data: { session } } = await window.sb.auth.getSession();
+  if (!session) {
+    btn.disabled = false;
+    return inviteStatus('✅ Account created. Please confirm your email address from the message just sent, '
+                      + 'then open this invitation link again to finish joining.', 'success');
+  }
+
+  inviteStatus('<span class="spinner spinner-navy"></span> Joining the organisation…', 'searching');
+  const { data, error: accErr } = await window.sb.rpc('accept_invitation', { p_token: token });
+  if (accErr) {
+    btn.disabled = false;
+    return inviteStatus('❌ ' + escHtml(accErr.message), 'error');
+  }
+
+  const joined = Array.isArray(data) ? data[0] : data;
+  inviteStatus(`✅ Joined ${escHtml((joined && joined.org_name) || 'your organisation')}. Loading…`, 'success');
+
+  // Clear the token from the address bar so a shoulder-surfed or bookmarked
+  // URL cannot be replayed, then boot normally.
+  history.replaceState(null, '', location.pathname);
+  await afterSupabaseSignIn(session);
 }
 
 function recoveryStatus(msg, type) { showStatus(msg, type, 'recovery-status'); }
@@ -268,6 +400,7 @@ async function afterSupabaseSignIn(session) {
   // Show app
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('auth-section-wrap').style.display = 'none';
+  document.getElementById('invite-wrap').style.display = 'none';
   document.getElementById('app-section').style.display  = 'block';
 
   // Dashboard is the landing tab, so its data has to be pulled here — the

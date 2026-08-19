@@ -147,6 +147,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Audit Report Finalization | Sidebar | `auditReportFinalization.js` | `arf-` | `audit_report_finalization` | [audit-report-finalization](docs/modules/audit-report-finalization.md) |
 | Audit Checklist | Sidebar | `auditChecklist.js` | `achk-` | `audit_checklists` | [audit-checklist](docs/modules/audit-checklist.md) |
 | Work Done *(+ To-Do List, + cross-module Activity Log)* | Sidebar | `workDone.js` + `workDoneTodo.js` | `wd-` `wt-` | `work_done`, `work_todos` *(+ reads `document_register`, `audit_log`)* | [work-done](docs/modules/work-done.md) |
+| Team *(members + invitations)* | Topbar → user menu | `orgMembers.js` | `om-` | `org_members`, `org_invitations` | §6 Stage 3 |
 | Company Registrar *(5 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `cr-` `cs-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Party Ledger | Financial Management | `partyLedger.js` | `pl-` | `party_opening_balances` | [financial-management](docs/modules/financial-management.md) |
@@ -225,7 +226,21 @@ The app is being converted from one firm to ~10. Full scope: the published plan 
 - `#rep-firm` in `index.html` still hardcodes the two firms as `<option>`s; `orgIdentity.fillReportFirmSelect()` rewrites it (Service Memo's picker was already rebuilt at runtime by its own module).
 - **`js/auth.js` now looks membership up in `org_members`, not `app_users`** (matching the database), filters `status='active'`, treats `'owner'` as admin for UI gating, and refuses sign-in if the organisation fails to load rather than rendering blank letterheads. `signOut()` calls `OrgIdentity.clear()` alongside `DataCache.invalidateAll()`.
 
-**Still to do before a second firm can be onboarded:** `DataCache` is not yet keyed by org, and Stage 3 (invitations, self-serve reset) is not started.
+### Stage 3 — invitations, member management, password reset (done 2026-08-18)
+
+`db/2026-08-18_stage3_invitations.sql` · module `js/orgMembers.js` (`om-` prefix, **Team** screen in the topbar user menu).
+
+- **Two SECURITY DEFINER RPCs are the "backend"**: `create_invitation(email, role, days)` and `accept_invitation(token)`. Creating an auth account normally needs the service-role key, which must never reach a browser — these do the one narrow thing needed, inside Postgres. **No Edge Function and no companion process** (§15 still holds).
+- **The app deliberately sends NO invitation email.** `create_invitation()` returns a random token **once** (only its SHA-256 hash is stored) and the admin passes the link on however they like. Supabase's built-in SMTP is rate-limited to a few messages an hour *across the whole project*, so an app that emailed invites would throttle onboarding for every firm at once.
+- **Signup must be ON in the Supabase dashboard** (it is). Safe because an `auth.users` account with no `org_members` row fails every policy's org test — it can read and write nothing. Access begins at `accept_invitation()`, not at signup.
+- **The invited email must match the signed-in email**, or the token would be a bearer credential anyone with the link could use.
+- `private.guard_last_owner()` (BEFORE UPDATE/DELETE triggers) refuses to remove or demote an organisation's **last active owner** — recovering from that would need the Supabase dashboard.
+- **Deactivating a member revokes access at the database**, not in the UI: `current_org_id()` already required `status='active'`. Verified — a deactivated member sees 0 rows.
+- **`org_members` has no INSERT policy**, deliberately: `accept_invitation()` is the only way a membership is created.
+- **Self-serve password reset now exists** (`sendPasswordReset()`), reversing the old "deliberately no Forgot password link" decision — that was right for one firm with one admin, and does not survive ~60 users whose admins have no dashboard access. The recovery-link half already existed; only the request was missing. Still on built-in SMTP, so it is rate-limited — custom SMTP is Stage 5.
+- Adding a user is now **an invite**, not a dashboard action. An `app_users` row grants nothing.
+
+**Still to do:** `DataCache` is not yet keyed by org (low risk — it is cleared on sign-out); Stage 5's custom SMTP; Stages 4, 6–8.
 
 - **Phase 2's backfill and its proof are one transaction on purpose** (`db/2026-08-18_stage2_phase2_backfill_org_id.sql`). It re-reads every table afterwards and `raise exception`s naming any table still holding NULLs, so a half-filled database cannot reach Phase 3. The failure that matters is not a loud error — it is a table whose policy compares `org_id` while its rows never got one, which looks exactly like data loss and is not.
 - **It is idempotent** (`where org_id is null`) and resolves the org **by slug, never a hardcoded `1`** — identity columns need not start at 1 on a rebuilt database.

@@ -71,6 +71,7 @@ const MODULE_INITS = {
   depreciation:        () => depInit(),
   confirmationLetters: () => clInit(),
   salesPurchaseBook:   () => spbInit(),
+  orgMembers:          () => omInit(),
 };
 
 function openModule(tab) {

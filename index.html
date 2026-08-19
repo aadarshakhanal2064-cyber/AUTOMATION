@@ -143,6 +143,10 @@ function cropLoginLogoIcon(img) {
            to miss. Reuses the same toggleTopbarMenu/closeTopbarMenus
            mechanic as the Registrar/Financial/Automation menus. -->
       <div class="topbar-dropdown-menu topbar-dropdown-menu-right" id="topbar-user-menu">
+        <button class="topbar-dropdown-item" onclick="openModule('orgMembers')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px; margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          Team
+        </button>
         <button class="topbar-dropdown-item topbar-dropdown-item-danger" onclick="signOut()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px; margin-right:6px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
           Sign out
@@ -231,8 +235,51 @@ function cropLoginLogoIcon(img) {
       <div id="auth-status" class="auth-inline-status"></div>
 
       <p style="margin-top:24px; font-size:12.5px; border-top:1px solid var(--border); padding-top:22px; color:var(--text-muted);">
-        Forgot your password? Ask an admin to send you a reset link from Supabase.
+        <a href="#" onclick="sendPasswordReset(); return false;" style="color:var(--accent-blue); font-weight:600;">Forgot your password?</a>
+        &nbsp;Enter your email above first, and we'll send a reset link.
       </p>
+    </div>
+    <div class="auth-footer-trust">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      Secure. Compliant. Confidential.
+    </div>
+  </div>
+
+  <!-- JOIN AN ORGANISATION — where an ?invite=<token> link lands (Stage 3).
+       The person may have no account yet, so this both creates one and calls
+       accept_invitation(). Every rule (token validity, expiry, single use, and
+       the email having to match the one invited) is enforced in Postgres, not
+       here — see db/2026-08-18_stage3_invitations.sql. -->
+  <div id="invite-wrap" style="display:none;">
+    <div id="invite-section" class="card" style="padding:48px 40px;">
+      <div class="brand">
+        <img src="assets/logo.jpeg" alt="Firm logo" onerror="logoFallback(this, 34)" onload="cropLoginLogoIcon(this)">
+      </div>
+      <h2>Join your team</h2>
+      <p>You've been invited. Confirm the email the invitation was sent to and choose a password.</p>
+
+      <form id="invite-form" class="auth-card-form" onsubmit="submitInvite(); return false;" autocomplete="on">
+        <input type="hidden" id="invite-token" />
+        <div class="form-group" style="text-align:left;">
+          <label for="invite-email">Email</label>
+          <input type="email" id="invite-email" name="email" autocomplete="username"
+                 placeholder="you@example.com" required />
+        </div>
+        <div class="form-group" style="text-align:left;">
+          <label for="invite-password">Choose a password</label>
+          <input type="password" id="invite-password" name="new-password" autocomplete="new-password"
+                 placeholder="At least 8 characters" required />
+        </div>
+        <div class="form-group" style="text-align:left;">
+          <label for="invite-password-confirm">Confirm password</label>
+          <input type="password" id="invite-password-confirm" name="new-password-confirm"
+                 autocomplete="new-password" placeholder="Type it again" required />
+        </div>
+        <button type="submit" class="btn btn-primary" id="invite-submit" style="width:100%; justify-content:center;">
+          Join
+        </button>
+      </form>
+      <div id="invite-status" class="auth-inline-status"></div>
     </div>
     <div class="auth-footer-trust">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -340,6 +387,91 @@ function cropLoginLogoIcon(img) {
         <div class="table-wrap" style="padding:24px;">
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Documents by Module</h3>
           <canvas id="dash-module-chart" height="220"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: TEAM (members + invitations, Stage 3) ── -->
+    <div id="tab-orgMembers-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Account</span><span>›</span><span class="current">Team</span></div>
+          <h2 class="page-title">Team</h2>
+          <p class="page-subtitle">Who can sign in to <strong id="om-org-name">your organisation</strong>, and what they're allowed to do.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Members</h3>
+        </div>
+        <div style="padding:0 24px 8px;">
+          <div id="om-invite-bar" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:18px 0 6px;">
+            <div class="form-group" style="margin:0; min-width:260px; flex:1;">
+              <label for="om-invite-email">Invite someone</label>
+              <input type="email" id="om-invite-email" placeholder="colleague@example.com" />
+            </div>
+            <div class="form-group" style="margin:0; min-width:130px;">
+              <label for="om-invite-role">Role</label>
+              <select id="om-invite-role">
+                <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
+                <option value="owner">Owner</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="om-invite-btn" onclick="omCreateInvite()">Create invite link</button>
+          </div>
+          <div id="om-status" class="status-box" style="display:none;"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="app-table">
+            <thead>
+              <tr><th>Email</th><th>Role</th><th>Status</th><th>Invited by</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="om-members-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="om-invites-card" style="margin-top:20px;">
+        <div class="card-header">
+          <h3>Invitations waiting</h3>
+        </div>
+        <div class="table-wrap">
+          <table class="app-table">
+            <thead>
+              <tr><th>Email</th><th>Role</th><th>Expires</th><th></th></tr>
+            </thead>
+            <tbody id="om-invites-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shown once, immediately after an invitation is created. The token is
+         unrecoverable afterwards — it exists only as a hash in the database —
+         so this is the single opportunity to copy the link. -->
+    <div id="om-link-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width:560px;">
+        <div class="modal-header">
+          <h3>Send this link to <span id="om-link-for"></span></h3>
+          <button class="modal-close" onclick="omCloseLinkModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin-bottom:14px; color:var(--text-muted); font-size:13.5px;">
+            Send it however you normally reach them — WhatsApp, your own email, or in person.
+            They'll choose their own password. The link works once and expires in 14 days.
+          </p>
+          <textarea id="om-link-value" readonly rows="3"
+                    style="width:100%; font-family:monospace; font-size:12px; resize:vertical;"></textarea>
+          <div style="display:flex; gap:10px; align-items:center; margin-top:12px;">
+            <button class="btn btn-primary" onclick="omCopyInviteLink()">Copy link</button>
+            <span id="om-link-copied" style="color:var(--green-dk); font-size:13px;"></span>
+          </div>
+          <p style="margin-top:16px; font-size:12.5px; color:var(--text-muted); border-top:1px solid var(--border); padding-top:14px;">
+            <strong>This is shown only once.</strong> Only a scrambled version is stored, so it can't be
+            looked up later — if you lose it, just create another invite.
+          </p>
         </div>
       </div>
     </div>
@@ -3788,7 +3920,10 @@ function cropLoginLogoIcon(img) {
 <script src="js/workDone.js?v=202608170900"></script>
 <!-- AFTER workDone.js — registers the To-Do List onto that file's WD_VIEWS. -->
 <script src="js/workDoneTodo.js?v=202608170900"></script>
-<script src="js/auth.js?v=202608182000"></script>
+<!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
+     from the topbar user menu, so it needs no nav button. -->
+<script src="js/orgMembers.js?v=202608182100"></script>
+<script src="js/auth.js?v=202608182100"></script>
 
 </body>
 </html>
