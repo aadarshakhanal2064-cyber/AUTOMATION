@@ -50,6 +50,12 @@ window.addEventListener('load', () => {
                    || window.AUTH_URL_PARAMS.hash.get('invite');
 
   window.sb.auth.onAuthStateChange((event, session) => {
+    // submitInvite() signs out and back in deliberately, to guarantee the
+    // session it ends up with belongs to the invited address. That churn fires
+    // SIGNED_OUT and SIGNED_IN here, which would otherwise replace the join
+    // screen mid-submit. While it is running it drives the flow itself.
+    if (window._inviteBusy) return;
+
     // Checked before everything else: someone opening an invitation must land
     // on "join this organisation", not on a sign-in form or — if they happen
     // to still have an old session — straight into an app they have not
@@ -272,29 +278,58 @@ async function submitInvite() {
   btn.disabled = true;
   inviteStatus('<span class="spinner spinner-navy"></span> Creating your account…', 'searching');
 
-  // Sign up, or sign in if the account already exists — an invited colleague
-  // may already have had an account (e.g. a previous firm, or a re-invite).
-  let { error } = await window.sb.auth.signUp({ email, password: pw });
-  if (error && /already registered/i.test(error.message)) {
-    ({ error } = await window.sb.auth.signInWithPassword({ email, password: pw }));
-    if (error) {
+  // ── Discard any session already open in this browser, FIRST ──────────────
+  // This is the bug the second real test hit. The owner was signed in as one
+  // address and opened an invitation issued to another. With "Confirm email"
+  // ON, signUp() creates NO session — so getSession() below happily returned
+  // the OWNER'S existing session, the "not confirmed yet" branch never fired,
+  // and accept_invitation() ran as the wrong person and was refused with
+  // "This invitation was issued to a different email address" — on a screen
+  // that was correctly showing the right address.
+  //
+  // Signing out first means whatever session exists afterwards can only have
+  // come from the credentials just entered.
+  window._inviteBusy = true;   // stop onAuthStateChange reacting to our own churn
+  try {
+    await window.sb.auth.signOut();
+
+    // Sign up, or sign in if the account already exists — an invited colleague
+    // may already have had an account (a re-invite, or a previous failed try).
+    let { error } = await window.sb.auth.signUp({ email, password: pw });
+    if (error && /already registered/i.test(error.message)) {
+      ({ error } = await window.sb.auth.signInWithPassword({ email, password: pw }));
+      if (error) {
+        btn.disabled = false;
+        return inviteStatus('❌ That address already has an account, and this password does not match it. '
+                          + 'Use “Forgot your password?” on the sign-in screen, then open this link again.', 'error');
+      }
+    } else if (error) {
       btn.disabled = false;
-      return inviteStatus('❌ That address already has an account, and this password does not match it. '
-                        + 'Sign in instead, or use Forgot password.', 'error');
+      return inviteStatus('❌ ' + escHtml(error.message), 'error');
     }
-  } else if (error) {
-    btn.disabled = false;
-    return inviteStatus('❌ ' + escHtml(error.message), 'error');
+
+    var { data: { session } } = await window.sb.auth.getSession();
+  } finally {
+    window._inviteBusy = false;
   }
 
-  // If the project requires email confirmation there is no session yet, so the
-  // membership cannot be created until they confirm. Say so plainly instead of
-  // failing with a confusing "must be signed in".
-  const { data: { session } } = await window.sb.auth.getSession();
+  // No session means the account exists but the address is unconfirmed.
   if (!session) {
     btn.disabled = false;
-    return inviteStatus('✅ Account created. Please confirm your email address from the message just sent, '
-                      + 'then open this invitation link again to finish joining.', 'success');
+    return inviteStatus('✅ Account created. Check ' + escHtml(email) + ' and click the confirmation link — '
+                      + 'you will be brought straight back here and joined automatically.', 'success');
+  }
+
+  // Belt to that braces: never call accept_invitation with a session that is
+  // not the invitee's. Even after signing out above, a redirect or a race
+  // could leave the wrong identity in place, and the failure mode is a
+  // confusing refusal rather than anything unsafe — so check it here where the
+  // message can actually explain itself.
+  const signedInAs = ((session.user && session.user.email) || '').toLowerCase();
+  if (signedInAs !== email.toLowerCase()) {
+    btn.disabled = false;
+    return inviteStatus(`❌ This browser is signed in as ${escHtml(signedInAs)}, but the invitation is for `
+                      + `${escHtml(email)}. Sign out fully, then open the link again.`, 'error');
   }
 
   inviteStatus('<span class="spinner spinner-navy"></span> Joining the organisation…', 'searching');
