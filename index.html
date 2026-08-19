@@ -2444,25 +2444,8 @@ function cropLoginLogoIcon(img) {
       <!-- Step 2 -->
       <div id="ps-section-figures" style="display:none;">
         <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">This Year&rsquo;s Figures</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">These are the only figures typed by hand. Everything else on the statement is derived from them and from last year.</p>
-          <div id="ps-figures"></div>
-        </div>
-
-        <div class="card" style="margin-top:20px;">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Expense Lines &amp; Rules</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Each line carries forward by a rule. Change a rule, change its growth rate, or set it to &ldquo;Typed this year&rdquo; to enter a figure directly &mdash; one line escaping the pattern does not abandon the pattern.</p>
-          <div id="ps-rules"></div>
-        </div>
-
-        <div class="card" style="margin-top:20px;">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Depreciation &mdash; 3.1 PPE</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Seeded from the client&rsquo;s saved SLM schedule when there is one, otherwise from the prior-year note. The opening column is last year&rsquo;s carrying amount, because the note restates each year.</p>
-          <div id="ps-ppe"></div>
-        </div>
-
-        <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Loans &amp; Borrowings</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every facility and what it costs, in one place &mdash; the balances feed note 3.8 and the interest feeds note 3.14.</p>
           <div style="display:grid; grid-template-columns:1fr; gap:16px;">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -2478,7 +2461,29 @@ function cropLoginLogoIcon(img) {
               </div>
               <div id="ps-loans-c"></div>
             </div>
+            <div style="padding-top:12px; border-top:1px solid var(--border);">
+              <strong style="font-size:13px; color:var(--brand-navy); display:block; margin-bottom:8px;">Interest &amp; Bank Charges</strong>
+              <div id="ps-interest"></div>
+            </div>
           </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">This Year&rsquo;s Figures</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">These are the only figures typed by hand. Everything else on the statement is derived from them and from last year.</p>
+          <div id="ps-figures"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Expense Lines &amp; Rules</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every line is last year plus a growth rate. Change the rate, or type the figure straight into the right-hand box to override that line &mdash; the &#8635; button puts it back on the rate. Rent and Audit Fee start at 0%.</p>
+          <div id="ps-rules"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Depreciation &mdash; 3.1 PPE</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Seeded from the client&rsquo;s saved SLM schedule when there is one, otherwise from the prior-year note. The opening column is last year&rsquo;s carrying amount, because the note restates each year.</p>
+          <div id="ps-ppe"></div>
         </div>
 
         <div style="margin-top:20px;">
@@ -4171,9 +4176,9 @@ function cropLoginLogoIcon(img) {
 <script src="js/projectionExport.js?v=202608111600"></script>
 <script src="js/finStatementEngine.js?v=202608190900"></script>
 <script src="js/finStatement.js?v=202608190900"></script>
-<script src="js/finStatementExport.js?v=202608191600"></script>
-<script src="js/provisionalStatementEngine.js?v=202608191600"></script>
-<script src="js/provisionalStatement.js?v=202608191600"></script>
+<script src="js/finStatementExport.js?v=202608192100"></script>
+<script src="js/provisionalStatementEngine.js?v=202608192100"></script>
+<script src="js/provisionalStatement.js?v=202608192100"></script>
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>
 <script src="js/auditChecklist.js?v=202608151800"></script>

@@ -182,8 +182,12 @@ function fsxBuildReport(out) {
   const yrHeadPy = m.yearEndedPy || pyHead;
 
   // ── COI: Return of Income (the tax computation) ──
+  // A provisional set is seven sheets — SFP, SOI, SOCE, SOCF, 3.1 PPE, Sch-BS,
+  // Sch-PL — and carries no tax-computation page: that working belongs to the
+  // return, not to the statements. Audited sets keep it, so it is opted out of
+  // rather than deleted.
   const coi = out.coi || {};
-  sheets.push({
+  if (!m.omitCoi) sheets.push({
     key: 'COI', name: 'COI', geom: FSX_GEOM.COI,
     title: 'RETURN OF INCOME', noHeaderBand: true,
     rows: [
@@ -808,7 +812,9 @@ function fsxBuildReport(out) {
       // Provisional sets carry the rate live off PBT (the workbook's
       // `=+SOI!F27*0.25`); audited sets keep pointing at the COI computation,
       // which is where an audited year's tax is actually settled.
-      xf: inc.taxDerive ? fsxDeriveXf(inc.taxDerive, ANCHORS) : (({ X }) => X('COI', 'tax')),
+      // With no COI sheet the fallback reference would be dead, so a
+      // provisional set must carry its own rate formula (inc.taxDerive).
+      xf: inc.taxDerive ? fsxDeriveXf(inc.taxDerive, ANCHORS) : (m.omitCoi ? null : ({ X }) => X('COI', 'tax')),
     }),
     R('Adjustments for under provision in prior periods', [0, 0], 'item', { k: 'taxAdj' }),
     R('Total', [inc.tax, pySoi.tax], 'tot', { k: 'taxTotal', xsum: ['taxYear', 'taxAdj'] }),
@@ -1470,11 +1476,14 @@ function fsxSheetHtml(sh, meta) {
       if (sh.subtitle) out.push(`<div class="fsp-sub">${fsxEsc(sh.subtitle)}</div>`);
       out.push('<div class="fsp-fig">Figures in NPR</div>');
     } else {
-      // Schedule sheet: optional heading line, then the title and "Figures
-      // in NPR" share one row (title left, figures right) — the template's
-      // own Sch-BS layout.
-      if (sh.heading) out.push(`<div class="fsp-heading">${fsxEsc(sh.heading)}</div>`);
-      out.push(`<div class="fsp-sched-row"><span class="fsp-title-sched">${fsxEsc(sh.title || '')}</span><span class="fsp-fig">Figures in NPR</span></div>`);
+      // A self-banded schedule heads each of its own notes ("3.2 Investment",
+      // "3.11 Revenue from Operations", each with its own band), so printing a
+      // sheet-wide title above them would put a heading on the page that the
+      // Excel does not have. Only the older non-self-banded layout keeps one.
+      if (!sh.firstRow) {
+        if (sh.heading) out.push(`<div class="fsp-heading">${fsxEsc(sh.heading)}</div>`);
+        out.push(`<div class="fsp-sched-row"><span class="fsp-title-sched">${fsxEsc(sh.title || '')}</span><span class="fsp-fig">Figures in NPR</span></div>`);
+      }
     }
     if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
   }

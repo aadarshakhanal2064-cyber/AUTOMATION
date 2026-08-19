@@ -222,6 +222,21 @@ eq('SOCF E40  Opening cash',                cf.openingCash,    42993.71732350438
 eq('SOCF E44  Closing cash (unplugged)',    cf.closingCash,   269480.44071197138);
 eq('SOCF       Closing cash ties to SFP cash', cf.cashProof, 0, 0.01);
 
+// ── the purchases/PBT see-saw must be reversible ──
+// Hold the profit the forward pass produced and the engine should hand back
+// the very purchases figure it started from. If the two modes ever drift, this
+// fails rather than quietly issuing a statement that does not foot.
+const back = Engine.derive({
+  py,
+  cy: Object.assign({}, cy, { purchases: undefined, pbtTarget: out.income.pbt }),
+  options: { taxProfile: 'corporate', solveFor: 'purchases' },
+});
+eq('see-saw  Purchases re-solved from PBT', back.income.materials.purchases, cy.purchases, 0.01);
+eq('see-saw  PBT unchanged',                back.income.pbt,                 out.income.pbt, 0.01);
+eq('see-saw  Materials unchanged',          back.income.materials.total,     out.income.materials.total, 0.01);
+eq('see-saw  Total assets unchanged',       back.balance.totalAssets,        out.balance.totalAssets, 0.01);
+eq('see-saw  Balance still nil',            back.balance.balanceGap,         0, 0.01);
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

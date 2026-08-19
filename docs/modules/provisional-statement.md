@@ -51,15 +51,30 @@ implements.
 > line** — Audit Fee and Rent are the two the firm renegotiates rather than
 > indexes, which is why the workbook types them.
 
-### 2.2 Revenue-scaled rules
+### 2.2 Revenue-scaled rules — SUPPORTED, NOT THE DEFAULT
 
-Lines that move with turnover rather than with inflation:
+The source workbook scales three lines off a driver rather than off inflation:
 
 | Line | Workbook formula | Rule |
 |---|---|---|
-| Labour Charges | `Sch-PL D25 =+F25/F6*D6` | **PY amount × (CY sales ÷ PY sales)** |
+| Labour Charges | `Sch-PL D25 =+F25/F6*D6` | PY amount × (CY sales ÷ PY sales) |
 | Clearing & Freight | `Sch-PL D26 =+F26/F6*D6` | same |
-| Incentive Expenses | `SOI F23 =+ROUND(H23/H15*F15,)` | **PY incentive × (CY other income ÷ PY other income)**, rounded |
+| Incentive Expenses | `SOI F23 =+ROUND(H23/H15*F15,)` | PY incentive × (CY other income ÷ PY other income) |
+
+**The engine still implements all three** — `tools/psVerify.mjs` proves them
+against the workbook, and `applyRule`/`ruleDescriptor` carry the `turnover` and
+`driver` rules. **The UI no longer offers them** (user decision 2026-08-19): the
+rule dropdown was cut to nothing and every line is now "last year + growth %".
+So Labour and Clearing & Freight ship on growth, and their exported formula is
+`=ROUND(F23*1.05,0)` rather than `=+F23/F6*D6`.
+
+Restoring turnover-scaling as their default is a one-line change per line in
+`psRenderRules()` — the engine side needs nothing.
+
+**The dedicated Incentive Expenses row is retired.** A book that carries one
+adds it through *+ Add expense line*, which lands it in note 3.15. The SOI
+expense block is emitted from a list, so it renders `a)`–`e)` without the row
+and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 
 ### 2.3 Tax
 
@@ -121,6 +136,33 @@ Source of the schedule, in order:
 Either way the grid is **editable in place**, like Projection's, and a class with
 no assets is dropped from the note (§3).
 
+**Every column is editable, including the two computed ones.** Depreciation and
+Carrying Amount accept an override per class, shown with a ↺ to return them to
+the rate. A schedule is a working, and a preparer occasionally has to force a
+class to a figure the rate does not produce — a part-year asset, or a carrying
+amount agreed with the client. An override is stored as typed, so clearing the
+box returns the cell to the rate rather than pinning it at zero.
+
+### 2.7 The rules grid has no dropdown
+
+Every expense line is **last year + a growth %**, with both the rate and the
+resulting figure editable on the row. Typing a figure into the right-hand box
+overrides that line outright; ↺ puts it back on the rate. Rent and Audit Fee
+simply arrive at **0%** — which is what "flat" meant before — so nothing about
+them is special-cased any more.
+
+Setting a rate has to switch the line onto the growth rule, or a line that
+arrived flat silently ignores the rate typed on it. **0% stays `flat`** so the
+exported formula remains `=+F41` rather than `=ROUND(F41*1,0)`.
+
+**+ Add expense line** appends a head the firm's template never listed. It
+behaves exactly like one read off the prior-year file — same growth rule, same
+override, same place in note 3.15.
+
+**Other Contributions** is emitted only when it carries something: an
+always-present nil row is a head with no value, which this module drops
+everywhere else.
+
 ---
 
 ## 3. Empty account heads are removed
@@ -149,11 +191,39 @@ Faithfulness to the format does not mean copying its mistakes:
 
 ## 5. What the preparer actually types
 
-Everything else is derived. This is the whole input surface:
+Step 2 runs **Loans & Borrowings → This Year's Figures → Expense Lines & Rules →
+Depreciation**. Loans come first because every other figure leans on them.
 
-**Current year, typed:** Sale of Goods · Commissions & Incentives (other income)
-· Purchases of goods · Closing stock · Trade Receivables · Cash & Bank ·
-Trade Payables · Interest on OD/CC · loan balances · Audit Fee · Rent.
+**Loans & Borrowings** — each facility by name and balance, non-current and
+current, *plus the interest each costs*. Interest sits here rather than with the
+income figures because it is a fact about a facility, and a finance cost that
+lives away from the balance that produced it is one that goes missing.
+
+**This Year's Figures** — Sale of Goods · Commissions & Incentives · Interest
+Income · Closing Stock · Trade Receivables · Cash & Bank · Trade Payables ·
+Income Tax Paid. Everything marked `grow: true` in `PS_FIGURES` is **seeded at
+last year + the default growth** when the prior-year file is read; the seed only
+ever fills a box the user has not typed into.
+
+### 5.1 Two see-saws
+
+Both follow the same idiom: the side you touch is held, the other becomes the
+balancing figure and carries a **balancing** badge.
+
+1. **Profit Before Tax ⇄ Purchases of Goods.** Type the profit you need and
+   purchases balances to it; type purchases and the profit falls out. One set of
+   arithmetic read in either direction (`solveFor` in the engine), so the two
+   modes cannot drift. `psVerify` round-trips it: hold the profit the forward
+   pass produced and the engine hands back the very purchases figure it started
+   from.
+2. **Trade Receivables balances the balance sheet**, on by default. Profit lands
+   in equity, so something on the asset side has to absorb it — the same choice
+   the Audited engine makes (§15: cash is seeded, receivables is the plug), and
+   unbilled trade is the honest place. Untick it and receivables is typed while
+   any residual is *reported* rather than absorbed.
+
+Neither plug is silent: a negative solve warns, and with the receivables plug
+off the gap is stated on the review panel.
 
 **Prior year:** uploaded from last year's statement workbook (the same reader
 Projection already uses), or carried from a saved Audited Statement.
@@ -179,6 +249,19 @@ Provisional.xlsx`) and its geometry matches the reference file exactly:
 Book Antiqua throughout, no fills, borders on value cells only, medium-rule
 header band, thin+double subtotal rule, double-only grand total — all already
 implemented there. **Do not fork that file**; extend it if a row type is missing.
+
+### 6.0 Seven sheets, in this order
+
+**SFP → SOI → SOCE → SOCF → 3.1 PPE → Sch-BS → Sch-PL**, identically in the
+on-screen preview, the print/PDF document and the Excel workbook.
+
+**The COI (Return of Income) page is not part of a provisional set** — that tax
+computation belongs to the return, not to the statements. It is opted out of
+via `meta.omitCoi` rather than deleted, because the Audited module still issues
+it. Two things follow from the omission: `Sch-PL`'s tax row must carry its own
+rate formula (`inc.taxDerive`) since the `X('COI','tax')` fallback would be a
+dead reference, and a self-banded schedule prints no sheet-wide title in
+HTML/PDF either, or the page would carry a heading the Excel does not have.
 
 ### 6.1 Row-for-row alignment
 

@@ -221,15 +221,19 @@ const ProvisionalStatementEngine = (() => {
     //  MATERIALS CONSUMED  (Sch-PL 3.12)
     //  `D29 =SUM(D22:D26)-D28`
     //  Opening stock is `D22 =+F28` — last year's closing, never typed.
+    //
+    //  Purchases and Profit Before Tax are the two ends of one see-saw: fix
+    //  either and the other follows. `solveFor` says which end is held, so a
+    //  preparer can work from a purchase figure they have, or from a profit
+    //  they need. The totals are identical either way — only which number is
+    //  typed changes. The actual solve happens further down, once every other
+    //  expense is known, because purchases is the residual of all of them.
     // ════════════════════════════════════════════════
     const openingStock = num(py.closingStock);
-    const purchases    = num(cy.purchases);
     const labour  = line('labour',  py.labour,  'turnover');   // `D25 =+F25/F6*D6`
     const freight = line('freight', py.freight, 'turnover');   // `D26 =+F26/F6*D6`
     const closingStock = num(cy.closingStock);
-    const materialsTotal = openingStock + purchases + labour.amount + freight.amount - closingStock;
 
-    if (purchases < 0) err('Purchases of goods is negative.');
     if (closingStock < 0) err('Closing stock is negative.');
 
     // ════════════════════════════════════════════════
@@ -237,8 +241,11 @@ const ProvisionalStatementEngine = (() => {
     //  `D33 =ROUND(F33*1.05,-3)` — nearest thousand.
     // ════════════════════════════════════════════════
     const salary = line('salary', py.salary, 'growth', { roundTo: -3 });
+    // Other Contributions is emitted only when there is one. An always-present
+    // nil row is a head with no value, which this module drops everywhere else.
     const otherContrib = line('otherContrib', py.otherContrib, 'growth', { roundTo: 0 });
-    const employeeTotal = salary.amount + otherContrib.amount;
+    const hasOtherContrib = Math.abs(otherContrib.amount) > 0.005 || Math.abs(otherContrib.py) > 0.005;
+    const employeeTotal = salary.amount + (hasOtherContrib ? otherContrib.amount : 0);
 
     // ════════════════════════════════════════════════
     //  FINANCE COST  (Sch-PL 3.14) — typed, because interest follows the
@@ -270,7 +277,12 @@ const ProvisionalStatementEngine = (() => {
     //  `F23 =+ROUND(H23/H15*F15,)` — tracks the incentive income, so it sits
     //  on the other-income ratio rather than the turnover one.
     // ════════════════════════════════════════════════
+    // The dedicated incentive-expense row exists only for books that carry one;
+    // otherwise it is a head with no value and is dropped. A client who needs
+    // it can add it as an ordinary Other Expense line.
+    const hasIncentive = Math.abs(num(py.incentiveExpense)) > 0.005;
     const incentive = line('incentiveExpense', py.incentiveExpense, 'driver');
+    if (!hasIncentive) incentive.amount = 0;
     if (py.incentiveExpense && !pyOther) {
       warn('Prior-year Other Income is nil while an incentive expense exists, so the incentive cannot be scaled. It has been carried at zero — set the line to "Typed this year" if that is wrong.');
     }
@@ -291,13 +303,22 @@ const ProvisionalStatementEngine = (() => {
       const additions = num(c.additions);
       const disposals = num(c.disposals);
       const closeCost = openCost + additions - disposals;   // `=D8+D9-D10`
-      const depCharge = xlRound(closeCost * rate, 10);      // `=+F11*5%`
-      const closeCarrying = closeCost - depCharge;          // `=+F11-F19`
+      // Both computed columns accept an override. A schedule is a working, and
+      // a preparer occasionally has to force a class to a figure the rate does
+      // not produce — a part-year asset, or a carrying amount agreed with the
+      // client. An override is remembered per class; clearing it returns to
+      // the rate.
+      const depCharge = c.depChargeOverride != null && c.depChargeOverride !== ''
+        ? num(c.depChargeOverride) : xlRound(closeCost * rate, 10);   // `=+F11*5%`
+      const closeCarrying = c.carryingOverride != null && c.carryingOverride !== ''
+        ? num(c.carryingOverride) : closeCost - depCharge;            // `=+F11-F19`
       return {
         key: c.key, name: c.name || (def.name || c.key), rate,
         openCost, additions, disposals, closeCost,
         openDep: 0, depCharge, impairment: 0, dispDep: 0,
         closeDep: depCharge, openCarrying: openCost, closeCarrying,
+        depChargeOverridden: c.depChargeOverride != null && c.depChargeOverride !== '',
+        carryingOverridden: c.carryingOverride != null && c.carryingOverride !== '',
       };
     });
     const ppeTotals = ppeClasses.reduce((t, c) => {
@@ -308,11 +329,31 @@ const ProvisionalStatementEngine = (() => {
     const depreciation = ppeTotals.depCharge || 0;
 
     // ════════════════════════════════════════════════
-    //  PROFIT AND TAX
+    //  PROFIT AND TAX — and the purchases/PBT see-saw
     // ════════════════════════════════════════════════
-    const totalExpenses = materialsTotal + employeeTotal + financeTotal
-                        + depreciation + incentive.amount + otherTotal;   // `SOI F25`
-    const pbt = totalIncome - totalExpenses;                              // `SOI F27 =F16-F25`
+    // Everything except materials is now known, so the two can be solved
+    // against each other. Holding PBT makes purchases the residual, which is
+    // the same arithmetic read backwards — no separate model, so the two modes
+    // cannot drift apart.
+    const nonMaterialExpenses = employeeTotal + financeTotal + depreciation
+                              + incentive.amount + otherTotal;
+    const stockMovement = openingStock + labour.amount + freight.amount - closingStock;
+
+    let purchases, materialsTotal, pbt;
+    if (opt.solveFor === 'purchases' && cy.pbtTarget != null && cy.pbtTarget !== '') {
+      pbt = num(cy.pbtTarget);
+      materialsTotal = totalIncome - pbt - nonMaterialExpenses;
+      purchases = materialsTotal - stockMovement;
+      if (purchases < 0) {
+        warn(`Purchases solves to a negative figure (${purchases.toFixed(2)}) at that profit. The target is unreachable with this year's sales, stock and expenses — lower the profit, or check Closing Stock.`);
+      }
+    } else {
+      purchases = num(cy.purchases);
+      materialsTotal = stockMovement + purchases;
+      pbt = totalIncome - (materialsTotal + nonMaterialExpenses);
+      if (purchases < 0) err('Purchases of goods is negative.');
+    }
+    const totalExpenses = materialsTotal + nonMaterialExpenses;   // `SOI F25`
 
     const profile = opt.taxProfile || 'corporate';
     let tax, taxRule;
@@ -377,23 +418,22 @@ const ProvisionalStatementEngine = (() => {
     ];
     const totalPayables = payableLines.reduce((s, l) => s + l.amount, 0);   // `H99`
 
-    // Receivables (3.3) — trade receivables typed, advance tax derived.
-    const tradeReceivables = num(cy.tradeReceivables);
+    // Receivables (3.3) — advance tax derived; trade receivables either typed
+    // or, by default, the figure that makes the sheet foot. Same choice the
+    // Audited engine makes (§15: cash is seeded, receivables is the plug), and
+    // for the same reason: profit lands in equity, so SOMETHING on the asset
+    // side has to absorb it, and unbilled trade is the honest place. Turn the
+    // plug off and the residual is reported instead of absorbed — shown, never
+    // forced. Solved below, once equity and liabilities are known.
     const impairment = num(cy.receivableImpairment);
     const vatReceivable = num(cy.vatReceivable);
-    const tradeReceivablesNet = tradeReceivables - impairment;             // `H17 =H15-H16`
-    const receivables = tradeReceivablesNet + advanceTax + vatReceivable;  // `H20`
 
     const cash = num(cy.cash);
     const inventories = closingStock;                    // `Sch-BS H29 ='Sch-PL'!D28`
     const investmentsNC = num(cy.investmentsNC);
     const investmentsC  = num(cy.investmentsC);
     const otherReceivablesNC = num(cy.otherReceivablesNC);
-
     const ppeClosing = ppeTotals.closeCarrying || 0;
-    const totalNCA = ppeClosing + investmentsNC + otherReceivablesNC;
-    const totalCA  = investmentsC + inventories + receivables + cash;
-    const totalAssets = totalNCA + totalCA;
 
     // Provision for income tax is the year's own charge (`H102 =SOI!F29`).
     const provisionsC  = taxExpense;
@@ -420,11 +460,32 @@ const ProvisionalStatementEngine = (() => {
     const totalEquity    = shareCapital + capitalIntro + reserves;
     const totalEquityLiab = totalLiabilities + totalEquity;
 
-    // The balance check is SHOWN, never forced — a gap is a finding about the
-    // inputs, the same rule Final Account and Audited Statement already follow.
+    // ── the receivables plug ──
+    // Everything else on the asset side is now fixed, so trade receivables is
+    // whatever makes the two sides meet. `totalEquityLiab` does not depend on
+    // it, so this is a direct solve rather than an iteration.
+    const otherAssets = ppeClosing + investmentsNC + otherReceivablesNC
+                      + investmentsC + inventories + cash;
+    const plugReceivables = opt.balanceVia !== 'none';
+    const receivables = plugReceivables
+      ? totalEquityLiab - otherAssets
+      : (num(cy.tradeReceivables) - impairment) + advanceTax + vatReceivable;   // `H20`
+    const tradeReceivablesNet = receivables - advanceTax - vatReceivable;
+    const tradeReceivables = tradeReceivablesNet + impairment;                  // `H17 =H15-H16`
+
+    const totalNCA = ppeClosing + investmentsNC + otherReceivablesNC;
+    const totalCA  = investmentsC + inventories + receivables + cash;
+    const totalAssets = totalNCA + totalCA;
+
+    // Shown, never forced. With the plug on this is nil by construction; with
+    // it off a gap is a finding about the inputs, the same rule Final Account
+    // and Audited Statement already follow.
     const balanceGap = totalEquityLiab - totalAssets;
     if (Math.abs(balanceGap) > 0.5) {
       warn(`Total Assets and Total Equity & Liabilities differ by ${balanceGap.toFixed(2)}. Nothing has been plugged — check Trade Receivables, Trade Payables, Cash and the loan balances.`);
+    }
+    if (plugReceivables && tradeReceivables < 0) {
+      warn(`Trade Receivables balances to a negative figure (${tradeReceivables.toFixed(2)}). The profit is higher than the assets can carry — check Cash, Closing Stock and the loan balances, or lower the profit.`);
     }
 
     // ════════════════════════════════════════════════
@@ -481,8 +542,8 @@ const ProvisionalStatementEngine = (() => {
           closing: closingStock, total: materialsTotal,
         },
         employeeItems: [
-          { key: 'salary',       name: 'Salary Expenses',     amount: salary.amount,       py: salary.py,       rule: salary.rule,       derive: salary.derive },
-          { key: 'otherContrib', name: 'Other Contributions', amount: otherContrib.amount, py: otherContrib.py, rule: otherContrib.rule, derive: otherContrib.derive },
+          { key: 'salary', name: 'Salary Expenses', amount: salary.amount, py: salary.py, rule: salary.rule, derive: salary.derive },
+          ...(hasOtherContrib ? [{ key: 'otherContrib', name: 'Other Contributions', amount: otherContrib.amount, py: otherContrib.py, rule: otherContrib.rule, derive: otherContrib.derive }] : []),
         ],
         employeeTotal, salary: salary.amount,
         financeItems: [
@@ -492,7 +553,8 @@ const ProvisionalStatementEngine = (() => {
         ],
         financeTotal,
         depreciation,
-        incentive: incentive.amount,
+        incentive: hasIncentive ? incentive.amount : 0,
+        solvedFor: (opt.solveFor === 'purchases' && cy.pbtTarget != null && cy.pbtTarget !== '') ? 'purchases' : 'pbt',
         otherItems: otherExpenses,
         otherTotal,
         totalExpenses, pbt, tax: taxExpense, netProfit,
@@ -511,7 +573,7 @@ const ProvisionalStatementEngine = (() => {
             derive: { kind: 'advanceTax', pct: TDS.incentive } },
           { key: 'vatReceivable',    name: 'VAT Receivables',   amount: vatReceivable },
         ],
-        receivables, cash, totalCA, totalAssets,
+        receivables, cash, totalCA, totalAssets, plugReceivables, tradeReceivables,
         shareCapital, reserves, totalEquity,
         loansNonCurrent, provisionsNC, totalNCL, loanNCLines, loanCLines,
         loansCurrent, payableLines, totalPayables, provisionsC, totalCL,

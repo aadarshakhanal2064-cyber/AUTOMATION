@@ -29,6 +29,11 @@ let psCy = {};               // this year's typed figures
 let psRules = {};            // per-line rule overrides
 let psPpeInput = [];         // editable 3.1 PPE grid
 let psLoans = { nc: [], c: [] };
+let psCustom = [];           // expense lines the user added by hand
+// Trade receivables absorbs the balance by default, the way the Audited engine
+// already works (§15). Untick it to type receivables and have any residual
+// reported instead of absorbed.
+let psPlugReceivables = true;
 let psSheetKey = 'SFP';
 let psDepSource = '';        // where the PPE grid came from, for the caption
 
@@ -110,6 +115,7 @@ const psScope = WorkflowEngine.createClientScope({
     psResult = null; psReport = null;
     psCy = {}; psRules = {}; psPpeInput = []; psDepSource = '';
     psLoans = { nc: [], c: [] };
+    psCustom = []; psSolveFor = 'purchases'; psPlugReceivables = true;
     const f = psEl('ps-py-file'); if (f) f.value = '';
     psRenderPySummary();
     psRenderFigures();
@@ -161,6 +167,7 @@ async function psHandlePyFile(input) {
     psPyIssues = issues;
     psRules = {};
     psPpeInput = [];
+    psCustom = [];
 
     if (!psEl('ps-company').value && py.company.name) psEl('ps-company').value = py.company.name;
     if (!psEl('ps-address').value && py.company.address) psEl('ps-address').value = py.company.address;
@@ -172,6 +179,7 @@ async function psHandlePyFile(input) {
     }
     psSeedPpe();
     psSeedLoans();
+    psSeedFigures();
     psRenderFigures();
     AuditLog.record('provisional_py_parsed', {
       module: 'provisionalStatement', clientName: psEl('ps-company').value, status: 'success',
@@ -300,12 +308,20 @@ function psRenderPpe() {
       <td><input type="number" step="0.01" value="${psNum(c.carrying)}" onchange="psPpeEdit(${i},'carrying',this.value)" style="width:140px;" /></td>
       <td><input type="number" step="0.01" value="${psNum(c.additions)}" onchange="psPpeEdit(${i},'additions',this.value)" style="width:130px;" /></td>
       <td><input type="number" step="0.01" value="${psNum(c.disposals)}" onchange="psPpeEdit(${i},'disposals',this.value)" style="width:130px;" /></td>
-      <td class="dep-calc">${psFmt(charge)}</td>
-      <td class="dep-calc">${psFmt(closeCost - charge)}</td>
-      <td><button class="btn btn-outline btn-sm" onclick="psPpeRemove(${i})">✕</button></td>
+      <td><input type="number" step="0.01" value="${c.depChargeOverride == null || c.depChargeOverride === '' ? Number(charge).toFixed(2) : c.depChargeOverride}"
+                 onchange="psPpeEdit(${i},'depChargeOverride',this.value)" style="width:140px; text-align:right;" /></td>
+      <td><input type="number" step="0.01" value="${c.carryingOverride == null || c.carryingOverride === '' ? Number(closeCost - charge).toFixed(2) : c.carryingOverride}"
+                 onchange="psPpeEdit(${i},'carryingOverride',this.value)" style="width:150px; text-align:right;" /></td>
+      <td style="white-space:nowrap;">
+        ${(c.depChargeOverride != null && c.depChargeOverride !== '') || (c.carryingOverride != null && c.carryingOverride !== '')
+          ? `<button class="btn btn-outline btn-sm" title="Back to the rate" onclick="psPpeReset(${i})">↺</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="psPpeRemove(${i})">✕</button></td>
     </tr>`;
   }).join('');
-  const totCharge = psPpeInput.reduce((s, c) => s + (psNum(c.carrying) + psNum(c.additions) - psNum(c.disposals)) * psNum(c.rate), 0);
+  const chargeOf = (c) => (c.depChargeOverride != null && c.depChargeOverride !== '')
+    ? psNum(c.depChargeOverride)
+    : (psNum(c.carrying) + psNum(c.additions) - psNum(c.disposals)) * psNum(c.rate);
+  const totCharge = psPpeInput.reduce((s, c) => s + chargeOf(c), 0);
   host.innerHTML = `
     ${psDepSource ? `<div style="font-size:12.5px; color:var(--text-muted); margin-bottom:8px;">Seeded from ${escHtml(psDepSource)} — every figure is editable.</div>` : ''}
     <div class="table-wrap"><table class="client-table dep-table">
@@ -348,7 +364,19 @@ function psPpeEdit(i, field, v) {
   const c = psPpeInput[i];
   if (!c) return;
   if (field === 'ratePct') c.rate = psNum(v) / 100;
+  // An override is stored as typed, so clearing the box returns the cell to
+  // the rate rather than pinning it at zero.
+  else if (field === 'depChargeOverride' || field === 'carryingOverride') c[field] = v === '' ? null : psNum(v);
   else c[field] = psNum(v);
+  psRenderPpe();
+  psRecalcDebounced();
+}
+
+function psPpeReset(i) {
+  const c = psPpeInput[i];
+  if (!c) return;
+  c.depChargeOverride = null;
+  c.carryingOverride = null;
   psRenderPpe();
   psRecalcDebounced();
 }
@@ -359,34 +387,118 @@ function psPpeEdit(i, field, v) {
 
 // The figures the preparer actually types. Everything else is derived —
 // this list IS the module's input surface.
+// Figures typed for the current year. `grow: true` means the box is SEEDED at
+// last year + the default growth when the prior-year file is read — a starting
+// point, not a rule: every one is overwritten by typing.
+//
+// Interest lives on the Loans card instead of here, because interest is a fact
+// about a facility and belongs beside the balance that produced it.
 const PS_FIGURES = [
-  { k: 'sales',            label: 'Sale of Goods',                     hint: 'This year&rsquo;s turnover. Labour and freight scale off it.' },
-  { k: 'otherIncome',      label: 'Commissions &amp; Incentives',      hint: 'Other income. The incentive expense scales off it.' },
-  { k: 'interestIncome',   label: 'Interest Income',                   hint: '' },
-  { k: 'purchases',        label: 'Purchases of Goods',                hint: 'Typed, not solved — profit falls out of it.' },
-  { k: 'closingStock',     label: 'Closing Stock',                     hint: 'Becomes next year&rsquo;s opening.' },
-  { k: 'tradeReceivables', label: 'Trade Receivables',                 hint: '' },
-  { k: 'cash',             label: 'Cash &amp; Bank Balances',          hint: '' },
-  { k: 'tradePayables',    label: 'Trade Payables',                    hint: '' },
-  { k: 'interestOD',       label: 'Interest on STL / CC / OD',         hint: '' },
-  { k: 'interestTerm',     label: 'Interest on Term Loan',             hint: '' },
-  { k: 'bankCharges',      label: 'Bank Charges',                      hint: '' },
-  { k: 'taxPaid',          label: 'Income Tax Paid',                   hint: 'Cash-flow only. Blank uses last year&rsquo;s provision.' },
+  { k: 'sales',            label: 'Sale of Goods',                grow: true,  hint: 'Seeded at last year + growth. Type over it.' },
+  { k: 'otherIncome',      label: 'Commissions &amp; Incentives', grow: true,  hint: 'Other income.' },
+  { k: 'interestIncome',   label: 'Interest Income',              grow: false, hint: '' },
+  { k: 'closingStock',     label: 'Closing Stock',                grow: true,  hint: 'Becomes next year&rsquo;s opening stock.' },
+  { k: 'tradeReceivables', label: 'Trade Receivables',            grow: true,  plug: true,
+    hint: 'Balances the sheet by default &mdash; untick below to type it and see any gap instead.' },
+  { k: 'cash',             label: 'Cash &amp; Bank Balances',     grow: true,  hint: '' },
+  { k: 'tradePayables',    label: 'Trade Payables',               grow: true,  hint: '' },
+  { k: 'taxPaid',          label: 'Income Tax Paid',              grow: false, hint: 'Cash-flow only. Blank uses last year&rsquo;s provision.' },
 ];
+
+// Which of the pair was typed last. Editing either one makes the other the
+// balancing figure, so there is never a stale "mode" to remember — the last
+// thing touched is by definition the one the preparer means to hold.
+// Names the figure the ENGINE solves — i.e. the balancing one. Defaults to
+// 'purchases', so a typed Profit Before Tax is what is held. Kept as one
+// meaning end to end: an inversion between here and the collector is exactly
+// how the see-saw silently stopped moving the first time.
+let psSolveFor = 'purchases';
+
+// Seed the current-year boxes from last year plus the default growth. Only
+// fills a box the user has not already typed into.
+function psSeedFigures() {
+  if (!psPy) return;
+  const g = 1 + psNum((psEl('ps-growth') || {}).value || 5) / 100;
+  const src = {
+    sales: psPy.soi && psPy.soi.revenueOps,
+    otherIncome: psPy.soi && psPy.soi.otherIncome,
+    closingStock: (psPy.materials && psPy.materials.closing) || (psPy.sfp && psPy.sfp.inventories),
+    tradeReceivables: psPy.sfp && psPy.sfp.receivables,
+    cash: psPy.sfp && psPy.sfp.cash,
+    tradePayables: psPy.sfp && psPy.sfp.payables,
+  };
+  PS_FIGURES.filter(f => f.grow).forEach(f => {
+    if (psCy[f.k] != null) return;
+    const v = psNum(src[f.k]);
+    if (v) psCy[f.k] = Math.round(v * g * 100) / 100;
+  });
+}
 
 function psRenderFigures() {
   const host = psEl('ps-figures');
   if (!host) return;
-  host.innerHTML = `<div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">` +
-    PS_FIGURES.map(f => `
+  const derived = psResult ? psResult.income : null;
+  // The held side shows what was typed; the derived side shows what solved.
+  const pbtVal = psSolveFor === 'purchases'
+    ? (psCy.pbtTarget == null ? (derived ? derived.pbt : '') : psCy.pbtTarget)
+    : (derived ? derived.pbt : '');
+  const purVal = psSolveFor === 'purchases'
+    ? (derived ? derived.materials.purchases : '')
+    : (psCy.purchases == null ? '' : psCy.purchases);
+  const tag = (on) => on
+    ? '<span class="log-badge badge-info" style="margin-left:6px; font-size:10px;">balancing</span>' : '';
+
+  host.innerHTML = `
+    <div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">` +
+    PS_FIGURES.map(f => {
+      const plugged = f.plug && psPlugReceivables;
+      const val = plugged
+        ? (derived && psResult ? Number(psResult.balance.tradeReceivables).toFixed(2) : '')
+        : (psCy[f.k] == null ? '' : psCy[f.k]);
+      return `
       <div class="form-group" style="margin:0;">
-        <label>${f.label}</label>
-        <input type="number" step="0.01" id="ps-fig-${f.k}" value="${psCy[f.k] == null ? '' : psCy[f.k]}"
+        <label>${f.label} ${plugged ? tag(true) : ''}</label>
+        <input type="number" step="0.01" id="ps-fig-${f.k}" value="${val}" ${plugged ? 'readonly style="background:var(--bg-subtle);"' : ''}
                oninput="psFigureInput('${f.k}', this.value)" />
         ${f.hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${f.hint}</div>` : ''}
-      </div>`).join('') + `</div>`;
+      </div>`; }).join('') + `</div>
+
+    <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-top:12px; cursor:pointer;">
+      <input type="checkbox" ${psPlugReceivables ? 'checked' : ''} style="width:auto;" onchange="psSetPlug(this.checked)" />
+      Balance the sheet through Trade Receivables
+    </label>
+
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
+      <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:4px;">Profit &amp; Purchases</div>
+      <p style="font-size:11.5px; color:var(--text-muted); margin:0 0 10px;">Two ends of one see-saw. Type the profit you need and Purchases balances to it; type Purchases and the profit follows. Whichever you touched last is the one held.</p>
+      <div class="form-grid" style="grid-template-columns:repeat(2,1fr); gap:14px;">
+        <div class="form-group" style="margin:0;">
+          <label>Profit Before Tax ${tag(psSolveFor === 'pbt')}</label>
+          <input type="number" step="0.01" id="ps-fig-pbtTarget" value="${pbtVal === '' ? '' : Number(pbtVal).toFixed(2)}"
+                 oninput="psSetSolve('pbt', this.value)" />
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Purchases of Goods ${tag(psSolveFor === 'purchases')}</label>
+          <input type="number" step="0.01" id="ps-fig-purchases" value="${purVal === '' ? '' : Number(purVal).toFixed(2)}"
+                 oninput="psSetSolve('purchases', this.value)" />
+        </div>
+      </div>
+    </div>`;
   psRenderRules();
   psRenderPpe();
+}
+
+// Editing one end of the see-saw makes the OTHER the balancing figure.
+function psSetPlug(on) {
+  psPlugReceivables = !!on;
+  psRun();
+  psRenderFigures();
+}
+
+function psSetSolve(which, v) {
+  if (which === 'pbt') { psSolveFor = 'purchases'; psCy.pbtTarget = v === '' ? null : psNum(v); }
+  else { psSolveFor = 'pbt'; psCy.purchases = v === '' ? null : psNum(v); }
+  psRecalcDebounced();
 }
 
 function psFigureInput(k, v) {
@@ -407,8 +519,7 @@ function psRenderRules() {
   const lineOf = (key) => {
     if (!res) return null;
     const all = [].concat(
-      res.income.materials.directItems, res.income.employeeItems,
-      res.income.otherItems, [{ key: 'incentiveExpense', amount: res.income.incentive }]);
+      res.income.materials.directItems, res.income.employeeItems, res.income.otherItems);
     return all.find(l => l.key === key) || null;
   };
 
@@ -418,33 +529,38 @@ function psRenderRules() {
       <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:6px;">${title}</div>
       <div class="table-wrap"><table class="client-table">
         <thead><tr>
-          <th style="width:34%;">Line</th><th style="text-align:right;">Last year</th>
-          <th style="width:190px;">Rule</th><th style="width:110px;">Growth %</th>
-          <th style="text-align:right;">This year</th>
+          <th style="width:38%;">Line</th><th style="text-align:right;">Last year</th>
+          <th style="width:110px;">Growth %</th>
+          <th style="text-align:right; width:170px;">This year</th>
+          <th style="width:40px;"></th>
         </tr></thead>
         <tbody>${lines.map(l => psRuleRowHtml(l, lineOf(l.key))).join('')}</tbody>
       </table></div></div>`;
   };
 
+  // Rent and Audit Fee arrive at 0% — the firm renegotiates them rather than
+  // indexing them — and everything else at the default growth. Both are just
+  // starting rates the user can change on the row.
   const flat = ProvisionalStatementEngine.FLAT_LINES;
   const otherLines = (psPy.otherItems || []).map((e, i) => ({
     key: e.key || ('other' + i), name: e.name, py: e.amount,
     def: flat.indexOf(e.key) >= 0 ? 'flat' : 'growth',
-  }));
+  })).concat(psCustom.map(c => ({ key: c.key, name: c.name, py: 0, def: 'growth', custom: true })));
 
   host.innerHTML =
-    group('Direct costs — scaled by turnover', [
-      { key: 'labour',  name: 'Labour Charges',               py: psPyDirect('labour'),  def: 'turnover' },
-      { key: 'freight', name: 'Clearing &amp; Freight Expenses', py: psPyDirect('freight'), def: 'turnover' },
+    group('Direct costs', [
+      { key: 'labour',  name: 'Labour Charges',                 py: psPyDirect('labour'),  def: 'growth' },
+      { key: 'freight', name: 'Clearing &amp; Freight Expenses', py: psPyDirect('freight'), def: 'growth' },
     ]) +
     group('Employee benefits', [
-      { key: 'salary',       name: 'Salary Expenses',     py: psPy.salary, def: 'growth' },
-      { key: 'otherContrib', name: 'Other Contributions', py: 0,           def: 'growth' },
+      { key: 'salary', name: 'Salary Expenses', py: psPy.salary, def: 'growth' },
     ]) +
-    group('Incentive — scaled by other income', [
-      { key: 'incentiveExpense', name: 'Incentive Expenses', py: psPyIncentive(), def: 'driver' },
-    ]) +
-    group('Other expenses', otherLines);
+    group('Other expenses', otherLines) +
+    `<div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+       <input type="text" id="ps-new-expense" placeholder="New expense line — e.g. Security Charges"
+              style="max-width:320px;" onkeydown="if(event.key==='Enter'){event.preventDefault();psAddCustomExpense();}" />
+       <button class="btn btn-outline btn-sm" onclick="psAddCustomExpense()">+ Add expense line</button>
+     </div>`;
 }
 
 function psPyDirect(which) {
@@ -461,31 +577,68 @@ function psPyIncentive() {
   return hit ? hit.amount : 0;
 }
 
+// One row, two editable numbers: the growth rate, and the resulting figure.
+// There is deliberately NO rule dropdown — every line is "last year + growth %",
+// and typing a figure into the right-hand box overrides that line outright
+// (shown as 0% so the override is visible rather than hidden behind a mode).
+// Rent and Audit Fee simply arrive with a 0% default, which is what "flat"
+// meant before; nothing about them is special-cased any more.
 function psRuleRowHtml(l, computed) {
   const ov = psRules[l.key] || {};
-  const rule = ov.rule || l.def;
-  const RULES = ProvisionalStatementEngine.RULES;
-  const opts = Object.keys(RULES).map(r =>
-    `<option value="${r}"${r === rule ? ' selected' : ''}>${escHtml(RULES[r].label)}</option>`).join('');
-  const growth = ov.growth == null ? (psNum(psEl('ps-growth') && psEl('ps-growth').value) || 5) : (ov.growth - 1) * 100;
+  const typed = ov.rule === 'typed';
+  const defPct = l.def === 'flat' ? 0 : (psNum((psEl('ps-growth') || {}).value) || 5);
+  const growth = ov.growth == null ? defPct : (ov.growth - 1) * 100;
+  const amount = typed ? (ov.typed == null ? '' : ov.typed) : (computed ? computed.amount : 0);
   return `<tr>
     <td>${l.name}</td>
     <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${psFmt(l.py)}</td>
-    <td><select onchange="psRuleSet('${l.key}','rule',this.value)">${opts}</select></td>
-    <td>${rule === 'growth'
-      ? `<input type="number" step="0.5" value="${growth}" onchange="psRuleSet('${l.key}','growthPct',this.value)" style="width:88px;" />`
-      : '<span style="color:var(--text-muted);">—</span>'}</td>
-    <td style="text-align:right; font-variant-numeric:tabular-nums;">${rule === 'typed'
-      ? `<input type="number" step="0.01" value="${ov.typed == null ? '' : ov.typed}" onchange="psRuleSet('${l.key}','typed',this.value)" style="width:140px; text-align:right;" />`
-      : `<strong>${psFmt(computed ? computed.amount : 0)}</strong>`}</td>
+    <td><input type="number" step="0.5" value="${typed ? '' : growth}" ${typed ? 'placeholder="—" disabled' : ''}
+               onchange="psRuleSet('${l.key}','growthPct',this.value)" style="width:88px;" /></td>
+    <td style="text-align:right;">
+      <input type="number" step="0.01" value="${amount === '' ? '' : Number(amount).toFixed(2)}"
+             onchange="psRuleSet('${l.key}','typed',this.value)"
+             style="width:150px; text-align:right; font-variant-numeric:tabular-nums;" />
+    </td>
+    <td style="width:40px;">${typed
+      ? `<button class="btn btn-outline btn-sm" title="Back to growth" onclick="psRuleSet('${l.key}','reset','')">↺</button>`
+      : (l.custom ? `<button class="btn btn-outline btn-sm" title="Remove line" onclick="psRemoveCustom('${l.key}')">✕</button>` : '')}</td>
   </tr>`;
 }
 
 function psRuleSet(key, field, v) {
   const ov = psRules[key] || (psRules[key] = {});
-  if (field === 'rule') ov.rule = v;
-  else if (field === 'growthPct') ov.growth = 1 + psNum(v) / 100;
-  else if (field === 'typed') ov.typed = psNum(v);
+  if (field === 'growthPct') {
+    const pct = psNum(v);
+    ov.growth = 1 + pct / 100;
+    ov.rule = pct === 0 ? 'flat' : 'growth';
+    delete ov.typed;
+  }
+  else if (field === 'typed') { ov.rule = 'typed'; ov.typed = psNum(v); }
+  else if (field === 'reset') { delete ov.rule; delete ov.typed; }
+  psRun();
+  psRenderRules();
+}
+
+// ── user-added expense lines ──
+// A client's books carry heads this firm's template never listed. A line added
+// here behaves exactly like one read off the prior-year file: same growth rule,
+// same override, same place in note 3.15.
+let psCustomSeq = 0;
+function psAddCustomExpense() {
+  const name = (psEl('ps-new-expense') || {}).value.trim();
+  if (!name) { psStatus('Give the expense line a name first.', 'error'); return; }
+  psCustom.push({ key: 'custom' + (++psCustomSeq), name, amount: 0 });
+  psEl('ps-new-expense').value = '';
+  psRun();
+  psRenderRules();
+  psStatus(`Added "${escHtml(name)}" to Other Expenses. Type its figure, or set a growth rate against last year.`, 'success');
+}
+
+function psRemoveCustom(key) {
+  const i = psCustom.findIndex(c => c.key === key);
+  if (i < 0) return;
+  psCustom.splice(i, 1);
+  delete psRules[key];
   psRun();
   psRenderRules();
 }
@@ -507,7 +660,33 @@ function psSeedLoans() {
   psRenderLoans();
 }
 
+// Interest belongs on the Loans card: it is what the facilities above it cost,
+// and reading a balance without its interest is how a finance cost quietly goes
+// missing from a statement.
+function psRenderInterest() {
+  const host = psEl('ps-interest');
+  if (!host) return;
+  const box = (k, label, hint) => `
+    <div class="form-group" style="margin:0;">
+      <label>${label}</label>
+      <input type="number" step="0.01" id="ps-fig-${k}" value="${psCy[k] == null ? '' : psCy[k]}"
+             oninput="psFigureInput('${k}', this.value)" />
+      ${hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${hint}</div>` : ''}
+    </div>`;
+  const total = psNum(psCy.interestTerm) + psNum(psCy.interestOD) + psNum(psCy.bankCharges);
+  host.innerHTML = `
+    <div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">
+      ${box('interestTerm', 'Interest on Term Loan', 'Against the non-current facilities above.')}
+      ${box('interestOD', 'Interest on STL / CC / OD', 'Against the current facilities above.')}
+      ${box('bankCharges', 'Bank Charges', '')}
+    </div>
+    <div style="margin-top:10px; font-size:12.5px; color:var(--text-muted);">
+      Finance Cost (note 3.14): <strong style="color:var(--brand-navy); font-variant-numeric:tabular-nums;">${psFmt(total)}</strong>
+    </div>`;
+}
+
 function psRenderLoans() {
+  psRenderInterest();
   [['nc', 'Non-Current'], ['c', 'Current']].forEach(([kind, label]) => {
     const host = psEl('ps-loans-' + kind);
     if (!host) return;
@@ -531,6 +710,10 @@ function psLoanEdit(kind, i, field, v) {
   psRecalcDebounced();
 }
 
+// The figure boxes on the Loans card write into the same psCy the main grid
+// does, so a redraw of one must not blank the other.
+function psInterestInput(k, v) { psFigureInput(k, v); }
+
 // ════════════════════════════════════════════════════════════════
 //  SOLVE
 // ════════════════════════════════════════════════════════════════
@@ -545,13 +728,13 @@ function psCollectInput() {
       closingStock: (p.materials && p.materials.closing) || (p.sfp && p.sfp.inventories),
       labour: psPyDirect('labour'), freight: psPyDirect('freight'),
       salary: p.salary, otherContrib: 0,
-      incentiveExpense: psPyIncentive(),
+      incentiveExpense: 0,   // the dedicated row is retired; add one as an Other Expense
       taxExpense: p.soi && p.soi.tax,
       advanceTax: (p.receivableItems || []).reduce((s, r) => s + (/advance|tds/i.test(r.name || '') ? psNum(r.amount) : 0), 0),
       otherExpenses: (p.otherItems || []).map((e, i) => ({
         key: e.key || ('other' + i), name: e.name, amount: e.amount,
         flat: flat.indexOf(e.key) >= 0,
-      })),
+      })).concat(psCustom.map(c => ({ key: c.key, name: c.name, amount: 0 }))),
       ppeClasses: psPpeInput,
       receivables: p.sfp && p.sfp.receivables, inventories: p.sfp && p.sfp.inventories,
       payables: p.sfp && p.sfp.payables, cash: p.sfp && p.sfp.cash,
@@ -566,6 +749,9 @@ function psCollectInput() {
     options: {
       growth: 1 + psNum((psEl('ps-growth') || {}).value || 5) / 100,
       taxProfile: (psEl('ps-tax-profile') || {}).value || 'corporate',
+      balanceVia: psPlugReceivables ? 'receivables' : 'none',
+      // 'purchases' means the typed PBT is held and purchases balances to it.
+      solveFor: psSolveFor,
     },
   };
 }
@@ -586,7 +772,28 @@ function psRun() {
 let psRecalcTimer = null;
 function psRecalcDebounced() {
   clearTimeout(psRecalcTimer);
-  psRecalcTimer = setTimeout(() => { psRun(); psRenderRules(); }, 220);
+  psRecalcTimer = setTimeout(() => {
+    psRun();
+    psRenderRules();
+    psRenderInterest();
+    psSyncSeesaw();
+  }, 220);
+}
+
+// Refresh only the derived half of the see-saw. A full re-render would throw
+// away the caret of whichever box the user is typing in — the same rule the
+// Autobooks confirmation grid follows.
+function psSyncSeesaw() {
+  if (!psResult) return;
+  const el = psEl(psSolveFor === 'purchases' ? 'ps-fig-purchases' : 'ps-fig-pbtTarget');
+  if (el && el !== document.activeElement) {
+    const v = psSolveFor === 'purchases' ? psResult.income.materials.purchases : psResult.income.pbt;
+    el.value = Number(v).toFixed(2);
+  }
+  const rec = psEl('ps-fig-tradeReceivables');
+  if (psPlugReceivables && rec && rec !== document.activeElement) {
+    rec.value = Number(psResult.balance.tradeReceivables).toFixed(2);
+  }
 }
 
 // Map the engine's output onto the shape fsxBuildReport() consumes. The
@@ -613,6 +820,9 @@ function psToOut(r) {
         pan: (psEl('ps-pan') || {}).value || '',
       },
       fy, fyPrev: isFinite(startY) ? `${startY - 1}-${String(startY).slice(2)}` : '',
+      // A provisional set is the seven statements and schedules — the tax
+      // computation belongs to the return, not here.
+      omitCoi: true,
       // 3.6 Share Capital states share COUNTS, which the note derives by
       // dividing the face value into the capital — so it can never disagree
       // with the balance sheet. Authorised is constitutional, not derivable,
