@@ -50,8 +50,10 @@ async function omInit() {
   // Non-admins get the roster but none of the controls. The database would
   // refuse their writes anyway; hiding the buttons keeps the screen honest
   // rather than offering actions that always fail.
-  document.getElementById('om-invite-bar').style.display = omIsAdmin() ? 'flex' : 'none';
-  document.getElementById('om-invites-card').style.display = omIsAdmin() ? 'block' : 'none';
+  // display is cleared rather than set to 'flex' so the stylesheet keeps
+  // owning the layout — hardcoding it here would silently override .om-invite-bar.
+  document.getElementById('om-invite-bar').style.display = omIsAdmin() ? '' : 'none';
+  document.getElementById('om-invites-card').style.display = omIsAdmin() ? '' : 'none';
 
   await omReload();
 }
@@ -90,6 +92,13 @@ function omRoleBadge(role) {
   return `<span class="log-badge ${cls}">${escHtml(role)}</span>`;
 }
 
+// .status-pill is the app's existing active/inactive treatment (Clients uses
+// it) — a dot plus a word, rather than another badge variant.
+function omStatusPill(status) {
+  const on = status === 'active';
+  return `<span class="status-pill ${on ? 'active' : 'inactive'}"><span class="dot"></span>${escHtml(status)}</span>`;
+}
+
 function omRenderMembers() {
   const body = document.getElementById('om-members-body');
   if (!body) return;
@@ -114,18 +123,16 @@ function omRenderMembers() {
     // Only ids reach the handler — never the email, which is free text
     // (CLAUDE.md rule 13). The row is looked up from state.
     const actions = (omIsAdmin() && !isMe)
-      ? `<button class="btn btn-outline btn-sm" onclick="omToggleStatus(${m.id})">
-           ${inactive ? 'Reactivate' : 'Deactivate'}
-         </button>
-         <button class="btn btn-outline btn-sm" onclick="omRemoveMember(${m.id})">Remove</button>`
-      : (isMe ? '<span style="color:var(--text-muted);font-size:12px;">You</span>' : '');
+      ? `<button class="btn btn-outline btn-sm" onclick="omToggleStatus(${m.id})">${inactive ? 'Reactivate' : 'Deactivate'}</button>`
+        + `<button class="btn btn-outline btn-sm" onclick="omRemoveMember(${m.id})">Remove</button>`
+      : (isMe ? '<span class="om-you">This is you</span>' : '');
 
-    return `<tr${inactive ? ' style="opacity:.55;"' : ''}>
+    return `<tr${inactive ? ' class="om-muted-row"' : ''}>
       <td>${escHtml(m.email)}</td>
       <td>${roleCell}</td>
-      <td><span class="log-badge ${inactive ? 'badge-red' : 'badge-green'}">${escHtml(m.status)}</span></td>
+      <td>${omStatusPill(m.status)}</td>
       <td>${escHtml(m.invited_by || '—')}</td>
-      <td style="white-space:nowrap;">${actions}</td>
+      <td class="om-actions">${actions}</td>
     </tr>`;
   }).join('');
 }
@@ -140,13 +147,12 @@ function omRenderInvites() {
   }
 
   body.innerHTML = omInvites.map(i => {
-    const exp = new Date(i.expires_at);
-    const days = Math.ceil((exp - Date.now()) / 86400000);
+    const days = Math.ceil((new Date(i.expires_at) - Date.now()) / 86400000);
     return `<tr>
       <td>${escHtml(i.email)}</td>
       <td>${omRoleBadge(i.role)}</td>
       <td>${days > 0 ? `in ${days} day${days === 1 ? '' : 's'}` : 'expired'}</td>
-      <td><button class="btn btn-outline btn-sm" onclick="omRevokeInvite(${i.id})">Revoke</button></td>
+      <td class="om-actions"><button class="btn btn-outline btn-sm" onclick="omRevokeInvite(${i.id})">Revoke</button></td>
     </tr>`;
   }).join('');
 }

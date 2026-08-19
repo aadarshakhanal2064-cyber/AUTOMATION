@@ -1638,3 +1638,60 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 .spb-reco-desc { width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1px solid var(--border); border-radius: 7px; font-family: 'Inter', sans-serif; background: var(--white); }
 .spb-reco-desc:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
 .spb-reco-b { font-weight: 700; }
+
+/* ── TEAM (members + invitations) ──────────────────────────────────────────
+   Layout only — the table itself is .client-table, the app's plain-table
+   style. (.app-table is the Tabulator skin and styles .tabulator-* internals
+   only, so a hand-written <table> given that class renders unstyled: no
+   width, no cell padding, no header treatment. That is exactly what went
+   wrong on the first pass.)
+
+   Column widths are fixed because the content is lopsided — one long email
+   against three short cells — and an auto-layout table hands most of the
+   width to whichever column happens to have the longest word. */
+.om-invite-bar {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-xs);
+  padding: 18px 20px; margin-bottom: 18px;
+}
+.om-invite-bar .form-group { margin: 0; }
+/* Capped rather than flexible: an email box stretched across a wide screen
+   looks broken and reads no better than one sized to its content. */
+.om-invite-email-group { flex: 1 1 260px; max-width: 380px; }
+.om-invite-role-group  { flex: 0 0 132px; }
+.om-invite-bar .btn { flex: 0 0 auto; }
+
+.om-table { table-layout: fixed; }
+.om-table th, .om-table td { overflow: hidden; text-overflow: ellipsis; }
+.om-table th:first-child, .om-table td:first-child { word-break: break-all; }
+.om-col-role    { width: 120px; }
+.om-col-status  { width: 100px; }
+.om-col-invited { width: 180px; }
+.om-col-actions { width: 190px; }
+.om-table td.om-actions { white-space: nowrap; }
+.om-table td.om-actions .btn { margin-right: 6px; }
+.om-table td.om-actions .btn:last-child { margin-right: 0; }
+
+/* The role picker sits inline in a table row, so it matches the row's rhythm
+   rather than the taller form-field height used in drawers. */
+.om-role-select {
+  width: 100%; padding: 6px 8px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 7px;
+  font-family: 'Inter', sans-serif; background: var(--white);
+}
+.om-role-select:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
+.om-you { color: var(--text-muted); font-size: 12px; font-style: italic; }
+.om-muted-row td { opacity: .6; }
+/* .table-wrap is overflow:hidden app-wide, so a table wider than the viewport
+   is CLIPPED rather than scrolled — on a phone the Actions column simply
+   could not be reached. Scoped to this screen rather than changing .table-wrap
+   globally, which every other module's layout already depends on. */
+.table-wrap.om-scroll { overflow-x: auto; }
+/* Below the wrap's own width the fixed columns stop fitting; let the table
+   keep its natural size and scroll instead of squeezing the email to nothing.
+   This figure is ARITHMETIC, not taste: the four fixed columns total 590px, so
+   a min-width near that leaves the email column a few pixels and word-break
+   turns one address into a 450px-tall stack. 880 leaves it ~290px. Re-add the
+   columns if you change any of them. */
+.om-scroll .om-table { min-width: 880px; }

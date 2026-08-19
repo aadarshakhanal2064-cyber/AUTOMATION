@@ -35,7 +35,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608181600">
+<link rel="stylesheet" href="css/styles.css?v=202608182200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -401,46 +401,50 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <h3>Members</h3>
+      <div id="om-invite-bar" class="om-invite-bar">
+        <div class="form-group om-invite-email-group">
+          <label for="om-invite-email">Invite someone</label>
+          <input type="email" id="om-invite-email" placeholder="colleague@example.com" />
         </div>
-        <div style="padding:0 24px 8px;">
-          <div id="om-invite-bar" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:18px 0 6px;">
-            <div class="form-group" style="margin:0; min-width:260px; flex:1;">
-              <label for="om-invite-email">Invite someone</label>
-              <input type="email" id="om-invite-email" placeholder="colleague@example.com" />
-            </div>
-            <div class="form-group" style="margin:0; min-width:130px;">
-              <label for="om-invite-role">Role</label>
-              <select id="om-invite-role">
-                <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
-                <option value="owner">Owner</option>
-              </select>
-            </div>
-            <button class="btn btn-primary" id="om-invite-btn" onclick="omCreateInvite()">Create invite link</button>
-          </div>
-          <div id="om-status" class="status-box" style="display:none;"></div>
+        <div class="form-group om-invite-role-group">
+          <label for="om-invite-role">Role</label>
+          <select id="om-invite-role">
+            <option value="staff">Staff</option>
+            <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
+          </select>
         </div>
-        <div class="table-wrap">
-          <table class="app-table">
-            <thead>
-              <tr><th>Email</th><th>Role</th><th>Status</th><th>Invited by</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="om-members-body"></tbody>
-          </table>
-        </div>
+        <button class="btn btn-primary" id="om-invite-btn" onclick="omCreateInvite()">Create invite link</button>
       </div>
 
-      <div class="card" id="om-invites-card" style="margin-top:20px;">
-        <div class="card-header">
-          <h3>Invitations waiting</h3>
-        </div>
-        <div class="table-wrap">
-          <table class="app-table">
+      <div id="om-status" class="status-box" style="display:none; margin-bottom:16px;"></div>
+
+      <div class="table-wrap om-scroll">
+        <table class="client-table om-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th class="om-col-role">Role</th>
+              <th class="om-col-status">Status</th>
+              <th class="om-col-invited">Invited by</th>
+              <th class="om-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="om-members-body"></tbody>
+        </table>
+      </div>
+
+      <div id="om-invites-card" style="margin-top:28px;">
+        <h3 style="font-size:15px; margin-bottom:12px;">Invitations waiting</h3>
+        <div class="table-wrap om-scroll">
+          <table class="client-table om-table">
             <thead>
-              <tr><th>Email</th><th>Role</th><th>Expires</th><th></th></tr>
+              <tr>
+                <th>Email</th>
+                <th class="om-col-role">Role</th>
+                <th class="om-col-status">Expires</th>
+                <th class="om-col-actions"></th>
+              </tr>
             </thead>
             <tbody id="om-invites-body"></tbody>
           </table>
@@ -3922,7 +3926,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/workDoneTodo.js?v=202608170900"></script>
 <!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
      from the topbar user menu, so it needs no nav button. -->
-<script src="js/orgMembers.js?v=202608182100"></script>
+<script src="js/orgMembers.js?v=202608182200"></script>
 <script src="js/auth.js?v=202608182100"></script>
 
 </body>
