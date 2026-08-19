@@ -322,20 +322,26 @@ main {
 .card-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 
 /* ── AUTH SECTION ──
-   Shared between the sign-in card (#auth-section-wrap) and the password-
-   recovery landing card (#recovery-wrap) — same layout, same card, different
-   content, so the rules are written against both ids/classes together. */
+   Shared between the sign-in card (#auth-section-wrap), the password-recovery
+   landing card (#recovery-wrap) and the invitation card (#invite-wrap) — same
+   layout, same card, different content, so the rules are written against all
+   three ids together.
+   ADD ANY NEW AUTH SCREEN TO EVERY SELECTOR IN THIS BLOCK. #invite-wrap was
+   introduced without being listed here and inherited none of it: no centring,
+   no card sizing, and — most visibly — no max-height on the logo, which then
+   rendered at its natural size and filled the whole card. */
 html:has(#auth-section-wrap:not([style*="display: none"])) body,
+html:has(#invite-wrap:not([style*="display: none"])) body,
 html:has(#recovery-wrap:not([style*="display: none"])) body { background: radial-gradient(ellipse at top left, #e6ecfb 0%, var(--bg-app) 45%), radial-gradient(ellipse at bottom right, #e3e8fa 0%, var(--bg-app) 50%); }
-#auth-section-wrap, #recovery-wrap { min-height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 40px 20px; position:relative; }
-#auth-section, #recovery-section {
+#auth-section-wrap, #recovery-wrap, #invite-wrap { min-height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 40px 20px; position:relative; }
+#auth-section, #recovery-section, #invite-section {
   max-width: 460px; width:100%; text-align: center; position:relative; z-index:2;
   border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
 }
-#auth-section .brand, #recovery-section .brand { border:none; padding:0 0 22px 0; }
-#auth-section .brand img, #recovery-section .brand img { max-height: 96px; }
-#auth-section h2, #recovery-section h2 { font-size: 26px; color: var(--brand-navy); margin-bottom: 8px; font-weight:700; letter-spacing:-0.3px; }
-#auth-section p, #recovery-section p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+#auth-section .brand, #recovery-section .brand, #invite-section .brand { border:none; padding:0 0 22px 0; }
+#auth-section .brand img, #recovery-section .brand img, #invite-section .brand img { max-height: 96px; }
+#auth-section h2, #recovery-section h2, #invite-section h2 { font-size: 26px; color: var(--brand-navy); margin-bottom: 8px; font-weight:700; letter-spacing:-0.3px; }
+#auth-section p, #recovery-section p, #invite-section p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
 /* Both forms reuse .form-group/.btn-primary; .auth-card-form only needs its
    labels left-aligned inside an otherwise centred card, and room above the
    submit button. .auth-inline-status is the shared error/spinner line under
@@ -1663,12 +1669,15 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 .om-invite-bar .btn { flex: 0 0 auto; }
 
 .om-table { table-layout: fixed; }
+/* Ellipsis is for the long email, NOT for the action buttons — clipping those
+   hid "Remove" behind a "..." and made it unclickable. */
 .om-table th, .om-table td { overflow: hidden; text-overflow: ellipsis; }
+.om-table td.om-actions, .om-table th.om-col-actions { overflow: visible; text-overflow: clip; }
 .om-table th:first-child, .om-table td:first-child { word-break: break-all; }
 .om-col-role    { width: 120px; }
 .om-col-status  { width: 100px; }
 .om-col-invited { width: 180px; }
-.om-col-actions { width: 190px; }
+.om-col-actions { width: 215px; }
 .om-table td.om-actions { white-space: nowrap; }
 .om-table td.om-actions .btn { margin-right: 6px; }
 .om-table td.om-actions .btn:last-child { margin-right: 0; }
@@ -1694,4 +1703,4 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
    a min-width near that leaves the email column a few pixels and word-break
    turns one address into a 450px-tall stack. 880 leaves it ~290px. Re-add the
    columns if you change any of them. */
-.om-scroll .om-table { min-width: 880px; }
+.om-scroll .om-table { min-width: 900px; }

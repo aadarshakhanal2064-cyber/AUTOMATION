@@ -40,7 +40,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608182200">
+<link rel="stylesheet" href="css/styles.css?v=202608190100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -291,14 +291,19 @@ function cropLoginLogoIcon(img) {
         <img src="assets/logo.jpeg" alt="Firm logo" onerror="logoFallback(this, 34)" onload="cropLoginLogoIcon(this)">
       </div>
       <h2>Join your team</h2>
-      <p>You've been invited. Confirm the email the invitation was sent to and choose a password.</p>
+      <!-- Filled by showInviteScreen() from invitation_info(): which firm, which
+           role, or why the link cannot be used. Never assume the signed-in user
+           is the invitee. -->
+      <p id="invite-intro">Checking your invitation…</p>
 
       <form id="invite-form" class="auth-card-form" onsubmit="submitInvite(); return false;" autocomplete="on">
         <input type="hidden" id="invite-token" />
         <div class="form-group" style="text-align:left;">
           <label for="invite-email">Email</label>
-          <input type="email" id="invite-email" name="email" autocomplete="username"
-                 placeholder="you@example.com" required />
+          <!-- Read-only: the address is a property of the invitation, and
+               accept_invitation() refuses any mismatch. Letting it be typed
+               only creates a failure the person cannot diagnose. -->
+          <input type="email" id="invite-email" name="email" autocomplete="username" readonly required />
         </div>
         <div class="form-group" style="text-align:left;">
           <label for="invite-password">Choose a password</label>
@@ -315,6 +320,9 @@ function cropLoginLogoIcon(img) {
         </button>
       </form>
       <div id="invite-status" class="auth-inline-status"></div>
+      <p id="invite-signin-instead" style="display:none; margin-top:20px; font-size:13px;">
+        Already joined? <a href="#" onclick="inviteGoToSignIn(); return false;" style="color:var(--accent-blue); font-weight:600;">Sign in instead</a>
+      </p>
     </div>
     <div class="auth-footer-trust">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -3962,7 +3970,7 @@ function cropLoginLogoIcon(img) {
 <!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
      from the topbar user menu, so it needs no nav button. -->
 <script src="js/orgMembers.js?v=202608182200"></script>
-<script src="js/auth.js?v=202608182100"></script>
+<script src="js/auth.js?v=202608190100"></script>
 
 </body>
 </html>

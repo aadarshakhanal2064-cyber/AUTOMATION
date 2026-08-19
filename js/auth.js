@@ -55,12 +55,10 @@ window.addEventListener('load', () => {
     // to still have an old session — straight into an app they have not
     // joined yet.
     if (inviteToken && event !== 'SIGNED_OUT') {
+      // Deliberately does NOT prefill from the open session — the address
+      // belongs to the invitation, not to whoever is currently signed in.
+      // showInviteScreen() reads it from the database.
       showInviteScreen(inviteToken);
-      // Prefill the address if a session is already open, so an existing user
-      // accepting an invite does not retype it.
-      if (session && session.user && session.user.email) {
-        document.getElementById('invite-email').value = session.user.email;
-      }
       return;
     }
     if (linkErrorDesc) {
@@ -198,7 +196,7 @@ function inviteStatus(msg, type) { showStatus(msg, type, 'invite-status'); }
 // is used, expired or rejected.
 const INVITE_STASH = 'pendingInviteToken';
 
-function showInviteScreen(token) {
+async function showInviteScreen(token) {
   try { localStorage.setItem(INVITE_STASH, token); } catch (e) {}
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-section').style.display = 'none';
@@ -207,15 +205,66 @@ function showInviteScreen(token) {
   document.getElementById('auth-section-wrap').style.display = 'none';
   document.getElementById('invite-wrap').style.display = 'flex';
   document.getElementById('invite-token').value = token;
+
+  // Ask the DATABASE who this invitation is for. An earlier version prefilled
+  // the signed-in user's address, which is wrong whenever an admin opens a
+  // link they created for someone else — the very first real test hit exactly
+  // that, and the join failed because accept_invitation() rightly refuses a
+  // mismatch. The address is not the person's to choose; it is a property of
+  // the invitation.
+  const emailEl = document.getElementById('invite-email');
+  const intro   = document.getElementById('invite-intro');
+  const form    = document.getElementById('invite-form');
+
+  const { data, error } = await window.sb.rpc('invitation_info', { p_token: token });
+  const info = Array.isArray(data) ? data[0] : data;
+
+  if (error || !info) {
+    form.style.display = 'none';
+    intro.textContent = 'This invitation link is not valid. Ask whoever invited you to send a new one.';
+    return;
+  }
+
+  if (info.status !== 'pending') {
+    form.style.display = 'none';
+    const why = info.status === 'accepted' ? 'has already been used'
+              : info.status === 'revoked'  ? 'has been revoked'
+              : 'has expired';
+    intro.textContent = `This invitation ${why}. Ask whoever invited you to send a new one.`;
+    // A used link is not an error state to sit in — offer the normal way in.
+    if (info.status === 'accepted') {
+      document.getElementById('invite-signin-instead').style.display = 'block';
+    }
+    return;
+  }
+
+  intro.innerHTML = `You've been invited to join <strong>${escHtml(info.org_name)}</strong> as `
+                  + `<strong>${escHtml(info.role)}</strong>. Choose a password to finish.`;
+  emailEl.value = info.email;
+  // Read-only rather than disabled: a disabled field is not submitted, and
+  // browsers still offer to save the credential against a readonly one.
+  emailEl.readOnly = true;
+  document.getElementById('invite-password').focus();
+}
+
+// Leaves the invitation screen for the ordinary sign-in form. Clears the token
+// from both the address bar and the stash so a spent link cannot bounce the
+// person straight back here.
+function inviteGoToSignIn() {
+  try { localStorage.removeItem(INVITE_STASH); } catch (e) {}
+  history.replaceState(null, '', location.pathname);
+  location.reload();
 }
 
 async function submitInvite() {
   const token = document.getElementById('invite-token').value;
+  // Read-only and set from invitation_info(), so this is the invited address
+  // rather than anything typed.
   const email = document.getElementById('invite-email').value.trim();
   const pw    = document.getElementById('invite-password').value;
   const pw2   = document.getElementById('invite-password-confirm').value;
 
-  if (!email) return inviteStatus('Enter the email address the invitation was sent to.', 'info');
+  if (!email) return inviteStatus('This invitation could not be read. Ask for a new link.', 'error');
   if (pw.length < 8) return inviteStatus('Choose a password of at least 8 characters.', 'info');
   if (pw !== pw2) return inviteStatus("The two passwords don't match.", 'info');
 
@@ -379,11 +428,29 @@ async function afterSupabaseSignIn(session) {
     // Not a member — show access denied. Also end the Supabase session:
     // RLS gives non-members zero rows anyway, but a lingering authenticated
     // session has no business persisting for someone we just rejected.
+    //
+    // If an invitation was opened on this device, say WHOSE it is. The first
+    // real test produced exactly this dead end: an owner signed in as one
+    // address while holding an invitation issued to another, and the screen
+    // could only say "not registered", which is true and useless.
+    let msg = `"${email}" is not registered as an authorised user. Ask your admin to add you to your organisation.`;
+    try {
+      const stashed = localStorage.getItem(INVITE_STASH);
+      if (stashed) {
+        const { data: inf } = await window.sb.rpc('invitation_info', { p_token: stashed });
+        const info = Array.isArray(inf) ? inf[0] : inf;
+        if (info && info.status === 'pending' && info.email !== (email || '').toLowerCase()) {
+          msg = `You're signed in as "${email}", but the invitation you opened was issued to `
+              + `"${info.email}". Sign out and sign in with that address to join ${info.org_name}.`;
+        }
+      }
+    } catch (e) { /* fall back to the generic message */ }
+
     window.sb.auth.signOut();
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-section-wrap').style.display = 'none';
-    document.getElementById('access-denied-msg').textContent =
-      `"${email}" is not registered as an authorised user. Ask your admin to add you to your organisation.`;
+    document.getElementById('invite-wrap').style.display = 'none';
+    document.getElementById('access-denied-msg').textContent = msg;
     document.getElementById('access-denied-wrap').style.display = 'flex';
     return;
   }
