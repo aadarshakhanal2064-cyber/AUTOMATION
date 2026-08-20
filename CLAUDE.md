@@ -13,6 +13,8 @@ This file is loaded into **every** session, so it holds only what protects work 
 1. **Before editing a feature module, read its doc** — the §5 index maps every module to a file in `docs/modules/`. Those docs are the same text that used to be in this file (moved verbatim 2026-07-27), so working without them means working with less than previous sessions had.
 2. **Before schema work, read `docs/database.md`** and re-verify against live Supabase via the MCP rather than trusting any snapshot.
 
+> **`HANDOFF.md` exists at repo root right now (2026-08-20) — read it before touching BM/AGM Minutes.** It's a session-continuity note for unfinished formatting/alignment work on the just-rebuilt template, not permanent documentation; delete both it and this callout once that work is confirmed done.
+
 **Keep it current.** When a feature ships or a convention changes, update the relevant doc **in the same commit**. Hard rules, deliberate decisions, ID prefixes and fiscal-year formats belong in *this* file; everything else belongs in `docs/`. See §17 for the full map.
 
 ---
