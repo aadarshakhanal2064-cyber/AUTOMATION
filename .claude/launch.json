@@ -12,6 +12,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["--yes", "serve", "-l", "5199", "."],
       "port": 5199
+    },
+    {
+      "name": "static-site-auto",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "."],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }
