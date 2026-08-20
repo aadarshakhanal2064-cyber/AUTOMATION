@@ -880,6 +880,16 @@ textarea { resize: vertical; min-height: 100px; }
 .bm-token-editable:hover { background: var(--blue-bg); }
 .bm-token-editable.editing { background: var(--yellow-bg); outline: 1px dashed var(--yellow-dk); outline-offset: 1px; }
 
+/* docx-preview's precise tab-stop rendering (bmAgmMinutes.js, auditorChange.js,
+   confirmationLetters.js all pass experimental:true) fills each real tab with
+   an &nbsp; span sized via word-spacing. It's a pure width filler with no
+   visible content — but inherited in Mangal/Nirmala UI, the browser has no
+   nbsp glyph in those fonts and shows a placeholder box/circle instead, at
+   every tab stop on the page. Forcing a font guaranteed to render nbsp blank
+   fixes it without touching the underlying .docx, which never had this
+   problem (Word lays out real tabs natively, no nbsp involved). */
+.bm-docx-tab-stop { font-family: Arial, sans-serif !important; }
+
 .bm-summary-card { padding: 18px; }
 .rep-form-grid .bm-summary-card,
 .rep-form-grid .bm-shareholders-group { grid-column: 1 / -1; }
