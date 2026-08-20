@@ -804,9 +804,18 @@ const scaleFontSizes = s => s.replace(
 //    added roughly 1000pt (~14in) of whitespace. The source got away with
 //    it because Preeti text is byte-narrow ASCII; real Unicode Devanagari
 //    wraps to more lines and stands taller, so the same defaults overflow.
+//    Only the `after` is dropped; the LINE height stays at the source's
+//    276 (1.15). Taking it down to 240 as well fixed Word and wrecked the
+//    preview: Word derives "single" from the font's own metrics, which
+//    leaves Devanagari matras room, whereas docx-preview maps it to a flat
+//    CSS line-height where 1.0 makes one line touch the next. 276 is the
+//    value the preview always had and rendered correctly. Measured in
+//    Word, the document stays at 10 pages anywhere up to line=300 and
+//    turns 11 at 312 — so this keeps real headroom rather than sitting on
+//    the limit.
 const tightDocDefaults = s => s.replace(
   /<w:pPrDefault><w:pPr><w:spacing[^/]*\/><\/w:pPr><\/w:pPrDefault>/,
-  '<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault>'
+  '<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault>'
 );
 
 // 2. MANGAL IS NOT INSTALLED on the firm's machine (only Nirmala UI is),
@@ -851,7 +860,9 @@ function fitSection51(xml) {
   for (const p of hits) {
     out += tail.slice(cursor, p.start);
     cursor = p.end;
-    let px = p.xml.replace(/w:line="3\d\d" w:lineRule="auto"/g, 'w:line="240" w:lineRule="auto"');
+    // 276 (1.15), not 240 — same reason as tightDocDefaults: a flat 1.0
+    // line-height makes Devanagari lines touch in the preview.
+    let px = p.xml.replace(/w:line="3\d\d" w:lineRule="auto"/g, 'w:line="276" w:lineRule="auto"');
     if (!/<w:t[ >]/.test(p.xml)) {   // an empty padding paragraph
       px = px.replace(/<w:(sz|szCs) w:val="\d+"\/>/g, (_, tag) => `<w:${tag} w:val="${SEC51_GAP_SZ}"/>`);
     }
