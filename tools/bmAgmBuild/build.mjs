@@ -202,7 +202,7 @@ const INSERT_BEFORE = {
   217: ['{{#boardChanged}}'],   // opens the whole Change-of-Board section
   225: ['{{#attendees}}'],
   241: ['{{#attendees}}'],      // Director's Declaration: one page per attendee
-  185: ['{{#boardChanged}}'],   // the matching tapsil line in registrar letter 2
+  185: ['{{#boardChanged}}'],   // the matching tapsil lines in registrar letter 2 (items 5 AND 6 — the §92 declaration @186 is only attached when the board section itself prints)
   14:  ['{{#bmHasExtra}}'],     // BM proposal item 2 (the extra proposal itself)
   20:  ['{{#bmHasExtra}}'],     // BM decision 2 (heading @20 + content @21)
   49:  ['{{#boardChanged}}'],   // AGM proposal item 4 (director reappointment)
@@ -215,7 +215,7 @@ const INSERT_AFTER = {
   40:  ['{{/attendees}}'],
   204: ['{{/attendees}}'],
   225: ['{{/attendees}}'],
-  185: ['{{/boardChanged}}'],
+  186: ['{{/boardChanged}}'],   // closes the 185-186 tapsil wrap (item 5 + item 6, one block)
   14:  ['{{/bmHasExtra}}'],
   21:  ['{{/bmHasExtra}}'],
   49:  ['{{/boardChanged}}'],
