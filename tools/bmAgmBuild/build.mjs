@@ -707,8 +707,24 @@ const fixDateLineTabs = s => {
   return s.replace(old4Tab, new1Tab);
 };
 
+// The source types every colon-style separator ("नाम ः–", "निर्णय नं. १ ः",
+// "बिहान ९ः००") as the Devanagari visarga (ः) rather than an ASCII colon —
+// standard Preeti-keyboard practice (the ":" key produces this glyph in
+// that font) but not what the firm wants printed (user-requested,
+// 2026-08-20). ONE of the 34 occurrences is not this convention at all:
+// "क्रमशः" ("respectively") ends in visarga as part of its actual Nepali
+// spelling — replacing it would misspell a real word, not fix punctuation.
+// Protect it, convert everything else, restore it.
+const fixVisargaColon = s => {
+  const GUARD = ''; // PUA sentinel, never otherwise in this document
+  return s
+    .replace(/क्रमशः/g, 'क्रमश' + GUARD)
+    .replace(/ः/g, ':')
+    .replace(new RegExp(GUARD, 'g'), 'ः');
+};
+
 files['word/document.xml'] = Buffer.from(
-  fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail)))))))))))),
+  fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail))))))))))))),
   'utf8'
 );
 for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml']) {
@@ -752,6 +768,12 @@ for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml'
   }
   if ((built.match(/w:left="6480" w:right="0"/g) || []).length !== 3) {
     throw new Error('declaration-page signature block indent did not apply to all 3 lines');
+  }
+  {
+    const visargaCount = (built.match(/ः/g) || []).length;
+    if (visargaCount !== 1 || !built.includes('क्रमशः')) {
+      throw new Error(`visarga->colon conversion is off — expected exactly 1 surviving ः (inside क्रमशः), found ${visargaCount}`);
+    }
   }
 
   // Every sample value MUST have become a token. A value that survives is a
