@@ -1277,8 +1277,9 @@ function cropLoginLogoIcon(img) {
                 <div class="field-error-msg" id="bm-agmDate-error"></div>
               </div>
               <div class="form-group">
-                <label>Time of AGM</label>
-                <input type="text" id="bm-agmTime" placeholder="e.g. 11:00" value="11:00" autocomplete="off" />
+                <label>Registrar Letters Date (B.S.)</label>
+                <input type="text" id="bm-letterDate" placeholder="e.g. 2079/09/16" autocomplete="off" onblur="bmValidateDateField('bm-letterDate')" />
+                <div class="field-error-msg" id="bm-letterDate-error"></div>
               </div>
               <div class="form-group">
                 <label>Nepal Fiscal Year</label>
@@ -1314,8 +1315,35 @@ function cropLoginLogoIcon(img) {
                 <input type="text" id="bm-paidUpCapital" placeholder="e.g. 25,00,000" />
               </div>
               <div class="form-group">
-                <label>Audit Fee</label>
-                <input type="text" id="bm-auditFee" placeholder="e.g. 50,000" />
+                <label>Director Reappointment Term (years)</label>
+                <input type="text" id="bm-termYears" placeholder="e.g. 4" value="4" />
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Board Meeting — Additional Proposal (optional)</label>
+                <input type="text" id="bm-bmExtraTitle" placeholder="Proposal item — leave blank if none" />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Board Meeting — Decision on Additional Proposal</label>
+                <input type="text" id="bm-bmExtraDecision" placeholder="Decision text — leave blank if none" />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>AGM — Additional Proposal (optional)</label>
+                <input type="text" id="bm-agmExtraTitle" placeholder="Proposal item — leave blank if none" />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>AGM — Decision on Additional Proposal</label>
+                <input type="text" id="bm-agmExtraDecision" placeholder="Decision text — leave blank if none" />
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <input type="checkbox" id="bm-boardChanged" style="width:auto;" onchange="bmToggleBoardChangedFields()" />
+                <label for="bm-boardChanged" style="margin:0;">Board/chairman was reappointed at this AGM — generate the "Change of Board of Director" documents</label>
+              </div>
+              <div class="form-group" id="bm-boardChangeDate-group" style="display:none;">
+                <label>Date of Board Change Meeting (B.S.)</label>
+                <input type="text" id="bm-boardChangeDate" placeholder="e.g. 2079/09/17" autocomplete="off" onblur="bmValidateDateField('bm-boardChangeDate')" />
+                <div class="field-error-msg" id="bm-boardChangeDate-error"></div>
               </div>
             </div>
 
@@ -4151,7 +4179,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/documentStore.js?v=202608171700"></script>
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
-<script src="js/core/orgIdentity.js?v=202608182000"></script>
+<script src="js/core/orgIdentity.js?v=202608201030"></script>
 <script src="js/tabs.js?v=202608190900"></script>
 <script src="js/dashboard.js?v=202608181500"></script>
 <script src="js/registrar.js?v=202608110900"></script>
@@ -4161,7 +4189,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/notesToAccounts.js?v=202608171000"></script>
 <script src="js/depreciation.js?v=202608171700"></script>
 <script src="js/depreciationSlm.js?v=202608171400"></script>
-<script src="js/bmAgmMinutes.js?v=202608151800"></script>
+<script src="js/bmAgmMinutes.js?v=202608201030"></script>
 <script src="js/auditorChange.js?v=202608151800"></script>
 <script src="js/companyProfile.js?v=202608101800"></script>
 <script src="js/salesPurchaseBook.js?v=202608170900"></script>

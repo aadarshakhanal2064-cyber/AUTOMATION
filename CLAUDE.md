@@ -308,7 +308,7 @@ Three distinct paths — pick the one matching the document family. Detail in **
 
 **For plain tabular reports use `ReportExport` (§4)** rather than hand-rolling — Party Ledger and Final Account render all six views through it. The bespoke generators above were left alone deliberately: their merged multi-block geometry isn't a simple grid.
 
-The BM/AGM template is a Preeti→Unicode (Mangal) conversion — **never revert to Preeti**, and treat any template modification as a re-validation project (`docs/history/HANDOFF.md` §4–5; tooling was never committed).
+The BM/AGM template is a Preeti→Unicode (Mangal) conversion — **never revert to Preeti**, and treat any template modification as a re-validation project. The template was rebuilt from scratch 2026-08-20 against a new source document, and this time the build tooling **is committed** — `tools/bmAgmBuild/build.mjs` (`docs/modules/registrar.md` §5.11a has the full detail); `docs/history/HANDOFF.md` §4–5 is superseded for BM/AGM specifically but stays as the Preeti-conversion background.
 
 ### Nepali locale — fiscal-year formats are deliberately inconsistent
 
@@ -415,7 +415,6 @@ The established pattern — **investigate with real evidence → implement only 
 
 | Item | Severity | Notes |
 |---|---|---|
-| BM/AGM template-build tooling never committed | High | Exists only as prose in `docs/history/HANDOFF.md`. Any template rebuild starts by recreating it. |
 | CSP keeps `'unsafe-inline'` for scripts | Medium | Full fix = refactoring hundreds of inline `onclick=` handlers off inline script; a separate project. escHtml audit is the mitigation. |
 | No automated tests | Medium | All verification is manual/ad-hoc per §12, except Autobooks (`tools/spbVerify.mjs`) and tenant isolation (`tools/tenantVerify.mjs`). Both are the model for extending this: dependency-free Node, asserting against real data. |
 | Two live deployments with different security postures | Medium | Vercel (in daily use) serves the full header set from `vercel.json`; the GitHub Pages mirror serves none of it and is protected only by the framebuster + meta `Referrer-Policy` (§13). Decide whether the mirror should exist at all — an unprotected copy of the same app, pointed at the same production database, is a second front door nobody is watching. |

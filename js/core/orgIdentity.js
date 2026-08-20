@@ -83,7 +83,7 @@ const OrgIdentity = (function () {
     // Change quick-fill pickers. Same shape config.js used to build.
     const regd = emptyInPlace(window.REGD_AUDIT_FIRMS);
     Object.values(rep).forEach(f => {
-      regd.push({ firmName: f.nameNp, auditorName: f.auditorNameNp, title: f.titleNp });
+      regd.push({ firmName: f.nameNp, auditorName: f.auditorNameNp, title: f.titleNp, address: f.address });
     });
 
     // Every firm can raise a memo or hold a bank account, letterhead or not.

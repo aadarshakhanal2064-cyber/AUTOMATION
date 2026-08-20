@@ -114,6 +114,17 @@ function bmClearExtraShareholders() {
   document.getElementById('bm-extra-shareholders').innerHTML = '';
 }
 
+// Shows/hides the board-change meeting date field alongside the "board was
+// reappointed" checkbox — the whole "Change of Board of Director" block
+// (its own minutes page, the tapsil item in the registrar letter, and one
+// Director's Declaration page per attendee) is gated on this single flag in
+// the template (`{{#boardChanged}}`), so the date only matters when it's on.
+function bmToggleBoardChangedFields() {
+  const checked = document.getElementById('bm-boardChanged').checked;
+  document.getElementById('bm-boardChangeDate-group').style.display = checked ? '' : 'none';
+  bmOnFormChanged();
+}
+
 // Full attendee list in order: chairman, then every shareholder name (fixed
 // field + any additional rows), skipping blanks.
 function bmGetAllShareholderNames() {
@@ -180,38 +191,56 @@ function bmStatus(html, type) {
   showStatus(html, type, 'bm-status');
 }
 
-// Chairman is listed unnumbered; shareholders (the fixed field plus any added
-// rows) get their own independent numbering starting at 1, in Devanagari, for
-// the template's {{#shareholders}} loop.
-function bmBuildShareholderList() {
-  return bmGetAllShareholderNames().map((name, i) => ({ num: bmToDevanagari(String(i + 1)), name }));
+// The attendee list is ONE numbered loop covering the chairman AND every
+// shareholder (chairman first, role अध्यक्ष; the rest, role संचालक) — unlike
+// the old template, this document numbers the chairman too, so there is no
+// separate "unnumbered chairman + numbered shareholders" split. `isChairman`
+// drives the two role-conditionals in the per-attendee declaration pages
+// (§ Declaration to be submitted by the Director) further down the template.
+function bmBuildAttendees() {
+  const chairman = document.getElementById('bm-chairmanName').value.trim();
+  const list = [];
+  if (chairman) list.push({ name: chairman, role: 'अध्यक्ष', isChairman: true });
+  bmGetAllShareholderNames().forEach(name => list.push({ name, role: 'संचालक', isChairman: false }));
+  return list.map((a, i) => Object.assign(a, { num: bmToDevanagari(String(i + 1)) }));
 }
 
 function bmBuildData() {
   const $ = id => document.getElementById(id).value.trim();
   const bm = bmParseBsDate($('bm-bmDate'));
   const agm = bmParseBsDate($('bm-agmDate'));
+  const letter = bmParseBsDate($('bm-letterDate'));
+  const boardChanged = document.getElementById('bm-boardChanged').checked;
+  const boardChangeDateVal = $('bm-boardChangeDate');
+  const boardChangeParsed = boardChanged && boardChangeDateVal ? bmParseBsDate(boardChangeDateVal) : null;
   const fy = bmFiscalParts(document.getElementById('bm-fiscalYear').value);
   const firmIdx = document.getElementById('bm-auditorFirm').value;
   const firm = firmIdx !== '' ? BM_AUDIT_FIRMS[firmIdx] : null;
-  return { bm, agm, data: {
+  const attendees = bmBuildAttendees();
+  return { bm, agm, letter, boardChanged, boardChangeParsed, data: {
     companyName:        $('bm-companyName'),
     registrationNumber: $('bm-regNo'),
-    chairmanName:       $('bm-chairmanName'),
-    shareholders:       bmBuildShareholderList(),
-    auditFirmName:      firm ? firm.firmName : '',
+    companyAddress:     $('bm-address'),
+    chairmanName:        $('bm-chairmanName'),
+    attendees,
+    attendeeNamesJoined: attendees.map(a => a.name).join(', '),
     auditorName:        firm ? firm.auditorName : '',
-    auditorTitle:       firm ? firm.title : '',
-    auditFee:           bmFormatAmount($('bm-auditFee')),
+    auditorAddress:     firm ? firm.address : '',
     authorizedCapital:  bmFormatAmount($('bm-authCapital')),
     issuedCapital:      bmFormatAmount($('bm-issuedCapital')),
     paidUpCapital:      bmFormatAmount($('bm-paidUpCapital')),
     fiscalYear:         fy.fy,
     nextFiscalYear:     fy.next,
-    bmYear:   bm ? bm.year : '', bmMonthName: bm ? bm.monthName : '', bmDay: bm ? bm.day : '',
-    agmDateFull: agm ? agm.full : '', agmMonthName: agm ? agm.monthName : '', agmDay: agm ? agm.day : '',
-    agmTime:  bmToDevanagari($('bm-agmTime') || '11:00'),
-    letterDate: agm ? agm.full : '',
+    bmDate:             bm ? bm.full : '',
+    agmDate:            agm ? agm.full : '',
+    letterDate:         letter ? letter.full : '',
+    boardChangeDate:    boardChangeParsed ? boardChangeParsed.full : '',
+    directorTermYears:  bmToDevanagari($('bm-termYears') || '4'),
+    bmExtraProposalTitle:     $('bm-bmExtraTitle') || 'थप प्रस्ताव छैन',
+    bmExtraProposalDecision:  $('bm-bmExtraDecision') || 'छैन ।',
+    agmExtraProposalTitle:    $('bm-agmExtraTitle') || 'थप प्रस्ताव छैन',
+    agmExtraProposalDecision: $('bm-agmExtraDecision') || 'छैन ।',
+    boardChanged,
   }};
 }
 
@@ -228,8 +257,9 @@ async function generateBmAgmMinutes() {
   if (!val('bm-companyName')) { bmStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return; }
   if (!val('bm-bmDate') || !val('bm-agmDate')) { bmStatus('बैठक र सभाको मिति भर्नुहोस् (enter the B.S. meeting dates).', 'info'); return; }
 
-  const { bm, agm, data } = bmBuildData();
+  const { bm, agm, boardChanged, boardChangeParsed, data } = bmBuildData();
   if (!bm || !agm) { bmStatus('मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
+  if (boardChanged && !boardChangeParsed) { bmStatus('संचालक परिवर्तन भएको बैठकको मिति भर्नुहोस् (enter the board-change meeting date, or uncheck the box).', 'info'); return; }
 
   try {
     bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
@@ -444,10 +474,12 @@ function bmEditableTokenTargets(data) {
   const targets = [
     { field: 'bm-companyName', value: data.companyName },
     { field: 'bm-regNo', value: data.registrationNumber },
+    { field: 'bm-address', value: data.companyAddress },
     { field: 'bm-chairmanName', value: data.chairmanName },
   ];
   const extraInputs = document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input');
-  (data.shareholders || []).forEach((sh, i) => {
+  const shareholders = (data.attendees || []).filter(a => !a.isChairman);
+  shareholders.forEach((sh, i) => {
     if (i === 0) targets.push({ field: 'bm-shareholderName', value: sh.name });
     else if (extraInputs[i - 1]) targets.push({ el: extraInputs[i - 1], value: sh.name });
   });
@@ -613,11 +645,13 @@ function bmResetForm() {
   const panel = document.getElementById('regd-bmAgmMinutes-panel');
   if (!panel) return;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
-  document.getElementById('bm-agmTime').value = '11:00';
+  document.getElementById('bm-termYears').value = '4';
   document.getElementById('bm-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
   document.getElementById('bm-auditorFirm').value = '';
   bmRenderFirmTrigger();
   bmClearExtraShareholders();
+  document.getElementById('bm-boardChanged').checked = false;
+  bmToggleBoardChangedFields();
 
   document.getElementById('bm-company-summary').style.display = 'none';
   document.getElementById('bm-company-edit-fields').style.display = 'contents';
@@ -674,7 +708,9 @@ const bmAutosave = WorkflowEngine.createAutosave('bmAgmDraft', {
   collect: () => {
     const panel = document.getElementById('regd-bmAgmMinutes-panel');
     const values = {};
-    panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => { values[el.id] = el.value; });
+    panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => {
+      values[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
     const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
     return { values, extraShareholders };
   },
@@ -682,9 +718,11 @@ const bmAutosave = WorkflowEngine.createAutosave('bmAgmDraft', {
     if (!draft.values || !Object.values(draft.values).some(v => v)) return;
     Object.entries(draft.values).forEach(([id, val]) => {
       const el = document.getElementById(id);
-      if (el) el.value = val;
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
     });
     (draft.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
+    bmToggleBoardChangedFields();
     if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
     bmStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
   },
