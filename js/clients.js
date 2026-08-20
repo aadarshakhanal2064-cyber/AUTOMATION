@@ -591,7 +591,10 @@ function applyClientFilters() {
     else if (itType && (c.it_return_type || '') !== itType) return false;
     if (category && nbCategorize(c.business_nature) !== category) return false;
     if (!q) return true;
-    return [c.name, c.email, c.pan, c.registration_number, c.entity_type,
+    // registration_number is deliberately absent: it is a company-register
+    // column, and since 2026-08-20 no client row carries one. Searching a dead
+    // column here would quietly imply the directory still holds companies.
+    return [c.name, c.email, c.pan, c.entity_type,
             c.district, c.business_nature, c.it_return_type, c.tax_registration_type]
       .some(v => (v || '').toLowerCase().includes(q));
   });
@@ -829,14 +832,37 @@ async function deleteClient(id) {
 //  IMPORT CLIENTS FROM EXCEL
 // ════════════════════════════════════════════
 
-function openImportModal() {
-  window.importHeaders = []; 
-  window.importDataRows = []; 
-  window.importFieldMap = {}; 
+// ── The spreadsheet import wizard — ONE implementation, two directories ──
+// `profileKey` picks which directory is being filled: 'clients' (this tab) or
+// 'registrar' (Company Registrar → Company Profile). Everything that differs
+// between them — the field list, the destination table, the noun in the
+// buttons, the preview columns, where extra shareholders go, what to reload
+// afterwards — lives in window.IMPORT_PROFILES (js/config.js), so the wizard
+// itself never learns about either record type.
+//
+// Defaults to 'clients' because index.html's Clients button predates the
+// second profile and a bare openImportModal() must keep meaning what it did.
+function importProfile() {
+  return window.IMPORT_PROFILES[window.importProfileKey] || window.IMPORT_PROFILES.clients;
+}
+
+function openImportModal(profileKey) {
+  window.importProfileKey = window.IMPORT_PROFILES[profileKey] ? profileKey : 'clients';
+  const profile = importProfile();
+
+  // Point the global every step of the wizard already reads at this profile's
+  // fields, rather than threading the profile through eight functions.
+  window.IMPORT_FIELDS = profile.fields();
+
+  window.importHeaders = [];
+  window.importDataRows = [];
+  window.importFieldMap = {};
   window.importPreviewRows = [];
   document.getElementById('import-file-input').value = '';
   document.getElementById('import-file-status').innerHTML = '';
   document.getElementById('import-result-status').innerHTML = '';
+  document.getElementById('import-modal-title').textContent = profile.title;
+  document.getElementById('import-map-intro').textContent = profile.intro;
   showImportStep(1);
   document.getElementById('import-modal').classList.add('open');
 }
@@ -918,13 +944,14 @@ function renderColumnMapping() {
 }
 
 function buildImportPreview() {
+  const profile = importProfile();
   const nameIdx = window.importFieldMap['name'];
   if (nameIdx === -1 || nameIdx === undefined) {
-    alert('Please map a column to "Client Name" before continuing — it\'s required.');
+    alert(`Please map a column to "${profile.noun} Name" before continuing — it's required.`);
     return;
   }
 
-  const existingByName = new Map(window.clientsList.map(c => [(c.name || '').trim().toLowerCase(), c]));
+  const existingByName = new Map(profile.existing().map(c => [(c.name || '').trim().toLowerCase(), c]));
   const seenInFile = new Set();
   const BACKFILLABLE_FIELDS = window.IMPORT_FIELDS.map(f => f.key).filter(k => k !== 'name');
 
@@ -986,28 +1013,31 @@ function renderImportPreview() {
   const extraShareholderCount = window.importPreviewRows.filter(r => r.status === 'extra-shareholder').length;
   const backfillRows = mainRows.filter(r => r.status === 'dupe' && Object.keys(r.fieldsToBackfill || {}).length > 0);
 
+  const profile = importProfile();
+
   document.getElementById('import-stats').innerHTML = `
-    <div class="import-stat"><div class="num">${mainRows.length}</div><div class="lbl">Companies in File</div></div>
+    <div class="import-stat"><div class="num">${mainRows.length}</div><div class="lbl">${escHtml(profile.nounFile)}</div></div>
     <div class="import-stat"><div class="num">${valid}</div><div class="lbl">Will Import</div></div>
     <div class="import-stat warn"><div class="num">${dupes}</div><div class="lbl">Duplicates Found</div></div>
     <div class="import-stat bad"><div class="num">${bad}</div><div class="lbl">Missing Name</div></div>
   `;
 
-  const noEmailMsg = noEmail
-    ? `⚠️ ${noEmail} of the clients being imported have no email address. You can add emails later from the Client Directory — the "Send Document" feature needs an email before it can be used for that client.`
+  // Only the client directory has an email column to be missing — the company
+  // register has no email field at all, so this warning can't apply there.
+  const noEmailMsg = (noEmail && window.importProfileKey === 'clients')
+    ? `⚠️ ${noEmail} of the clients being imported have no email address. You can add emails later from the Client Directory.`
     : '';
   const extraMsg = extraShareholderCount
     ? `ℹ️ Found ${extraShareholderCount} additional shareholder name${extraShareholderCount === 1 ? '' : 's'} in the file (rows with no company name, listed under the company above them) — these will be attached to their company, not imported as separate clients. Check the "Shareholders" column below.`
     : '';
   const backfillMsg = backfillRows.length
-    ? `ℹ️ ${backfillRows.length} existing client${backfillRows.length === 1 ? '' : 's'} ${backfillRows.length === 1 ? 'is' : 'are'} already in your directory but ${backfillRows.length === 1 ? 'is' : 'are'} missing some fields this file has — those blank fields will be filled in. Nothing already on file will be overwritten.`
+    ? `ℹ️ ${backfillRows.length} existing ${backfillRows.length === 1 ? profile.noun.toLowerCase() : profile.nounPlural.toLowerCase()} ${backfillRows.length === 1 ? 'is' : 'are'} already in your directory but ${backfillRows.length === 1 ? 'is' : 'are'} missing some fields this file has — those blank fields will be filled in. Nothing already on file will be overwritten.`
     : '';
   document.getElementById('import-warning').innerHTML = [noEmailMsg, extraMsg, backfillMsg]
     .filter(Boolean).map(m => `<div class="status-box status-info">${m}</div>`).join('');
 
-  document.getElementById('import-preview-head').innerHTML = `
-    <tr><th></th><th>Name</th><th>Entity Type</th><th>Email</th><th>PAN</th><th>Phone</th><th>Shareholders</th></tr>
-  `;
+  document.getElementById('import-preview-head').innerHTML =
+    `<tr><th></th>${profile.previewColumns.map(c => `<th>${escHtml(c.title)}</th>`).join('')}<th>Shareholders</th></tr>`;
 
   const MAX_SHOW = 60;
   const rowsToShow = mainRows.slice(0, MAX_SHOW);
@@ -1024,52 +1054,40 @@ function renderImportPreview() {
     const shareholders = [r.shareholder_name, ...(r.extraShareholders || [])].filter(Boolean);
     return `<tr class="${cls}">
       <td>${tag}</td>
-      <td>${escHtml(r.name || '—')}</td>
-      <td>${escHtml(r.entity_type || '—')}</td>
-      <td>${escHtml(r.email || '—')}</td>
-      <td>${escHtml(r.pan || '—')}</td>
-      <td>${escHtml(r.phone || '—')}</td>
+      ${profile.previewColumns.map(col => `<td>${escHtml(r[col.key] || '—')}</td>`).join('')}
       <td>${shareholders.length ? escHtml(shareholders.join(', ')) : '—'}</td>
     </tr>`;
   }).join('') + (mainRows.length > MAX_SHOW
-    ? `<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:10px;">…and ${mainRows.length - MAX_SHOW} more rows not shown (all will still be processed)</td></tr>`
+    ? `<tr><td colspan="${profile.previewColumns.length + 2}" style="text-align:center; color:var(--muted); padding:10px;">…and ${mainRows.length - MAX_SHOW} more rows not shown (all will still be processed)</td></tr>`
     : '');
 
   document.getElementById('import-confirm-btn').disabled = valid === 0 && backfillRows.length === 0;
   document.getElementById('import-confirm-btn').textContent = valid
-    ? `Import ${valid} Client${valid === 1 ? '' : 's'}`
+    ? `Import ${valid} ${valid === 1 ? profile.noun : profile.nounPlural}`
     : backfillRows.length
-      ? `Update ${backfillRows.length} Existing Client${backfillRows.length === 1 ? '' : 's'}`
+      ? `Update ${backfillRows.length} Existing ${backfillRows.length === 1 ? profile.noun : profile.nounPlural}`
       : 'Nothing to Import';
 }
 
 async function confirmImport() {
+  const profile = importProfile();
+
+  // The payload is built from the ACTIVE profile's field list rather than a
+  // hardcoded set of columns — that list is the same one the column mapper
+  // offered, so a field can never be mapped on screen and then silently
+  // dropped on write, and neither directory can receive the other's columns.
+  const payloadFor = r => {
+    const p = {};
+    profile.fields().forEach(f => { p[f.key] = r[f.key] || null; });
+    p.name = r.name;              // required, never nulled
+    return p;
+  };
+
   // Keep the original preview row alongside its payload so extraShareholders
-  // can be linked to the client id Supabase generates on insert.
+  // can be linked to the row id Supabase generates on insert.
   const rowsToInsert = window.importPreviewRows
     .filter(r => r.status === 'valid')
-    .map(r => ({
-      sourceRow: r,
-      payload: {
-        name:            r.name,
-        email:           r.email || null,
-        pan:             r.pan || null,
-        phone:           r.phone || null,
-        entity_type:     r.entity_type || null,
-        business_nature: r.business_nature || null,
-        registration_number: r.registration_number || null,
-        chairman_name:       r.chairman_name || null,
-        shareholder_name:    r.shareholder_name || null,
-        authorized_capital:  r.authorized_capital || null,
-        issued_capital:      r.issued_capital || null,
-        paid_up_capital:     r.paid_up_capital || null,
-        address:         r.address || null,
-        district:        r.district || null,
-        country:         r.country || null,
-        it_return_type:  r.it_return_type || null,
-        tax_type_d3:     r.tax_type_d3 || null,
-      },
-    }));
+    .map(r => ({ sourceRow: r, payload: payloadFor(r) }));
 
   // Duplicates whose existing record is missing fields this file has — filled
   // in, never overwriting anything already on file.
@@ -1089,52 +1107,58 @@ async function confirmImport() {
   for (let i = 0; i < rowsToInsert.length; i += CHUNK) {
     const chunk = rowsToInsert.slice(i, i + CHUNK);
     statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Importing ${inserted}/${rowsToInsert.length}…</div>`;
-    const { data, error } = await window.sb.from('clients').insert(chunk.map(c => c.payload)).select('id');
+    const { data, error } = await window.sb.from(profile.table).insert(chunk.map(c => c.payload)).select('id');
     if (error) {
       statusEl.innerHTML = `<div class="status-box status-error">❌ Stopped after ${inserted} rows: ${escHtml(error.message)}</div>`;
       btn.disabled = false;
-      await loadClients();
+      await profile.reload();
       return;
     }
     inserted += chunk.length;
 
     // Postgres/PostgREST returns inserted rows in the same order they were sent.
+    // A profile with no childTable (the client directory) collects nothing here.
+    const child = profile.childTable;
     const shareholderRows = [];
-    (data || []).forEach((row, idx) => {
-      (chunk[idx].sourceRow.extraShareholders || []).forEach((name, sIdx) => {
-        shareholderRows.push({ client_id: row.id, name, sort_order: sIdx });
+    if (child) {
+      (data || []).forEach((row, idx) => {
+        (chunk[idx].sourceRow.extraShareholders || []).forEach((name, sIdx) => {
+          shareholderRows.push({ [child.fk]: row.id, name, sort_order: sIdx });
+        });
       });
-    });
+    }
     if (shareholderRows.length) {
-      const { error: shErr } = await window.sb.from('client_shareholders').insert(shareholderRows);
+      const { error: shErr } = await window.sb.from(child.table).insert(shareholderRows);
       if (!shErr) shareholdersLinked += shareholderRows.length;
     }
   }
 
   let backfilled = 0;
   for (const row of rowsToBackfill) {
-    statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Updating existing clients ${backfilled}/${rowsToBackfill.length}…</div>`;
-    const { error } = await window.sb.from('clients').update(row.fieldsToBackfill).eq('id', row.existingClientId);
+    statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Updating existing ${profile.nounPlural.toLowerCase()} ${backfilled}/${rowsToBackfill.length}…</div>`;
+    const { error } = await window.sb.from(profile.table).update(row.fieldsToBackfill).eq('id', row.existingClientId);
     if (!error) {
       backfilled++;
-      if (row.extraShareholders && row.extraShareholders.length) {
-        // Only add if this client has no shareholders on file yet, so re-running
+      const child = profile.childTable;
+      if (child && row.extraShareholders && row.extraShareholders.length) {
+        // Only add if this record has no shareholders on file yet, so re-running
         // the same import doesn't create duplicate entries.
-        const { data: existing } = await window.sb.from('client_shareholders').select('id').eq('client_id', row.existingClientId).limit(1);
+        const { data: existing } = await window.sb.from(child.table).select('id').eq(child.fk, row.existingClientId).limit(1);
         if (!existing || !existing.length) {
-          const shareholderRows = row.extraShareholders.map((name, sIdx) => ({ client_id: row.existingClientId, name, sort_order: sIdx }));
-          const { error: shErr } = await window.sb.from('client_shareholders').insert(shareholderRows);
+          const shareholderRows = row.extraShareholders.map((name, sIdx) => ({ [child.fk]: row.existingClientId, name, sort_order: sIdx }));
+          const { error: shErr } = await window.sb.from(child.table).insert(shareholderRows);
           if (!shErr) shareholdersLinked += shareholderRows.length;
         }
       }
     }
   }
 
+  const noun = n => (n === 1 ? profile.noun.toLowerCase() : profile.nounPlural.toLowerCase());
   const parts = [];
-  if (inserted) parts.push(`imported ${inserted} client${inserted === 1 ? '' : 's'}`);
-  if (backfilled) parts.push(`updated ${backfilled} existing client${backfilled === 1 ? '' : 's'}`);
+  if (inserted) parts.push(`imported ${inserted} ${noun(inserted)}`);
+  if (backfilled) parts.push(`updated ${backfilled} existing ${noun(backfilled)}`);
   if (shareholdersLinked) parts.push(`linked ${shareholdersLinked} additional shareholder${shareholdersLinked === 1 ? '' : 's'}`);
   statusEl.innerHTML = `<div class="status-box status-success">✅ ${parts.join(', ')}.</div>`;
-  await loadClients();
+  await profile.reload();
   setTimeout(closeImportModal, 1200);
 }

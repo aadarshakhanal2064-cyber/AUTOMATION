@@ -50,7 +50,12 @@ export const TABLE_ORDER = [
   'org_invitations',
   'app_users',
   'clients',
-  'client_shareholders',
+  // The company register (2026-08-20). registrar_shareholders FKs
+  // registrar_companies, so the parent has to replay first — same rule as
+  // organizations above. These replaced client_shareholders, whose 55 rows all
+  // moved here; the old table was dropped in the same migration.
+  'registrar_companies',
+  'registrar_shareholders',
   'bank_accounts',
   'bank_transactions',
   'audit_checklists',

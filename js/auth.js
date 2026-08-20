@@ -386,6 +386,9 @@ async function submitNewPassword() {
 function signOut() {
   window.currentUser = null;
   window.clientsList = [];
+  // The company register is this firm's data too — same reasoning as
+  // clientsList, and it must not survive into the next person's session.
+  window.registrarCompanies = [];
   // Cached ledger rows are this user's data as much as clientsList is — they
   // must not survive into the next person's session on a shared machine.
   DataCache.invalidateAll();
@@ -549,7 +552,10 @@ async function afterSupabaseSignIn(session) {
   // Dashboard is the landing tab, so its data has to be pulled here — the
   // nav button's onclick (which is what loads it for every later visit)
   // never fires on boot.
-  await loadClients();
+  // The two directories are independent — the audit-client list and the
+  // registrar company register (js/registrarCompanies.js). Loaded in parallel
+  // because neither reads the other.
+  await Promise.all([loadClients(), loadRegistrarCompanies()]);
   await loadDashboard();
   await loadSidebarStorageUsage();
 }

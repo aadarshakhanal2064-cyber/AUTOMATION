@@ -46,8 +46,18 @@ document.addEventListener('click', (e) => {
 });
 
 // ── Company Registrar — its own sub-module group inside one 'regd' tab ──
+//
+// Registrar sub-modules that need a render on open, the same idea as
+// MODULE_INITS below. Company Profile is a directory that must reflect what
+// another session (or the bulk import) has changed since this tab was last
+// looked at; a sub-module that's absent from this map simply switches.
+const REGD_INITS = {
+  companyProfile: () => cpInit(),
+};
+
 function switchRegdSub(sub) {
   switchModuleGroup('regd', sub);
+  if (REGD_INITS[sub]) REGD_INITS[sub]();
 }
 
 function openRegdModule(sub, label) {

@@ -47,28 +47,25 @@ const CS_ROLE_MEMBER = 'संचालक सदस्य';
 // typing at all.
 const CS_DEFAULT_TIME = 'बिहान १० बजे';
 
-// Client data stores registration numbers (and sometimes PAN) in Devanagari
-// numerals, but people type English digits. Normalize both sides before
-// comparing so either digit system matches — same rule as every other
-// registrar screen.
-function csToEnglishDigits(s) {
-  return NepaliLocale.toEnglishDigits(s);
-}
+// Searches the REGISTRAR COMPANY REGISTER, never window.clientsList — see the
+// header of js/registrarCompanies.js. The digit-agnostic matching that used to
+// be duplicated here (registration numbers are stored in Devanagari numerals
+// while people type English digits) lives in attachCompanyPicker now.
+RegistrarDirectory.attachCompanyPicker(
+  document.getElementById('cs-regNo'),
+  document.getElementById('cs-regNo-autocomplete-list'),
+  {
+    keys: ['registration_number', 'pan'],
+    minChars: 2,
+    renderItem: c => `
+      <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
+      <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}</div>
+    `,
+    onSelect: selectCsClient,
+  }
+);
 
-SearchEngine.attachAutocomplete(document.getElementById('cs-regNo'), document.getElementById('cs-regNo-autocomplete-list'), {
-  getList: () => window.clientsList,
-  keys: ['registration_number', 'pan'],
-  minChars: 2,
-  normalizeQuery: v => csToEnglishDigits(v),
-  normalizeItem: c => ({ registration_number: csToEnglishDigits(c.registration_number), pan: csToEnglishDigits(c.pan) }),
-  renderItem: c => `
-    <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
-    <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
-  `,
-  onSelect: selectCsClient,
-});
-
-async function selectCsClient(c) {
+function selectCsClient(c) {
   // Always assign — never `if (value) el.value = value` — or a client whose
   // field is blank silently keeps the PREVIOUS client's value (CLAUDE.md §9).
   document.getElementById('cs-regNo').value        = c.registration_number || '';
@@ -76,15 +73,12 @@ async function selectCsClient(c) {
   document.getElementById('cs-pan').value          = c.pan || '';
   document.getElementById('cs-chairmanName').value = c.chairman_name || '';
 
+  // Shareholders travel with the company (loaded at sign-in), so this is no
+  // longer a Supabase round trip on every click.
   csClearDirectors();
-  const { data, error } = await window.sb
-    .from('client_shareholders')
-    .select('name')
-    .eq('client_id', c.id)
-    .order('sort_order');
-  if (!error && data) data.forEach(row => csAddDirectorRow(row.name));
-  // The fixed shareholder field on the client record is a director too, and
-  // is not in client_shareholders.
+  RegistrarDirectory.shareholders(c.id).forEach(row => csAddDirectorRow(row.name));
+  // The fixed shareholder field on the company record is a director too, and
+  // is not in registrar_shareholders.
   if (c.shareholder_name) csAddDirectorRow(c.shareholder_name);
 
   csRenderCompanySummary(c);
@@ -154,7 +148,7 @@ function csClearDirectors() {
 }
 
 // Every director name except the chairman's own. The chairman IS one of the
-// company's shareholders and client_shareholders sometimes lists them again
+// company's shareholders and the register sometimes lists them again
 // alongside the others — left in, that prints the same person twice in the
 // attendance list, once as अध्यक्ष and once as सदस्य. Same dedup, for the same
 // reason, as bmGetAllShareholderNames().
@@ -165,7 +159,7 @@ function csGetDirectorNames() {
     names.push(inp.value.trim());
   });
   // A company can legitimately list the same director twice across the
-  // shareholder field and client_shareholders; the attendance list is a
+  // shareholder field and registrar_shareholders; the attendance list is a
   // register of people in the room, so each appears once.
   const seen = new Set();
   return names.filter(n => {

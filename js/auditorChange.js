@@ -14,18 +14,21 @@
 //  later if useful).
 // ════════════════════════════════════════════
 
-SearchEngine.attachAutocomplete(document.getElementById('ac-companySearch'), document.getElementById('ac-company-autocomplete-list'), {
-  getList: () => window.clientsList,
-  keys: ['registration_number', 'pan', 'name'],
-  minChars: 2,
-  normalizeQuery: v => NepaliLocale.toEnglishDigits(v),
-  normalizeItem: c => ({ registration_number: NepaliLocale.toEnglishDigits(c.registration_number), pan: NepaliLocale.toEnglishDigits(c.pan) }),
-  renderItem: c => `
-    <div class="ac-name">${escHtml(c.name)}</div>
-    <div class="ac-email">${escHtml(c.registration_number || c.pan || '')}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
-  `,
-  onSelect: selectAcClient,
-});
+// Searches the REGISTRAR COMPANY REGISTER, never window.clientsList — see the
+// header of js/registrarCompanies.js.
+RegistrarDirectory.attachCompanyPicker(
+  document.getElementById('ac-companySearch'),
+  document.getElementById('ac-company-autocomplete-list'),
+  {
+    keys: ['registration_number', 'pan', 'name'],
+    minChars: 2,
+    renderItem: c => `
+      <div class="ac-name">${escHtml(c.name)}</div>
+      <div class="ac-email">${escHtml(c.registration_number || c.pan || '')}</div>
+    `,
+    onSelect: selectAcClient,
+  }
+);
 
 function selectAcClient(c) {
   document.getElementById('ac-companySearch').value = c.name || '';

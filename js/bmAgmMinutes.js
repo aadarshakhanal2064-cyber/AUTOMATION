@@ -1,34 +1,33 @@
 // ════════════════════════════════════════════
 //  BM/AGM MINUTES — Company Registration Number search
-//  Reuses window.clientsList (already loaded by clients.js) — no
-//  extra Supabase queries. Mirrors report.js's PAN-search pattern
-//  (search by an alternate identifier, not the primary name field)
-//  combined with clients.js's keyboard navigation, since report.js's
-//  own PAN search doesn't have keyboard nav to copy directly.
+//
+//  Searches the REGISTRAR COMPANY REGISTER (window.registrarCompanies), never
+//  window.clientsList. Since 2026-08-20 those are two separate directories:
+//  the audit-client list this screen used to read cannot produce a set of
+//  minutes, and the companies that can are no longer visible to any
+//  non-registrar screen. See js/registrarCompanies.js for why.
+//
+//  The digit-agnostic matching that used to live here — registration numbers
+//  and PANs are stored in Devanagari numerals while people type English digits
+//  on a keyboard — is now inside RegistrarDirectory.attachCompanyPicker, which
+//  every registrar screen shares rather than each keeping its own copy.
 // ════════════════════════════════════════════
-// Client data stores registration numbers (and sometimes PAN) in Devanagari
-// numerals, but people naturally type English digits on a keyboard. Normalize
-// both the typed value and the stored value to plain English digits before
-// comparing, so either digit system matches regardless of which was used to
-// store or search.
-function bmToEnglishDigits(s) {
-  return NepaliLocale.toEnglishDigits(s);
-}
 
-SearchEngine.attachAutocomplete(document.getElementById('bm-regNo'), document.getElementById('bm-regNo-autocomplete-list'), {
-  getList: () => window.clientsList,
-  keys: ['registration_number', 'pan'],
-  minChars: 2,
-  normalizeQuery: v => bmToEnglishDigits(v),
-  normalizeItem: c => ({ registration_number: bmToEnglishDigits(c.registration_number), pan: bmToEnglishDigits(c.pan) }),
-  renderItem: c => `
-    <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
-    <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}${c.entity_type ? ' · ' + escHtml(c.entity_type) : ''}</div>
-  `,
-  onSelect: selectBmClient,
-});
+RegistrarDirectory.attachCompanyPicker(
+  document.getElementById('bm-regNo'),
+  document.getElementById('bm-regNo-autocomplete-list'),
+  {
+    keys: ['registration_number', 'pan'],
+    minChars: 2,
+    renderItem: c => `
+      <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
+      <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}</div>
+    `,
+    onSelect: selectBmClient,
+  }
+);
 
-async function selectBmClient(c) {
+function selectBmClient(c) {
   document.getElementById('bm-regNo').value           = c.registration_number || '';
   document.getElementById('bm-companyName').value     = c.name || '';
   document.getElementById('bm-pan').value              = c.pan || '';
@@ -39,13 +38,11 @@ async function selectBmClient(c) {
   document.getElementById('bm-issuedCapital').value    = c.issued_capital || '';
   document.getElementById('bm-paidUpCapital').value    = c.paid_up_capital || '';
 
+  // Shareholders come with the company — RegistrarDirectory loads them
+  // alongside it at sign-in, so this is no longer a Supabase round trip fired
+  // on every click (Company Secretary ran the identical query).
   bmClearExtraShareholders();
-  const { data, error } = await window.sb
-    .from('client_shareholders')
-    .select('name')
-    .eq('client_id', c.id)
-    .order('sort_order');
-  if (!error && data) data.forEach(row => bmAddShareholderRow(row.name));
+  RegistrarDirectory.shareholders(c.id).forEach(row => bmAddShareholderRow(row.name));
 
   bmRenderCompanySummary(c);
   bmOnFormChanged();
@@ -126,7 +123,7 @@ function bmToggleBoardChangedFields() {
 
 // Full attendee list in order: chairman, then every shareholder name (fixed
 // field + any additional rows), skipping blanks. The chairman IS one of the
-// company's shareholders, and client_shareholders sometimes lists them again
+// company's shareholders, and the register sometimes lists them again
 // alongside the others — left in, that prints the same person twice in the
 // attendee list (once as अध्यक्ष, once as संचालक), so an entry matching the
 // chairman's own name is dropped here rather than at every call site.

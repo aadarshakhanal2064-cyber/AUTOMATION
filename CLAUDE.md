@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (26 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 13 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (28 tables, §6).
 
 ---
 
@@ -49,7 +49,7 @@ Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
 CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
-→ feature modules (dashboard, registrar, clients, vatCompliance,
+→ feature modules (dashboard, registrar, registrarCompanies, clients, vatCompliance,
   report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, salesPurchaseBookLedger, bankBook,
   partyLedger, finalAccount, finStatement, fileManagement,
@@ -61,6 +61,7 @@ CDN libraries → config.js → utils.js → js/core/* (13 engines) → tabs.js
 - `salesPurchaseBookLedger.js` **after** `salesPurchaseBook.js` — it reads and writes that file's module state (`spbData`, `spbGroups`, `spbMergeMap`); `salesPurchaseBookConfirm.js` **after** both, since it pushes its own entry onto that file's `SPB_SECTION_TABS`; `salesPurchaseBookAnnexure.js` **after** Confirm, whose `spbConfirmRows()` it builds on; `salesPurchaseBookReco.js` last.
 - `finalAccount.js` **after** `partyLedger.js` — it reads that module's state and calls its `plBuildParties`/`plReceivablesFor`/`plExpenseTotalsFor`.
 - `workDoneTodo.js` **after** `workDone.js` — it registers the To-Do List onto that file's `WD_VIEWS` array at load time (the `salesPurchaseBookConfirm.js` idiom); loaded first it would throw on `wdRegisterView`.
+- `registrarCompanies.js` **before** `bmAgmMinutes.js`, `auditorChange.js`, `companySecretary.js` and `companyProfile.js` — all four call `RegistrarDirectory.attachCompanyPicker()` at file load, so the object has to exist by then.
 
 ### CDN dependencies
 
@@ -94,6 +95,8 @@ AUTOMATION AI APP/
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, email/password sign-in/out, app_users authorization
 │   ├── core/                # 13 reusable engines — §4
+│   ├── registrarCompanies.js # The registrar company directory (§5) — the ONE
+│   │                        # place window.registrarCompanies is loaded/read
 │   └── <feature>.js         # One file per feature module — §5
 ├── db/                      # Annotated migrations + rollbacks (db/backups/ is gitignored)
 ├── tools/                   # Dependency-free Node verification harnesses
@@ -142,14 +145,14 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 |---|---|---|---|---|---|
 | Dashboard | Sidebar *(default tab)* | `dashboard.js` | `dash-` | *(reads `audit_log`)* | [compliance-billing](docs/modules/compliance-billing.md) |
 | *(shared)* Saved documents picker | — | `js/core/documentStore.js` | `ds-` | `saved_documents` | [engines](docs/engines.md) |
-| Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients`, `client_shareholders` | [clients](docs/modules/clients.md) |
+| Clients | Sidebar | `clients.js` | `ac-` `cd-` `nb-` | `clients` | [clients](docs/modules/clients.md) |
 | File In Out | Sidebar | `fileManagement.js` | `fm-` | `document_register` | [file-management](docs/modules/file-management.md) |
 | Audit Report Finalization | Sidebar | `auditReportFinalization.js` | `arf-` | `audit_report_finalization` | [audit-report-finalization](docs/modules/audit-report-finalization.md) |
 | Audit Checklist | Sidebar | `auditChecklist.js` | `achk-` | `audit_checklists` | [audit-checklist](docs/modules/audit-checklist.md) |
 | Work Done *(+ To-Do List, + cross-module Activity Log)* | Sidebar | `workDone.js` + `workDoneTodo.js` | `wd-` `wt-` | `work_done`, `work_todos` *(+ reads `document_register`, `audit_log`)* | [work-done](docs/modules/work-done.md) |
 | Team *(members + invitations)* | Topbar → user menu | `orgMembers.js` | `om-` | `org_members`, `org_invitations` | §6 Stage 3 |
 | Firm Setup *(letterheads + practice details)* | Topbar → user menu | `orgSettings.js` | `os-` | `org_firms`, `organizations` | §6 Stage 3 |
-| Company Registrar *(5 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companySecretary.js`, `companyProfile.js` | `bm-` `ac-` `cs-` `cp-` `cr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
+| Company Registrar *(5 sub-modules)* | Topbar → Registrar | `registrar.js`, `registrarCompanies.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companySecretary.js`, `companyProfile.js` | `bm-` `ac-` `cs-` `cp-` `cr-` | `registrar_companies`, `registrar_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Party Ledger | Financial Management | `partyLedger.js` | `pl-` | `party_opening_balances` | [financial-management](docs/modules/financial-management.md) |
 | Bank Entry | Financial Management | `bankBook.js` | `bb-` | `bank_accounts`, `bank_transactions` | [financial-management](docs/modules/financial-management.md) |
@@ -184,7 +187,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 > **Full column-level reference: `docs/database.md`.** Project `rennqzmwyhkdsizvlqwd.supabase.co`. Re-verify live via the Supabase MCP before schema-dependent work.
 
-**26 tables** (from-nothing build: `db/00_bootstrap.sql` — **now one migration behind, see below**): `organizations` · `org_members` · `org_firms` (all three added 2026-08-18 by Stage 2 Phase 1 — `db/2026-08-18_stage2_phase1_tenant_scaffold.sql`) · `app_users` · `clients` (346 rows) · `client_shareholders` · `send_logs` · `audit_log` · `service_memos` · `service_memo_fee_skips` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done` · `work_todos` (added 2026-08-17 — `db/2026-08-17_work_todos.sql`) · `autobooks_books` · `autobooks_entries` · `autobooks_parties` · `autobooks_adjustments` (added 2026-08-16 — `db/2026-08-16_autobooks_ledger.sql`). (`vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`; `invoices`, `invoice_items`, `invoice_payments` and `firm_bank_details` dropped 2026-08-18 with Billing — `db/2026-08-18_drop_billing.sql`.)
+**28 tables** (from-nothing build: `db/00_bootstrap.sql` — **now several migrations behind, see below**): `organizations` · `org_members` · `org_firms` (all three added 2026-08-18 by Stage 2 Phase 1 — `db/2026-08-18_stage2_phase1_tenant_scaffold.sql`) · `org_invitations` (Stage 3) · `app_users` · `clients` (305 rows — 45 registrar companies moved out 2026-08-20) · `registrar_companies` · `registrar_shareholders` (both added 2026-08-20 — `db/2026-08-20_registrar_companies.sql`, replacing `client_shareholders`) · `send_logs` · `audit_log` · `service_memos` · `service_memo_fee_skips` · `depreciation_schedules` · `bank_accounts` · `bank_transactions` · `party_opening_balances` · `financial_statements` · `projection_reports` · `document_register` · `saved_documents` · `audit_report_finalization` · `audit_checklists` · `work_done` · `work_todos` (added 2026-08-17 — `db/2026-08-17_work_todos.sql`) · `autobooks_books` · `autobooks_entries` · `autobooks_parties` · `autobooks_adjustments` (added 2026-08-16 — `db/2026-08-16_autobooks_ledger.sql`). (`client_shareholders` dropped 2026-08-20 with the registrar split — every row moved to `registrar_shareholders`; `vat_filings` dropped 2026-08-10 with the VAT Compliance module — `db/2026-08-10_drop_vat_filings.sql`; `invoices`, `invoice_items`, `invoice_payments` and `firm_bank_details` dropped 2026-08-18 with Billing — `db/2026-08-18_drop_billing.sql`.)
 
 ### Trigger-owned logic (never replicate in JS)
 
@@ -208,6 +211,8 @@ PostgREST caps a single select at **1000 rows** — any query that can grow past
 ### Migration workflow
 
 Show the SQL (annotated migration + rollback as files under `db/`) → apply via Supabase MCP (`apply_migration`) → verify → commit the SQL files with the change (§1 rule 2).
+
+**`db/2026-08-20_registrar_companies.sql` is applied to PRODUCTION only.** Staging has not received it, so `tools/tenantVerify.mjs` still tests the pre-split schema and does not cover the two registrar tables. Apply it there before the next isolation run.
 
 **`db/00_bootstrap.sql` is the from-nothing build** (2026-08-18) — the whole schema, no data. The dated migrations **cannot** rebuild the database on their own: nine tables and three functions predate the workflow and are never created by any of them, so `db/*.sql` in date order fails on the first migration. Use the bootstrap for a NEW Supabase project or disaster recovery; never against a live one. Regenerate it from the live schema rather than hand-patching, and keep it in step when a migration changes the schema. Detail: `docs/database.md` §6.5.
 
@@ -264,16 +269,16 @@ The app is being converted from one firm to ~10. Full scope: the published plan 
 
 - **Phase 2's backfill and its proof are one transaction on purpose** (`db/2026-08-18_stage2_phase2_backfill_org_id.sql`). It re-reads every table afterwards and `raise exception`s naming any table still holding NULLs, so a half-filled database cannot reach Phase 3. The failure that matters is not a loud error — it is a table whose policy compares `org_id` while its rows never got one, which looks exactly like data loss and is not.
 - **It is idempotent** (`where org_id is null`) and resolves the org **by slug, never a hardcoded `1`** — identity columns need not start at 1 on a rebuilt database.
-- **Row-count arithmetic, so nobody hunts for missing rows:** `tools/dbBackup.mjs` counts 26 tables; the Phase 2 verify counts the 22 tenant-owned ones. The gap is `app_users` (3, superseded by `org_members`) plus the 3 org tables' own 9 rows.
+- **Row-count arithmetic, so nobody hunts for missing rows:** `tools/dbBackup.mjs` counts 28 tables (its `TABLE_ORDER` was extended for the two registrar tables on 2026-08-20 — the guard refuses to write a backup otherwise, which is exactly what it is for); the Phase 2 verify counts the 22 tenant-owned ones. The gap is `app_users` (3, superseded by `org_members`) plus the 3 org tables' own 9 rows.
 
 - **`private.current_org_id()`** is the one place tenancy is decided — reads `org_members` by JWT email, `STABLE` + `SECURITY DEFINER` (so a policy calling it can't recurse). Returns NULL for an unknown email, an inactive member **or a suspended organisation**, which is what will make suspension block at the database rather than in the UI.
 - **One organisation, several firms.** Shailesh & Associates and Dallakoti & Company are one practice, not two tenants — `clients` has no firm column, so the 346 clients are shared. `firm_key` therefore stays exactly as it is and is scoped by org, not replaced; `org_firms` holds all five letterheads.
 - **`db/00_bootstrap.sql` does not yet include any of this.** Regenerate it when Phase 3 lands, not per phase.
 - **A new table still needs RLS + policies in its own migration** (below) — and from Phase 3 on, an `org_id` too.
 
-### RLS — ENABLED on all 26 tables (since 2026-07-16; the 3 new ones from birth)
+### RLS — ENABLED on all 28 tables (since 2026-07-16; every table added since, from birth)
 
-**Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE and `client_shareholders` INSERT are admin-only; `send_logs`/`audit_log` are immutable. (A fourth admin-only rule, `firm_bank_details` writes, went with Billing on 2026-08-18.)
+**Membership, not authentication, grants access.** Anyone who can authenticate holds an `authenticated` JWT, so every policy checks membership via `private.is_app_user()` / `private.is_admin()` (SECURITY DEFINER helpers in the non-exposed `private` schema). `anon` has no policies → zero access. The policy matrix mirrors the UI: members get CRUD where the UI offers it; `clients` INSERT/DELETE and `registrar_companies` INSERT/DELETE are admin-only (`registrar_shareholders` is member-writable throughout — a shareholder list is a detail of a company a member may already edit, and its predecessor `client_shareholders` had no UPDATE or DELETE policy at all, so a shareholder could be added but never corrected); `send_logs`/`audit_log` are immutable. (A fourth admin-only rule, `firm_bank_details` writes, went with Billing on 2026-08-18.)
 
 **When adding a new table: enable RLS + add membership policies in the same migration, or the app can't read it at all.**
 
@@ -401,7 +406,7 @@ The established pattern — **investigate with real evidence → implement only 
 
 ## 13. Security Practices
 
-- **RLS is the server-side enforcement layer** (§6) — enabled on all 26 tables. Since Stage 2 Phase 3 (2026-08-18) it checks **ownership as well as membership**: every tenant policy requires `org_id = private.current_org_id()`, so a member of one firm cannot read or write another's rows even knowing their row ids. The publishable key alone grants nothing. **Don't disable it, and don't add a table without an org-scoped policy.**
+- **RLS is the server-side enforcement layer** (§6) — enabled on all 28 tables. Since Stage 2 Phase 3 (2026-08-18) it checks **ownership as well as membership**: every tenant policy requires `org_id = private.current_org_id()`, so a member of one firm cannot read or write another's rows even knowing their row ids. The publishable key alone grants nothing. **Don't disable it, and don't add a table without an org-scoped policy.**
 - `escHtml()` on all dynamic HTML (rule 13); no free-text in inline event handlers.
 - **CSP** (meta tag in `index.html`; `connect-src` is now Supabase alone — every Google origin went 2026-08-01, the two OCR loopback origins 2026-08-18) + **SRI** on every pinned CDN dep. CSP keeps `'unsafe-inline'` for scripts, so it does **not** stop inline XSS — escHtml is what covers that. `connect-src` is the exfiltration guard: adding an integration to a new external host means adding it there or the call is blocked.
 - **The app is served from TWO hosts, and they are not equivalent.** The one in daily use is **Vercel** (`automation-azure-one.vercel.app`), where `vercel.json` **is** read and all five headers are live — verified against the response: `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS. There is also a **GitHub Pages** mirror (`aadarshakhanal2064-cyber.github.io/AUTOMATION/`), which ignores `vercel.json` and sends none of them. An earlier note in this file called `vercel.json` "dead configuration" — that was measured against the Pages mirror alone and is **wrong for the URL people actually use**. Check which host you mean before claiming a header is or isn't there.
@@ -439,7 +444,12 @@ The established pattern — **investigate with real evidence → implement only 
 - **VAT "Filed" status is always manual.**
 - **VAT clients are a hand-picked subset** — never bulk-activate.
 - **Clients table / import preview show a curated column subset**, not all fields.
-- **The 45 Devanagari client records are kept alongside their English twins** (2026-07-26) — 37 share a PAN, but they are what BM/AGM Minutes and `client_shareholders` read. Never de-duplicate the directory on PAN alone.
+- **The registrar company register is a SEPARATE directory from the client list, and that separation is structural, not a filter** (2026-08-20, user decision) — the firm's 45 Nepalese company-registration records used to be rows in `clients`, so every client picker in the app (Bank Entry, Service Memo, Work Done, Autobooks, Confirmation, Generate Report…) offered a Devanagari company name that only the five Company Registrar screens can do anything with. They now live in `registrar_companies` + `registrar_shareholders` (`db/2026-08-20_registrar_companies.sql`), are loaded into `window.registrarCompanies` by `js/registrarCompanies.js`, and are reached **only** through `RegistrarDirectory`. A flag column plus a filter in each picker was the obvious alternative and was rejected: a filter is a rule twenty-odd existing modules and every future one must remember, whereas a separate list cannot be reached by accident — leaking now requires opting IN. **No non-registrar module may read `window.registrarCompanies`, and no registrar module reads `window.clientsList`.** A screen needing both wants two pickers, not one merged list. The move was safe because it was measured first: all 45 rows carried a registration number and all three capitals while none of the 305 clients carried any, all 55 `client_shareholders` rows belonged to those 45, and **zero** rows in the other fourteen client-referencing tables pointed at one — the migration asserts every one of those before it deletes anything.
+- **`clients` no longer carries registration/chairman/shareholder/capital data at all** (2026-08-20) — those seven columns still EXIST on the table (nothing dropped them) but every row's value is now null, and `CLIENT_IMPORT_FIELDS` no longer offers them, so a re-import of the firm's company sheet into the Clients tab cannot refill them. This extends the existing rule that the Add/Edit Client form must never send those keys: now nothing may WRITE them to `clients`, not just that one form. `applyClientFilters()` also stopped searching `registration_number`, because searching a permanently-null column would quietly imply the directory still holds companies.
+- **Company Profile is the company register's full directory — search, add, edit, delete, import — and the only screen that writes one** (2026-08-20, user ask "make it like an add client section but only for company registrar"). It was previously edit-only over a company that already existed, with no way to add one. Its fields are declared once in `CP_FIELDS` and the form inputs are BUILT from that list, so a new field is one line rather than four (list, markup, load, save). Adding and deleting are admin-only at the database, mirroring `clients`; editing details is open to every member. **The completeness meter counts only the fields a registrar document actually prints** (name, registration number, chairman, the three capitals) — "incomplete" means "a document generated from this row would print blanks", not "some optional box is empty".
+- **One spreadsheet import wizard serves both directories, selected by a profile** (2026-08-20) — `window.IMPORT_PROFILES` (`config.js`) holds the field list, destination table, nouns, preview columns, shareholder child table and reload for each; `openImportModal('clients' | 'registrar')` points `window.IMPORT_FIELDS` at the chosen one so every step of the wizard keeps reading the single global it always read. The two field lists are disjoint on purpose and it is verified that neither can receive the other's columns — a client import that still wrote `registration_number` would rebuild the exact leak the split closed. A bare `openImportModal()` still means `'clients'`, since index.html's button predates the second profile.
+- **Shareholders travel WITH their company, and are replaced wholesale on save** (2026-08-20) — `RegistrarDirectory` loads `registrar_shareholders` alongside the companies at sign-in and hangs them off the record, so BM/AGM Minutes and Company Secretary no longer each fire the identical `client_shareholders` query, awaited, on every selection. On save the rows on screen ARE the list: delete-then-insert scoped to that one company, because a removed row means removed and 3–4 rows per company make a diff pure complexity. This is deliberately the OPPOSITE of Autobooks' party rows, which are never overwritten because they came off a signed letter — a shareholder list has no such external authority behind it.
+- **The 45 Devanagari company records are kept alongside their English twins** (2026-07-26, still true after they moved out of `clients` on 2026-08-20) — 37 share a PAN, but they are what BM/AGM Minutes, Auditor Change and Company Secretary read. Never de-duplicate on PAN alone. What changed is only WHERE they live: they are `registrar_companies` rows now, not `clients` rows (next entry).
 - **The 8 clients absent from the client master were kept** (2026-07-26, user decision) — 5 carry live VAT filings, service memos or bank transactions.
 - **`it_return_type` is free text, not CHECK-constrained**, and `D1/D2` is a real single value meaning "either" — not a placeholder to be split.
 - **The Clients dashboard reports the whole portfolio, not the filtered table**, and always draws its "Not set" bucket.

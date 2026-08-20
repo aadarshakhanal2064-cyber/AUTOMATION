@@ -65,19 +65,29 @@ const { createClient } = supabase;
 window.sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ── Import state ──
-window.IMPORT_FIELDS = [
+//
+// TWO directories, two field lists, ONE wizard (js/clients.js). The spreadsheet
+// importer used to carry both sets of columns because both record types lived
+// in `clients`; since the registrar companies moved to their own table
+// (2026-08-20, db/2026-08-20_registrar_companies.sql) an import has to know
+// which directory it is filling, or re-importing the firm's company sheet
+// would rebuild the exact leak that split was made to close.
+//
+// window.IMPORT_FIELDS is NOT a third list — openImportModal() points it at the
+// chosen profile's `fields`, so every function in the wizard keeps reading the
+// one global it always read.
+
+// The audit-client directory. Deliberately carries NO registration number,
+// chairman, shareholder or capital columns: those describe a registered
+// company, and CLAUDE.md §15 keeps the seven statutory fields off the client
+// form for the same reason.
+window.CLIENT_IMPORT_FIELDS = [
   { key:'name',            label:'Client Name *', required:true,  keywords:['client name','party name','name','entity name','customer'] },
   { key:'email',           label:'Email',         required:false, keywords:['email','e-mail','mail'] },
   { key:'pan',             label:'PAN Number',    required:false, keywords:['pan no','pan number','pan'] },
   { key:'phone',           label:'Phone',         required:false, keywords:['phone','mobile','contact no','contact number','tel'] },
   { key:'entity_type',     label:'Entity Type',   required:false, keywords:['entity type','entitry type','type','category'] },
   { key:'business_nature', label:'Nature of Business', required:false, keywords:['nature of bussiness','nature of business','business','industry'] },
-  { key:'registration_number', label:'Registration Number', required:false, keywords:['registration number','regd no','regd number','reg no','reg number','registration no','company registration number','company reg','company reg.','company reg no','regn no','regn number'] },
-  { key:'chairman_name',       label:'Chairman Name',       required:false, keywords:['chairman name','chairman','chairperson'] },
-  { key:'shareholder_name',    label:'Shareholder Name',    required:false, keywords:['shareholder name','shareholder','shareholders'] },
-  { key:'authorized_capital',  label:'Authorized Capital',  required:false, keywords:['authorized capital','authorised capital','authorized share capital','auth capital','auth. capital'] },
-  { key:'issued_capital',      label:'Issued Capital',      required:false, keywords:['issued capital','issue capital'] },
-  { key:'paid_up_capital',     label:'Paid-up Capital',     required:false, keywords:['paid up capital','paid-up capital','paidup capital','paid capital'] },
   { key:'address',         label:'Address',       required:false, keywords:['address','location'] },
   { key:'district',        label:'District',      required:false, keywords:['district','zilla'] },
   { key:'country',         label:'Country',       required:false, keywords:['country'] },
@@ -85,6 +95,67 @@ window.IMPORT_FIELDS = [
   { key:'tax_type_d3',     label:'Tax Type (D-3)', required:false, keywords:['tax type for only d3','tax type for d3','tax type'] },
   { key:'tax_registration_type', label:'Tax Registration (VAT/PAN)', required:false, keywords:['vat/pan','vat / pan','tax registration','type of tax registration','vat or pan'] },
 ];
+
+// The company register (Company Registrar → Company Profile). The firm's own
+// company spreadsheets list every shareholder on its own row under the company,
+// which is what the wizard's nameless-row handling reads `shareholder_name` for.
+window.REGISTRAR_IMPORT_FIELDS = [
+  { key:'name',            label:'Company Name *', required:true, keywords:['company name','client name','party name','name','entity name'] },
+  { key:'registration_number', label:'Registration Number', required:false, keywords:['registration number','regd no','regd number','reg no','reg number','registration no','company registration number','company reg','company reg.','company reg no','regn no','regn number'] },
+  { key:'pan',             label:'PAN Number',    required:false, keywords:['pan no','pan number','pan'] },
+  { key:'chairman_name',   label:'Chairman Name', required:false, keywords:['chairman name','chairman','chairperson'] },
+  { key:'shareholder_name', label:'Shareholder Name', required:false, keywords:['shareholder name','shareholder','shareholders','director'] },
+  { key:'authorized_capital', label:'Authorized Capital', required:false, keywords:['authorized capital','authorised capital','authorized share capital','auth capital','auth. capital'] },
+  { key:'issued_capital',  label:'Issued Capital', required:false, keywords:['issued capital','issue capital'] },
+  { key:'paid_up_capital', label:'Paid-up Capital', required:false, keywords:['paid up capital','paid-up capital','paidup capital','paid capital'] },
+  { key:'address',         label:'Address',       required:false, keywords:['address','location'] },
+  { key:'country',         label:'Country',       required:false, keywords:['country'] },
+];
+
+// What the one wizard needs to know to fill a given directory. `childTable`
+// is the "extra shareholders listed on their own rows" destination — a profile
+// without one simply never collects them (a client sheet has no shareholder
+// column to trigger it in the first place).
+window.IMPORT_PROFILES = {
+  clients: {
+    title: 'Import Clients from Excel',
+    intro: 'Map your spreadsheet columns to client fields.',
+    table: 'clients',
+    noun: 'Client', nounPlural: 'Clients', nounFile: 'Clients in File',
+    fields: () => window.CLIENT_IMPORT_FIELDS,
+    existing: () => window.clientsList || [],
+    childTable: null,
+    previewColumns: [
+      { title: 'Name', key: 'name' },
+      { title: 'Entity Type', key: 'entity_type' },
+      { title: 'Email', key: 'email' },
+      { title: 'PAN', key: 'pan' },
+      { title: 'Phone', key: 'phone' },
+    ],
+    reload: () => loadClients(),
+  },
+  registrar: {
+    title: 'Import Companies from Excel',
+    intro: 'Map your spreadsheet columns to company registration fields.',
+    table: 'registrar_companies',
+    noun: 'Company', nounPlural: 'Companies', nounFile: 'Companies in File',
+    fields: () => window.REGISTRAR_IMPORT_FIELDS,
+    existing: () => window.registrarCompanies || [],
+    childTable: { table: 'registrar_shareholders', fk: 'company_id' },
+    previewColumns: [
+      { title: 'Company', key: 'name' },
+      { title: 'Registration No.', key: 'registration_number' },
+      { title: 'PAN', key: 'pan' },
+      { title: 'Chairman', key: 'chairman_name' },
+      { title: 'Paid-up Capital', key: 'paid_up_capital' },
+    ],
+    reload: () => RegistrarDirectory.reload(),
+  },
+};
+
+// Which profile the open wizard is filling. Set by openImportModal().
+window.importProfileKey = 'clients';
+window.IMPORT_FIELDS = window.CLIENT_IMPORT_FIELDS;
 
 // The income-tax return types the firm files. D1/D2 is a real single value,
 // not a placeholder: the client master marks a client as "D-1 and D-2 — it can
@@ -491,7 +562,14 @@ window.ACTIVITY_EVENT_LABELS = {
   bank_txn_created: 'Bank entry recorded', bank_txn_updated: 'Bank entry updated',
   bank_txn_deleted: 'Bank entry deleted',
   clients_nonfilers_printed: 'Non-filers list printed',
+  // company_profile_saved is the pre-2026-08-20 event, kept so historical rows
+  // still read as words rather than a raw code id — the same reason the removed
+  // modules' labels stay. The three below replaced it when Company Profile
+  // became the full company register.
   company_profile_saved: 'Company profile saved',
+  registrar_company_added: 'Company added to register',
+  registrar_company_saved: 'Company details saved',
+  registrar_company_deleted: 'Company removed from register',
   depreciation_saved: 'Depreciation schedule saved', depreciation_deleted: 'Depreciation schedule deleted',
   depreciation_printed: 'Depreciation printed',
   document_generated: 'Document generated',

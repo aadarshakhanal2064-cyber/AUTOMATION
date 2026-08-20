@@ -40,7 +40,7 @@
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
 <link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608200001">
+<link rel="stylesheet" href="css/styles.css?v=202608201200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1470,72 +1470,66 @@ function cropLoginLogoIcon(img) {
              the ~150 proprietorship firms that have none of them. Same columns
              on the same clients row — only the place they are edited moved. -->
         <div id="regd-companyProfile-panel" class="regd-sub-panel">
-          <div class="card" style="margin-bottom:18px;">
-            <div class="card-header"><h3>Find a company</h3></div>
-            <div style="padding:18px 20px 20px;">
-              <div class="form-group" style="position:relative; max-width:520px;">
-                <label>Company name, registration number or PAN</label>
-                <input type="text" id="cp-client-search" placeholder="Start typing…" autocomplete="off" />
-                <div class="autocomplete-list" id="cp-client-list"></div>
+
+          <!-- The company register: the ONLY screen that adds, edits or deletes
+               a Nepalese company record. These rows live in registrar_companies
+               (not `clients`) and are visible to Company Registrar screens
+               alone — js/registrarCompanies.js explains why. -->
+          <div class="table-wrap client-toolbar-wrap">
+            <div class="client-toolbar">
+              <div class="search-bar-wrap client-search-wrap">
+                <span class="sb-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </span>
+                <input type="text" class="search-bar" id="cp-search" placeholder="Search by company name, registration number, PAN or chairman…" oninput="cpSearchChanged()" autocomplete="off" />
               </div>
+              <div class="client-toolbar-filters">
+                <button class="btn btn-outline" onclick="cpOpenImport()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Import from Excel
+                </button>
+                <button class="btn btn-primary" onclick="cpOpenEditor(null)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Company
+                </button>
+              </div>
+            </div>
+
+            <div class="import-stats cp-stats" id="cp-stats"></div>
+
+            <div class="client-toolbar-summary">
+              <span class="cd-filter-summary" id="cp-filter-summary"></span>
+            </div>
+
+            <div id="cp-table-wrap">
+              <div class="log-empty">Loading companies…</div>
             </div>
           </div>
 
-          <div id="cp-empty" class="log-empty">
-            Search for a company above to view and edit its registration details.
-          </div>
-
-          <div id="cp-form" style="display:none;">
-            <div class="card">
-              <div class="card-header cp-ident-header">
-                <div>
-                  <h3 id="cp-ident-name">—</h3>
-                  <div class="cp-ident-meta" id="cp-ident-meta">—</div>
-                </div>
-                <div class="cp-meter" id="cp-completeness"></div>
-              </div>
-              <div style="padding:20px;">
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label>Registration Number</label>
-                    <input type="text" id="cp-registration-number" placeholder="e.g. 123456/078/079" />
-                  </div>
-                  <div class="form-group">
-                    <label>VAT Status</label>
-                    <select id="cp-vat-status">
-                      <option value="not_registered">Not VAT Registered</option>
-                      <option value="active">VAT Active (files monthly)</option>
-                      <option value="inactive">VAT Inactive</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>Chairman Name</label>
-                    <input type="text" id="cp-chairman-name" placeholder="Optional" />
-                  </div>
-                  <div class="form-group">
-                    <label>Shareholder Name</label>
-                    <input type="text" id="cp-shareholder-name" placeholder="Optional" />
-                  </div>
-                  <div class="form-group">
-                    <label>Authorized Capital</label>
-                    <input type="text" id="cp-authorized-capital" placeholder="e.g. 25,00,000" />
-                  </div>
-                  <div class="form-group">
-                    <label>Issued Capital</label>
-                    <input type="text" id="cp-issued-capital" placeholder="e.g. 25,00,000" />
-                  </div>
-                  <div class="form-group">
-                    <label>Paid-up Capital</label>
-                    <input type="text" id="cp-paidup-capital" placeholder="e.g. 25,00,000" />
-                  </div>
-                </div>
-                <div class="action-row">
-                  <button class="btn btn-primary" onclick="cpSave()">Save Registration Details</button>
-                  <button class="btn btn-outline" onclick="cpClear()">Close</button>
-                </div>
-                <div id="cp-status"></div>
-              </div>
+          <!-- Add / Edit. Same slide-open pattern as the Clients tab's Add
+               Client form; the field inputs themselves are built from
+               CP_FIELDS in js/companyProfile.js so the list is declared once. -->
+          <div class="add-client-form cp-editor" id="cp-editor">
+            <div class="cp-editor-head">
+              <h3 id="cp-editor-title">Add Company</h3>
+              <div class="cp-meter" id="cp-completeness"></div>
             </div>
+
+            <div class="form-grid" id="cp-form-grid"></div>
+
+            <div class="cp-shareholders-block">
+              <label class="cp-shareholders-label">Additional Shareholders / Directors</label>
+              <p class="cp-shareholders-hint">The chairman and the shareholder above are already counted. Add anyone else who attends and signs — they print in this order.</p>
+              <div id="cp-shareholders"></div>
+              <button type="button" class="btn btn-outline btn-sm cp-add-shareholder" onclick="cpAddShareholderRow('')">+ Add shareholder</button>
+            </div>
+
+            <div class="action-row">
+              <button class="btn btn-primary" onclick="cpSave()">Save Company</button>
+              <button class="btn btn-outline" onclick="cpCloseEditor()">Cancel</button>
+              <button class="btn btn-danger" id="cp-delete-btn" style="display:none;" onclick="cpDelete(null)">Delete</button>
+            </div>
+            <div id="cp-status"></div>
           </div>
         </div>
 
@@ -2994,7 +2988,7 @@ function cropLoginLogoIcon(img) {
               <option value="D-03">D-03</option>
               <option value="__none">Not set</option>
             </select>
-            <button class="btn btn-outline" id="import-client-btn" onclick="openImportModal()" style="display:none;">
+            <button class="btn btn-outline" id="import-client-btn" onclick="openImportModal('clients')" style="display:none;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
               Import from Excel
             </button>
@@ -4184,7 +4178,7 @@ function cropLoginLogoIcon(img) {
 <div class="modal-overlay" id="import-modal">
   <div class="modal" style="max-width:800px;">
     <div class="modal-header">
-      <h3>Import Clients from Excel</h3>
+      <h3 id="import-modal-title">Import Clients from Excel</h3>
       <button class="modal-close" onclick="closeImportModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -4201,7 +4195,7 @@ function cropLoginLogoIcon(img) {
 
       <!-- STEP 2: MAP COLUMNS -->
       <div class="import-step" id="import-step-2">
-        <p style="font-size:14px; color:var(--text-muted); margin-bottom:16px;">Map your spreadsheet columns to client fields.</p>
+        <p id="import-map-intro" style="font-size:14px; color:var(--text-muted); margin-bottom:16px;">Map your spreadsheet columns to client fields.</p>
         <div id="import-map-rows"></div>
         <div class="action-row">
           <button class="btn btn-primary" onclick="buildImportPreview()">Next: Preview →</button>
@@ -4249,7 +4243,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608210100"></script>
+<script src="js/config.js?v=202608201200"></script>
 <script src="js/utils.js?v=202608182300"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -4267,19 +4261,20 @@ function cropLoginLogoIcon(img) {
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
 <script src="js/core/orgIdentity.js?v=202608201030"></script>
-<script src="js/tabs.js?v=202608190900"></script>
+<script src="js/tabs.js?v=202608201200"></script>
 <script src="js/dashboard.js?v=202608181500"></script>
 <script src="js/registrar.js?v=202608110900"></script>
-<script src="js/clients.js?v=202608151800"></script>
+<script src="js/registrarCompanies.js?v=202608201200"></script>
+<script src="js/clients.js?v=202608201200"></script>
 <script src="js/serviceMemo.js?v=202608181600"></script>
 <script src="js/report.js?v=202608101800"></script>
 <script src="js/notesToAccounts.js?v=202608171000"></script>
 <script src="js/depreciation.js?v=202608171700"></script>
 <script src="js/depreciationSlm.js?v=202608171400"></script>
-<script src="js/bmAgmMinutes.js?v=202608210100"></script>
-<script src="js/auditorChange.js?v=202608151800"></script>
-<script src="js/companyProfile.js?v=202608101800"></script>
-<script src="js/companySecretary.js?v=202608210100"></script>
+<script src="js/bmAgmMinutes.js?v=202608201200"></script>
+<script src="js/auditorChange.js?v=202608201200"></script>
+<script src="js/companyProfile.js?v=202608201200"></script>
+<script src="js/companySecretary.js?v=202608201200"></script>
 <script src="js/salesPurchaseBook.js?v=202608170900"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
@@ -4311,7 +4306,7 @@ function cropLoginLogoIcon(img) {
      from the topbar user menu, so it needs no nav button. -->
 <script src="js/orgSettings.js?v=202608190300"></script>
 <script src="js/orgMembers.js?v=202608182200"></script>
-<script src="js/auth.js?v=202608190300"></script>
+<script src="js/auth.js?v=202608201200"></script>
 
 </body>
 </html>
