@@ -74,3 +74,8 @@ tools/bmAgmBuild/node_modules/
 # against — build.mjs's error message points at the shape it needs.
 tools/bmAgmBuild/sample-values.local.mjs
 tools/bmAgmBuild/fidelity_diff.txt
+
+# Ad-hoc debug dumps of the real source document's decoded paragraph text
+# (BM_DEBUG_DUMP=1 in build.mjs) — same real-client-data concern as above.
+tools/bmAgmBuild/debug-dump.local.txt
+tools/bmAgmBuild/*.local.*

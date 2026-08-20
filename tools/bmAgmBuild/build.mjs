@@ -151,6 +151,14 @@ const PARA_TOKENS = {
   21:  [['Additional Proposal Decision Fill Space', '{{bmExtraProposalDecision}}']],
   50:  [['(Additional Proposal)', '{{agmExtraProposalTitle}}']],
   67:  [['Additional Proposal Decision Fill Space', '{{agmExtraProposalDecision}}']],
+  // "misc" (विविध) is always the last item/decision in its list — its own
+  // number shifts down by one whenever the extra proposal above it is
+  // omitted (paragraphs 14/20-21 and 50/67, gated by {{#bmHasExtra}}/
+  // {{#agmHasExtra}} below), so its literal digit becomes a token too.
+  15:  [['३)', '{{bmMiscItemNum}})']],
+  23:  [['निर्णय नं. ३', 'निर्णय नं. {{bmMiscDecisionNum}}']],
+  51:  [['६)', '{{agmMiscItemNum}})']],
+  70:  [['निर्णय नं. ६', 'निर्णय नं. {{agmMiscDecisionNum}}']],
   64:  [[S.attendeeNamesJoined, '{{attendeeNamesJoined}}'], [S.directorTermYears + ' वर्षका', '{{directorTermYears}} वर्षका']],
   91:  [[S.capitalFigure, '{{authorizedCapital}}']],
   96:  [[S.capitalFigure, '{{issuedCapital}}']],
@@ -190,6 +198,10 @@ const INSERT_BEFORE = {
   225: ['{{#attendees}}'],
   241: ['{{#attendees}}'],      // Director's Declaration: one page per attendee
   185: ['{{#boardChanged}}'],   // the matching tapsil line in registrar letter 2
+  14:  ['{{#bmHasExtra}}'],     // BM proposal item 2 (the extra proposal itself)
+  20:  ['{{#bmHasExtra}}'],     // BM decision 2 (heading @20 + content @21)
+  50:  ['{{#agmHasExtra}}'],    // AGM proposal item 5
+  67:  ['{{#agmHasExtra}}'],    // AGM decision 5 (heading + content, one paragraph)
 };
 const INSERT_AFTER = {
   9:   ['{{/attendees}}'],
@@ -197,6 +209,10 @@ const INSERT_AFTER = {
   204: ['{{/attendees}}'],
   225: ['{{/attendees}}'],
   185: ['{{/boardChanged}}'],
+  14:  ['{{/bmHasExtra}}'],
+  21:  ['{{/bmHasExtra}}'],
+  50:  ['{{/agmHasExtra}}'],
+  67:  ['{{/agmHasExtra}}'],
   255: ['{{/attendees}}', '{{/boardChanged}}'],
 };
 
@@ -243,6 +259,7 @@ console.log('source: %d table(s), %d cells', tableSpans.length, (body.match(/<w:
 
 let mismatches = [];
 let repaired = [];
+const DEBUG_LINES = [];
 
 // Splits one paragraph's runs into formatting groups, decodes each, applies
 // tokens, and re-emits — pPr and every rPr copied through verbatim.
@@ -346,6 +363,10 @@ function transformParagraph(pXml, idx) {
     }
   }
   const decoded = decodeAll();
+
+  if (process.env.BM_DEBUG_DUMP) {
+    DEBUG_LINES.push(idx + '\t' + decoded.join(''));
+  }
 
   // ── Cross-group replacement ──
   // A value to be tokenised routinely spans several runs, and NOT because
@@ -769,6 +790,17 @@ for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml'
   if ((built.match(/w:left="6480" w:right="0"/g) || []).length !== 3) {
     throw new Error('declaration-page signature block indent did not apply to all 3 lines');
   }
+  for (const tag of ['bmHasExtra', 'agmHasExtra']) {
+    const opens = (built.match(new RegExp('\\{\\{#' + tag + '\\}\\}', 'g')) || []).length;
+    const closes = (built.match(new RegExp('\\{\\{/' + tag + '\\}\\}', 'g')) || []).length;
+    if (opens !== 2 || closes !== 2) {
+      throw new Error(`${tag} conditional count is off — expected 2 opens/2 closes (item + decision), found ${opens}/${closes}`);
+    }
+  }
+  if (!built.includes('{{bmMiscItemNum}}') || !built.includes('{{bmMiscDecisionNum}}') ||
+      !built.includes('{{agmMiscItemNum}}') || !built.includes('{{agmMiscDecisionNum}}')) {
+    throw new Error('a misc-item renumbering token did not survive into the built template');
+  }
   {
     const visargaCount = (built.match(/ः/g) || []).length;
     if (visargaCount !== 1 || !built.includes('क्रमशः')) {
@@ -796,6 +828,11 @@ for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml'
     throw new Error('page-break style used but never defined in styles.xml');
   }
   console.log('pagination check: OK (%d section starts carry the page-break style)', styleUses);
+}
+
+if (process.env.BM_DEBUG_DUMP) {
+  writeFileSync(join(__dirname, 'debug-dump.local.txt'), DEBUG_LINES.join('\n'), 'utf8');
+  console.log('debug dump written: tools/bmAgmBuild/debug-dump.local.txt');
 }
 
 const outZip = new JSZip();

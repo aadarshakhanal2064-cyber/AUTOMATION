@@ -1336,9 +1336,12 @@ function cropLoginLogoIcon(img) {
                 <input type="text" id="bm-agmExtraDecision" placeholder="Decision text — leave blank if none" />
               </div>
 
-              <div class="form-group" style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
-                <input type="checkbox" id="bm-boardChanged" style="width:auto;" onchange="bmToggleBoardChangedFields()" />
-                <label for="bm-boardChanged" style="margin:0;">Board/chairman was reappointed at this AGM — generate the "Change of Board of Director" documents</label>
+              <div class="form-group" style="grid-column: 1 / -1; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" id="bm-boardChanged" style="width:auto;" onchange="bmToggleBoardChangedFields()" />
+                  <label for="bm-boardChanged" style="margin:0;">Board/chairman was reappointed at this AGM — generate the "Change of Board of Director" documents</label>
+                </div>
+                <div id="bm-boardChanged-hint" style="display:none; margin-top:4px; font-size:12.5px; color:var(--text-secondary, #6b7280);">A single-shareholder company has no separate board to reappoint — add a shareholder above to enable this.</div>
               </div>
               <div class="form-group" id="bm-boardChangeDate-group" style="display:none;">
                 <label>Date of Board Change Meeting (B.S.)</label>
@@ -4189,7 +4192,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/notesToAccounts.js?v=202608171000"></script>
 <script src="js/depreciation.js?v=202608171700"></script>
 <script src="js/depreciationSlm.js?v=202608171400"></script>
-<script src="js/bmAgmMinutes.js?v=202608201700"></script>
+<script src="js/bmAgmMinutes.js?v=202608201800"></script>
 <script src="js/auditorChange.js?v=202608151800"></script>
 <script src="js/companyProfile.js?v=202608101800"></script>
 <script src="js/salesPurchaseBook.js?v=202608170900"></script>

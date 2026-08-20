@@ -120,8 +120,7 @@ function bmClearExtraShareholders() {
 // Director's Declaration page per attendee) is gated on this single flag in
 // the template (`{{#boardChanged}}`), so the date only matters when it's on.
 function bmToggleBoardChangedFields() {
-  const checked = document.getElementById('bm-boardChanged').checked;
-  document.getElementById('bm-boardChangeDate-group').style.display = checked ? '' : 'none';
+  bmSyncBoardChangedAvailability();
   bmOnFormChanged();
 }
 
@@ -133,6 +132,31 @@ function bmGetAllShareholderNames() {
     names.push(inp.value.trim());
   });
   return names.filter(Boolean);
+}
+
+// A single-shareholder company has nobody to reappoint the board FROM — the
+// chairman-only attendee list already IS the whole board — so "Change of
+// Board of Director" never applies to it, regardless of what's checked.
+function bmIsSingleShareholder() {
+  return bmGetAllShareholderNames().length === 0;
+}
+
+// Keeps the "board was reappointed" checkbox itself disabled (and
+// force-unchecked) for a single-shareholder company, rather than letting the
+// user check a box the template will end up ignoring (bmBuildData applies
+// the same guard again — this is the UI-visible half of it, not the only
+// one). Re-run on every form change, not just at company-select time: adding
+// or removing a shareholder row can flip single-shareholder status
+// mid-session.
+function bmSyncBoardChangedAvailability() {
+  const checkbox = document.getElementById('bm-boardChanged');
+  const hint = document.getElementById('bm-boardChanged-hint');
+  if (!checkbox) return;
+  const single = bmIsSingleShareholder();
+  checkbox.disabled = single;
+  if (single && checkbox.checked) checkbox.checked = false;
+  document.getElementById('bm-boardChangeDate-group').style.display = (checkbox.checked && !single) ? '' : 'none';
+  if (hint) hint.style.display = single ? '' : 'none';
 }
 
 // ════════════════════════════════════════════
@@ -235,13 +259,33 @@ function bmBuildData() {
   const bm = bmParseBsDate($('bm-bmDate'));
   const agm = bmParseBsDate($('bm-agmDate'));
   const letter = bmParseBsDate($('bm-letterDate'));
-  const boardChanged = document.getElementById('bm-boardChanged').checked;
+  // A single-shareholder company has nobody to reappoint the board FROM —
+  // the "Change of Board of Director" block never applies, regardless of
+  // the checkbox (bmSyncBoardChangedAvailability keeps the checkbox itself
+  // disabled/unchecked for this case; this is the defence-in-depth mirror
+  // of that, so a stale checked state can never reach the template).
+  const boardChanged = document.getElementById('bm-boardChanged').checked && !bmIsSingleShareholder();
   const boardChangeDateVal = $('bm-boardChangeDate');
   const boardChangeParsed = boardChanged && boardChangeDateVal ? bmParseBsDate(boardChangeDateVal) : null;
   const fy = bmFiscalDanda(document.getElementById('bm-fiscalYear').value);
   const firmIdx = document.getElementById('bm-auditorFirm').value;
   const firm = firmIdx !== '' ? BM_AUDIT_FIRMS[firmIdx] : null;
   const attendees = bmBuildAttendees();
+
+  // The "additional proposal" item (source's own "(Additional Proposal)"
+  // placeholder) is only a real agenda item when the user actually typed
+  // one — an empty field used to still print as its own numbered item
+  // ("२) थप प्रस्ताव छैन"). Left blank, the whole item AND its matching
+  // decision are omitted from the template ({{#bmHasExtra}}/
+  // {{#agmHasExtra}}), and "विविध" (always the last item/decision in its
+  // list) shifts up one number to take its place.
+  const bmExtraTitle = $('bm-bmExtraTitle');
+  const bmExtraDecision = $('bm-bmExtraDecision');
+  const agmExtraTitle = $('bm-agmExtraTitle');
+  const agmExtraDecision = $('bm-agmExtraDecision');
+  const bmHasExtra = !!(bmExtraTitle || bmExtraDecision);
+  const agmHasExtra = !!(agmExtraTitle || agmExtraDecision);
+
   return { bm, agm, letter, boardChanged, boardChangeParsed, data: {
     companyName:        $('bm-companyName'),
     companyNameShort:   bmShortCompanyName($('bm-companyName')),
@@ -263,10 +307,19 @@ function bmBuildData() {
     letterDate:         bmDandaDate(letter),
     boardChangeDate:    bmDandaDate(boardChangeParsed),
     directorTermYears:  bmToDevanagari($('bm-termYears') || '4'),
-    bmExtraProposalTitle:     $('bm-bmExtraTitle') || 'थप प्रस्ताव छैन',
-    bmExtraProposalDecision:  $('bm-bmExtraDecision') || 'छैन ।',
-    agmExtraProposalTitle:    $('bm-agmExtraTitle') || 'थप प्रस्ताव छैन',
-    agmExtraProposalDecision: $('bm-agmExtraDecision') || 'छैन ।',
+    bmHasExtra,
+    bmExtraProposalTitle:     bmExtraTitle,
+    bmExtraProposalDecision:  bmExtraDecision,
+    // "विविध" is always item/decision 3 in the BM section, 6 in the AGM
+    // section — unless the extra proposal ahead of it was omitted, in
+    // which case it moves up to 2 / 5.
+    bmMiscItemNum:      bmToDevanagari(bmHasExtra ? '3' : '2'),
+    bmMiscDecisionNum:  bmToDevanagari(bmHasExtra ? '3' : '2'),
+    agmHasExtra,
+    agmExtraProposalTitle:    agmExtraTitle,
+    agmExtraProposalDecision: agmExtraDecision,
+    agmMiscItemNum:     bmToDevanagari(agmHasExtra ? '6' : '5'),
+    agmMiscDecisionNum: bmToDevanagari(agmHasExtra ? '6' : '5'),
     boardChanged,
   }};
 }
@@ -590,6 +643,7 @@ function bmActivateTokenEdit(span, target) {
 
 document.addEventListener('DOMContentLoaded', function () {
   WorkflowEngine.attachFormWatcher(document.getElementById('regd-bmAgmMinutes-panel'), bmOnFormChanged);
+  bmSyncBoardChangedAvailability();
   bmLoadDraft();
   bmRenderFirmTrigger();
   bmUpdateCompletionIndicator();
@@ -703,6 +757,7 @@ function bmResetForm() {
 // the visible view — e.g. a click-to-edit token commit — never while the
 // (hidden) edit form is being typed into.
 function bmOnFormChanged() {
+  bmSyncBoardChangedAvailability();
   if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
   bmScheduleAutosave();
   bmUpdateCompletionIndicator();

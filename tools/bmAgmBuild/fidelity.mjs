@@ -124,6 +124,13 @@ function renderedLines(tplPath) {
     bmExtraProposalDecision:'Additional Proposal Decision Fill Space',
     agmExtraProposalTitle:'(Additional Proposal)',
     agmExtraProposalDecision:'Additional Proposal Decision Fill Space',
+    // The source document carries both extra-proposal placeholders, so a
+    // faithful re-render keeps them present with their original numbering
+    // (misc stays item/decision 3 in BM, 6 in AGM) rather than the renumbered
+    // (extra-omitted) case — that path is exercised by the app, not by this
+    // fidelity-against-the-source harness.
+    bmHasExtra: true, bmMiscItemNum: '३', bmMiscDecisionNum: '३',
+    agmHasExtra: true, agmMiscItemNum: '६', agmMiscDecisionNum: '६',
     attendeeNamesJoined: S.attendeeNamesJoined,
     attendees:[
       { num:'१', name: S.chairmanName,       role:'अध्यक्ष',  isChairman:true },
