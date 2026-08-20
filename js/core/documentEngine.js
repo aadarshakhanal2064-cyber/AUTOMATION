@@ -59,5 +59,144 @@ window.DocumentEngine = (function () {
     await window.docx.renderAsync(buffer, container, styleEl, options);
   }
 
-  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml };
+  // ── Fitting rendered pages onto real sheets ──
+  // Fits each rendered page-section onto exactly one sheet. Sections are the
+  // page breaks the template itself carries, so a document's header always
+  // tops its own sheet and its signature block stays with it.
+  //
+  // A section that runs taller than the sheet has its FONT SIZES genuinely
+  // reduced (every inline font-size/min-height/line-height the docx renderer
+  // emitted, scaled from stashed originals) until it fits — a real layout
+  // change, deliberately NOT a visual trick:
+  //   * CSS zoom paginates print from the PRE-zoom layout box, producing a
+  //     phantom blank page.
+  //   * transform:scale is skipped outright by Chrome's print engine — the
+  //     content is clipped at the paper edge at unscaled size.
+  // Font scaling is the one approach where screen and print cannot disagree,
+  // because the laid-out geometry IS the shrunk geometry. The section box is
+  // then locked to the sheet's exact pixel size with overflow:hidden as the
+  // final guarantee that no page can ever spill.
+  //
+  // Shared by every module's live preview and print window so both paginate
+  // identically. `className` is the class docx-preview was told to put on
+  // each section (see previewWordAsHtml's options.className).
+  function fitPagesToSheet(container, className) {
+    const sections = container.querySelectorAll('section.' + className);
+    if (!sections.length) return null;
+
+    // Hidden container (e.g. a preview refreshed before its tab was opened,
+    // such as a draft restore at load): everything measures 0 in place, so
+    // measure an offscreen clone instead (the docx stylesheet is a global
+    // <style>, so the clone renders identically) and copy the result back.
+    const hidden = !sections[0].getBoundingClientRect().height;
+    let measureSections = sections;
+    let holder = null;
+    if (hidden) {
+      const wrapper = container.querySelector('.' + className + '-wrapper') || container;
+      holder = document.createElement('div');
+      holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
+      holder.appendChild(wrapper.cloneNode(true));
+      document.body.appendChild(holder);
+      measureSections = holder.querySelectorAll('section.' + className);
+    }
+
+    // Scale one stashed inline value (e.g. "37pt", "16px"), preserving its unit.
+    const scaleLen = (orig, z) => (parseFloat(orig) * z) + (orig.replace(/[\d. ]/g, '') || 'px');
+
+    try {
+      const pageW = Math.round(parseFloat(getComputedStyle(measureSections[0]).width));
+      const pageH = Math.round(parseFloat(getComputedStyle(measureSections[0]).minHeight));
+
+      measureSections.forEach((m, i) => {
+        m.style.width = pageW + 'px';
+        m.style.minHeight = pageH + 'px';
+        m.style.height = pageH + 'px';
+        m.style.overflow = 'hidden';
+
+        // Stash every inline length the docx renderer emitted, once per
+        // element, so each fit attempt scales from the true originals rather
+        // than compounding on a previous attempt.
+        let els = Array.from(m.querySelectorAll('[data-de-fs]'));
+        if (!els.length) {
+          els = Array.from(m.querySelectorAll('*')).filter(el => el.style && (el.style.fontSize || el.style.minHeight));
+          els.forEach(el => {
+            el.dataset.deFs = el.style.fontSize || '';
+            el.dataset.deMh = el.style.minHeight || '';
+            el.dataset.deLh = el.style.lineHeight || '';
+            el.dataset.deMb = el.style.marginBottom || '';
+          });
+        }
+        const applyScale = z => els.forEach(el => {
+          if (el.dataset.deFs) el.style.fontSize = scaleLen(el.dataset.deFs, z);
+          if (el.dataset.deMh) el.style.minHeight = scaleLen(el.dataset.deMh, z);
+          if (el.dataset.deLh && parseFloat(el.dataset.deLh)) el.style.lineHeight = scaleLen(el.dataset.deLh, z);
+          if (el.dataset.deMb) el.style.marginBottom = scaleLen(el.dataset.deMb, z);
+        });
+
+        // Bisect for the largest scale that fits (each probe forces a full
+        // reflow, so ~6 probes beats a ~25-step linear walk on preview-refresh
+        // latency). Fitting is monotonic in z: smaller text never gets taller.
+        applyScale(1);
+        if (m.scrollHeight > m.clientHeight + 1) {
+          let lo = 0.5, hi = 1;
+          while (hi - lo > 0.01) {
+            const z = (lo + hi) / 2;
+            applyScale(z);
+            if (m.scrollHeight <= m.clientHeight + 1) lo = z; else hi = z;
+          }
+          applyScale(lo);
+        }
+
+        if (hidden && sections[i]) {
+          sections[i].innerHTML = m.innerHTML;
+          sections[i].style.cssText = m.style.cssText;
+        }
+      });
+      return { pageW, pageH };
+    } finally {
+      if (holder) holder.remove();
+    }
+  }
+
+  // Renders `blob` offscreen, fits it to sheets, and returns a standalone
+  // HTML document string that prints one template page per sheet — the same
+  // pagination the on-screen preview shows, because it is the same code.
+  // Returns null if the document produced no page sections.
+  async function buildPrintableHtml(blob, { className, title }) {
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
+    const styleEl = document.createElement('div');
+    const content = document.createElement('div');
+    holder.appendChild(styleEl);
+    holder.appendChild(content);
+    document.body.appendChild(holder);
+    try {
+      await previewWordAsHtml(blob, content, styleEl, {
+        className, inWrapper: true, breakPages: true,
+        ignoreLastRenderedPageBreak: true, experimental: true,
+      });
+
+      const fit = fitPagesToSheet(content, className);
+      if (!fit) return null;
+      const { pageW, pageH } = fit;
+
+      // textContent, not innerHTML — docx-preview injects its CSS as a real
+      // nested <style> element, and innerHTML would serialize that tag
+      // literally, closing our own wrapping <style> block early.
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>
+    @page { size: ${pageW}px ${pageH}px; margin: 0; }
+    html, body { margin:0; padding:0; background:#fff; }
+    ${styleEl.textContent}
+    .${className}-wrapper { display:block !important; background:#fff !important; padding:0 !important; }
+    .${className}-wrapper > section.${className} { box-shadow:none !important; margin:0 auto !important; page-break-after: always; }
+    .${className}-wrapper > section.${className}:last-child { page-break-after: auto; }
+  </style></head><body>${content.innerHTML}
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
+  </body></html>`;
+    } finally {
+      holder.remove();
+    }
+  }
+
+  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml, fitPagesToSheet, buildPrintableHtml };
 })();

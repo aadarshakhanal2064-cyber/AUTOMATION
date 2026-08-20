@@ -13,8 +13,8 @@
 //  had been flattened and three pages were hard-coded to the sample
 //  client.
 //
-//  Usage (after build.mjs has run):
-//    node fidelity.mjs "<source .docx>" ../../assets/templates/bm-agm-minutes.docx
+//  Usage (after buildBmAgm.mjs has run):
+//    node fidelityBmAgm.mjs "<source .docx>" ../../assets/templates/bm-agm-minutes.docx
 //
 //  Expected as of 2026-08-20: 177 source lines, 174 output lines (3 fewer
 //  — see below), 135 identical, 81 diff entries — all of them intentional:
@@ -34,7 +34,7 @@
 //      firm wants printed (user-requested) — replaced with an ASCII colon
 //      everywhere EXCEPT "क्रमशः" ("respectively"), where visarga is part
 //      of the actual Nepali spelling, not punctuation. 35 lines changed
-//      (70 diff entries) — build.mjs asserts exactly one surviving ः,
+//      (70 diff entries) — buildBmAgm.mjs asserts exactly one surviving ः,
 //      inside that one word, so a regression here fails loudly rather than
 //      silently misspelling it or leaving a stray visarga unconverted.
 //  Diffs print to the console, not to a file — the text is a real
@@ -54,7 +54,7 @@ try {
   ({ SOURCE_SAMPLE } = await import('./sample-values.local.mjs'));
 } catch {
   console.error(
-    "Missing tools/bmAgmBuild/sample-values.local.mjs — see build.mjs's " +
+    "Missing tools/registrarDocx/sample-values.local.mjs — see buildBmAgm.mjs's " +
     "same check for what to do."
   );
   process.exit(1);

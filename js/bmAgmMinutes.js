@@ -388,97 +388,12 @@ function bmShowPreviewPlaceholder() {
   if (root) root.style.display = 'none';
 }
 
-// Fits each rendered page-section onto exactly one sheet. Pages are split
-// only at the template's explicit page breaks — one page per document, so
-// the company-name header always tops its sheet and the signature block
-// stays with its document. A document that runs taller than the sheet has
-// its FONT SIZES genuinely reduced (every inline font-size/min-height/
-// line-height the docx renderer emitted, scaled from stashed originals)
-// until the content fits — a real layout change, deliberately NOT a visual
-// trick: CSS zoom paginates print from the pre-zoom layout box (phantom
-// blank page), and transform:scale is skipped outright by Chrome's print
-// engine (content clipped at the paper edge at unscaled size). Font scaling
-// is the one approach where screen and print cannot disagree, because the
-// laid-out geometry IS the shrunk geometry. The section box itself is
-// locked to the sheet's exact pixel size with overflow:hidden as the final
-// guarantee that no page can ever spill. Shared by the live preview and the
-// print window so both paginate identically.
+// Pagination and sheet-fitting are DocumentEngine's (§4) — the same code
+// backs the Company Secretary module's preview and print. This wrapper
+// exists only so the call sites below keep reading in this file's own
+// vocabulary; the class name is what docx-preview tags each section with.
 function bmFitPagesToSheet(container) {
-  const sections = container.querySelectorAll('section.bm-docx');
-  if (!sections.length) return null;
-
-  // Hidden container (e.g. preview refreshed before the tab was opened, such
-  // as a draft restore at load): everything measures 0 in place, so measure
-  // an offscreen clone instead (the docx stylesheet is a global <style>, so
-  // the clone renders identically) and copy the fitted result back.
-  const hidden = !sections[0].getBoundingClientRect().height;
-  let measureSections = sections;
-  let holder = null;
-  if (hidden) {
-    const wrapper = container.querySelector('.bm-docx-wrapper') || container;
-    holder = document.createElement('div');
-    holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
-    holder.appendChild(wrapper.cloneNode(true));
-    document.body.appendChild(holder);
-    measureSections = holder.querySelectorAll('section.bm-docx');
-  }
-
-  // Scale one stashed inline value (e.g. "37pt", "16px"), preserving its unit.
-  const scaleLen = (orig, z) => (parseFloat(orig) * z) + (orig.replace(/[\d. ]/g, '') || 'px');
-
-  try {
-    const pageW = Math.round(parseFloat(getComputedStyle(measureSections[0]).width));
-    const pageH = Math.round(parseFloat(getComputedStyle(measureSections[0]).minHeight));
-
-    measureSections.forEach((m, i) => {
-      m.style.width = pageW + 'px';
-      m.style.minHeight = pageH + 'px';
-      m.style.height = pageH + 'px';
-      m.style.overflow = 'hidden';
-
-      // Stash every inline length the docx renderer emitted, once per
-      // element, so each fit attempt scales from the true originals instead
-      // of compounding on a previous attempt.
-      let els = Array.from(m.querySelectorAll('[data-bm-fs]'));
-      if (!els.length) {
-        els = Array.from(m.querySelectorAll('*')).filter(el => el.style && (el.style.fontSize || el.style.minHeight));
-        els.forEach(el => {
-          el.dataset.bmFs = el.style.fontSize || '';
-          el.dataset.bmMh = el.style.minHeight || '';
-          el.dataset.bmLh = el.style.lineHeight || '';
-          el.dataset.bmMb = el.style.marginBottom || '';
-        });
-      }
-      const applyScale = z => els.forEach(el => {
-        if (el.dataset.bmFs) el.style.fontSize = scaleLen(el.dataset.bmFs, z);
-        if (el.dataset.bmMh) el.style.minHeight = scaleLen(el.dataset.bmMh, z);
-        if (el.dataset.bmLh && parseFloat(el.dataset.bmLh)) el.style.lineHeight = scaleLen(el.dataset.bmLh, z);
-        if (el.dataset.bmMb) el.style.marginBottom = scaleLen(el.dataset.bmMb, z);
-      });
-
-      // Bisect for the largest scale that fits (each probe forces a full
-      // reflow, so ~6 probes beats a ~25-step linear walk on preview-refresh
-      // latency). Fitting is monotonic in z: smaller text never gets taller.
-      applyScale(1);
-      if (m.scrollHeight > m.clientHeight + 1) {
-        let lo = 0.5, hi = 1;
-        while (hi - lo > 0.01) {
-          const z = (lo + hi) / 2;
-          applyScale(z);
-          if (m.scrollHeight <= m.clientHeight + 1) lo = z; else hi = z;
-        }
-        applyScale(lo);
-      }
-
-      if (hidden && sections[i]) {
-        sections[i].innerHTML = m.innerHTML;
-        sections[i].style.cssText = m.style.cssText;
-      }
-    });
-    return { pageW, pageH };
-  } finally {
-    if (holder) holder.remove();
-  }
+  return DocumentEngine.fitPagesToSheet(container, 'bm-docx');
 }
 
 // `isCurrent()` guards against an older, slower render (e.g. the template's
@@ -678,44 +593,8 @@ async function bmBuildPrintableDoc() {
   if (!bmPreviewReady()) return null;
   const { bm, agm, data } = bmBuildData();
   if (!bm || !agm) return null;
-
   const blob = await bmRenderDocx(data);
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
-  const styleEl = document.createElement('div');
-  const content = document.createElement('div');
-  holder.appendChild(styleEl);
-  holder.appendChild(content);
-  document.body.appendChild(holder);
-  try {
-    await DocumentEngine.previewWordAsHtml(blob, content, styleEl, {
-      className: 'bm-docx',
-      inWrapper: true,
-      breakPages: true,
-      ignoreLastRenderedPageBreak: true,
-      experimental: true,
-    });
-
-    const fit = bmFitPagesToSheet(content);
-    if (!fit) return null;
-    const { pageW, pageH } = fit;
-
-    // textContent, not innerHTML — docx-preview injects its CSS as a real
-    // nested <style> element, and innerHTML would serialize that tag
-    // literally, closing our own wrapping <style> block early.
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BM/AGM Minutes</title><style>
-    @page { size: ${pageW}px ${pageH}px; margin: 0; }
-    html, body { margin:0; padding:0; background:#fff; }
-    ${styleEl.textContent}
-    .bm-docx-wrapper { display:block !important; background:#fff !important; padding:0 !important; }
-    .bm-docx-wrapper > section.bm-docx { box-shadow:none !important; margin:0 auto !important; page-break-after: always; }
-    .bm-docx-wrapper > section.bm-docx:last-child { page-break-after: auto; }
-  </style></head><body>${content.innerHTML}
-  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
-  </body></html>`;
-  } finally {
-    holder.remove();
-  }
+  return DocumentEngine.buildPrintableHtml(blob, { className: 'bm-docx', title: 'BM/AGM Minutes' });
 }
 
 async function bmOpenPrintWindow(successMessage) {
