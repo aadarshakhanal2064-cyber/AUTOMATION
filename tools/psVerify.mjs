@@ -274,6 +274,58 @@ eq('margin    PBT from last year’s margin',
    Engine.pbtFromMargin(4249787.5983610004, 79339341.649999976, 101903888.59999999),
    4249787.5983610004 / 79339341.649999976 * 101903888.59999999, 0.01);
 
+// ── the COI bridge ──
+// Tax charged on accounting profit is only right while accounting and
+// Income-Tax depreciation agree. These assert the bridge closes the gap and
+// that turning it off leaves the old behaviour untouched.
+const IT_DEP = 742110;
+const coiOn = Engine.derive({
+  py, cy: Object.assign({}, cy, { itDepreciation: IT_DEP, broughtForwardLoss: 0 }),
+  options: { taxProfile: 'corporate', useCoi: true },
+});
+eq('COI  taxable = PBT + acct dep − IT dep',
+   coiOn.coi.taxableProfit, coiOn.income.pbt + coiOn.income.depreciation - IT_DEP);
+eq('COI  tax charged on taxable income',
+   coiOn.tax.onProfits, Math.max(0, coiOn.coi.taxableProfit) * 0.25);
+eq('COI  bridge foots', coiOn.coi.bridgeOk ? 0 : 1, 0);
+eq('COI  balance still nil', coiOn.balance.balanceGap, 0, 0.01);
+
+// A brought-forward loss REDUCES taxable income, though the firm's sheet
+// labels the row "Add: Previous year Loss" and prints it negative.
+const coiLoss = Engine.derive({
+  py, cy: Object.assign({}, cy, { itDepreciation: IT_DEP, broughtForwardLoss: 500000 }),
+  options: { taxProfile: 'corporate', useCoi: true },
+});
+eq('COI  b/f loss reduces taxable', coiLoss.coi.taxableProfit, coiOn.coi.taxableProfit - 500000);
+
+// Off, the flat basis is byte-for-byte what it always was.
+const coiOff = Engine.derive({
+  py, cy: Object.assign({}, cy, { itDepreciation: IT_DEP }),
+  options: { taxProfile: 'corporate', useCoi: false },
+});
+eq('COI  off → tax on accounting profit', coiOff.tax.onProfits, out.tax.onProfits);
+eq('COI  off → taxable = PBT',            coiOff.coi.taxableProfit, coiOff.income.pbt);
+
+// ── the Autobooks summariser ──
+// Three of Autobooks' own rules, which this must never drift from: a return
+// carries the opposite sign, Taxable Import is its own box, and Capital
+// Purchase is a slice of taxable rather than an addition to it.
+const Src = require(path.join(here, '..', 'js', 'provisionalSources.js'));
+const sum = Src.psrcSummarise([
+  { section: 'sales',    kind: 'regular', taxable: 100000, tax_free: 5000, vat: 13000, fiscal_month: 1, party_key: 'a', pan: '111111111' },
+  { section: 'sales',    kind: 'omitted', bill_type: 'sales_return', taxable: 10000, vat: 1300, fiscal_month: 2, party_key: 'a', pan: '111111111' },
+  { section: 'purchase', kind: 'regular', taxable: 60000, tax_free: 2000, vat: 7800, taxable_import: 15000, import_vat: 1950, capital: 20000, fiscal_month: 1, party_key: 'b', pan: '222222222' },
+  { section: 'purchase', kind: 'omitted', bill_type: 'purchase_return', taxable: 5000, vat: 650, fiscal_month: 3, party_key: 'b', pan: '222222222' },
+]);
+eq('source  a sales return reduces revenue',   sum.sales.taxable,      90000);
+eq('source  a purchase return reduces purch',  sum.purchase.taxable,   55000);
+eq('source  import kept out of taxable',       sum.purchase.imports,   15000);
+eq('source  capital is a memo, not additive',  sum.purchase.capital,   20000);
+eq('source  party totals accumulate',          sum.parties.sales.a.amount, 95000);
+const vatPos = Src.psrcVatPosition({ reg_type: 'vat' }, sum, 't');
+eq('source  VAT payable = output − input',     vatPos.payable, sum.sales.vat - (sum.purchase.vat + sum.purchase.importVat));
+eq('source  PAN-only client carries no VAT',   Src.psrcVatPosition({ reg_type: 'pan' }, sum, 't') === null ? 0 : 1, 0);
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

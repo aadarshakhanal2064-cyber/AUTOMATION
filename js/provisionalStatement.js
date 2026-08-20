@@ -32,6 +32,16 @@ let psLoans = { nc: [], c: [] };
 let psCustom = [];           // other-expense lines the user added by hand
 let psDirectCustom = [];     // direct-cost lines the user added by hand
 let psTds = {};              // per-line TDS overrides; blank means "derive it"
+// What the app could resolve for this client-year without anyone typing it:
+// { revenue, purchases, vat, parties, months, source } from Autobooks, plus
+// the Income-Tax depreciation the COI bridge needs. Null when there is no
+// source, in which case every figure stays typed exactly as before.
+let psSrc = null;
+let psItDep = null;
+// Figures the preparer has deliberately taken back off the source. A key in
+// here means "I typed this, stop auto-filling it" — nothing is ever silently
+// overwritten once it has been claimed.
+let psTypedOver = {};
 // Trade receivables absorbs the balance by default, the way the Audited engine
 // already works (§15). Untick it to type receivables and have any residual
 // reported instead of absorbed.
@@ -118,6 +128,7 @@ const psScope = WorkflowEngine.createClientScope({
     psCy = {}; psRules = {}; psPpeInput = []; psDepSource = '';
     psLoans = { nc: [], c: [] };
     psCustom = []; psDirectCustom = []; psTds = {};
+    psSrc = null; psItDep = null; psTypedOver = {};
     psSolveFor = 'purchases'; psPlugReceivables = true;
     const f = psEl('ps-py-file'); if (f) f.value = '';
     psRenderPySummary();
@@ -142,13 +153,89 @@ const psScope = WorkflowEngine.createClientScope({
     psEl('ps-tax-profile').value = profile === 'proprietorship' ? 'progressive' : 'corporate';
 
     psLoadDepreciation();
+    psLoadSources();
     psStatus(`Client loaded: ${it.name}`, 'success');
   },
 });
 
 function psOnFyChange() {
   psLoadDepreciation();
+  psLoadSources();
   psRecalcDebounced();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SOURCES — figures this app already holds for the client and year.
+//  Read-only (js/provisionalSources.js); a missing source is not an error,
+//  it just leaves the figure typed.
+// ════════════════════════════════════════════════════════════════
+
+async function psLoadSources() {
+  const fy = (psEl('ps-fy') || {}).value;
+  const name = (psEl('ps-company') || {}).value;
+  const id = psSelectedClient ? psSelectedClient.id : null;
+  if (!fy) return;
+  try {
+    const [reg, itDep] = await Promise.all([
+      psrcRegister(id, name, fy),
+      psrcItDepreciation(id, fy),
+    ]);
+    psSrc = reg;
+    psItDep = itDep;
+    psApplySources();
+    psRenderFigures();
+    psRun();
+
+    const got = [];
+    if (reg) got.push(`revenue and purchases from ${reg.source}`);
+    if (reg && reg.vat) got.push('the VAT position');
+    if (itDep) got.push(itDep.stale ? `Income-Tax depreciation (${itDep.fiscalYear} — no schedule for this year yet)` : 'Income-Tax depreciation');
+    if (got.length) {
+      psStatus(`Filled ${got.join(', ')}. Each one shows where it came from and can be typed over.`, 'success');
+    }
+  } catch (e) { /* a missing source must never block the module */ }
+}
+
+// Push resolved figures into the typed boxes, EXCEPT any the preparer has
+// claimed by typing. Same contract as Autobooks' VAT upload: a figure someone
+// entered is never replaced without saying so.
+function psApplySources() {
+  const set = (k, v) => { if (!psTypedOver[k] && v != null) psCy[k] = Math.round(v * 100) / 100; };
+  if (psSrc) {
+    set('sales', psSrc.revenue.value);
+    set('purchases', psSrc.purchases.value);
+    if (psSrc.vat) {
+      if (!psTypedOver.vatRegistered) psCy.vatRegistered = true;
+      set('vatPayable', psSrc.vat.payable || null);
+      set('vatReceivable', psSrc.vat.receivable || null);
+    }
+    // Purchases came from the register, so the see-saw must hold THAT and let
+    // profit fall out — otherwise the derived purchases figure is immediately
+    // overwritten by the balancing solve.
+    if (!psTypedOver.pbtTarget && psCy.purchases != null) psSolveFor = 'pbt';
+  }
+  if (psItDep && !psTypedOver.itDepreciation) psCy.itDepreciation = Math.round(psItDep.value * 100) / 100;
+}
+
+// Where a figure came from, for the caption under its box.
+function psSourceOf(k) {
+  if (psTypedOver[k]) return null;
+  if (!psSrc && !psItDep) return null;
+  if (k === 'sales' && psSrc) return psSrc.revenue;
+  if (k === 'purchases' && psSrc) return psSrc.purchases;
+  if ((k === 'vatPayable' || k === 'vatReceivable') && psSrc && psSrc.vat) return psSrc.vat;
+  if (k === 'itDepreciation' && psItDep) return psItDep;
+  return null;
+}
+
+// Typing into a sourced box claims it; the ↺ hands it back to the source.
+function psClaimTyped(k) { psTypedOver[k] = true; }
+function psReleaseTyped(k) {
+  delete psTypedOver[k];
+  delete psCy[k];
+  psApplySources();
+  psRenderFigures();
+  psRun();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -478,12 +565,13 @@ function psRenderFigures() {
       const val = plugged
         ? (derived && psResult ? Number(psResult.balance.tradeReceivables).toFixed(2) : '')
         : (psCy[f.k] == null ? '' : psCy[f.k]);
+      const src = psSourceOf(f.k);
       return `
       <div class="form-group" style="margin:0;">
-        <label>${f.label === '@DIST@' ? escHtml(psDistLabel()) : f.label} ${plugged ? tag(true) : ''}</label>
+        <label>${f.label === '@DIST@' ? escHtml(psDistLabel()) : f.label} ${plugged ? tag(true) : ''}${src ? psSrcBadge() : ''}</label>
         <input type="number" step="0.01" id="ps-fig-${f.k}" value="${val}" ${plugged ? 'readonly style="background:var(--bg-subtle);"' : ''}
                oninput="psFigureInput('${f.k}', this.value)" />
-        ${f.hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${f.hint}</div>` : ''}
+        ${src ? psSrcNote(f.k, src) : (f.hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${f.hint}</div>` : '')}
       </div>`; }).join('') + `</div>
 
     <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-top:12px; cursor:pointer;">
@@ -512,6 +600,18 @@ function psRenderFigures() {
   psRenderTax();
 }
 
+function psSrcBadge() {
+  return '<span class="log-badge badge-info" style="margin-left:6px; font-size:10px;">from data</span>';
+}
+
+// Provenance under a sourced box: where the figure came from, and the way back
+// to typing it. A figure whose origin is invisible is one nobody trusts.
+function psSrcNote(k, src) {
+  return `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+    ${escHtml(src.source || 'app data')}${src.detail ? ` — ${escHtml(src.detail)}` : ''}
+  </div>`;
+}
+
 // Editing one end of the see-saw makes the OTHER the balancing figure.
 function psSetPlug(on) {
   psPlugReceivables = !!on;
@@ -527,6 +627,7 @@ function psSetSolve(which, v) {
 
 function psFigureInput(k, v) {
   psCy[k] = v === '' ? undefined : psNum(v);
+  if (psSourceOf(k)) psClaimTyped(k);
   psRecalcDebounced();
 }
 
@@ -722,6 +823,49 @@ function psRenderTax() {
   }).join('');
 
   const advTyped = psCy.advanceTax != null && psCy.advanceTax !== '';
+  const coiOn = psUseCoi();
+  const itSrc = psSourceOf('itDepreciation');
+  const c = r ? r.coi : null;
+  const money = v => psFmt(v);
+
+  // The Computation of Income — the bridge from accounting profit to taxable
+  // income. Shown whenever it is on, so the tax figure on the statements can
+  // be traced rather than taken on trust.
+  const coiBlock = `
+    <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500;">
+        <input type="checkbox" id="ps-use-coi" ${coiOn ? 'checked' : ''} style="width:auto;" onchange="psSetUseCoi(this.checked)" />
+        Compute tax through a Computation of Income (adds the COI sheet)
+      </label>
+      <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">
+        ${itSrc ? escHtml(itSrc.source) + (itSrc.stale ? ' — no schedule for this year yet, so last year&rsquo;s is used' : '')
+                : 'No Income-Tax depreciation schedule found for this client. Without one the bridge deducts nothing.'}
+      </div>
+      ${coiOn ? `
+      <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;">
+        <div class="form-group" style="margin:0;">
+          <label>Depreciation per Income Tax Act ${itSrc ? psSrcBadge() : ''}</label>
+          <input type="number" step="0.01" value="${psCy.itDepreciation == null ? '' : psCy.itDepreciation}"
+                 oninput="psFigureInput('itDepreciation', this.value)" />
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Brought-forward loss</label>
+          <input type="number" step="0.01" value="${psCy.broughtForwardLoss == null ? '' : psCy.broughtForwardLoss}"
+                 oninput="psFigureInput('broughtForwardLoss', this.value)" />
+          <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Enter as a positive figure; it reduces taxable income.</div>
+        </div>
+      </div>
+      ${c ? `<div class="table-wrap" style="margin-top:12px;"><table class="client-table">
+        <tbody>
+          <tr><td>Net profit as per Income Statement</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.pbt)}</td></tr>
+          <tr><td>Add: Depreciation per Accounting Standard</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.accountingDep)}</td></tr>
+          <tr><td>Less: Depreciation per Income Tax Act</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.itDep)}</td></tr>
+          <tr><td>Add: Previous year Loss</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.bfLoss)}</td></tr>
+          <tr style="font-weight:600;"><td>Total taxable income</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.taxableProfit)}</td></tr>
+          <tr style="font-weight:600;"><td>Provision for tax</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.tax)}</td></tr>
+        </tbody></table></div>` : ''}` : ''}
+    </div>`;
+
   host.innerHTML = `
     <div class="form-grid" style="grid-template-columns:repeat(2,1fr); gap:14px; align-items:start;">
       <div class="form-group" style="margin:0;">
@@ -754,7 +898,8 @@ function psRenderTax() {
     <div class="table-wrap" style="margin-top:16px;"><table class="client-table">
       <thead><tr><th style="width:55%;">Withholding</th><th style="text-align:right;">This year</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>`;
+    </table></div>
+    ${coiBlock}`;
 }
 
 function psTdsSet(k, v) {
@@ -845,6 +990,22 @@ function psInterestInput(k, v) { psFigureInput(k, v); }
 //  SOLVE
 // ════════════════════════════════════════════════════════════════
 
+// COI is on when there is an Income-Tax depreciation schedule to bridge to.
+// The checkbox overrides in either direction once the preparer touches it.
+function psUseCoi() {
+  const el = psEl('ps-use-coi');
+  if (el && el.dataset.touched === '1') return el.checked;
+  return !!(psItDep || psNum(psCy.itDepreciation));
+}
+
+function psSetUseCoi(on) {
+  const el = psEl('ps-use-coi');
+  if (el) el.dataset.touched = '1';
+  psRun();
+  psRenderFigures();
+  psRenderTax();
+}
+
 function psCollectInput() {
   const p = psPy || {};
   const flat = ProvisionalStatementEngine.FLAT_LINES;
@@ -879,6 +1040,9 @@ function psCollectInput() {
       growth: 1 + psNum((psEl('ps-growth') || {}).value || 5) / 100,
       taxProfile: (psEl('ps-tax-profile') || {}).value || 'corporate',
       balanceVia: psPlugReceivables ? 'receivables' : 'none',
+      // The Computation of Income runs when the client has an Income-Tax
+      // depreciation schedule, unless the preparer says otherwise.
+      useCoi: psUseCoi(),
       // 'purchases' means the typed PBT is held and purchases balances to it.
       solveFor: psSolveFor,
     },
@@ -950,9 +1114,10 @@ function psToOut(r) {
         pan: (psEl('ps-pan') || {}).value || '',
       },
       fy, fyPrev: isFinite(startY) ? `${startY - 1}-${String(startY).slice(2)}` : '',
-      // A provisional set is the seven statements and schedules — the tax
-      // computation belongs to the return, not here.
-      omitCoi: true,
+      // A provisional set is seven sheets. The Computation of Income is the
+      // eighth, and only for engagements that bridge accounting and Income-Tax
+      // depreciation — see docs/modules/provisional-statement.md §2.3.
+      omitCoi: !psUseCoi(),
       // 3.6 Share Capital states share COUNTS, which the note derives by
       // dividing the face value into the capital — so it can never disagree
       // with the balance sheet. Authorised is constitutional, not derivable,
@@ -1010,7 +1175,11 @@ function psToOut(r) {
       profit: r.soce.profit, capital: r.soce.capital, dividend: r.soce.dividend,
     },
     ppe: r.ppe,
-    coi: { pbt: r.income.pbt, depSlm: 0, depIncomeTax: 0, taxableProfit: r.tax.base, tax: r.tax.total, rule: r.tax.rule },
+    coi: {
+      pbt: r.coi.pbt, depSlm: r.coi.accountingDep, depIncomeTax: r.coi.itDep,
+      bfLoss: r.coi.bfLoss, taxableProfit: r.coi.taxableProfit,
+      tax: r.tax.total, rule: r.tax.rule,
+    },
     priorYear: {
       sfp: (p.sfp || {}),
       soi: Object.assign({}, p.soi || {}, { incentive: psPyIncentive() }),

@@ -379,15 +379,38 @@ const ProvisionalStatementEngine = (() => {
     }
     const totalExpenses = materialsTotal + nonMaterialExpenses;   // `SOI F25`
 
+    // ── the tax base: accounting profit, or a proper Computation of Income ──
+    // Tier A of the firm's practice charges tax straight off accounting profit
+    // (`Sch-PL D75 =+SOI!F27*0.25`). That is only right while accounting and
+    // Income-Tax depreciation agree. The fuller engagements bridge them:
+    //
+    //    net profit  + depreciation per Accounting Standard
+    //                − depreciation per Income Tax Act
+    //                + brought-forward loss          = taxable income
+    //
+    // COI runs whenever an Income-Tax depreciation schedule was found (or the
+    // preparer asks for it); otherwise the flat basis stands, so nothing an
+    // existing simple engagement prints changes.
+    const itDep = num(cy.itDepreciation);
+    const bfLoss = num(cy.broughtForwardLoss);
+    const useCoi = !!opt.useCoi;
+    const taxableProfit = useCoi
+      ? pbt + depreciation - itDep - bfLoss
+      : pbt;
+    if (useCoi && !itDep) {
+      warn('The Computation of Income is on but no Income-Tax depreciation was found, so the bridge adds back accounting depreciation and deducts nothing. Check the client has a saved Income-Tax depreciation schedule.');
+    }
+
     const profile = opt.taxProfile || 'corporate';
     let tax, taxRule;
     if (profile === 'progressive') {
-      tax = progressiveTax(Math.max(0, pbt));
+      tax = progressiveTax(Math.max(0, taxableProfit));
       taxRule = 'Proprietorship — progressive slabs';
     } else {
-      tax = Math.max(0, pbt) * CORPORATE_TAX;    // `Sch-PL D75 =+SOI!F27*0.25`
+      tax = Math.max(0, taxableProfit) * CORPORATE_TAX;
       taxRule = 'Pvt. Ltd. / Partnership — 25% flat';
     }
+    if (useCoi) taxRule += ' on taxable income per COI';
     const priorPeriodTax = num(cy.priorPeriodTax);
     const taxExpense = tax + priorPeriodTax;     // `D77 =SUM(D75:D76)`
     const netProfit = pbt - taxExpense;          // `SOI F31 =F27-F29`
@@ -610,10 +633,13 @@ const ProvisionalStatementEngine = (() => {
         otherItems: otherExpenses,
         otherTotal,
         totalExpenses, pbt, tax: taxExpense, netProfit,
-        // Only the flat corporate rate is expressible as one cell formula;
-        // progressive slabs are a schedule, so those export as a figure and
-        // the COI sheet carries the working.
-        taxDerive: profile === 'corporate' ? { kind: 'taxOnProfit', rate: CORPORATE_TAX } : null,
+        // With COI on, Sch-PL's tax row points at the COI sheet — that is
+        // where the figure is actually computed, and the workbook's own
+        // `Sch-PL D62 =ROUND(COI!F18,)` does the same. Without it, and only on
+        // the flat corporate rate, the rate is expressible as one cell formula;
+        // progressive slabs are a schedule and export as a figure.
+        taxDerive: useCoi ? null
+          : (profile === 'corporate' ? { kind: 'taxOnProfit', rate: CORPORATE_TAX } : null),
       },
       balance: {
         ppe: ppeClosing, investmentsNC, otherReceivablesNC, totalNCA,
@@ -643,7 +669,21 @@ const ProvisionalStatementEngine = (() => {
         capitalProceeds, ncBorrowMove, cBorrowMove, dividend, netFinancing,
         netIncrease, openingCash, closingCash, cashProof,
       },
-      tax: { rule: taxRule, base: Math.max(0, pbt), onProfits: tax, priorPeriod: priorPeriodTax, total: taxExpense },
+      tax: { rule: taxRule, base: Math.max(0, taxableProfit), onProfits: tax, priorPeriod: priorPeriodTax, total: taxExpense },
+      // The COI bridge, whether or not it is printed — the reconciliation
+      // panel checks it foots even on a Tier A set.
+      coi: {
+        active: useCoi,
+        pbt,
+        accountingDep: depreciation,
+        itDep,
+        bfLoss,
+        taxableProfit,
+        tax,
+        rule: taxRule,
+        // The bridge must reproduce the taxable figure the tax was charged on.
+        bridgeOk: !useCoi || Math.abs((pbt + depreciation - itDep - bfLoss) - taxableProfit) < 0.005,
+      },
       tds: { salary: tdsSalary, rent: tdsRent, incentive: tdsIncentive, wages: tdsWages, auditFee: tdsAuditFee, freight: tdsFreight },
       vat: { registered: vatRegistered, receivable: vatReceivable, payable: vatPayable },
       advanceTax: { amount: advanceTax, typed: advanceTaxTyped, derived: advanceTaxDerived },

@@ -205,7 +205,12 @@ function fsxBuildReport(out) {
       R('Net Profit as per Income Statement', [coi.pbt], 'item', { k: 'pbt', xf: ({ X }) => X('SOI', 'pbt') }),
       R('Add: Depreciation as per Accounting Standard', [coi.depSlm], 'item', { k: 'depSlm' }),
       R('Less: Depreciation as per Income tax Act,2058', [-Math.abs(coi.depIncomeTax || 0)], 'item', { k: 'depIt' }),
-      R('Total Taxable income', [coi.taxableProfit], 'tot', { k: 'taxable', xsum: ['pbt', 'depSlm', 'depIt'] }),
+      // The firm's own COI carries this row and ours did not. Their label says
+      // "Add" and the cell holds a negative, because a brought-forward loss
+      // reduces taxable income — kept exactly that way so the printed sheet
+      // reads like theirs.
+      R('Add: Previous year Loss', [-Math.abs(coi.bfLoss || 0)], 'item', { k: 'bfLoss' }),
+      R('Total Taxable income', [coi.taxableProfit], 'tot', { k: 'taxable', xsum: ['pbt', 'depSlm', 'depIt', 'bfLoss'] }),
       B(),
       R('Provision for Tax', [coi.tax], 'grand', { k: 'tax' }),
       B(),
