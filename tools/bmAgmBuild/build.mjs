@@ -164,6 +164,15 @@ const PARA_TOKENS = {
   23:  [['निर्णय नं. ३', 'निर्णय नं. {{bmMiscDecisionNum}}']],
   51:  [['६)', '{{agmMiscItemNum}})']],
   70:  [['निर्णय नं. ६', 'निर्णय नं. {{agmMiscDecisionNum}}']],
+  // The बोधार्थ (cc) line drops the auditor's address and keeps only the
+  // name (2026-08-20, user decision). Every other field on this page comes
+  // from an org_firms *_np column, but `address` has no Nepali counterpart —
+  // so the line rendered half in Devanagari and half in English
+  // ("बोधार्थ : शैलेश डल्लाकोटी, Khairahani-01, Chitwan") on a Nepali
+  // registrar filing. Removing it here, rather than passing an empty
+  // {{auditorAddress}} from the app, is what avoids leaving the separating
+  // comma stranded at the end of the line.
+  168: [[', ' + S.auditorAddress, '']],
   64:  [[S.attendeeNamesJoined, '{{attendeeNamesJoined}}'], [S.directorTermYears + ' वर्षका', '{{directorTermYears}} वर्षका']],
   91:  [[S.capitalFigure, '{{authorizedCapital}}']],
   96:  [[S.capitalFigure, '{{issuedCapital}}']],
