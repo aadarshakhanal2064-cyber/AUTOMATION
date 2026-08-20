@@ -18,6 +18,7 @@ module detail irrelevant to whatever the session was actually doing.
 | File | Covers | Was |
 |---|---|---|
 | [`architecture.md`](architecture.md) | Runtime architecture, script load order, CDN pins + SRI, hosting, local dev, the auth lifecycle, Google Drive/Gmail integration, and the three document-generation paths | CLAUDE.md §2, §7, §8, §9.1–9.4 |
+| [`nepali-docx-playbook.md`](nepali-docx-playbook.md) | **Read before building a new Preeti/Word document module.** The full method: reading the source document with the user, the five `.docx` XML traps, page breaks that work in Word *and* the preview, measuring Word over COM, the three harnesses to commit, and keeping real client values out of a public repo | — |
 | [`database.md`](database.md) | All 21 tables column by column, trigger-owned logic, data conventions, query rules, migration workflow, the full RLS model | CLAUDE.md §6 |
 | [`engines.md`](engines.md) | The 12 `js/core/` engines in full — responsibilities, key APIs, and the load-bearing implementation notes | CLAUDE.md §4 |
 
