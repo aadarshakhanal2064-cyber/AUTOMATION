@@ -326,6 +326,70 @@ const vatPos = Src.psrcVatPosition({ reg_type: 'vat' }, sum, 't');
 eq('source  VAT payable = output − input',     vatPos.payable, sum.sales.vat - (sum.purchase.vat + sum.purchase.importVat));
 eq('source  PAN-only client carries no VAT',   Src.psrcVatPosition({ reg_type: 'pan' }, sum, 't') === null ? 0 : 1, 0);
 
+// ── supporting schedules roll up ──
+// The point of a schedule is that the figure is entered once, as the working
+// behind it. These assert the working IS the figure, in both directions.
+const sched = Engine.derive({
+  py,
+  cy: Object.assign({}, cy, {
+    closingStock: 999,                       // must be ignored once detail exists
+    stockLines: [
+      { group: 'Raw Material',      particular: 'Dana',  qty: 100, rate: 250 },
+      { group: 'Raw Material',      particular: 'Maize', qty: 200, rate: 150 },
+      { group: 'Finished Goods',    particular: 'Fish',  amount: 500000 },
+    ],
+    advanceTaxLines: [{ amount: 300000 }, { amount: 250000 }],
+    advanceTaxOpening: 100000,
+  }),
+  options: { taxProfile: 'corporate' },
+});
+eq('stock  qty x rate line',        sched.stock.lines[0].amount, 25000);
+eq('stock  typed amount wins',      sched.stock.lines[2].amount, 500000);
+eq('stock  group total',            sched.stock.groups[0].amount, 55000);
+eq('stock  grand total',            sched.stock.total, 555000);
+eq('stock  schedule IS the figure', sched.income.materials.closing, 555000);
+eq('stock  and the balance sheet',  sched.balance.inventories, 555000);
+eq('stock  note 3.4 shows groups',  sched.balance.inventoryLines.length, 2);
+eq('advtax deposited',              sched.advanceTax.deposited, 550000);
+eq('advtax + opening credit',       sched.advanceTax.amount, 650000);
+eq('advtax reaches the note',       (sched.balance.receivableLines.find(l => l.key === 'advanceTax') || {}).amount, 650000);
+eq('sched  balance still nil',      sched.balance.balanceGap, 0, 0.01);
+
+// ── reconciliation ──
+const Rec = require(path.join(here, '..', 'js', 'provisionalReconcile.js'));
+const clean = Rec.run(out, { priorYear: null });
+eq('recon  balance sheet ties',   clean.checks.find(c => c.id === 'balance').ok ? 0 : 1, 0);
+eq('recon  cash flow ties',       clean.checks.find(c => c.id === 'cash').ok ? 0 : 1, 0);
+eq('recon  note 3.3 foots',       clean.checks.find(c => c.id === 'note-recv').ok ? 0 : 1, 0);
+eq('recon  note 3.9 foots',       clean.checks.find(c => c.id === 'note-pay').ok ? 0 : 1, 0);
+eq('recon  note 3.1 PPE foots',   clean.checks.find(c => c.id === 'note-ppe').ok ? 0 : 1, 0);
+eq('recon  profit reaches equity',clean.checks.find(c => c.id === 'equity').ok ? 0 : 1, 0);
+eq('recon  nothing failing',      clean.failing.length, 0);
+
+// A check that fails must say WHERE — a difference nobody can locate is a
+// difference nobody fixes, which is the whole point of this layer.
+const broken = JSON.parse(JSON.stringify(out));
+broken.balance.balanceGap = 125000;
+broken.balance.plugReceivables = false;
+const bad = Rec.run(broken, { priorYear: null });
+const bsCheck = bad.checks.find(c => c.id === 'balance');
+eq('recon  a gap is NOT reconciled', bsCheck.ok ? 1 : 0, 0);
+eq('recon  and it says where',     bsCheck.where.length > 0 ? 1 : 0, 1);
+
+// The register comparison is a REVIEW, never an automatic correction: a
+// provisional set may deliberately differ from the filed register.
+const withReg = Rec.run(out, {
+  priorYear: null,
+  register: {
+    revenue: { value: out.income.revenueOps + 50000, detail: 'test' },
+    purchases: { value: out.income.materials.purchases, detail: 'test' },
+    parties: { sales: {}, purchase: {} },
+  },
+});
+const revCheck = withReg.checks.find(c => c.id === 'reg-revenue');
+eq('recon  register gap is for review', revCheck.level === 'review' ? 0 : 1, 0);
+eq('recon  and not counted as failing', withReg.failing.filter(c => c.id === 'reg-revenue').length, 0);
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

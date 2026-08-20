@@ -42,6 +42,12 @@ let psItDep = null;
 // here means "I typed this, stop auto-filling it" — nothing is ever silently
 // overwritten once it has been claimed.
 let psTypedOver = {};
+// Supporting schedules — detail that rolls up into the statements, so the
+// figure is entered once as the working behind it rather than twice as a
+// summary. Empty means "no schedule", and the plain typed box stands.
+let psStock = [];
+let psAdvTax = [];
+let psReconcile = null;      // last ProvisionalReconcile.run() output
 // Trade receivables absorbs the balance by default, the way the Audited engine
 // already works (§15). Untick it to type receivables and have any residual
 // reported instead of absorbed.
@@ -129,6 +135,7 @@ const psScope = WorkflowEngine.createClientScope({
     psLoans = { nc: [], c: [] };
     psCustom = []; psDirectCustom = []; psTds = {};
     psSrc = null; psItDep = null; psTypedOver = {};
+    psStock = []; psAdvTax = [];
     psSolveFor = 'purchases'; psPlugReceivables = true;
     const f = psEl('ps-py-file'); if (f) f.value = '';
     psRenderPySummary();
@@ -598,6 +605,9 @@ function psRenderFigures() {
   psRenderRules();
   psRenderPpe();
   psRenderTax();
+  psRenderStock();
+  psRenderAdvTax();
+  psRenderParties();
 }
 
 function psSrcBadge() {
@@ -902,6 +912,150 @@ function psRenderTax() {
     ${coiBlock}`;
 }
 
+// ════════════════════════════════════════════════════════════════
+//  CLOSING STOCK — the firm's `stock` sheet: qty x rate per item, grouped.
+//  Its group totals feed note 3.4 and its grand total feeds Sch-PL's closing
+//  stock, so one schedule answers both instead of a figure typed twice.
+// ════════════════════════════════════════════════════════════════
+
+const PS_STOCK_GROUPS = ['Raw Material', 'Work-in-progress', 'Finished Goods', 'Biological Assets', 'Consumables'];
+
+function psRenderStock() {
+  const host = psEl('ps-stock');
+  if (!host) return;
+  const r = psResult;
+  const rows = psStock.map((l, i) => {
+    const amt = l.amount != null && l.amount !== '' ? psNum(l.amount) : psNum(l.qty) * psNum(l.rate);
+    return `<tr>
+      <td><select onchange="psStockSet(${i},'group',this.value)" style="max-width:180px;">
+        ${PS_STOCK_GROUPS.map(g => `<option${g === l.group ? ' selected' : ''}>${escHtml(g)}</option>`).join('')}
+      </select></td>
+      <td><input type="text" value="${escHtml(l.particular || '')}" onchange="psStockSet(${i},'particular',this.value)" style="width:100%;" /></td>
+      <td><input type="number" step="0.01" value="${l.qty == null ? '' : l.qty}" onchange="psStockSet(${i},'qty',this.value)" style="width:100px; text-align:right;" /></td>
+      <td><input type="number" step="0.01" value="${l.rate == null ? '' : l.rate}" onchange="psStockSet(${i},'rate',this.value)" style="width:110px; text-align:right;" /></td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums;"><strong>${psFmt(amt)}</strong></td>
+      <td style="width:36px;"><button class="btn btn-outline btn-sm" onclick="psStockRemove(${i})">✕</button></td>
+    </tr>`;
+  }).join('');
+
+  const groups = (r && r.stock.fromSchedule) ? r.stock.groups : [];
+  host.innerHTML = `
+    ${psStock.length ? `<div class="table-wrap"><table class="client-table">
+      <thead><tr><th style="width:170px;">Group</th><th>Particular</th><th style="width:110px;">Quantity</th><th style="width:120px;">Rate</th><th style="text-align:right; width:150px;">Amount</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:600;">
+        <td colspan="4">Grand Total &mdash; goes to Sch-PL closing stock and note 3.4</td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(r ? r.stock.total : 0)}</td><td></td>
+      </tr></tfoot></table></div>
+      ${groups.length ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Note 3.4 will show: ${groups.map(g => escHtml(g.group) + ' ' + psFmt(g.amount)).join(' · ')}</div>` : ''}`
+    : `<div style="color:var(--text-muted); font-size:13px; padding:4px 2px;">No stock schedule &mdash; Closing Stock is being taken from the typed figure above. Add lines here and the schedule becomes the figure.</div>`}
+    <div style="margin-top:10px;"><button class="btn btn-outline btn-sm" onclick="psStockAdd()">+ Add stock line</button></div>`;
+}
+
+function psStockAdd() {
+  psStock.push({ group: 'Finished Goods', particular: '', qty: null, rate: null });
+  psRun(); psRenderStock(); psRenderFigures();
+}
+function psStockRemove(i) { psStock.splice(i, 1); psRun(); psRenderStock(); psRenderFigures(); }
+function psStockSet(i, field, v) {
+  const l = psStock[i];
+  if (!l) return;
+  l[field] = (field === 'group' || field === 'particular') ? v : (v === '' ? null : psNum(v));
+  psRun(); psRenderStock(); psRenderFigures();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ADVANCE TAX — the firm's `adv` sheet: one row per deposit voucher, plus
+//  the credit brought forward. Total available credit is what reaches
+//  Sch-BS, and every rupee of it has a challan behind it.
+// ════════════════════════════════════════════════════════════════
+
+function psRenderAdvTax() {
+  const host = psEl('ps-advtax');
+  if (!host) return;
+  const r = psResult;
+  const rows = psAdvTax.map((l, i) => `<tr>
+    <td><input type="text" value="${escHtml(l.office || '')}" onchange="psAdvSet(${i},'office',this.value)" style="width:100%;" placeholder="Inland Revenue Office" /></td>
+    <td><input type="text" value="${escHtml(l.voucherNo || '')}" onchange="psAdvSet(${i},'voucherNo',this.value)" style="width:110px;" /></td>
+    <td><input type="text" value="${escHtml(l.date || '')}" onchange="psAdvSet(${i},'date',this.value)" style="width:110px;" placeholder="2082.03.30" /></td>
+    <td><input type="text" value="${escHtml(l.name || '')}" onchange="psAdvSet(${i},'name',this.value)" style="width:100%;" /></td>
+    <td><input type="number" step="0.01" value="${l.amount == null ? '' : l.amount}" onchange="psAdvSet(${i},'amount',this.value)" style="width:140px; text-align:right;" /></td>
+    <td style="width:36px;"><button class="btn btn-outline btn-sm" onclick="psAdvRemove(${i})">✕</button></td>
+  </tr>`).join('');
+
+  const a = r ? r.advanceTax : null;
+  host.innerHTML = `
+    ${psAdvTax.length ? `<div class="table-wrap"><table class="client-table">
+      <thead><tr><th>Paying Office</th><th style="width:120px;">Voucher No</th><th style="width:120px;">Date</th><th>Name</th><th style="text-align:right; width:150px;">Amount</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr><td colspan="4" style="text-align:right;">Deposited this year</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(a ? a.deposited : 0)}</td><td></td></tr>
+        <tr style="font-weight:600;"><td colspan="4" style="text-align:right;">Total available credit &mdash; goes to Sch-BS Advance Tax</td>
+            <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(a ? a.amount : 0)}</td><td></td></tr>
+      </tfoot></table></div>`
+    : `<div style="color:var(--text-muted); font-size:13px; padding:4px 2px;">No voucher schedule &mdash; Advance Tax is being derived, or taken from the typed figure. Add vouchers here and they become the figure.</div>`}
+    <div style="margin-top:10px; display:flex; gap:14px; align-items:flex-end;">
+      <button class="btn btn-outline btn-sm" onclick="psAdvAdd()">+ Add voucher</button>
+      <div class="form-group" style="margin:0;"><label style="font-size:12px;">Add: Opening credit</label>
+        <input type="number" step="0.01" value="${psCy.advanceTaxOpening == null ? '' : psCy.advanceTaxOpening}"
+               oninput="psFigureInput('advanceTaxOpening', this.value)" style="width:160px; text-align:right;" /></div>
+    </div>`;
+}
+
+function psAdvAdd() {
+  psAdvTax.push({ office: 'Inland Revenue Office', voucherNo: '', date: '', name: '', amount: null });
+  psRun(); psRenderAdvTax(); psRenderTax();
+}
+function psAdvRemove(i) { psAdvTax.splice(i, 1); psRun(); psRenderAdvTax(); psRenderTax(); }
+function psAdvSet(i, field, v) {
+  const l = psAdvTax[i];
+  if (!l) return;
+  l[field] = field === 'amount' ? (v === '' ? null : psNum(v)) : v;
+  psRun(); psRenderAdvTax(); psRenderTax();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PARTY DETAIL — the firm's `p` and `s` sheets, built from the register
+//  rather than re-typed, and carrying the CA's own "As per books /
+//  Difference" line rather than a new invention.
+// ════════════════════════════════════════════════════════════════
+
+function psRenderParties() {
+  const host = psEl('ps-parties');
+  if (!host) return;
+  if (!psSrc) {
+    host.innerHTML = `<div style="color:var(--text-muted); font-size:13px; padding:4px 2px;">No saved Autobooks book for this client and fiscal year, so there is no party detail to show.</div>`;
+    return;
+  }
+  const r = psResult;
+  const side = (key, title, booksFigure, booksLabel) => {
+    const list = Object.values(psSrc.parties[key] || {})
+      .filter(p => Math.abs(p.amount) > 0.005)
+      .sort((a, b) => b.amount - a.amount);
+    const total = list.reduce((s, p) => s + p.amount, 0);
+    const diff = total - booksFigure;
+    return `<div style="margin-top:14px;">
+      <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:6px;">${title} &mdash; ${list.length} parties</div>
+      <div class="table-wrap"><table class="client-table">
+        <thead><tr><th style="width:130px;">PAN</th><th>Party Name</th><th style="text-align:right; width:160px;">Amount</th></tr></thead>
+        <tbody>${list.slice(0, 12).map(p => `<tr>
+          <td>${escHtml(p.pan || '—')}</td><td>${escHtml(p.name || '—')}</td>
+          <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(p.amount)}</td></tr>`).join('')}
+          ${list.length > 12 ? `<tr><td colspan="2" style="color:var(--text-muted);">&hellip; and ${list.length - 12} more</td><td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${psFmt(list.slice(12).reduce((s, p) => s + p.amount, 0))}</td></tr>` : ''}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight:600;"><td colspan="2">Total per party detail</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(total)}</td></tr>
+          <tr><td colspan="2">${booksLabel}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(booksFigure)}</td></tr>
+          <tr style="font-weight:600; color:${Math.abs(diff) < 0.5 ? 'var(--green-dk)' : 'var(--red-dk)'};">
+            <td colspan="2">Difference</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(diff)}</td></tr>
+        </tfoot>
+      </table></div></div>`;
+  };
+  host.innerHTML =
+    side('purchase', 'Purchase / creditor detail', r ? r.income.materials.purchases : 0, 'As per books &mdash; Purchases of goods') +
+    side('sales', 'Sales / debtor detail', r ? r.income.revenueOps : 0, 'As per books &mdash; Revenue from operations');
+}
+
 function psTdsSet(k, v) {
   if (v === '') delete psTds[k]; else psTds[k] = psNum(v);
   psRun();
@@ -1034,6 +1188,9 @@ function psCollectInput() {
     cy: Object.assign({}, psCy, {
       loansNC: psLoans.nc, loansC: psLoans.c,
       tds: psTds,
+      stockLines: psStock,
+      advanceTaxLines: psAdvTax,
+      advanceTaxOpening: psCy.advanceTaxOpening,
     }),
     rules: psRules,
     options: {
@@ -1070,6 +1227,9 @@ function psRecalcDebounced() {
     psRenderRules();
     psRenderInterest();
     psRenderTax();
+    psRenderStock();
+    psRenderAdvTax();
+    psRenderParties();
     psSyncSeesaw();
   }, 220);
 }
@@ -1192,6 +1352,41 @@ function psToOut(r) {
 //  STEP 3 — review, preview, export
 // ════════════════════════════════════════════════════════════════
 
+// The reconciliation panel. Every check that fails says WHERE, because a
+// difference nobody can locate is a difference nobody fixes.
+function psRenderReconcile() {
+  const host = psEl('ps-reconcile');
+  if (!host) return;
+  if (!psResult) { host.innerHTML = ''; return; }
+  const rec = ProvisionalReconcile.run(psResult, { register: psSrc, priorYear: psPy });
+  psReconcile = rec;
+
+  const badge = c => c.ok
+    ? '<span class="log-badge badge-success" style="font-size:10px;">reconciled</span>'
+    : (c.level === 'review'
+      ? '<span class="log-badge badge-warning" style="font-size:10px;">for review</span>'
+      : '<span class="log-badge badge-error" style="font-size:10px;">not balancing</span>');
+
+  const row = c => `<tr>
+      <td>${escHtml(c.label)}</td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums; ${c.ok ? 'color:var(--text-muted);' : 'font-weight:600;'}">${psFmt(c.diff)}</td>
+      <td style="width:120px;">${badge(c)}</td>
+    </tr>${(!c.ok && c.where.length) ? `<tr><td colspan="3" style="padding-top:0; font-size:11.5px; color:var(--text-muted);">
+      ${c.where.map(w => `<div style="margin:2px 0 0 12px;">&bull; ${escHtml(w)}</div>`).join('')}</td></tr>` : ''}`;
+
+  host.innerHTML = `
+    <div style="font-size:12.5px; margin-bottom:10px; color:${rec.allOk ? 'var(--green-dk)' : 'var(--text-muted)'};">
+      ${escHtml(rec.summary)}${rec.allOk ? ' — everything ties.' : ''}
+    </div>
+    <div class="table-wrap"><table class="client-table">
+      <thead><tr><th>Check</th><th style="text-align:right; width:170px;">Difference</th><th>Status</th></tr></thead>
+      <tbody>${rec.checks.map(row).join('')}</tbody>
+    </table></div>
+    ${rec.reviewing.length ? `<div class="status-box status-info" style="margin-top:12px;">
+      ${rec.reviewing.length} item${rec.reviewing.length > 1 ? 's need' : ' needs'} a person: the engine can say two figures disagree, not which one is right.
+    </div>` : ''}`;
+}
+
 function psRenderReview() {
   const host = psEl('ps-review');
   if (!host || !psResult) return;
@@ -1224,6 +1419,7 @@ function psRenderReview() {
       </tbody></table></div>
     </div>
     ${psIssuesHtml(r.issues)}`;
+  psRenderReconcile();
   psRenderPreview();
 }
 

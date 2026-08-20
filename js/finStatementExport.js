@@ -561,6 +561,26 @@ function fsxBuildReport(out) {
   const loanNCRows = ncSpec.rows, loanNCKeys = ncSpec.keys;
   const loanCRows = cSpec.rows, loanCKeys = cSpec.keys;
 
+  // ── note 3.4's rows: the stock schedule's groups, or the standard three ──
+  const invLines = bal.inventoryLines;
+  const invRows = [], invKeys = [];
+  if (invLines && invLines.length) {
+    invLines.forEach((l, i) => {
+      const k = 'inv' + i;
+      invKeys.push(k);
+      // The grand total still reaches Sch-PL's closing stock, so the two
+      // sheets cannot disagree about what the stock is worth.
+      invRows.push(R(l.name, [l.amount, 0], 'item', { k }));
+    });
+  } else {
+    invKeys.push('invRaw', 'invWip', 'invFg');
+    invRows.push(
+      R('Raw materials and consumables', [0, 0], 'item', { k: 'invRaw' }),
+      R('Work-in-progress', [0, 0], 'item', { k: 'invWip' }),
+      R('Finished Goods', [bal.inventories, pySfp.inventories], 'item', { k: 'invFg', xf: ({ X }) => X('SchPL', 'matClosing') }),
+    );
+  }
+
   // ── 3.6 Share Capital ──
   // Three sub-tables (authorised, issued, fully paid), each Number x NPR for
   // both years. Share COUNTS are the face value divided into the capital, so
@@ -650,10 +670,12 @@ function fsxBuildReport(out) {
     B(), B(),
     R('3.4 Inventories', [], 'head', { figNpr: true }),
     BAND(),
-    R('Raw materials and consumables', [0, 0], 'item', { k: 'invRaw' }),
-    R('Work-in-progress', [0, 0], 'item', { k: 'invWip' }),
-    R('Finished Goods', [bal.inventories, pySfp.inventories], 'item', { k: 'invFg', xf: ({ X }) => X('SchPL', 'matClosing') }),
-    R('Total', [bal.inventories, pySfp.inventories], 'tot', { k: 'invTotal', xsum: ['invRaw', 'invWip', 'invFg'] }),
+    // When a closing-stock schedule was entered, note 3.4 shows ITS groups —
+    // the firm's own sheet lands `stock!E11` and `stock!E19` on separate rows
+    // for exactly that reason. Without one, the three standard heads stand and
+    // the whole figure sits on Finished Goods, as before.
+    ...invRows,
+    R('Total', [bal.inventories, pySfp.inventories], 'tot', { k: 'invTotal', xsum: invKeys }),
     B(),
     R('Finished goods include an amount of NIL carried at fair value less costs to sell.', [], 'note'),
     B(),

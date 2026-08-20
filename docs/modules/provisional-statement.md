@@ -224,6 +224,39 @@ proprietor takes drawings — and `meta.terms.distribution` carries it through t
 both the SOCE and the cash flow. (Matching on the string `'Drawing'` missed
 `'Drawings'`, which printed "Dividend Paid" on a proprietorship's cash flow.)
 
+### 5.0 Figures the app already holds
+
+`js/provisionalSources.js` (`psrc`) resolves five figures nobody should type
+twice. Each returns `{ value, source, detail }` when a source exists and `null`
+when it does not, so a client with no saved book carries on typing:
+
+| Figure | Source |
+|---|---|
+| Revenue from operations | `autobooks_entries` — sales bill lines |
+| Purchases of goods | `autobooks_entries` — purchase bill lines |
+| VAT receivable / payable | the register's own output less input |
+| Debtor / creditor detail | the same rows, per party |
+| Depreciation per Income Tax Act | `depreciation_schedules`, scheme `normal`/`special` |
+
+**These read the stored rows; they do NOT call `spbLoadBook()`.** That function
+rebuilds Autobooks' global state against *its own* client and fiscal-year
+selection, so calling it from here would silently replace whatever the user has
+open on that screen. Reading is safe because the rows are already
+post-correction — merges, overrides and Data Doctor fixes are baked into
+`party_key` and the amounts before they are saved.
+
+**Three of Autobooks' arithmetic rules are carried verbatim** and asserted by
+the harness, because drifting from any of them misstates revenue:
+
+- a bill whose `bill_type` ends `_return` carries the **opposite sign**;
+- **Taxable Import is its own box**, never folded into taxable;
+- **Capital Purchase is a slice of** taxable, never added on top;
+- party figures **accumulate** per key — a PAN can cover several party groups,
+  and assigning would keep only the last (the bug the Annexure documents).
+
+Nothing is silently overwritten: a sourced box shows where its figure came
+from, typing into it claims it, and a reset hands it back.
+
 ### 5.1 Two see-saws
 
 Both follow the same idiom: the side you touch is held, the other becomes the
@@ -274,15 +307,55 @@ Book Antiqua throughout, no fills, borders on value cells only, medium-rule
 header band, thin+double subtotal rule, double-only grand total — all already
 implemented there. **Do not fork that file**; extend it if a row type is missing.
 
+### 5.2 Supporting schedules — detail that rolls up
+
+Three of the firm's own working sheets, so a figure is entered **once, as the
+working behind it**, rather than twice as a summary:
+
+- **Closing stock** (`stock`) — quantity x rate per item, grouped. The grand
+  total becomes Sch-PL's closing stock and the **group totals become note
+  3.4**, exactly as the firm's `stock!E11` / `stock!E19` land on separate
+  Sch-BS rows. A typed amount on a line overrides qty x rate, because some
+  lines are valued in the round. With no schedule the typed figure stands and
+  note 3.4 keeps its three standard heads.
+- **Advance tax** (`adv`) — one row per deposit voucher plus the credit brought
+  forward; total available credit reaches Sch-BS. Three sources, most specific
+  first: the schedule, a typed figure, then the formula in §2.3 — the schedule
+  wins because it is the only one with a challan behind it.
+- **Party detail** (`p`, `s`) — built from the register, carrying the CA's own
+  *"As per books / Difference"* line rather than a new invention.
+
+### 5.3 Reconciliation
+
+`js/provisionalReconcile.js` (`psrec`) runs after every recalculation. A
+statement set that says *"difference: 27,65,951.95"* and stops is barely better
+than no check at all — every check here returns a **where** as well as a
+**what**: which section moved, which note disagrees with its face figure, which
+parties are largest, which working-capital movement drove a cash gap.
+
+Ten identities: the balance sheet - the cash flow - notes 3.1/3.3/3.9 and the
+stock schedule against their face figures - profit reaching equity - the COI
+bridge - revenue and purchases against the register - each opening against last
+year's closing.
+
+Two levels, and the distinction matters:
+
+- **not balancing** — the arithmetic disagrees and the engine can name where.
+- **for review** — needs a person. The register comparison is always this: a
+  provisional set may deliberately differ from the filed register, and the
+  engine can say two figures disagree but not which one is right. Same rule as
+  §15's *shown, never forced*.
+
 ### 6.0 Seven sheets, in this order
 
 **SFP → SOI → SOCE → SOCF → 3.1 PPE → Sch-BS → Sch-PL**, identically in the
 on-screen preview, the print/PDF document and the Excel workbook.
 
-**The COI (Return of Income) page is not part of a provisional set** — that tax
-computation belongs to the return, not to the statements. It is opted out of
-via `meta.omitCoi` rather than deleted, because the Audited module still issues
-it. Two things follow from the omission: `Sch-PL`'s tax row must carry its own
+**The COI (Return of Income) page is the eighth sheet, and conditional.** It
+appears when the client has an Income-Tax depreciation schedule to bridge to
+(or the preparer ticks it on), via `meta.omitCoi`. Six of the firm's eight
+reference reports have no COI and charge tax straight off accounting profit;
+the two fullest bridge to taxable income, which is what §2.3 implements. Two things follow from the omission: `Sch-PL`'s tax row must carry its own
 rate formula (`inc.taxDerive`) since the `X('COI','tax')` fallback would be a
 dead reference, and a self-banded schedule prints no sheet-wide title in
 HTML/PDF either, or the page would carry a heading the Excel does not have.

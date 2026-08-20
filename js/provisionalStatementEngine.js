@@ -247,7 +247,28 @@ const ProvisionalStatementEngine = (() => {
     const openingStock = num(py.closingStock);
     const labour  = line('labour',  py.labour,  'turnover');   // `D25 =+F25/F6*D6`
     const freight = line('freight', py.freight, 'turnover');   // `D26 =+F26/F6*D6`
-    const closingStock = num(cy.closingStock);
+    // Closing stock: the detail schedule when there is one, else a typed
+    // figure. Lines carry qty x rate so the sheet foots to its own arithmetic
+    // rather than to a number someone re-keyed.
+    const stockLines = (cy.stockLines || []).map(l => ({
+      group: l.group || 'Finished Goods',
+      particular: l.particular || '',
+      qty: num(l.qty),
+      rate: num(l.rate),
+      // An amount typed directly wins over qty x rate — some lines are valued
+      // in the round with no meaningful quantity.
+      amount: has(l.amount) ? num(l.amount) : num(l.qty) * num(l.rate),
+    }));
+    const stockGroups = [];
+    stockLines.forEach(l => {
+      let g = stockGroups.find(x => x.group === l.group);
+      if (!g) stockGroups.push(g = { group: l.group, amount: 0, lines: 0 });
+      g.amount += l.amount;
+      g.lines++;
+    });
+    const stockTotal = stockGroups.reduce((sum, g) => sum + g.amount, 0);
+    const stockFromSchedule = stockLines.length > 0;
+    const closingStock = stockFromSchedule ? stockTotal : num(cy.closingStock);
     // A client's cost of sales carries heads beyond labour and freight —
     // packing, loading, commission on purchase. Each behaves exactly like the
     // two named ones: same rules, same override, same place in note 3.12.
@@ -427,8 +448,21 @@ const ProvisionalStatementEngine = (() => {
     // tax is whatever the client actually deposited and the preparer has the
     // challans.
     const advanceTaxDerived = num(py.advanceTax) - num(py.taxExpense) + otherIncome * TDS.incentive;
-    const advanceTax = orDerived(cy.advanceTax, advanceTaxDerived);
-    const advanceTaxTyped = has(cy.advanceTax);
+    // Advance tax has three possible sources, most specific first: the voucher
+    // schedule (what the client actually deposited, with the challans behind
+    // it), a typed figure, or the formula above. The schedule wins because it
+    // is the only one that can be checked against a receipt.
+    const advTaxLines = (cy.advanceTaxLines || []).map(l => ({
+      office: l.office || '', voucherNo: l.voucherNo || '', date: l.date || '',
+      name: l.name || '', pan: l.pan || '', amount: num(l.amount),
+    }));
+    const advTaxOpening = num(cy.advanceTaxOpening);
+    const advTaxDeposited = advTaxLines.reduce((sum, l) => sum + l.amount, 0);
+    const advTaxFromSchedule = advTaxLines.length > 0 || has(cy.advanceTaxOpening);
+    const advanceTax = advTaxFromSchedule
+      ? advTaxDeposited + advTaxOpening
+      : orDerived(cy.advanceTax, advanceTaxDerived);
+    const advanceTaxTyped = has(cy.advanceTax) && !advTaxFromSchedule;
 
     // A VAT-registered client sits on one side or the other at year end; a
     // PAN-only client on neither. Both are typed, because the position comes
@@ -504,6 +538,12 @@ const ProvisionalStatementEngine = (() => {
 
     const cash = num(cy.cash);
     const inventories = closingStock;                    // `Sch-BS H29 ='Sch-PL'!D28`
+    // Note 3.4 shows the stock schedule's own groups rather than dropping the
+    // whole figure onto Finished Goods — the firm's `stock!E11`/`E19` land on
+    // separate Sch-BS rows for exactly this reason.
+    const inventoryLines = stockFromSchedule
+      ? stockGroups.map(g => ({ name: g.group, amount: g.amount }))
+      : null;
     const investmentsNC = num(cy.investmentsNC);
     const investmentsC  = num(cy.investmentsC);
     const otherReceivablesNC = num(cy.otherReceivablesNC);
@@ -653,6 +693,7 @@ const ProvisionalStatementEngine = (() => {
             ? [{ key: 'vatReceivable', name: 'VAT Receivables', amount: vatReceivable }] : []),
         ],
         receivables, cash, totalCA, totalAssets, plugReceivables, tradeReceivables,
+        inventoryLines,
         shareCapital, reserves, totalEquity,
         loansNonCurrent, provisionsNC, totalNCL, loanNCLines, loanCLines,
         loansCurrent, payableLines, totalPayables, provisionsC, totalCL,
@@ -686,7 +727,15 @@ const ProvisionalStatementEngine = (() => {
       },
       tds: { salary: tdsSalary, rent: tdsRent, incentive: tdsIncentive, wages: tdsWages, auditFee: tdsAuditFee, freight: tdsFreight },
       vat: { registered: vatRegistered, receivable: vatReceivable, payable: vatPayable },
-      advanceTax: { amount: advanceTax, typed: advanceTaxTyped, derived: advanceTaxDerived },
+      advanceTax: {
+        amount: advanceTax, typed: advanceTaxTyped, derived: advanceTaxDerived,
+        fromSchedule: advTaxFromSchedule, opening: advTaxOpening,
+        deposited: advTaxDeposited, lines: advTaxLines,
+      },
+      stock: {
+        fromSchedule: stockFromSchedule, total: stockTotal,
+        groups: stockGroups, lines: stockLines,
+      },
       issues,
     };
   }

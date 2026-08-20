@@ -2687,6 +2687,24 @@ function cropLoginLogoIcon(img) {
         </div>
 
         <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Closing Stock</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Quantity &times; rate per item, grouped. The grand total becomes Closing Stock on Sch-PL and the group totals become note 3.4 &mdash; so the figure is entered once, as the working behind it.</p>
+          <div id="ps-stock"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Advance Tax &mdash; deposit vouchers</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">One row per deposit, plus the credit brought forward. Total available credit is what reaches Sch-BS, and every rupee of it has a challan behind it.</p>
+          <div id="ps-advtax"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Party Detail &amp; Reconciliation</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Creditor and debtor detail built from the client&rsquo;s Autobooks register, against the figures on the statements. A difference here means the register and the statement disagree.</p>
+          <div id="ps-parties"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Depreciation &mdash; 3.1 PPE</div></div>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Seeded from the client&rsquo;s saved SLM schedule when there is one, otherwise from the prior-year note. The opening column is last year&rsquo;s carrying amount, because the note restates each year.</p>
           <div id="ps-ppe"></div>
@@ -2708,6 +2726,12 @@ function cropLoginLogoIcon(img) {
             </div>
           </div>
           <div id="ps-review"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Reconciliation</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every identity the statements have to satisfy. A check that fails says <em>where</em> the difference comes from; anything needing accounting judgement is flagged for review rather than resolved.</p>
+          <div id="ps-reconcile"></div>
         </div>
 
         <div class="card" style="margin-top:20px;">
@@ -4386,10 +4410,11 @@ function cropLoginLogoIcon(img) {
 <script src="js/projectionExport.js?v=202608111600"></script>
 <script src="js/finStatementEngine.js?v=202608190900"></script>
 <script src="js/finStatement.js?v=202608190900"></script>
-<script src="js/finStatementExport.js?v=202608200900"></script>
-<script src="js/provisionalSources.js?v=202608200900"></script>
-<script src="js/provisionalStatementEngine.js?v=202608200900"></script>
-<script src="js/provisionalStatement.js?v=202608200900"></script>
+<script src="js/finStatementExport.js?v=202608201000"></script>
+<script src="js/provisionalSources.js?v=202608201000"></script>
+<script src="js/provisionalStatementEngine.js?v=202608201000"></script>
+<script src="js/provisionalStatement.js?v=202608201000"></script>
+<script src="js/provisionalReconcile.js?v=202608201000"></script>
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>
 <script src="js/auditChecklist.js?v=202608151800"></script>
