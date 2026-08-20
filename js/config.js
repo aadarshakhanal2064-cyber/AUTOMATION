@@ -424,6 +424,7 @@ window.MODULE_LABELS = {
   bmAgmMinutes: 'BM/AGM Minutes',
   clients: 'Clients',
   companyProfile: 'Company Profile',
+  companySecretary: 'Company Secretary Appointment',
   confirmationLetters: 'Confirmation Letters',
   dashboard: 'Dashboard',
   depreciation: 'Depreciation',

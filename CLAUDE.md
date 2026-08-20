@@ -117,7 +117,7 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | ModuleRegistry | `moduleRegistry.js` | `register({id, group, buttonId, panelId})`. Groups `'main'` (tabs) and `'regd'` (Registrar sub-modules). **New modules self-register from their own file** — `dashboard.js` is the model. |
 | StatusBox | `statusBox.js` | `showStatus(msg, type, targetId)`. Each module wraps it in a one-line `xxStatus()`. |
 | NepaliLocale | `nepaliLocale.js` | B.S. dates, Devanagari digits, lakh/crore formatting, fiscal parts, day counts. **Calendar table covers 2080–2090 — extend before 2090.** |
-| DocumentEngine | `documentEngine.js` | `downloadBlob` (fires an AuditLog event), `getTemplate` (fetch-once cache), `renderWord` (PizZip+docxtemplater), `previewWordAsHtml`. |
+| DocumentEngine | `documentEngine.js` | `downloadBlob` (fires an AuditLog event), `getTemplate` (fetch-once cache), `renderWord` (PizZip+docxtemplater), `previewWordAsHtml`, plus **`fitPagesToSheet(container, className)`** and **`buildPrintableHtml(blob, {className, title})`** — the sheet-fitting and print-window logic BM/AGM used to own privately, moved here 2026-08-21 when Company Secretary Appointment became its second caller. Fitting scales real font sizes, never CSS `zoom` or `transform` — see the comment there for why both of those break printing. |
 | SearchEngine | `searchEngine.js` | `attachAutocomplete(inputEl, listEl, config)` / `buildIndex` over Fuse.js. One shared autocomplete; supports digit-agnostic search. |
 | TableEngine | `tableEngine.js` | `createTable(container, options)` over Tabulator. **Only the Clients directory uses it** — deliberate. |
 | WorkflowEngine | `workflowEngine.js` | Form watchers, debounced live preview, localStorage autosave, completion indicator, zoom, `createStatusFlow` — one `transition()` choke point per status-tracked module so badge, persistence and audit entry can never disagree — and `createClientScope`, the same idea for client switching: `clear()` runs unconditionally before every `load()`, so no loader path can leak the previous client's data. **Any screen with a client picker goes through a scope.** |
@@ -149,7 +149,7 @@ Navigation is a short sidebar plus three **topbar dropdowns** (shared open/close
 | Work Done *(+ To-Do List, + cross-module Activity Log)* | Sidebar | `workDone.js` + `workDoneTodo.js` | `wd-` `wt-` | `work_done`, `work_todos` *(+ reads `document_register`, `audit_log`)* | [work-done](docs/modules/work-done.md) |
 | Team *(members + invitations)* | Topbar → user menu | `orgMembers.js` | `om-` | `org_members`, `org_invitations` | §6 Stage 3 |
 | Firm Setup *(letterheads + practice details)* | Topbar → user menu | `orgSettings.js` | `os-` | `org_firms`, `organizations` | §6 Stage 3 |
-| Company Registrar *(5 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companyProfile.js` | `bm-` `ac-` `cp-` `cr-` `cs-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
+| Company Registrar *(5 sub-modules)* | Topbar → Registrar | `registrar.js`, `bmAgmMinutes.js`, `auditorChange.js`, `companySecretary.js`, `companyProfile.js` | `bm-` `ac-` `cs-` `cp-` `cr-` | `clients`, `client_shareholders` | [registrar](docs/modules/registrar.md) |
 | Service Memo | Financial Management | `serviceMemo.js` | `sm-` | `service_memos` | [financial-management](docs/modules/financial-management.md) |
 | Party Ledger | Financial Management | `partyLedger.js` | `pl-` | `party_opening_balances` | [financial-management](docs/modules/financial-management.md) |
 | Bank Entry | Financial Management | `bankBook.js` | `bb-` | `bank_accounts`, `bank_transactions` | [financial-management](docs/modules/financial-management.md) |
@@ -176,7 +176,7 @@ File names, function prefixes, element-ID prefixes, table names and `ModuleRegis
 
 "Confirmation" is the menu label for Confirmation Letters; the panel keeps the fuller title.
 
-**Two Company Registrar stubs remain** (Company Registration, Company Secretary Appointment — the latter added 2026-08-10) — UI built, logic is `moduleComingSoon()`. **Share Transfer, Increase Capital and PIN Reset were removed** 2026-08-10 by user decision — the firm doesn't do that work; recoverable from git history. **The VAT Return OCR module was removed** 2026-07-14 by user decision; see `docs/modules/registrar.md` for what went with it and how to recover it. **The VAT Compliance module was removed** 2026-08-10 by user decision, along with its `vat_filings` table; see `docs/modules/compliance-billing.md`. **The OCR Extract module was removed** 2026-08-18 by user decision, taking the whole `ocr_service/` directory with it; see `docs/modules/documents.md` §5.19. **The Billing module was removed** 2026-08-18 by user decision, along with its four tables; see `docs/modules/compliance-billing.md` §5.3.
+**One Company Registrar stub remains** (Company Registration) — UI built, logic is `moduleComingSoon()`. **Company Secretary Appointment became a real module 2026-08-21** (`js/companySecretary.js`, `cs-`), having been a stub since 2026-08-10. **Share Transfer, Increase Capital and PIN Reset were removed** 2026-08-10 by user decision — the firm doesn't do that work; recoverable from git history. **The VAT Return OCR module was removed** 2026-07-14 by user decision; see `docs/modules/registrar.md` for what went with it and how to recover it. **The VAT Compliance module was removed** 2026-08-10 by user decision, along with its `vat_filings` table; see `docs/modules/compliance-billing.md`. **The OCR Extract module was removed** 2026-08-18 by user decision, taking the whole `ocr_service/` directory with it; see `docs/modules/documents.md` §5.19. **The Billing module was removed** 2026-08-18 by user decision, along with its four tables; see `docs/modules/compliance-billing.md` §5.3.
 
 ---
 
@@ -308,7 +308,7 @@ Three distinct paths — pick the one matching the document family. Detail in **
 
 **For plain tabular reports use `ReportExport` (§4)** rather than hand-rolling — Party Ledger and Final Account render all six views through it. The bespoke generators above were left alone deliberately: their merged multi-block geometry isn't a simple grid.
 
-The BM/AGM template is a Preeti→Unicode (Mangal) conversion — **never revert to Preeti**, and treat any template modification as a re-validation project. The template was rebuilt from scratch 2026-08-20 against a new source document, and this time the build tooling **is committed** — `tools/bmAgmBuild/build.mjs` (`docs/modules/registrar.md` §5.11a has the full detail); `docs/history/HANDOFF.md` §4–5 is superseded for BM/AGM specifically but stays as the Preeti-conversion background.
+The BM/AGM template is a Preeti→Unicode (Mangal) conversion — **never revert to Preeti**, and treat any template modification as a re-validation project. The template was rebuilt from scratch 2026-08-20 against a new source document, and this time the build tooling **is committed** — `tools/registrarDocx/buildBmAgm.mjs` (`docs/modules/registrar.md` §5.11a has the full detail); `docs/history/HANDOFF.md` §4–5 is superseded for BM/AGM specifically but stays as the Preeti-conversion background.
 
 ### Nepali locale — fiscal-year formats are deliberately inconsistent
 
@@ -335,7 +335,8 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 
 | Prefix | Module | | Prefix | Module |
 |---|---|---|---|---|
-| `rep-` | Audit Report Builder | | `cr-`/`cs-` | Registrar stubs (Company Registration / Company Secretary Appointment) |
+| `rep-` | Audit Report Builder | | `cs-` | Company Secretary Appointment (`js/companySecretary.js`) |
+| | | | `cr-` | Company Registration *(stub)* |
 | `nta-` | Notes to Accounts | | | |
 | `bm-` | BM/AGM Minutes | | | |
 | `dep-` | Depreciation | | `spb-` | Sales & Purchase Book (Autobooks) |
@@ -429,6 +430,10 @@ The established pattern — **investigate with real evidence → implement only 
 
 - **Auth is Supabase email + password, and the app has no Google dependency at all** (2026-08-01, user decision) — see §7. Accounts are admin-created with signup disabled; there is deliberately no self-serve password reset. Don't reintroduce Google OAuth, Drive, Gmail, the `Integrations` engine or any Google origin in the CSP without an explicit ask.
 - **Preeti → Mangal (Unicode) template conversion** — explicit user decision. Never revert to Preeti.
+- **Every registrar Word document shares ONE Preeti build pipeline, and each document's script holds only what is specific to it** (2026-08-21, when Company Secretary Appointment became the second such document). `tools/registrarDocx/core.mjs` owns the decode, the run grouping, cross-run token replacement, the page-break style, font scaling and the structural checks; `buildBmAgm.mjs` and `buildCsAppoint.mjs` own their own tokens, alignment repairs and measured page sizes. Don't copy the core into a third build script — and when changing it, prove the change by rebuilding `bm-agm-minutes.docx` and diffing it against the committed one (that is how the extraction itself was verified: every file inside the `.docx` byte-identical).
+- **`<w:proofErr>` markers are stripped before any Preeti document is walked** (2026-08-21) — they render nothing, but they sit BETWEEN runs, which breaks formatting-group adjacency and decodes Preeti ligatures across the split. The Company Secretary source carries 506 of them and produced real misspellings (`कम्फनी` for `कम्पनी`). The BM/AGM source has none, which is why that pipeline never saw it — don't conclude from a clean BM/AGM run that a new source is clean.
+- **Hand-typed space/tab padding in a source document is replaced with real Word alignment properties, never preserved** (2026-08-21, user-requested "perfectly aligned") — a run of 54 spaces lines up for exactly the one client the document was typed against. Every such fix is an exact-string swap that THROWS when the source changes, so a re-typed source fails the build instead of silently printing the old spacing.
+- **A registrar document's page count is MEASURED in Word, never reasoned about** (CLAUDE.md §2, §12) — both templates needed a font scale *and* a line height *and* (for Company Secretary) shrunken empty spacer paragraphs, and every one of those was isolated by measurement. Reasoning about it got the answer wrong twice: the first Company Secretary guess of 0.78 still produced 3 and 4 pages, because the real cause was 17 empty paragraphs on page 2, not the font size at all.
 - **Fiscal-year formats differ per module** (§8) — don't unify without asking.
 - **Capital amounts are text** — preserves the firm's comma grouping.
 - **VAT "Filed" status is always manual.**
@@ -580,6 +585,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
 | `docs/engines.md` | On demand | The 13 engines in full. |
 | `docs/nepali-docx-playbook.md` | **Before building any new Preeti/Word document module** | How to turn one of the firm's Nepali Word documents into a generated module without re-learning the whole minefield — the XML traps, the Word-vs-preview divergences, the harnesses to commit, and the client-data rule. Written after BM/AGM Minutes cost several rounds of exactly those. The prompt to start such a module is one line: *"Read `docs/nepali-docx-playbook.md` and follow it."* |
+| `tools/registrarDocx/` | Run, not read | The Preeti→Unicode template build pipeline, shared by every registrar Word document. `core.mjs` is the shared transform; `buildBmAgm.mjs` and `buildCsAppoint.mjs` each add only what is specific to their document; `fidelityBmAgm.mjs` and `sample*.mjs` are its harnesses; `wordPages.ps1` asserts real page counts in Word. (Renamed from `tools/bmAgmBuild/` 2026-08-21, when the second document made the old name wrong; the refactor was verified by rebuilding `bm-agm-minutes.docx` byte-identical.) |
 | `tools/spbVerify.mjs` | Run, not read | Autobooks verification harness — `node tools/spbVerify.mjs` (§12). |
 | `tools/psVerify.mjs` | Run, not read | Provisional Statement harness — `node tools/psVerify.mjs`. Replays the firm's own reference provisional workbook through the engine and asserts 77 derived figures against Excel's own cached results. **Run it before and after any change to the derivation rules.** |
 | `tools/tenantVerify.mjs` | Run, not read | Tenant-isolation harness — `node tools/tenantVerify.mjs`. Creates a throwaway org + auth user on **staging**, signs in as them over HTTP (a real JWT, never the service key — that bypasses RLS and would test nothing), and attacks the other org's real row ids across all 22 tenant tables. 65 assertions. **Refuses to run outside staging** unless `ALLOW_NON_STAGING=1`. Run it after any policy or schema change. |

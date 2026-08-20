@@ -1145,52 +1145,136 @@ function cropLoginLogoIcon(img) {
           </div>
         </div>
 
-        <!-- ── SUB: COMPANY SECRETARY APPOINTMENT ── -->
+        <!-- ── SUB: COMPANY SECRETARY APPOINTMENT ──
+             Same Edit/Preview shell as BM/AGM Minutes: a wide edit form and a
+             wide live docx preview, one visible at a time. Two pages come out
+             of this one form — the board minutes appointing the secretary
+             (Companies Act §84) and the registrar notification letter.
+             Logic: js/companySecretary.js. -->
         <div id="regd-companySecretary-panel" class="regd-sub-panel">
-          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
-            <div style="padding:24px; border-right:1px solid var(--border);">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Name</label>
-                <input type="text" id="cs-companyName" placeholder="Start typing to search clients…" autocomplete="off" />
+          <div class="regd-view-actions">
+            <div class="rep-view-toggle">
+              <button type="button" id="cs-tab-edit" class="rep-view-btn active" onclick="csSetView('edit')">Edit</button>
+              <button type="button" id="cs-tab-preview" class="rep-view-btn" onclick="csSetView('preview')">Preview</button>
+            </div>
+            <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="generateCompanySecretaryDocs()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                Save as Word
+              </button>
+              <button type="button" class="btn btn-primary" onclick="csPrintDocument()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Save as PDF / Print
+              </button>
+            </div>
+          </div>
+
+          <div class="card" style="padding:0; overflow:hidden;">
+          <div id="cs-edit-view" class="regd-edit-view">
+            <div class="rep-form-grid">
+              <div class="form-group" style="position:relative;">
+                <label>Search Company</label>
+                <input type="text" id="cs-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" />
+                <div class="autocomplete-list" id="cs-regNo-autocomplete-list" style="display:none;"></div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
+
+              <div class="card bm-summary-card" id="cs-company-summary" style="display:none;">
+                <div class="bm-summary-header">
+                  <div class="bm-summary-title">Company</div>
+                  <button type="button" class="btn btn-outline btn-sm" id="cs-edit-toggle-btn" onclick="csToggleCompanyEdit()">Edit Company Details</button>
+                </div>
+                <div class="bm-summary-grid" id="cs-summary-grid"></div>
+              </div>
+
+              <div id="cs-company-edit-fields" style="display:contents;">
+                <div class="form-group">
+                  <label>Company Name</label>
+                  <input type="text" id="cs-companyName" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group">
+                  <label>Company Registration No. (प्रा.लि.नं.)</label>
+                  <input type="text" id="cs-registrationNumber" placeholder="e.g. १२३४५६/०७९-०८०" />
+                </div>
+                <div class="form-group">
+                  <label>PAN</label>
+                  <input type="text" id="cs-pan" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group">
+                  <label>Chairman Name</label>
+                  <input type="text" id="cs-chairmanName" placeholder="Auto-filled when you select a company…" />
+                </div>
+                <div class="form-group bm-shareholders-group">
+                  <label>Other Directors Attending</label>
+                  <div id="cs-directors"></div>
+                  <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="csAddDirectorRow()">+ Add Director</button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Date of Board Meeting (B.S.)</label>
+                <input type="text" id="cs-meetingDate" placeholder="e.g. 2083/04/04" autocomplete="off" onblur="csValidateDateField('cs-meetingDate')" />
+                <div class="field-error-msg" id="cs-meetingDate-error"></div>
+              </div>
+              <div class="form-group">
+                <label>Meeting Time</label>
+                <input type="text" id="cs-meetingTime" placeholder="e.g. बिहान १० बजे" />
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <label style="font-weight:700; color:var(--brand-navy);">Company Secretary being appointed</label>
+              </div>
+              <div class="form-group">
                 <label>Secretary Name</label>
-                <input type="text" id="cs-secretaryName" placeholder="e.g. Ram Bahadur Thapa" />
+                <input type="text" id="cs-secretaryName" placeholder="e.g. गीता देवी अधिकारी" />
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Secretary Qualification</label>
-                <input type="text" id="cs-qualification" placeholder="e.g. Company Secretary / Chartered Accountant" />
+              <div class="form-group">
+                <label>Citizenship Certificate No.</label>
+                <input type="text" id="cs-citizenshipNo" placeholder="e.g. 363014" />
               </div>
-              <div class="form-grid" style="margin-bottom:14px; gap:12px;">
-                <div class="form-group">
-                  <label>Appointment Date (B.S.)</label>
-                  <input type="text" id="cs-appointmentDate" placeholder="e.g. 2082/06/04" />
-                </div>
-                <div class="form-group">
-                  <label>Board Meeting Date (B.S.)</label>
-                  <input type="text" id="cs-meetingDate" placeholder="e.g. 2082/06/04" />
-                </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Permanent Address</label>
+                <input type="text" id="cs-secretaryAddress" placeholder="e.g. भरतपुर महानगरपालिका वडा नं. ५, चितवन" />
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Outgoing Secretary (if any)</label>
-                <input type="text" id="cs-outgoingName" placeholder="Leave blank for a first appointment" />
+
+              <div class="form-group">
+                <label>Appointment Effective From (B.S.)</label>
+                <input type="text" id="cs-appointmentDate" placeholder="Leave blank to use the meeting date" autocomplete="off" onblur="csValidateDateField('cs-appointmentDate')" />
+                <div class="field-error-msg" id="cs-appointmentDate-error"></div>
               </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Remuneration (Rs.)</label>
-                <input type="text" id="cs-remuneration" placeholder="e.g. 25,000" />
+              <div class="form-group">
+                <label>Registrar Letter Date (B.S.)</label>
+                <input type="text" id="cs-letterDate" placeholder="Leave blank to use the meeting date" autocomplete="off" onblur="csValidateDateField('cs-letterDate')" />
+                <div class="field-error-msg" id="cs-letterDate-error"></div>
               </div>
-              <div class="form-group" style="margin-bottom:24px;">
-                <label>Remarks</label>
-                <textarea id="cs-remarks" placeholder="Optional notes…"></textarea>
-              </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Company Secretary Appointment')">⚙️ Generate Documents</button>
             </div>
-            <div style="background:#f8fafc; padding:24px;">
-              <div class="regd-preview-placeholder">
+
+            <div id="cs-status" style="margin-top:16px;"></div>
+          </div>
+
+          <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
+          <div id="cs-preview-view" class="regd-preview-view" hidden>
+            <div class="bm-preview-toolbar">
+              <span class="bm-preview-label">Preview</span>
+              <div class="bm-zoom-controls">
+                <button type="button" class="btn btn-outline btn-sm" onclick="csZoomOut()">−</button>
+                <span id="cs-zoom-level">100%</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="csZoomIn()">+</button>
+              </div>
+            </div>
+            <div class="bm-preview-scroll">
+              <div class="regd-preview-placeholder" id="cs-preview-placeholder">
                 <div class="icon">🧾</div>
-                <p>Company Secretary Appointment document preview will appear here.</p>
+                <p>Select a company, name the secretary and enter the meeting date to see a preview.</p>
               </div>
+              <div id="cs-preview-style"></div>
+              <div id="cs-preview-root" class="bm-preview-root" style="display:none;"></div>
             </div>
+          </div>
+          </div>
+
+          <div class="regd-view-footer">
+            <div class="bm-completion-indicator" id="cs-completion-indicator"></div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="csResetForm()">Reset</button>
           </div>
         </div>
 
@@ -4165,12 +4249,12 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608190900"></script>
+<script src="js/config.js?v=202608210100"></script>
 <script src="js/utils.js?v=202608182300"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
 <script src="js/core/nepaliLocale.js?v=202608100100"></script>
-<script src="js/core/documentEngine.js?v=202608022300"></script>
+<script src="js/core/documentEngine.js?v=202608210100"></script>
 <script src="js/core/searchEngine.js?v=202608022300"></script>
 <script src="js/core/tableEngine.js?v=202608022300"></script>
 <script src="js/core/workflowEngine.js?v=202608181600"></script>
@@ -4192,9 +4276,10 @@ function cropLoginLogoIcon(img) {
 <script src="js/notesToAccounts.js?v=202608171000"></script>
 <script src="js/depreciation.js?v=202608171700"></script>
 <script src="js/depreciationSlm.js?v=202608171400"></script>
-<script src="js/bmAgmMinutes.js?v=202608202000"></script>
+<script src="js/bmAgmMinutes.js?v=202608210100"></script>
 <script src="js/auditorChange.js?v=202608151800"></script>
 <script src="js/companyProfile.js?v=202608101800"></script>
+<script src="js/companySecretary.js?v=202608210100"></script>
 <script src="js/salesPurchaseBook.js?v=202608170900"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->

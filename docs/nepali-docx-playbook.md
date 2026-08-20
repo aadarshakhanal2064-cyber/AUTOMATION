@@ -8,8 +8,40 @@
 > That is the whole prompt. Everything below is the detail that would
 > otherwise have to be re-learned, and every item on it cost real debugging
 > time on BM/AGM Minutes (2026-08-20). `docs/modules/registrar.md` §5.11a is
-> the worked example; `tools/bmAgmBuild/` is the reference implementation to
+> the worked example; `tools/registrarDocx/` is the reference implementation to
 > copy.
+>
+> **You are not copying a script any more — you are adding one.**
+> `tools/registrarDocx/core.mjs` already holds everything that is common to
+> every Preeti source: the decode, run grouping, cross-run token replacement,
+> the page-break style, font scaling, the structural checks. A new document
+> gets its own `build<Name>.mjs` holding only its tokens, its alignment
+> repairs and its own measured page sizes — see `buildCsAppoint.mjs`
+> (Company Secretary Appointment, 2026-08-21), which is the second document
+> through this pipeline and the smaller of the two to read first.
+
+---
+
+## Two traps found on the SECOND document (2026-08-21)
+
+Both are now handled in `core.mjs`, but they are worth knowing because they
+are invisible until they corrupt text, and because the first document showed
+no sign of either:
+
+- **`<w:proofErr>` markers break formatting groups.** They are Word's
+  spell/grammar squiggles, they render nothing, and they sit *between* runs.
+  Two identically-formatted runs separated by one stop being adjacent, land
+  in different groups, and any Preeti ligature spanning them decodes wrong.
+  The Company Secretary source carries **506** of them (141 in one paragraph)
+  and silently produced `कम्फनी` for `कम्पनी` and `दफmा` for `दफा`.
+  `stripProofErr()` removes them before the body walk. The BM/AGM source has
+  **zero**, so a clean run on one document proves nothing about the next.
+- **Empty spacer paragraphs, not font size, are what overflows a letter.**
+  A letter laid out with blank paragraphs as vertical space (17 of 32 on the
+  Company Secretary letter page) does not respond to font scaling the way a
+  dense minutes page does — scaling down to 0.78 still produced 4 pages.
+  Shrink the empty paragraphs to a fixed small size *first*, then scale, then
+  re-measure. Getting this backwards costs a whole measurement grid.
 
 ---
 
@@ -150,7 +182,7 @@ $doc.ExportAsFixedFormat($pdf, 17)               # Word's own PDF
 $doc.Close(0); $w.Quit()
 ```
 
-Copy `tools/bmAgmBuild/wordPages.ps1` — it asserts expected page counts and
+Copy `tools/registrarDocx/wordPages.ps1` — it asserts expected page counts and
 can print a per-page paragraph map to show you *which* section overflows.
 
 ### The two renderers disagree, and each can look right while the other is wrong
