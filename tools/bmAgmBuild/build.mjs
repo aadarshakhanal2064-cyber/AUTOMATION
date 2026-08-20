@@ -753,13 +753,38 @@ const fixVisargaColon = s => {
     .replace(new RegExp(GUARD, 'g'), 'ः');
 };
 
+// ── PRINT SIZE ──
+// The firm asked for slightly smaller text on the printed/PDF output
+// (2026-08-20): the document was legible but reading a touch large. Every
+// explicit size is scaled by this ONE factor, so the source's own size
+// hierarchy is preserved exactly in proportion — the 34pt company title,
+// 16pt body, and the 6pt spacer runs used as indentation all shrink
+// together, and nothing else about the layout is touched.
+//
+// This is safe against page spill in both directions: smaller text can
+// only make a section shorter, and every section start is forced onto a
+// fresh sheet by the BmPageStart style regardless of content height, so
+// no page can grow into the next.
+//
+// MUST run last. Several fixes above match on exact w:sz values
+// (fixExtraProposalFont, the signature-alignment pairs); scaling before
+// them would silently stop every one of those matching.
+const FONT_SCALE = 0.90;
+const scaleFontSizes = s => s.replace(
+  /<w:(sz|szCs) w:val="(\d+)"\/>/g,
+  (_, tag, val) => `<w:${tag} w:val="${Math.max(2, Math.round(Number(val) * FONT_SCALE))}"/>`
+);
+
 files['word/document.xml'] = Buffer.from(
-  fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail))))))))))))),
+  scaleFontSizes(fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail)))))))))))))),
   'utf8'
 );
 for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml']) {
   if (files[name]) files[name] = Buffer.from(swapFonts(files[name].toString('utf8')), 'utf8');
 }
+// styles.xml carries the document defaults that any run without an explicit
+// size inherits — scaled by the same factor so nothing is left at full size.
+files['word/styles.xml'] = Buffer.from(scaleFontSizes(files['word/styles.xml'].toString('utf8')), 'utf8');
 {
   let styles = files['word/styles.xml'].toString('utf8');
   if (!styles.includes(BM_PAGE_STYLE_ID)) {
