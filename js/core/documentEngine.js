@@ -80,9 +80,30 @@ window.DocumentEngine = (function () {
   // Shared by every module's live preview and print window so both paginate
   // identically. `className` is the class docx-preview was told to put on
   // each section (see previewWordAsHtml's options.className).
-  function fitPagesToSheet(container, className) {
+  //
+  // `opts.flow` opts a document OUT of one-sheet fitting: each section keeps
+  // scale 1 and grows to its natural height instead. Fitting is right for
+  // documents whose every section is one sheet by design (BM/AGM, Company
+  // Secretary); it is wrong for Company Registration, whose MOA and AOA
+  // genuinely span several sheets — bisecting those to 0.5 and clipping
+  // would silently hide most of the filing. In flow mode the print window's
+  // browser paginates the tall sections across real sheets; the section
+  // boundaries (the template's own page-break style) still force a fresh
+  // sheet per sub-document.
+  function fitPagesToSheet(container, className, opts) {
     const sections = container.querySelectorAll('section.' + className);
     if (!sections.length) return null;
+
+    if (opts && opts.flow) {
+      const pageW = Math.round(parseFloat(getComputedStyle(sections[0]).width));
+      const pageH = Math.round(parseFloat(getComputedStyle(sections[0]).minHeight));
+      sections.forEach(m => {
+        m.style.height = 'auto';
+        m.style.minHeight = pageH + 'px';
+        m.style.overflow = 'visible';
+      });
+      return { pageW, pageH };
+    }
 
     // Hidden container (e.g. a preview refreshed before its tab was opened,
     // such as a draft restore at load): everything measures 0 in place, so
@@ -162,7 +183,7 @@ window.DocumentEngine = (function () {
   // HTML document string that prints one template page per sheet — the same
   // pagination the on-screen preview shows, because it is the same code.
   // Returns null if the document produced no page sections.
-  async function buildPrintableHtml(blob, { className, title }) {
+  async function buildPrintableHtml(blob, { className, title, flow }) {
     const holder = document.createElement('div');
     holder.style.cssText = 'position:absolute; left:-10000px; top:0;';
     const styleEl = document.createElement('div');
@@ -176,7 +197,7 @@ window.DocumentEngine = (function () {
         ignoreLastRenderedPageBreak: true, experimental: true,
       });
 
-      const fit = fitPagesToSheet(content, className);
+      const fit = fitPagesToSheet(content, className, { flow });
       if (!fit) return null;
       const { pageW, pageH } = fit;
 

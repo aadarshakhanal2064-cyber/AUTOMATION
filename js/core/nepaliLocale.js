@@ -168,6 +168,50 @@ window.NepaliLocale = (function () {
   // Today as 'YYYY.MM.DD', or '' once the calendar table runs out.
   function todayBsStr() { return bsToStr(todayBs()); }
 
+  // ── Nepali number words (Company Registration MOA/AOA, §5.11d) ──
+  // The registrar documents write every figure twice — "रु ५०,००,०००।– (पचास
+  // लाख रुपैंया मात्र)" — and the words in the firm's sources are typed by
+  // hand, with real mistakes ("पाँच हजार" beside a 5-lakh figure). Deriving
+  // them from the figure is what makes the two impossible to disagree.
+  // Full 0–99 table because Nepali numerals are irregular below 100.
+  const NEPALI_ONES = [
+    '', 'एक', 'दुई', 'तीन', 'चार', 'पाँच', 'छ', 'सात', 'आठ', 'नौ', 'दश',
+    'एघार', 'बाह्र', 'तेह्र', 'चौध', 'पन्ध्र', 'सोह्र', 'सत्र', 'अठार', 'उन्नाइस', 'बीस',
+    'एक्काइस', 'बाइस', 'तेइस', 'चौबिस', 'पच्चिस', 'छब्बिस', 'सत्ताइस', 'अठ्ठाइस', 'उनन्तिस', 'तीस',
+    'एकतिस', 'बत्तिस', 'तेत्तिस', 'चौतिस', 'पैंतिस', 'छत्तिस', 'सैतिस', 'अठतिस', 'उनन्चालीस', 'चालीस',
+    'एकचालीस', 'बयालीस', 'त्रिचालीस', 'चवालीस', 'पैंतालीस', 'छयालीस', 'सतचालीस', 'अठचालीस', 'उनन्चास', 'पचास',
+    'एकाउन्न', 'बाउन्न', 'त्रिपन्न', 'चवन्न', 'पचपन्न', 'छपन्न', 'सन्ताउन्न', 'अन्ठाउन्न', 'उनन्साठी', 'साठी',
+    'एकसट्ठी', 'बयसट्ठी', 'त्रिसट्ठी', 'चौंसट्ठी', 'पैंसट्ठी', 'छयसट्ठी', 'सतसट्ठी', 'अठसट्ठी', 'उनन्सत्तरी', 'सत्तरी',
+    'एकहत्तर', 'बहत्तर', 'त्रिहत्तर', 'चौहत्तर', 'पचहत्तर', 'छयहत्तर', 'सतहत्तर', 'अठहत्तर', 'उनासी', 'असी',
+    'एकासी', 'बयासी', 'त्रियासी', 'चौरासी', 'पचासी', 'छयासी', 'सतासी', 'अठासी', 'उनान्नब्बे', 'नब्बे',
+    'एकानब्बे', 'बयानब्बे', 'त्रियानब्बे', 'चौरानब्बे', 'पन्चानब्बे', 'छयानब्बे', 'सन्तानब्बे', 'अन्ठानब्बे', 'उनान्सय',
+  ];
+  // 5000000 -> "पचास लाख". Pure number words — the caller appends "रुपैंया
+  // मात्र" for money and nothing for share counts, because the same figure
+  // reads both ways in these documents. Empty string for 0/invalid, so a
+  // blank field never renders as a word.
+  function amountToWords(raw) {
+    let n = Math.floor(Number(toEnglishDigits(String(raw)).replace(/[^0-9.]/g, '')));
+    if (!isFinite(n) || n <= 0) return '';
+    const parts = [];
+    const step = (div, label) => {
+      if (n >= div) { parts.push(amountToWords(Math.floor(n / div)) + ' ' + label); n %= div; }
+    };
+    step(1e11, 'खरब'); step(1e9, 'अरब'); step(1e7, 'करोड'); step(1e5, 'लाख'); step(1000, 'हजार'); step(100, 'सय');
+    if (n > 0) parts.push(NEPALI_ONES[n]);
+    return parts.join(' ');
+  }
+
+  // रोज — the weekday number the registrar's ईति सम्वत line carries
+  // ("... गते रोज ०३"), आइतबार=१ … शनिबार=७. Anchored on 1 Baishakh 2080 =
+  // 14 April 2023, a Friday (रोज ६); verified against the firm's own multi-
+  // shareholder source, whose भदौ ०२ गते line says रोज ०३ and computes to 3.
+  // Accepts the same date strings bsPartsNum does; null outside 2080–2090.
+  function bsWeekday(str) {
+    const ord = bsDateOrd(str);
+    return ord == null ? null : ((ord + 5) % 7) + 1;
+  }
+
   // "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
   function fiscalParts(fyValue) {
     const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
@@ -193,5 +237,6 @@ window.NepaliLocale = (function () {
 
   return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
            bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy,
-           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, adToBs, bsToStr, fyStartYear };
+           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, adToBs, bsToStr, fyStartYear,
+           amountToWords, bsWeekday };
 })();
