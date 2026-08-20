@@ -149,12 +149,17 @@ const GLOBAL_TOKENS = [
 const PARA_TOKENS = {
   14:  [['(Additional Proposal)', '{{bmExtraProposalTitle}}']],   // brackets are Preeti, words are Arial
   21:  [['Additional Proposal Decision Fill Space', '{{bmExtraProposalDecision}}']],
-  50:  [['(Additional Proposal)', '{{agmExtraProposalTitle}}']],
-  67:  [['Additional Proposal Decision Fill Space', '{{agmExtraProposalDecision}}']],
+  // AGM item/decision 5's OWN number is a token too, not just a fixed "५" —
+  // item/decision 4 ahead of it (paragraphs 49 and 63-64, "संचालकहरुको
+  // पुनर्नियुक्ति") is itself conditional on {{#boardChanged}} now, so the
+  // extra proposal sits at 4 or 5 depending on whether that one printed.
+  50:  [['(Additional Proposal)', '{{agmExtraProposalTitle}}'], ['५)', '{{agmExtraItemNum}})']],
+  67:  [['Additional Proposal Decision Fill Space', '{{agmExtraProposalDecision}}'], ['निर्णय नं. ५', 'निर्णय नं. {{agmExtraDecisionNum}}']],
   // "misc" (विविध) is always the last item/decision in its list — its own
-  // number shifts down by one whenever the extra proposal above it is
-  // omitted (paragraphs 14/20-21 and 50/67, gated by {{#bmHasExtra}}/
-  // {{#agmHasExtra}} below), so its literal digit becomes a token too.
+  // number shifts down whenever an item ahead of it is omitted (BM:
+  // paragraphs 14/20-21, gated by {{#bmHasExtra}}; AGM: paragraphs 49 and
+  // 50/63-64/67, gated by {{#boardChanged}} and {{#agmHasExtra}}), so its
+  // literal digit becomes a token too.
   15:  [['३)', '{{bmMiscItemNum}})']],
   23:  [['निर्णय नं. ३', 'निर्णय नं. {{bmMiscDecisionNum}}']],
   51:  [['६)', '{{agmMiscItemNum}})']],
@@ -200,7 +205,9 @@ const INSERT_BEFORE = {
   185: ['{{#boardChanged}}'],   // the matching tapsil line in registrar letter 2
   14:  ['{{#bmHasExtra}}'],     // BM proposal item 2 (the extra proposal itself)
   20:  ['{{#bmHasExtra}}'],     // BM decision 2 (heading @20 + content @21)
+  49:  ['{{#boardChanged}}'],   // AGM proposal item 4 (director reappointment)
   50:  ['{{#agmHasExtra}}'],    // AGM proposal item 5
+  63:  ['{{#boardChanged}}'],   // AGM decision 4 (heading @63 + content @64)
   67:  ['{{#agmHasExtra}}'],    // AGM decision 5 (heading + content, one paragraph)
 };
 const INSERT_AFTER = {
@@ -211,7 +218,9 @@ const INSERT_AFTER = {
   185: ['{{/boardChanged}}'],
   14:  ['{{/bmHasExtra}}'],
   21:  ['{{/bmHasExtra}}'],
+  49:  ['{{/boardChanged}}'],
   50:  ['{{/agmHasExtra}}'],
+  64:  ['{{/boardChanged}}'],
   67:  ['{{/agmHasExtra}}'],
   255: ['{{/attendees}}', '{{/boardChanged}}'],
 };
@@ -797,9 +806,22 @@ for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml'
       throw new Error(`${tag} conditional count is off — expected 2 opens/2 closes (item + decision), found ${opens}/${closes}`);
     }
   }
+  // boardChanged now gates 4 independent blocks: the original "Change of
+  // Board of Director" minutes page (217/255) and its registrar-letter
+  // tapsil line (185/185), plus the AGM's own item 4 (49/49) and decision 4
+  // (63/64) — restating the same reappointment the standalone set formalises,
+  // so it only belongs on the agenda the year that set actually prints.
+  {
+    const opens = (built.match(/\{\{#boardChanged\}\}/g) || []).length;
+    const closes = (built.match(/\{\{\/boardChanged\}\}/g) || []).length;
+    if (opens !== 4 || closes !== 4) {
+      throw new Error(`boardChanged conditional count is off — expected 4 opens/4 closes, found ${opens}/${closes}`);
+    }
+  }
   if (!built.includes('{{bmMiscItemNum}}') || !built.includes('{{bmMiscDecisionNum}}') ||
-      !built.includes('{{agmMiscItemNum}}') || !built.includes('{{agmMiscDecisionNum}}')) {
-    throw new Error('a misc-item renumbering token did not survive into the built template');
+      !built.includes('{{agmMiscItemNum}}') || !built.includes('{{agmMiscDecisionNum}}') ||
+      !built.includes('{{agmExtraItemNum}}') || !built.includes('{{agmExtraDecisionNum}}')) {
+    throw new Error('a misc/extra-item renumbering token did not survive into the built template');
   }
   {
     const visargaCount = (built.match(/ः/g) || []).length;

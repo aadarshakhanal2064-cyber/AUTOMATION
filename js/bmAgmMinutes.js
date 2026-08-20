@@ -318,8 +318,19 @@ function bmBuildData() {
     agmHasExtra,
     agmExtraProposalTitle:    agmExtraTitle,
     agmExtraProposalDecision: agmExtraDecision,
-    agmMiscItemNum:     bmToDevanagari(agmHasExtra ? '6' : '5'),
-    agmMiscDecisionNum: bmToDevanagari(agmHasExtra ? '6' : '5'),
+    // The AGM's own item/decision 4 ("संचालकहरुको पुनर्नियुक्ति" — directors'
+    // term ending, reappointed for a new one) restates exactly what the
+    // separate "Change of Board of Director" set formalises, so it only
+    // belongs on the agenda the year that set is actually generated — gated
+    // on the same `boardChanged` flag, not a flag of its own. That makes
+    // items/decisions 4 (reappointment, conditional), 5 (extra proposal,
+    // conditional) and 6 (विविध, always last) all shift depending on which
+    // of the first two are present, so their own numbers are tokens too —
+    // not just विविध's, as when only the extra proposal was optional.
+    agmExtraItemNum:     bmToDevanagari(boardChanged ? '5' : '4'),
+    agmExtraDecisionNum: bmToDevanagari(boardChanged ? '5' : '4'),
+    agmMiscItemNum:     bmToDevanagari(String(4 + (boardChanged ? 1 : 0) + (agmHasExtra ? 1 : 0))),
+    agmMiscDecisionNum: bmToDevanagari(String(4 + (boardChanged ? 1 : 0) + (agmHasExtra ? 1 : 0))),
     boardChanged,
   }};
 }

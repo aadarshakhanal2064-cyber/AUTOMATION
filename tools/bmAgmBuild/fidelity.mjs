@@ -130,7 +130,12 @@ function renderedLines(tplPath) {
     // (extra-omitted) case — that path is exercised by the app, not by this
     // fidelity-against-the-source harness.
     bmHasExtra: true, bmMiscItemNum: '३', bmMiscDecisionNum: '३',
-    agmHasExtra: true, agmMiscItemNum: '६', agmMiscDecisionNum: '६',
+    // boardChanged:true (below) also keeps the AGM's own item/decision 4
+    // ("संचालकहरुको पुनर्नियुक्ति") present, so with both that AND the extra
+    // proposal shown, item/decision 5 is the extra and 6 is विविध — the
+    // source's own original numbering.
+    agmHasExtra: true, agmExtraItemNum: '५', agmExtraDecisionNum: '५',
+    agmMiscItemNum: '६', agmMiscDecisionNum: '६',
     attendeeNamesJoined: S.attendeeNamesJoined,
     attendees:[
       { num:'१', name: S.chairmanName,       role:'अध्यक्ष',  isChairman:true },
