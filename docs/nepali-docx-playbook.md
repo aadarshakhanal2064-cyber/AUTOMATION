@@ -7,9 +7,10 @@
 >
 > That is the whole prompt. Everything below is the detail that would
 > otherwise have to be re-learned, and every item on it cost real debugging
-> time on BM/AGM Minutes (2026-08-20). `docs/modules/registrar.md` §5.11a is
-> the worked example; `tools/registrarDocx/` is the reference implementation to
-> copy.
+> time — on BM/AGM Minutes (2026-08-20) and then on Company Secretary
+> Appointment (2026-08-21), which is where the items marked as second-document
+> lessons come from. `docs/modules/registrar.md` §5.11a and §5.11c are the two
+> worked examples; `tools/registrarDocx/` is the reference implementation.
 >
 > **You are not copying a script any more — you are adding one.**
 > `tools/registrarDocx/core.mjs` already holds everything that is common to
@@ -19,29 +20,6 @@
 > repairs and its own measured page sizes — see `buildCsAppoint.mjs`
 > (Company Secretary Appointment, 2026-08-21), which is the second document
 > through this pipeline and the smaller of the two to read first.
-
----
-
-## Two traps found on the SECOND document (2026-08-21)
-
-Both are now handled in `core.mjs`, but they are worth knowing because they
-are invisible until they corrupt text, and because the first document showed
-no sign of either:
-
-- **`<w:proofErr>` markers break formatting groups.** They are Word's
-  spell/grammar squiggles, they render nothing, and they sit *between* runs.
-  Two identically-formatted runs separated by one stop being adjacent, land
-  in different groups, and any Preeti ligature spanning them decodes wrong.
-  The Company Secretary source carries **506** of them (141 in one paragraph)
-  and silently produced `कम्फनी` for `कम्पनी` and `दफmा` for `दफा`.
-  `stripProofErr()` removes them before the body walk. The BM/AGM source has
-  **zero**, so a clean run on one document proves nothing about the next.
-- **Empty spacer paragraphs, not font size, are what overflows a letter.**
-  A letter laid out with blank paragraphs as vertical space (17 of 32 on the
-  Company Secretary letter page) does not respond to font scaling the way a
-  dense minutes page does — scaling down to 0.78 still produced 4 pages.
-  Shrink the empty paragraphs to a fixed small size *first*, then scale, then
-  re-measure. Getting this backwards costs a whole measurement grid.
 
 ---
 
@@ -98,7 +76,7 @@ fixed vs dynamic, loop/conditional — before a line of build code.
 
 **Never hand-edit the `.docx`.** It is a build artifact. A hand-edit is
 invisible, unreproducible, and silently lost on the next rebuild. Everything
-happens in a committed `tools/<module>Build/build.mjs`.
+happens in a committed `tools/registrarDocx/build<Name>.mjs`.
 
 ### The governing rule: minimal touch
 
@@ -112,7 +90,7 @@ ruled 11-row statutory table rendered as loose unboxed paragraphs. **Table
 markup lives in the gaps *between* paragraph matches** — any walk over the
 document must preserve those gaps.
 
-### Five XML traps, all of which will bite
+### Six XML traps, all of which will bite
 
 | Trap | What happens | What to do |
 |---|---|---|
@@ -121,6 +99,7 @@ document must preserve those gaps.
 | **A value spanning runs of different size** | Digit separators set 2pt smaller, a half-size space mid-title, a placeholder split across two fonts — no per-run rule can match it | Replace **across** runs: cut the match from wherever it lives, insert the token into the **first** run touched, so it inherits the formatting where the value started. Do **not** merge the runs — some paragraphs use differently-sized space runs as indentation, and flattening moves the text |
 | **A Preeti syllable straddling a formatting boundary** | A name ends bold while the following syllable has its consonant inside the bold run and its vowel sign outside — decoding the groups separately produces different text than decoding the paragraph whole | Nudge the boundary a few characters until group-wise decode == whole-paragraph decode; report which paragraphs were repaired |
 | **Preeti needs cross-run context** | Decoding run-by-run in isolation produces garbage ligatures | Decode per **formatting group**, not per run; preserve tabs across the decode with a sentinel character |
+| **`<w:proofErr>` between runs** | Word's spell/grammar markers render nothing but sit *between* runs, so two identically-formatted runs stop being adjacent, land in different groups, and any ligature spanning them decodes wrong. The Company Secretary source carries **506** of them (141 in one paragraph) and silently produced `कम्फनी` for `कम्पनी`, `दफmा` for `दफा` | `stripProofErr()` before the body walk (already in `core.mjs`). The BM/AGM source has **zero** — a clean run on one document proves nothing about the next |
 
 ### Decoding Preeti
 
@@ -165,6 +144,45 @@ loop iteration and push it over.
 Cross-check your section boundaries against the source's own
 `<w:lastRenderedPageBreak/>` markers — they record where Word actually broke.
 Note a section may legitimately span two sheets; don't force those.
+
+---
+
+## Phase 3b — Alignment: the hand-typed spacing is a spec, read it
+
+These documents position everything with **literal spaces and tab presses**.
+That lines up for exactly one client — the one it was typed against — so every
+such block has to move onto a real Word property. Three things about doing it:
+
+**The space counts tell you which alignment was intended.** Near-identical
+counts across a block (the Company Secretary signature block: 55, 54, 54) are a
+**left-alignment** attempt that space-counting couldn't quite land. Wildly
+different counts mean the typist was eyeballing each line separately, and you
+have to decide. Read the numbers before choosing; guessing here shipped a
+centred signature block that had to be redone.
+
+**"Aligned" in the arithmetic sense is not "aligned" to the eye.** That centred
+block had the *same indent and the same centre* on all three lines — Word
+confirmed it — and still looked crooked, because the three lines are
+deliberately different sizes (16pt underlined label, 18pt bold name, 18pt
+title) and centred lines of different widths each **start** at a different x.
+If a block's lines differ in size or weight, left-align them on a shared
+indent; reserve centring for lines that are genuinely a centred heading.
+
+**Verify by measuring the rendered left edges, not by looking.** In the app
+preview, `range.getBoundingClientRect()` on each paragraph gives the inked text
+box; assert every line in the block reports the same `left`. In Word, read
+`Format.LeftIndent` and `Format.Alignment` per paragraph. Both agreeing is the
+proof — a screenshot is not, and neither is the XML looking right.
+
+Two more, cheaply learned:
+
+- **A tab stop beats a space run for any two-column row** (name | role,
+  label | value). Install a real `<w:tabs>` and emit `<w:tab/>`, then prove it
+  by rendering two rows whose first column differs in width and checking the
+  second column starts at the same pixel.
+- **Every alignment fix should be an exact-string swap that THROWS** when the
+  source no longer contains what it expects. A re-typed source then fails the
+  build loudly instead of silently printing the old hand-typed spacing.
 
 ---
 
@@ -217,6 +235,31 @@ works. The default line height held at 10 pages up to `line=300` and turned 11
 at 312; 276 was chosen for real margin. A fix that sits exactly on the limit
 will break for the next client with a longer name.
 
+**Find the real cause before sweeping, or you'll sweep the wrong knob.** The
+Company Secretary letter would not come down to 2 pages at *any* font scale —
+0.78 still gave 4 pages — because the overflow wasn't the text at all. That
+page is laid out with **empty paragraphs as vertical space** (17 of its 32),
+which a font scale barely touches. Shrink the empty paragraphs to a fixed small
+size *first*, neutralise the inherited line height *second*, and only then
+sweep the font scale. Getting that order wrong costs a whole measurement grid.
+
+The general form: when a sweep moves the page count far less than you expect,
+stop sweeping and go find what is actually consuming the height.
+
+### Driving Word over COM without wedging it
+
+Word is a real application, not a library, and it will occasionally hang on
+`ExportAsFixedFormat` and keep a **file lock** on whatever it had open — which
+then breaks the next build with `EBUSY`. Guard against it:
+
+- Always open read-only and always `Close(0)` / `Quit()`, including on failure.
+- **List `Get-Process WINWORD` before you start.** The user very likely has
+  Word open on the source document. If you have to kill a wedged instance, kill
+  only the one *you* started — match on `StartTime`, and never touch one with a
+  `MainWindowTitle`.
+- Prefer `ComputeStatistics(2)` for page counts; it is fast and reliable. PDF
+  export is the step that hangs.
+
 ---
 
 ## Phase 5 — Harnesses (commit them, or they don't exist)
@@ -249,15 +292,35 @@ for a month with nobody noticing.
 **This repo is public.** The build script needs the source's real sample values
 (company name, registration number, chairman, addresses, dates) in order to
 find and replace them — so those live in a **gitignored**
-`tools/<module>Build/sample-values.local.mjs`, imported at run time. Both the
-build and the fidelity harness fail with a clear message if it's absent.
+`tools/registrarDocx/sample-values-<name>.local.mjs`, imported at run time. The
+build fails with a clear message if it's absent.
 
-This is not hypothetical: the first version held those values as string
+This is not hypothetical: the first BM/AGM version held those values as string
 literals in a committed script, and was caught only just before pushing.
 
+**That mechanism only covers the build script, and the leaks are elsewhere.**
+On the Company Secretary document it did its job perfectly — and real client
+data still reached a commit through three doors it does not watch:
+
+| Door | What leaked | Fix |
+|---|---|---|
+| **UI placeholders** | `placeholder="e.g. <real secretary's name>"` on the form field, because the source document was the nearest example to hand | Invent every placeholder. Never paste one from the source |
+| **Code comments** | A comment quoting the source's unclosed bracket verbatim — which included a real citizenship number and home address | Redact inside comments too: `"(नागरिकता प्रमाणपत्र नं <no>, ठेगाना: <address>"` |
+| **Doc examples** | Same risk in the module doc and commit messages | Use the invented values from the sample renderer |
+
+So the pre-push grep is **mandatory, not a nicety** — and it must run over the
+whole outgoing diff, not just the files you think are risky:
+
+```bash
+for v in "<name>" "<surname>" "<citizenship no>" "<address>" "<company>"; do
+  n=$(git diff origin/main..HEAD -- . | grep -c "$v"); [ "$n" != "0" ] && echo "LEAK: $v x$n"
+done
+```
+
 Also gitignore generated samples (`sample-*.docx`, `sample-*.pdf`) and any diff
-dump. Before committing, grep the staged diff for the client's name, PAN and
-registration number.
+dump — and be careful that a cleanup wildcard like `rm *.local.mjs` doesn't
+take `sample-values-<name>.local.mjs` with it (it will; that file is the one
+thing in the folder you cannot regenerate from the repo).
 
 ---
 
@@ -266,8 +329,16 @@ registration number.
 - Generate real sample documents at **several shapes** — the minimum case, the
   typical case, and a large one (e.g. 1 / 2 / 5 people) — and assert page
   counts for each. Loops and conditionals only break at the edges.
-- **Export Word's own PDF and send that**, not just the `.docx`. It's what the
-  user will actually print, and it removes an entire round-trip.
+- **Export Word's own PDF and send that** where you can — it's what the user
+  will actually print, and it removes a round-trip. If the export wedges (see
+  Phase 4), send the `.docx` rather than stalling on it; the user opens it in
+  the same Word you were driving.
+- **When the user reports a visual problem, measure before you believe your own
+  code.** A report of "these aren't aligned" against a block whose XML looked
+  correct turned out to be real — the lines shared an indent and a centre, and
+  still started at different x. Reproduce with their values, measure the
+  rendered geometry in both renderers, and only then decide whether the
+  complaint is about the property or about what the property looks like.
 - Say plainly what you verified and what you didn't. Structural checks prove
   nothing *regressed*; only Word proves pagination; only the user can confirm
   wording and visual alignment.
@@ -281,10 +352,16 @@ registration number.
 1. The firm's document is the spec — preserve, don't redesign.
 2. Rewrite text inside runs; never rebuild a paragraph. Table markup lives in
    the gaps.
-3. Group runs by visible formatting; replace tokens across runs.
+3. Group runs by visible formatting; replace tokens across runs. Strip
+   `<w:proofErr>` first — it splits groups and corrupts ligatures.
 4. Page breaks belong to a named **style**.
-5. Word and the preview disagree — verify in both, every time.
-6. Measure with Word over COM; tune by sweep; leave headroom.
-7. Commit the build script and all three harnesses.
-8. Real client values live in a gitignored file, never in a committed script.
-9. Ask about every ambiguity; the source contains real mistakes.
+5. Hand-typed space counts encode the intended alignment — read them. Centred
+   lines of different sizes are *not* visually aligned; left-align a mixed-size
+   block on a shared indent.
+6. Word and the preview disagree — verify in both, every time.
+7. Measure with Word over COM. Before sweeping a knob, find what is actually
+   consuming the height; leave headroom on whatever you pick.
+8. Commit the build script and all three harnesses.
+9. Real client values live in a gitignored file — and also leak through UI
+   placeholders, code comments and docs. Grep the whole diff before pushing.
+10. Ask about every ambiguity; the source contains real mistakes.
