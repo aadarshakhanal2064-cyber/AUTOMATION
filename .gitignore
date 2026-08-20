@@ -79,3 +79,8 @@ tools/bmAgmBuild/fidelity_diff.txt
 # (BM_DEBUG_DUMP=1 in build.mjs) — same real-client-data concern as above.
 tools/bmAgmBuild/debug-dump.local.txt
 tools/bmAgmBuild/*.local.*
+
+# Generated sample .docx output from the ad-hoc sample.mjs renderer (fake
+# data, but still a build artifact — not something the repo tracks).
+tools/bmAgmBuild/sample-*.docx
+tools/bmAgmBuild/sample-output.docx

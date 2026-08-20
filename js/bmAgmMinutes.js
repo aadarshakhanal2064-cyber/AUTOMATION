@@ -125,13 +125,18 @@ function bmToggleBoardChangedFields() {
 }
 
 // Full attendee list in order: chairman, then every shareholder name (fixed
-// field + any additional rows), skipping blanks.
+// field + any additional rows), skipping blanks. The chairman IS one of the
+// company's shareholders, and client_shareholders sometimes lists them again
+// alongside the others — left in, that prints the same person twice in the
+// attendee list (once as अध्यक्ष, once as संचालक), so an entry matching the
+// chairman's own name is dropped here rather than at every call site.
 function bmGetAllShareholderNames() {
+  const chairman = document.getElementById('bm-chairmanName').value.trim();
   const names = [document.getElementById('bm-shareholderName').value.trim()];
   document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input').forEach(inp => {
     names.push(inp.value.trim());
   });
-  return names.filter(Boolean);
+  return names.filter(n => n && n !== chairman);
 }
 
 // A single-shareholder company has nobody to reappoint the board FROM — the
