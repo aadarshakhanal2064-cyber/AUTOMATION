@@ -49,6 +49,38 @@ const ProvisionalStatementEngine = (() => {
   // other-expense lookup, and the shadowing turned every override into 0.
   const orDerived = (override, derived) => (has(override) ? num(override) : derived);
 
+  // ── account-head spelling ──
+  // The firm writes the same head several ways across clients ("Printing &
+  // Stationery" / "Printing and Stationeries"). Left alone they are two heads:
+  // one grows and the other sits at nil, and note 3.15 prints both.
+  //
+  // The key is case- and punctuation-insensitive on trimmed word content, the
+  // same conservative rule wdWorkTypesForLabel() follows. It must never invent
+  // a meaning — two heads collapse only when they are the same head spelled
+  // differently, which is why the map is an explicit list rather than a
+  // fuzzy match.
+  const headKey = name => String(name == null ? '' : name)
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // The map's KEYS are normalised on read, so an author can write them the way
+  // the head is actually spelled ("Printing & Stationery") instead of having to
+  // pre-strip punctuation. Writing keys by hand in headKey form is how half the
+  // aliases silently never matched the first time this was written.
+  let _headMap = null, _headMapSrc = null;
+  function headMap() {
+    const raw = (typeof window !== 'undefined' && window.PS_HEAD_ALIASES) || {};
+    if (_headMapSrc !== raw) {
+      _headMapSrc = raw;
+      _headMap = {};
+      for (const k of Object.keys(raw)) _headMap[headKey(k)] = raw[k];
+    }
+    return _headMap;
+  }
+
+  function canonicalHead(name) {
+    return headMap()[headKey(name)] || name;
+  }
+
   // ════════════════════════════════════════════════════════════════
   //  DEFAULTS — every one of these is an editable default, never a
   //  hardcoded truth. They are what the firm's workbook actually does.
@@ -306,11 +338,22 @@ const ProvisionalStatementEngine = (() => {
     //  Every line runs `=ROUND(F*1.05,)` EXCEPT Audit Fee and Rent, which the
     //  firm types flat. Both remain fully editable.
     // ════════════════════════════════════════════════
-    const otherExpenses = (py.otherExpenses || []).map(e => {
+    // Merge duplicate spellings BEFORE the lines become rows, so a head the
+    // firm writes two ways is one line carrying both years rather than two
+    // lines each missing one.
+    const mergedOther = [];
+    (py.otherExpenses || []).forEach(e => {
+      const name = canonicalHead(e.name);
+      const hit = mergedOther.find(x => headKey(x.name) === headKey(name));
+      if (hit) { hit.amount = num(hit.amount) + num(e.amount); hit.merged = (hit.merged || 1) + 1; }
+      else mergedOther.push(Object.assign({}, e, { name }));
+    });
+
+    const otherExpenses = mergedOther.map(e => {
       const key = e.key || e.name;
       const isFlat = FLAT_LINES.indexOf(e.key) >= 0;
       const l = line(key, e.amount, isFlat ? 'flat' : 'growth', { roundTo: 0 });
-      return { key, name: e.name, py: l.py, amount: l.amount, rule: l.rule, growth: l.growth, derive: l.derive };
+      return { key, name: e.name, py: l.py, amount: l.amount, rule: l.rule, growth: l.growth, derive: l.derive, merged: e.merged };
     });
     const otherTotal = otherExpenses.reduce((s, e) => s + e.amount, 0);
     const pick = k => { const e = otherExpenses.find(x => x.key === k); return e ? e.amount : 0; };
@@ -743,6 +786,7 @@ const ProvisionalStatementEngine = (() => {
   return {
     GROWTH, FLAT_LINES, PPE_RATES, TDS, CORPORATE_TAX, TAX_SLABS, RULES,
     xlRound, progressiveTax, applyRule, derive, pbtFromMargin,
+    canonicalHead, headKey,
   };
 })();
 

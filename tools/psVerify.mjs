@@ -390,6 +390,47 @@ const revCheck = withReg.checks.find(c => c.id === 'reg-revenue');
 eq('recon  register gap is for review', revCheck.level === 'review' ? 0 : 1, 0);
 eq('recon  and not counted as failing', withReg.failing.filter(c => c.id === 'reg-revenue').length, 0);
 
+// ── account-head spelling ──
+// The firm writes the same head several ways across clients. Left alone they
+// are two heads: one grows and the other sits at nil, and note 3.15 prints
+// both. The map lives on window in the browser, so the harness supplies it.
+globalThis.window = globalThis.window || {};
+globalThis.window.PS_HEAD_ALIASES = {
+  'printing and stationeries': 'Printing & Stationery',
+  'printing & stationery':     'Printing & Stationery',
+  'travelling expenses':       'Traveling expenses',
+  'traveling expenses':        'Traveling expenses',
+  'miscellaneous expenses':    'Misc. Expenses',
+  'misc. expenses':            'Misc. Expenses',
+  'salary':                    'Salary Expenses',
+  'salary expenses':           'Salary Expenses',
+};
+const canon = (a, b2) => eq(`head   "${a}"`, Engine.canonicalHead(a) === b2 ? 0 : 1, 0);
+canon('Printing and Stationeries', 'Printing & Stationery');
+canon('printing & stationery',     'Printing & Stationery');
+canon('Travelling Expenses',       'Traveling expenses');
+canon('Miscellaneous Expenses',    'Misc. Expenses');
+// A head the map has never seen must survive untouched — the rule is to
+// canonicalise spellings, never to invent meanings.
+canon('Some Unique Client Head',   'Some Unique Client Head');
+
+// Two spellings of one head become ONE line carrying both years, rather than
+// two lines each missing one.
+const merged = Engine.derive({
+  py: {
+    sales: 1000000, otherIncome: 0, closingStock: 0, salary: 0, ppeClasses: [],
+    otherExpenses: [
+      { key: 'p1', name: 'Printing & Stationery',     amount: 40000 },
+      { key: 'p2', name: 'Printing and Stationeries', amount: 10000 },
+      { key: 'r',  name: 'Rent expenses',             amount: 100000 },
+    ],
+  },
+  cy: { sales: 1000000, purchases: 0, closingStock: 0 },
+  options: { taxProfile: 'corporate' },
+});
+eq('head   two spellings collapse to one line', merged.income.otherItems.length, 2);
+eq('head   and carry both years',               merged.income.otherItems[0].amount, 52500);
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

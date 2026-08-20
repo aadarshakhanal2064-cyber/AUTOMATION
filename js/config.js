@@ -544,6 +544,53 @@ window.ACTIVITY_SAVED_ONLY = {
 // account name ("Dallakoti & Company(current)") or an expense particular
 // ("Bank Charges") out of the Client filter — those only ever come from
 // bankBook, which isn't in the list.
+// Account heads the firm spells more than one way. Collected from the eight
+// reference provisional workbooks, where the stable core of ~50 heads sits
+// alongside 191 heads used by a single client — so the head LIST stays
+// data-driven (read from the prior-year file) and only the SPELLINGS are
+// canonicalised here.
+//
+// Without this, "Printing & Stationery" and "Printing and Stationeries" are two
+// different heads: one grows 5% while the other sits at nil, and note 3.15
+// prints both.
+//
+// Matching is case- and spacing-insensitive on trimmed word content
+// (psHeadKey below) — deliberately conservative, the same rule
+// wdWorkTypesForLabel() follows. It must never invent a new meaning: two heads
+// only collapse when they are the same head spelled differently.
+window.PS_HEAD_ALIASES = {
+  'printing and stationeries':     'Printing & Stationery',
+  'printing & stationery':         'Printing & Stationery',
+  'printing and stationery':       'Printing & Stationery',
+  'travelling expenses':           'Traveling expenses',
+  'traveling expenses':            'Traveling expenses',
+  'daily travel expenses':         'Traveling expenses',
+  'miscellaneous expenses':        'Misc. Expenses',
+  'misc expenses':                 'Misc. Expenses',
+  'misc. expenses':                'Misc. Expenses',
+  'insurance premium':             'Insurance expenses',
+  'insurance expenses':            'Insurance expenses',
+  'prepaid insurance':             'Prepaid Insurance',
+  // A typo in one workbook. Collapsing it is safe: there is no second head
+  // that "comission" could legitimately mean.
+  'bank comission and processing charges': 'Bank commission and processing charges',
+  'bank commission and processing charges': 'Bank commission and processing charges',
+  'bank charge':                   'Bank Charges',
+  'bank charges':                  'Bank Charges',
+  'salary':                        'Salary Expenses',
+  'salary expenses':               'Salary Expenses',
+  'telephone expense':             'Telephone & Internet expenses',
+  'telephone & internet expenses': 'Telephone & Internet expenses',
+  'communication expenses':        'Telephone & Internet expenses',
+  'audit fee':                     'Audit Fee',
+  'audit fees & expenses':         'Audit Fee',
+  'audit fee payable':             'Audit Fee Payable',
+  'cash & bank balance':           'Cash in Hand & Bank Balances',
+  'cash & bank balances':          'Cash in Hand & Bank Balances',
+  'cash in hand & bank balances':  'Cash in Hand & Bank Balances',
+  'cash & bank':                   'Cash in Hand & Bank Balances',
+};
+
 window.ACTIVITY_MODULES = ['finStatement', 'provisionalStatement', 'projection', 'confirmationLetters',
   'salesPurchaseBook', 'fileManagement', 'auditReportFinalization', 'auditChecklist'];
 

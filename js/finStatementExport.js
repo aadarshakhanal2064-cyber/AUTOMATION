@@ -1440,6 +1440,14 @@ const FSX_PRINT_CSS = `
   .fsp-root * { box-sizing: border-box; }
   .fsp-root .fsp-sheet { page-break-after: always; padding-bottom: 6mm; }
   .fsp-root .fsp-sheet:last-child { page-break-after: auto; }
+  /* A schedule is a RUN of short 3.x notes, not one page of table. Breaking
+     after every sheet is right for the four statements and wrong here — it
+     would give Sch-BS's nine notes a page each. So the schedule flows, and a
+     note breaks only when it will not fit whole. */
+  .fsp-root .fsp-sheet.fsp-sched { page-break-after: always; }
+  .fsp-root .fsp-sched tr.fsp-head td { break-before: auto; page-break-before: auto; }
+  .fsp-root .fsp-sched tr.fsp-head td, .fsp-root .fsp-sched tr.fsp-band th {
+    break-after: avoid; page-break-after: avoid; }
   .fsp-root .fsp-co { text-align: center; font-size: 19px; font-weight: 700; }
   .fsp-root .fsp-addr { text-align: center; font-size: 19px; font-weight: 700; margin-top: 2px; }
   .fsp-root .fsp-title { text-align: center; font-size: 16px; font-weight: 700; margin-top: 8px; }
@@ -1517,7 +1525,7 @@ function fsxSheetHtml(sh, meta) {
   const unit = hasQuad ? 2 : 1;
   const valueCells = hasQuad ? 4 : nCols;
   const out = [];
-  out.push('<div class="fsp-sheet">');
+  out.push(`<div class="fsp-sheet${FSX_SCHEDULE_KEYS[sh.key] ? ' fsp-sched' : ''}">`);
   if (!sh.noHeaderBand) {
     if (!FSX_SCHEDULE_KEYS[sh.key]) {
       // Statement sheets carry the company header; schedule sheets never

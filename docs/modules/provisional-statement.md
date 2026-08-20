@@ -360,6 +360,29 @@ rate formula (`inc.taxDerive`) since the `X('COI','tax')` fallback would be a
 dead reference, and a self-banded schedule prints no sheet-wide title in
 HTML/PDF either, or the page would carry a heading the Excel does not have.
 
+### 5.4 Account-head spelling
+
+The firm writes the same head several ways across clients — `Printing &
+Stationery` / `Printing and Stationeries`, `Traveling` / `Travelling`, `Misc.`
+/ `Miscellaneous`, `Salary` / `Salary Expenses`, and one outright typo
+(`Bank comission`). Left alone these are two heads: one grows 5% while the
+other sits at nil, and note 3.15 prints both.
+
+`window.PS_HEAD_ALIASES` (`js/config.js`) canonicalises the spellings; the
+head LIST stays data-driven, read from the prior-year file. Duplicates are
+merged **before** the lines become rows, so a head written two ways is one line
+carrying both years rather than two lines each missing one.
+
+**The map's keys are normalised on read**, so an author writes them the way the
+head is actually spelled. Writing keys by hand in stripped form is how half the
+aliases silently never matched the first time this was written — a key
+containing `&` or `.` could never match a lookup that strips punctuation.
+
+Matching is case- and punctuation-insensitive on trimmed word content, the same
+conservative rule `wdWorkTypesForLabel()` follows. It must never invent a
+meaning: two heads collapse only when they are the same head spelled
+differently, which is why the map is an explicit list and not a fuzzy match.
+
 ### 6.0b The print renderer must know every row kind
 
 `fsxSheetHtml` builds the on-screen preview AND the print/PDF document, and it
@@ -380,6 +403,11 @@ the table's `<col>` count.
 Print hygiene lives in `FSX_PRINT_CSS`: a heading stays with the band and rows
 beneath it (`break-after: avoid`), a total never splits from the lines it sums
 (`break-before: avoid`), and no row breaks across a page.
+
+**A schedule is a run of short 3.x notes, not a page of table.** Breaking after
+every sheet is right for the four statements and wrong for the schedules — it
+would give Sch-BS's nine notes a page each. Schedule sheets carry `.fsp-sched`
+and flow, breaking between notes rather than after every one.
 
 ### 6.1 Row-for-row alignment
 
