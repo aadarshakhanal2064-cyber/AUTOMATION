@@ -246,6 +246,26 @@ sweep the font scale. Getting that order wrong costs a whole measurement grid.
 The general form: when a sweep moves the page count far less than you expect,
 stop sweeping and go find what is actually consuming the height.
 
+### Sizes the firm names, and the two spacing knobs
+
+If the firm gives you actual point sizes, apply them as an explicit
+`{sourceHalfPoints: targetHalfPoints}` table (`remapFontSizes`), not as a
+scale factor. A factor cannot express "body much smaller, title only a little
+smaller", and faking it with a factor plus per-element patches is how a size
+hierarchy drifts out of step with itself. Then **fail the build** on any
+source size with no entry — an unmapped run ships at its original Preeti-era
+size, right beside correctly-sized text, where it reads as a mistake.
+
+**Reading leading and gap height are two knobs, not one.** These documents use
+empty paragraphs as vertical space, and those inherit the document line height
+like any other paragraph. Opening up the body for legibility therefore
+multiplies every gap too — on the Company Secretary letter that moved the
+signature block onto the bottom margin (730pt into a 720pt page) while nothing
+about the text had changed. Pin each spacer's own line spacing when you set
+its size, so its height is a fixed number whatever the body does.
+
+---
+
 ### Driving Word over COM without wedging it
 
 Word is a real application, not a library, and it will occasionally hang on

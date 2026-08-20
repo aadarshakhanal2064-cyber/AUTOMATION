@@ -454,6 +454,25 @@ export const scaleFontSizes = (s, factor) => s.replace(
   (_, tag, val) => `<w:${tag} w:val="${Math.max(2, Math.round(Number(val) * factor))}"/>`
 );
 
+// Sets sizes from an explicit {sourceHalfPoints: targetHalfPoints} table
+// instead of by ratio. Use this when the firm has asked for particular sizes
+// rather than "smaller overall" — a single factor cannot express "make the
+// body much smaller but the title only slightly smaller", and trying to
+// approximate it with a factor plus per-element patches is how a size
+// hierarchy drifts out of step with itself.
+//
+// Sizes absent from the map are left alone; `onUnmapped` is called with each
+// one seen in the text so a build can fail rather than silently ship a run at
+// its original size. Same "MUST run last" rule as scaleFontSizes.
+export const remapFontSizes = (s, map, onUnmapped) => s.replace(
+  /<w:(sz|szCs) w:val="(\d+)"\/>/g,
+  (whole, tag, val) => {
+    const to = map[Number(val)];
+    if (to === undefined) { if (onUnmapped) onUnmapped(Number(val)); return whole; }
+    return `<w:${tag} w:val="${to}"/>`;
+  }
+);
+
 // Word's stock paragraph defaults are `after=200 line=276` — 10pt after
 // EVERY paragraph plus 15% extra leading. A source that carries no explicit
 // <w:spacing> inherits all of it; on the BM/AGM document that was ~100

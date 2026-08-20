@@ -41,7 +41,7 @@ import { CORRECTIONS } from './corrections.mjs';
 import { CS_CORRECTIONS } from './correctionsCs.mjs';
 import {
   readDocx, writeDocx, splitBody, stripProofErr, createTransformer, createPageBreakStyle,
-  walkBody, swapFonts, stripHighlight, stripListBullet, mangalToNirmala, scaleFontSizes,
+  walkBody, swapFonts, stripHighlight, stripListBullet, mangalToNirmala, remapFontSizes,
   tightDocDefaults, assertTokenised, assertCount, swapExact, allText,
 } from './core.mjs';
 
@@ -384,37 +384,85 @@ const fixVisargaColon = s => {
 // make a document the firm hands to the registrar smaller than it should be.
 // Same idea as fitSection51() in buildBmAgm.mjs, applied document-wide here
 // because this document's spacing is entirely empty paragraphs.
+//
+// A spacer's height must be PINNED, not merely sized. These paragraphs
+// inherit the document's line height like any other, so raising that for the
+// body's sake (LINE_HEIGHT below) silently multiplied all 17 of them too and
+// pushed the letter's own बोधार्थ block onto the bottom margin — measured at
+// 730pt into a 720pt page. Body leading and gap height are two different
+// decisions and must not share one knob: each spacer gets its own single
+// line spacing here, so its height is exactly SPACER_SZ whatever the body does.
 const SPACER_SZ = 16;               // half-points, i.e. 8pt
+const SPACER_SPACING = '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>';
 const shrinkEmptyParagraphs = s => s.replace(
   /<w:p\b[^>]*\/>|<w:p\b[^>]*>[\s\S]*?<\/w:p>/g,
-  p => /<w:t[ >]/.test(p) ? p : p.replace(/<w:(sz|szCs) w:val="\d+"\/>/g, (_, tag) => `<w:${tag} w:val="${SPACER_SZ}"/>`)
+  p => {
+    if (/<w:t[ >]/.test(p)) return p;
+    let out = p
+      .replace(/<w:(sz|szCs) w:val="\d+"\/>/g, (_, tag) => `<w:${tag} w:val="${SPACER_SZ}"/>`)
+      .replace(/<w:spacing\b[^/]*\/>/g, '');
+    if (/<w:pPr>/.test(out)) {
+      // w:spacing follows w:pStyle in the schema's element order
+      out = /<w:pStyle [^>]*\/>/.test(out)
+        ? out.replace(/(<w:pStyle [^>]*\/>)/, '$1' + SPACER_SPACING)
+        : out.replace('<w:pPr>', '<w:pPr>' + SPACER_SPACING);
+    } else {
+      out = out
+        .replace(/^(<w:p\b[^>]*)\/>$/, `$1><w:pPr>${SPACER_SPACING}</w:pPr></w:p>`)
+        .replace(/^(<w:p\b[^>]*>)(?!<w:pPr)/, `$1<w:pPr>${SPACER_SPACING}</w:pPr>`);
+    }
+    return out;
+  }
 );
 
 // ── PRINT SIZE ──
-// This source sets 16-22pt throughout. That is legible in Preeti because
-// that font's glyphs are byte-narrow ASCII; real Unicode Devanagari at the
-// same nominal size is far wider and taller, so both pages overflow. 0.80
-// takes the 18pt body to 14.4pt, which is not "shrinking to fit" so much as
-// correcting a size that was only ever chosen for Preeti's proportions.
-// One factor scales every explicit size, preserving the source's own
-// hierarchy exactly. See the measured table at the foot of this file.
+// The source sets 14-22pt throughout, which is legible in Preeti because that
+// font's glyphs are byte-narrow ASCII; real Unicode Devanagari at the same
+// nominal size is far wider and taller, so those numbers do not carry over.
 //
-// MUST run last: the alignment fixes above match on exact w:sz values.
-const FONT_SCALE = Number(process.env.CS_FONT_SCALE || 0.80);
-const scaleCs = s => scaleFontSizes(s, FONT_SCALE);
+// These are the sizes the FIRM asked for (2026-08-21), given as an explicit
+// table rather than a scale factor, because a single factor cannot express
+// them: the body drops by nearly half while the company name drops by only a
+// quarter. Approximating that with a factor plus per-element patches is how a
+// size hierarchy drifts out of step with itself, so the table is the whole
+// specification and `remapFontSizes` applies it verbatim.
+//
+// Keys are the SOURCE's half-point values; values are the target half-points.
+const CS_SIZES = {
+  44: 32,   // 22pt -> 16pt   company name (both pages)
+  40: 28,   // 20pt -> 14pt   letter subject line, "महोदय,"
+  36: 22,   // 18pt -> 11pt   BODY — minutes, decisions, letter body, attendees
+  32: 22,   // 16pt -> 11pt   प्रा.लि.नं., the letter's मिति, निवेदक
+  28: 22,   // 14pt -> 11pt   "सञ्चालक समिति बैठक" subtitle
+};
+// A size in the source that nobody assigned a target would silently ship at
+// its original Preeti-era value, which on this document would be 50% too big.
+// Only the BODY is checked: styles.xml carries Word's built-in style sizes
+// (Heading 1, footnotes, ...) which this document never uses and which have
+// no business in a table describing this document's own hierarchy.
+const unmappedSizes = new Set();
+const scaleCs = s => remapFontSizes(s, CS_SIZES, v => unmappedSizes.add(v));
+const scaleCsStyles = s => remapFontSizes(s, CS_SIZES);
 
 // ── LINE HEIGHT ──
-// Word's inherited default is 276 (1.15). Every paragraph here inherits it,
-// so on a page of ~28 lines the extra 15% is four lines of pure leading —
-// more than the closing decision needs to stay on page 1.
+// Word's inherited default is 276 (1.15), and the first version of this
+// template had to come DOWN to 264 to keep the minutes on one sheet.
 //
-// 264 (1.10) is the value measured to fit, and it is a floor as much as a
-// target: Devanagari matras sit above and below the baseline, and
-// docx-preview maps this to a flat CSS line-height where too small a value
-// makes one line touch the next (240 does exactly that — the BM/AGM
-// template's own note records it). Verified in the app's preview at 264,
-// not just in Word.
-const LINE_HEIGHT = Number(process.env.CS_LINE || 264);
+// At the firm's requested sizes that constraint is gone — an 11pt body frees
+// roughly a third of the page — and the firm's actual complaint was the
+// opposite one: the body paragraphs read as cramped (2026-08-21, "everything
+// feels so close"). Line height is what fixes that, not the point size: the
+// long decision paragraphs are 8-11 wrapped lines each, and at 1.15 those
+// lines sit close enough that Devanagari matras from one nearly meet the
+// next.
+//
+// 336 (1.40) is generous rather than merely adequate, which is the right
+// side to err on here — the page has the room, and this is a document
+// somebody reads carefully rather than skims. Note this value is also a
+// FLOOR in the app's preview, which maps it to a flat CSS line-height where
+// too small a number makes lines touch (240 does exactly that — the BM/AGM
+// template's own note records it).
+const LINE_HEIGHT = Number(process.env.CS_LINE || 336);
 
 // shrinkEmptyParagraphs runs AFTER scaleCs, so its size is absolute rather
 // than scaled twice — a spacer is a fixed gap, not part of the size
@@ -433,7 +481,7 @@ for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml'
 // `after=200 line=276` just as surely as spelling it out would — 10pt after
 // every paragraph, and this document has ~25 of them per page.
 files['word/styles.xml'] = Buffer.from(
-  mangalToNirmala(scaleCs(tightDocDefaults(files['word/styles.xml'].toString('utf8'), LINE_HEIGHT))),
+  mangalToNirmala(scaleCsStyles(tightDocDefaults(files['word/styles.xml'].toString('utf8'), LINE_HEIGHT))),
   'utf8'
 );
 files['word/styles.xml'] = Buffer.from(
@@ -451,6 +499,23 @@ files['word/styles.xml'] = Buffer.from(
   if (built.includes('w:highlight')) throw new Error('a highlight survived — the firm marks fill-in spots in yellow and none of it may print');
   if (built.includes('w:numPr') || built.includes('ListParagraph')) throw new Error('a stray list bullet survived');
   if (built.includes('<w:proofErr')) throw new Error('a proofErr marker survived — run stripProofErr before the body walk');
+
+  // A source size with no entry in CS_SIZES would ship at its original
+  // Preeti-era value — on this document that is 50% too big and sits right
+  // next to correctly-sized text, so it reads as a mistake rather than a
+  // size. Fail instead, naming the size to add.
+  if (unmappedSizes.size) {
+    throw new Error('font size(s) with no CS_SIZES entry: ' +
+      [...unmappedSizes].sort((a, b) => a - b).map(v => `${v} (${v / 2}pt)`).join(', ') +
+      ' — add a target for each, they would otherwise print at the source size');
+  }
+  // Every size that DID survive must be one of the targets.
+  {
+    const targets = new Set(Object.values(CS_SIZES).concat([SPACER_SZ]));
+    const seen = [...built.matchAll(/<w:sz w:val="(\d+)"\/>/g)].map(m => Number(m[1]));
+    const stray = [...new Set(seen)].filter(v => !targets.has(v));
+    if (stray.length) throw new Error('unexpected font size(s) in the built template: ' + stray.join(', '));
+  }
 
   assertTokenised(built, GLOBAL_TOKENS);
   // The per-paragraph values are not in GLOBAL_TOKENS, so assertTokenised
