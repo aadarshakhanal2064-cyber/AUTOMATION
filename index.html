@@ -967,49 +967,140 @@ function cropLoginLogoIcon(img) {
       </div>
       <div class="card" style="padding:0; overflow:hidden;">
 
-        <!-- ── SUB: COMPANY REGISTRATION ── -->
+        <!-- ── SUB: COMPANY REGISTRATION ──
+             Generates the full incorporation filing (MOA + AOA + registrar
+             application + power of attorney) from one form. Edit/Preview
+             toggle layout, matching the other registrar document screens.
+             The single- vs multi-shareholder template is selected by the
+             founder count — see js/companyRegistration.js. -->
         <div id="regd-companyRegistration-panel" class="regd-sub-panel active">
-          <div style="display:grid; grid-template-columns: 380px 1fr; min-height:560px;">
-            <div style="padding:24px; border-right:1px solid var(--border);">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Proposed Company Name</label>
-                <input type="text" id="cr-companyName" placeholder="e.g. Chitwan Trade Concern Pvt. Ltd." />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Company Type</label>
-                <select id="cr-companyType">
-                  <option value="private_company">Private Company</option>
-                  <option value="public_company">Public Company</option>
-                  <option value="proprietorship">Proprietorship</option>
-                  <option value="partnership">Partnership Firm</option>
-                  <option value="ngo">NGO</option>
-                  <option value="cooperative">Cooperative</option>
-                </select>
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Registered Address</label>
-                <input type="text" id="cr-address" placeholder="e.g. Bharatpur-10, Chitwan, Nepal" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Promoter(s) Name</label>
-                <input type="text" id="cr-promoters" placeholder="e.g. Ram Bahadur Thapa" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Nature of Business</label>
-                <input type="text" id="cr-business" placeholder="e.g. General Trading" />
-              </div>
-              <div class="form-group" style="margin-bottom:24px;">
-                <label>Registration Date (B.S.)</label>
-                <input type="text" id="cr-regDate" placeholder="e.g. 2082/06/04" />
-              </div>
-              <button class="btn btn-primary" style="width:100%;" onclick="moduleComingSoon('Company Registration')">⚙️ Generate Documents</button>
+          <div class="regd-view-actions">
+            <div class="rep-view-toggle">
+              <button type="button" id="cr-tab-edit" class="rep-view-btn active" onclick="crSetView('edit')">Edit</button>
+              <button type="button" id="cr-tab-preview" class="rep-view-btn" onclick="crSetView('preview')">Preview</button>
             </div>
-            <div style="background:#f8fafc; padding:24px;">
-              <div class="regd-preview-placeholder">
+            <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="crAddToRegister()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path></svg>
+                Add to Company Register
+              </button>
+              <button type="button" class="btn btn-outline" onclick="generateCompanyRegistrationDocs()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                Save as Word
+              </button>
+              <button type="button" class="btn btn-primary" onclick="crPrintDocument()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Save as PDF / Print
+              </button>
+            </div>
+          </div>
+
+          <div class="card" style="padding:0; overflow:hidden;">
+          <div id="cr-edit-view" class="regd-edit-view">
+            <div class="rep-form-grid">
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label style="font-weight:700; color:var(--brand-navy);">Company Details</label>
+              </div>
+              <div class="form-group">
+                <label>Company Name (Nepali)</label>
+                <input type="text" id="cr-companyName" placeholder="e.g. नमूना व्यापार कम्पनी प्रा.लि." />
+              </div>
+              <div class="form-group">
+                <label>Company Name (English)</label>
+                <input type="text" id="cr-companyNameEnglish" placeholder="e.g. Namuna Byapar Company Pvt. Ltd." />
+              </div>
+              <div class="form-group">
+                <label>Registered Address (Nepali)</label>
+                <input type="text" id="cr-address" placeholder="e.g. चितवन जिल्ला भरतपुर म.न.पा. वडा नं. १०" />
+              </div>
+              <div class="form-group">
+                <label>Nature of Business (कारोबारको प्रकृति)</label>
+                <input type="text" id="cr-businessNature" data-auto="1" placeholder="e.g. व्यापार मूलक तथा सेवामूलक" />
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <label style="font-weight:700; color:var(--brand-navy);">Capital Structure <span style="font-weight:400; color:var(--text-muted, #64748b);">— shares derive automatically at रु १०० each</span></label>
+              </div>
+              <div class="form-group">
+                <label>Authorized Capital (रु)</label>
+                <input type="text" id="cr-authCapital" placeholder="e.g. 500000 or 5,00,000" />
+              </div>
+              <div class="form-group">
+                <label>Issued Capital (रु)</label>
+                <input type="text" id="cr-issuedCapital" placeholder="e.g. 500000" />
+              </div>
+              <div class="form-group">
+                <label>Paid-up Capital (रु)</label>
+                <input type="text" id="cr-paidupCapital" placeholder="Leave blank to match the issued capital" />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <div id="cr-derived" style="display:none; background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:10px 12px;"></div>
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <label style="font-weight:700; color:var(--brand-navy);">Objectives (कम्पनीको उद्देश्य)</label>
+                <div id="cr-objectives"></div>
+                <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="crAddObjectiveRow()">+ Add Objective</button>
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <label style="font-weight:700; color:var(--brand-navy);">Founders (संस्थापकहरू)
+                  <span id="cr-template-note" style="font-weight:400; color:var(--text-muted, #64748b);"></span></label>
+                <div id="cr-founders"></div>
+                <div id="cr-share-warning" class="field-error-msg show" style="display:none; margin-top:8px;"></div>
+                <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="crAddFounderRow()">+ Add Founder</button>
+              </div>
+
+              <div class="form-group" style="grid-column: 1 / -1; padding-top:8px; border-top:1px solid var(--border-light, #e5e7eb);">
+                <label style="font-weight:700; color:var(--brand-navy);">Dates &amp; Advocate</label>
+              </div>
+              <div class="form-group">
+                <label>Document Date (B.S.)</label>
+                <input type="text" id="cr-docDate" placeholder="e.g. 2083/05/02" autocomplete="off" onblur="crValidateDateField('cr-docDate')" />
+                <div class="field-error-msg" id="cr-docDate-error"></div>
+              </div>
+              <div class="form-group">
+                <label>Registrar Letter Date (B.S.)</label>
+                <input type="text" id="cr-letterDate" placeholder="Leave blank to use the document date" autocomplete="off" onblur="crValidateDateField('cr-letterDate')" />
+                <div class="field-error-msg" id="cr-letterDate-error"></div>
+              </div>
+              <div class="form-group">
+                <label>Advocate / मस्यौदाकार Name</label>
+                <input type="text" id="cr-advocateName" placeholder="e.g. परीक्षा अधिकारी" />
+              </div>
+              <div class="form-group">
+                <label>Advocate License No. (प्र.प.नं.)</label>
+                <input type="text" id="cr-advocateLicense" placeholder="e.g. 99999" />
+              </div>
+            </div>
+
+            <div id="cr-status" style="margin-top:16px;"></div>
+          </div>
+
+          <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
+          <div id="cr-preview-view" class="regd-preview-view" hidden>
+            <div class="bm-preview-toolbar">
+              <span class="bm-preview-label">Preview</span>
+              <div class="bm-zoom-controls">
+                <button type="button" class="btn btn-outline btn-sm" onclick="crZoomOut()">−</button>
+                <span id="cr-zoom-level">100%</span>
+                <button type="button" class="btn btn-outline btn-sm" onclick="crZoomIn()">+</button>
+              </div>
+            </div>
+            <div class="bm-preview-scroll">
+              <div class="regd-preview-placeholder" id="cr-preview-placeholder">
                 <div class="icon">🏢</div>
-                <p>Company Registration document preview will appear here.</p>
+                <p>Fill in the company, capital, objectives, a founder and the document date to see the full filing.</p>
               </div>
+              <div id="cr-preview-style"></div>
+              <div id="cr-preview-root" class="bm-preview-root" style="display:none;"></div>
             </div>
+          </div>
+          </div>
+
+          <div class="regd-view-footer">
+            <div class="bm-completion-indicator" id="cr-completion-indicator"></div>
+            <button type="button" class="btn btn-danger btn-sm" onclick="crResetForm()">Reset</button>
           </div>
         </div>
 
@@ -4247,8 +4338,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/utils.js?v=202608182300"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
-<script src="js/core/nepaliLocale.js?v=202608100100"></script>
-<script src="js/core/documentEngine.js?v=202608210100"></script>
+<script src="js/core/nepaliLocale.js?v=202608202300"></script>
+<script src="js/core/documentEngine.js?v=202608210200"></script>
 <script src="js/core/searchEngine.js?v=202608022300"></script>
 <script src="js/core/tableEngine.js?v=202608022300"></script>
 <script src="js/core/workflowEngine.js?v=202608181600"></script>
@@ -4263,7 +4354,8 @@ function cropLoginLogoIcon(img) {
 <script src="js/core/orgIdentity.js?v=202608201030"></script>
 <script src="js/tabs.js?v=202608201200"></script>
 <script src="js/dashboard.js?v=202608181500"></script>
-<script src="js/registrar.js?v=202608110900"></script>
+<!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
+     Company Registration was the last stub, and it is a real module now. -->
 <script src="js/registrarCompanies.js?v=202608201200"></script>
 <script src="js/clients.js?v=202608201200"></script>
 <script src="js/serviceMemo.js?v=202608181600"></script>
@@ -4275,6 +4367,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/auditorChange.js?v=202608201200"></script>
 <script src="js/companyProfile.js?v=202608201200"></script>
 <script src="js/companySecretary.js?v=202608201200"></script>
+<script src="js/companyRegistration.js?v=202608202300"></script>
 <script src="js/salesPurchaseBook.js?v=202608170900"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
