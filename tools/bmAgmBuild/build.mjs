@@ -784,16 +784,96 @@ const scaleFontSizes = s => s.replace(
   (_, tag, val) => `<w:${tag} w:val="${Math.max(2, Math.round(Number(val) * FONT_SCALE))}"/>`
 );
 
+// ── WORD PAGINATION ──
+// Everything below exists because the .docx must paginate in WORD exactly
+// as it does in the app's preview and Save-as-PDF: one sub-document per
+// sheet. It did not. Measured with Word itself (COM, ComputeStatistics),
+// the 10-page document opened as 19 pages — nearly every section spilling
+// onto a second sheet — while the identical content printed correctly from
+// the preview, because the preview scales each section to fit and Word
+// does not. Three separate causes, each measured in isolation:
+//
+//   baseline                                   19 pages
+//   + neutralised Word's inherited defaults    14
+//   + Nirmala UI instead of Mangal             13   (11 with both)
+//   + §51 table/signature tightened            10   <- target
+//
+// 1. The source's styles.xml inherits Word's stock pPrDefault —
+//    `after=200 line=276`, i.e. 10pt after EVERY paragraph plus 15% extra
+//    leading. ~100 paragraphs carry no explicit <w:spacing>, so that alone
+//    added roughly 1000pt (~14in) of whitespace. The source got away with
+//    it because Preeti text is byte-narrow ASCII; real Unicode Devanagari
+//    wraps to more lines and stands taller, so the same defaults overflow.
+const tightDocDefaults = s => s.replace(
+  /<w:pPrDefault><w:pPr><w:spacing[^/]*\/><\/w:pPr><\/w:pPrDefault>/,
+  '<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault>'
+);
+
+// 2. MANGAL IS NOT INSTALLED on the firm's machine (only Nirmala UI is),
+//    so Word silently substituted some other face whose metrics are far
+//    taller — worth 6 of the 19 pages on its own. Naming the font that is
+//    actually present makes the layout deterministic instead of dependent
+//    on whatever Word picks. This is not a return to Preeti (CLAUDE.md §15
+//    forbids that); Nirmala UI is the modern Windows Devanagari font and
+//    ships with Windows 8+, which Mangal no longer reliably does.
+//    MUST run last: many fixes above match on literal w:ascii="Mangal".
+const mangalToNirmala = s => s
+  .replace(/w:ascii="Mangal"/g, 'w:ascii="Nirmala UI"')
+  .replace(/w:hAnsi="Mangal"/g, 'w:hAnsi="Nirmala UI"')
+  .replace(/w:cs="Mangal"/g, 'w:cs="Nirmala UI"')
+  .replace(/w:eastAsia="Mangal"/g, 'w:eastAsia="Nirmala UI"');
+
+// 3. Even then the §51 capital report still ran one line over, because its
+//    ruled table nearly fills the sheet once the text is real Devanagari.
+//    Its signature block is padded by four EMPTY 1.5-spaced paragraphs —
+//    the source's way of pushing the signature down the page, which now
+//    pushed it off. Shrinking those alone was not enough (measured: still
+//    11 pages), so the table's own text takes a further 10% here. Both are
+//    confined to this one section; every other page keeps FONT_SCALE.
+const SEC51_TABLE_SCALE = 0.90;
+const SEC51_GAP_SZ = 20;            // half-points: the padding paragraphs above the signature
+function fitSection51(xml) {
+  const tStart = xml.indexOf('<w:tbl>');
+  const tEnd = xml.indexOf('</w:tbl>') + '</w:tbl>'.length;
+  if (tStart < 0 || tEnd < tStart) throw new Error('§51 table not found — fitSection51 needs updating');
+  const table = xml.slice(tStart, tEnd).replace(
+    /<w:(sz|szCs) w:val="(\d+)"\/>/g,
+    (_, tag, val) => `<w:${tag} w:val="${Math.max(2, Math.round(Number(val) * SEC51_TABLE_SCALE))}"/>`
+  );
+
+  // the signature block is the run of paragraphs immediately after the table
+  const PARA = /<w:p\b[^>]*\/>|<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+  let tail = xml.slice(tEnd);
+  const hits = [];
+  let m; PARA.lastIndex = 0;
+  while ((m = PARA.exec(tail)) && hits.length < 8) hits.push({ xml: m[0], start: m.index, end: m.index + m[0].length });
+  let out = '', cursor = 0;
+  for (const p of hits) {
+    out += tail.slice(cursor, p.start);
+    cursor = p.end;
+    let px = p.xml.replace(/w:line="3\d\d" w:lineRule="auto"/g, 'w:line="240" w:lineRule="auto"');
+    if (!/<w:t[ >]/.test(p.xml)) {   // an empty padding paragraph
+      px = px.replace(/<w:(sz|szCs) w:val="\d+"\/>/g, (_, tag) => `<w:${tag} w:val="${SEC51_GAP_SZ}"/>`);
+    }
+    out += px;
+  }
+  return xml.slice(0, tStart) + table + out + tail.slice(cursor);
+}
+
 files['word/document.xml'] = Buffer.from(
-  scaleFontSizes(fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail)))))))))))))),
+  mangalToNirmala(fitSection51(scaleFontSizes(fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail)))))))))))))))),
   'utf8'
 );
 for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml']) {
   if (files[name]) files[name] = Buffer.from(swapFonts(files[name].toString('utf8')), 'utf8');
 }
 // styles.xml carries the document defaults that any run without an explicit
-// size inherits — scaled by the same factor so nothing is left at full size.
-files['word/styles.xml'] = Buffer.from(scaleFontSizes(files['word/styles.xml'].toString('utf8')), 'utf8');
+// size inherits — scaled by the same factor so nothing is left at full size,
+// and its stock paragraph spacing neutralised (see tightDocDefaults).
+files['word/styles.xml'] = Buffer.from(
+  mangalToNirmala(scaleFontSizes(tightDocDefaults(files['word/styles.xml'].toString('utf8')))),
+  'utf8'
+);
 {
   let styles = files['word/styles.xml'].toString('utf8');
   if (!styles.includes(BM_PAGE_STYLE_ID)) {

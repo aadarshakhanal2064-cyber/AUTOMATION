@@ -73,7 +73,7 @@ No `package.json`, no npm at the app level — all libraries are `<script>` tags
 - Remote `https://github.com/aadarshakhanal2064-cyber/AUTOMATION`, branch `main` only. GitHub Pages auto-deploys on push; `.nojekyll` is required.
 - Dev server: `.claude/launch.json` defines `static-site`. Use the browser-preview tooling, never Bash.
 - **Sign-in needs a real Supabase account** — for anything other than the login screen itself, bypass the auth wall via DOM manipulation (set `window.currentUser`, unhide `#app-section`/`#topbar`/`#sidebar`) and seed `window.clientsList` by hand; RLS returns nothing without a session.
-- **Word / LibreOffice are not installed** — `.docx` verification is structural (XML-level) only; the user does the final visual check.
+- **Microsoft Word IS installed** (`C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE`) and can be driven headlessly over COM from the PowerShell tool — `$w = New-Object -ComObject Word.Application; $w.Visible = $false`, then `$doc.ComputeStatistics(2)` for a real page count, `$p.Range.Information(3)` for the page a paragraph lands on, and `$doc.ExportAsFixedFormat($pdf, 17)` to produce Word's own PDF. Always open read-only (`Open($path, $false, $true)`), `Close(0)` and `Quit()`. **This supersedes the old "Word is not installed, verification is XML-only" note**, which cost a real bug: a `.docx` that passed every structural assertion opened as 19 pages instead of 10, and nothing short of asking Word could have caught it. Structural checks prove nothing *regressed*; only Word proves it paginates. LibreOffice is still absent.
 
 ---
 
@@ -390,7 +390,7 @@ Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list p
 The established pattern — **investigate with real evidence → implement only what the evidence justifies → verify against real data → regression-check → self-review → commit**:
 
 - Verify in the **real running app** (dev server + browser tools), not just by reading code. Bypass auth via DOM manipulation; mock Drive/Gmail where OAuth can't run.
-- For document generation: render with real inputs; check output structurally (unzip `.docx`, re-read `.xlsx` via ExcelJS). **No Word/LibreOffice here** — ask the user for the final visual check and say so plainly.
+- For document generation: render with real inputs; check output structurally (unzip `.docx`, re-read `.xlsx` via ExcelJS). **For a `.docx`, also open it in Word over COM and assert the PAGE COUNT** (§2) — structural checks cannot see pagination, and a document that satisfied every one of them still opened 9 pages too long. The user still does the final visual check on wording and alignment.
 - **A committed harness beats an uncommitted one.** `tools/spbVerify.mjs` exists because Autobooks' comments referenced a headless harness that was never committed — the helper it defined was missing from the browser, and the module threw on every import for a month with nobody noticing. If you write a throwaway script to prove a pipeline, commit it. `node tools/spbVerify.mjs` is mandatory around any change to Autobooks' parsing path.
 - For nontrivial pipeline changes: **proof-of-concept against real documents before implementing** — this project has repeatedly proven assumptions wrong.
 - Regression sweep after every change: activate every tab and registrar sub-panel, confirm rendering, check the console for errors.

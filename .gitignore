@@ -80,7 +80,9 @@ tools/bmAgmBuild/fidelity_diff.txt
 tools/bmAgmBuild/debug-dump.local.txt
 tools/bmAgmBuild/*.local.*
 
-# Generated sample .docx output from the ad-hoc sample.mjs renderer (fake
-# data, but still a build artifact — not something the repo tracks).
+# Generated sample output from the ad-hoc sample.mjs renderer, and the PDFs
+# Word exports from them when checking pagination (fake data, but still build
+# artifacts — not something the repo tracks).
 tools/bmAgmBuild/sample-*.docx
+tools/bmAgmBuild/sample-*.pdf
 tools/bmAgmBuild/sample-output.docx
