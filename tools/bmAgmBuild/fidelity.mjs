@@ -16,14 +16,19 @@
 //  Usage (after build.mjs has run):
 //    node fidelity.mjs "<source .docx>" ../../assets/templates/bm-agm-minutes.docx
 //
-//  Expected as of 2026-08-20: 177 source lines, 177 output lines, 173
-//  identical, 4 differing (8 diff entries) — all of them intentional:
+//  Expected as of 2026-08-20: 177 source lines, 174 output lines (3 fewer
+//  — see below), 170 identical, 11 diff entries — all of them intentional:
 //    * the one fiscal year the source itself writes with a slash instead
 //      of a danda, now consistent with every other occurrence
 //    * a typo in the source's registrar letter (a consonant swapped)
 //    * another client's company name and chairman, left on the
 //      board-change page when that page was copied from their file
 //    * a dropped vowel sign on a name, on the board-change minutes
+//    * "In case of Change of Board of Director", typed into the source
+//      three times purely as a marker for whoever rebuilds the template —
+//      confirmed with the user it was never meant to print, and stripped
+//      (paragraph kept empty, since two of the three carry the page-break
+//      style for their section) — 3 pure deletions, no output counterpart
 //  Diffs print to the console, not to a file — the text is a real
 //  client's document and must not end up sitting in a tracked path.
 //
@@ -153,12 +158,16 @@ console.log('identical lines      :', dp[0][0]);
 console.log('differences          :', diffs.length);
 for (const d of diffs) console.log(`  [${d.k}] ${d.t.slice(0, 100)}`);
 
-// 4 changed lines => 8 diff entries. A different count means a NEW
-// difference crept in: investigate it before shipping rather than
-// re-baselining this number.
-const EXPECTED = 8;
-if (src.length !== gen.length) {
-  console.error(`\nFAIL: line count changed (${src.length} -> ${gen.length}); content was added or lost.`);
+// 4 changed lines (8 diff entries) + 3 deliberately-deleted marker lines
+// (3 more, source-only) = 11. A different count means a NEW difference
+// crept in: investigate it before shipping rather than re-baselining this
+// number. The 3-line gap between source and output is the same deletions,
+// not drift — EXPECTED_LINE_DELTA documents it so this check still catches
+// anything else that changes the line count.
+const EXPECTED = 11;
+const EXPECTED_LINE_DELTA = -3;
+if (gen.length - src.length !== EXPECTED_LINE_DELTA) {
+  console.error(`\nFAIL: line count changed by ${gen.length - src.length}, expected ${EXPECTED_LINE_DELTA}; content was added or lost beyond the documented marker-strip.`);
   process.exit(1);
 }
 if (diffs.length !== EXPECTED) {

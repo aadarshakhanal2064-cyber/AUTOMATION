@@ -369,8 +369,18 @@ function transformParagraph(pXml, idx) {
 
   const replaceAcross = (from, to) => {
     if (!from) return;
+    // searchFrom tracks how far into the (repeatedly re-joined) text we've
+    // already resolved, so a replacement is never rescanned. Without this,
+    // a `to` that itself contains `from` as a substring — e.g. wrapping a
+    // label in {{#cond}}label{{/cond}} — matches its own freshly-inserted
+    // output every pass and re-wraps it, compounding until the guard limit
+    // (confirmed live: the §92 Declaration page's signature label wrapped
+    // 49 times). Starting each scan past the previous insertion point still
+    // finds every genuine additional occurrence later in the paragraph;
+    // it just can't walk backwards into what it already replaced.
+    let searchFrom = 0;
     for (let guard = 0; guard < 50; guard++) {
-      const at = texts.join('').indexOf(from);
+      const at = texts.join('').indexOf(from, searchFrom);
       if (at === -1) return;
       const end = at + from.length;
       let pos = 0, firstAt = -1, insertOffset = 0;
@@ -384,6 +394,7 @@ function transformParagraph(pXml, idx) {
       }
       if (firstAt === -1) return;
       texts[firstAt] = texts[firstAt].slice(0, insertOffset) + to + texts[firstAt].slice(insertOffset);
+      searchFrom = at + to.length;
     }
   };
 
@@ -509,13 +520,197 @@ else console.log('group-decode check: OK (no ligature split across a formatting 
 
 // Preeti -> Mangal everywhere (CLAUDE.md §15: never revert to Preeti)
 const stripHighlight = s => s.replace(/<w:highlight\s+w:val="[^"]*"\/>/g, '');
+// The source has exactly one paragraph (the §92 Declaration page's "no other
+// beneficial owner" self-declaration line) formatted as a real Word bulleted
+// list item — a stray auto-bullet from drafting, not a deliberate list; every
+// other list in this template is manually-typed numbering ("१)", "२)" …).
+// Word itself renders the Symbol-font bullet character fine, but docx-preview
+// can't map that Private-Use-Area glyph and shows a broken placeholder box
+// instead — which the app's Print/PDF path inherits too, since it renders
+// through the same library. Stripping the numPr/ListParagraph formatting
+// removes the bullet outright rather than trying to fix its glyph.
+const stripListBullet = s => s
+  .replace(/<w:numPr>[\s\S]*?<\/w:numPr>/g, '')
+  .replace(/<w:pStyle\s+w:val="ListParagraph"\/>/g, '');
+// The source's two "no additional proposal" decision lines (bm/agmExtra-
+// ProposalDecision, default "छैन ।") sit on runs the source itself styled
+// Arial instead of Mangal — every neighbouring line, including this same
+// paragraph's own mark, is Mangal. Arial has no real Devanagari glyphs, so
+// the default value visibly mismatches the rest of the page. The template's
+// only other Arial runs are the (genuinely English) "In case of Change of
+// Board of Director" headings, so this is scoped to just these two tokens.
+const fixExtraProposalFont = s => s.replace(
+  /<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"\/>(?=<w:sz w:val="30"\/><w:szCs w:val="30"\/><\/w:rPr><w:t[^>]*>\s*\{\{(?:bm|agm)ExtraProposalDecision\}\})/g,
+  '<w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/>'
+);
 const swapFonts = s => s
   .replace(/w:ascii="Preeti"/g, 'w:ascii="Mangal"')
   .replace(/w:hAnsi="Preeti"/g, 'w:hAnsi="Mangal"')
   .replace(/w:cs="Preeti"/g, 'w:cs="Mangal"')
   .replace(/w:eastAsia="Preeti"/g, 'w:eastAsia="Mangal"');
 
-files['word/document.xml'] = Buffer.from(stripHighlight(swapFonts(head + out + tail)), 'utf8');
+// The §51 table has no <w:tblCellMar>, so cell text sits flush against the
+// borders — Word quietly applies its own built-in default margin (~108
+// twips left/right) when none is specified, but docx-preview does not, so
+// the app's own preview/print renders it cramped even though Word itself
+// looks fine. Made explicit so both agree, rather than relying on an
+// invisible default. There is exactly one <w:tbl> in this document
+// (build.mjs's own structural check above proves it), so this is unambiguous.
+const fixTablePadding = s => {
+  const CELL_MAR = '<w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="108" w:type="dxa"/>' +
+    '<w:bottom w:w="40" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar>';
+  const marker = '<w:tblLook w:val="01E0" w:firstRow="1" w:lastRow="1" w:firstColumn="1" w:lastColumn="1" w:noHBand="0" w:noVBand="0"/>';
+  if (!s.includes(marker)) throw new Error('§51 table tblLook marker not found — table structure changed, revisit fixTablePadding');
+  return s.replace(marker, CELL_MAR + marker);
+};
+
+// The chairman-signature block on the §51 page (dots / name / title) mixes
+// two alignment mechanisms: the dots and title lines are center-jc'd, but
+// the middle name line has NO w:jc at all, so {{chairmanName}} — a token
+// whose width varies by client — sits off-center from its neighbours. All
+// three also bake literal leading/trailing spaces into the run text as a
+// hand-typed "push right" hack, which centering only makes worse (the same
+// space count reads differently once the visible content's width differs).
+// Fixed by stripping the literal spaces and centering all three within one
+// shared, indented column instead — immune to name length, unlike spaces.
+const fixSignatureAlign = s => {
+  const IND = '<w:ind w:left="5400" w:right="0"/>';
+  let out = s;
+  const dotsOld = '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:color w:val="000000" w:themeColor="text1"/><w:sz w:val="30"/><w:szCs w:val="30"/><w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="PMingLiU" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:sz w:val="30"/><w:szCs w:val="30"/><w:lang w:eastAsia="zh-HK"/></w:rPr><w:t xml:space="preserve">                                                             ..............................</w:t>';
+  const dotsNew = '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:color w:val="000000" w:themeColor="text1"/><w:sz w:val="30"/><w:szCs w:val="30"/><w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="PMingLiU" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:sz w:val="30"/><w:szCs w:val="30"/><w:lang w:eastAsia="zh-HK"/></w:rPr><w:t xml:space="preserve">..............................</w:t>';
+  const nameOld = '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/></w:rPr><w:t xml:space="preserve">                                                                        {{chairmanName}}                          </w:t>';
+  const nameNew = '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t>';
+  const titleOld = '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:color w:val="000000" w:themeColor="text1"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">                                                             अध्यक्ष</w:t>';
+  const titleNew = '<w:spacing w:after="0" w:line="360" w:lineRule="auto"/>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:color w:val="000000" w:themeColor="text1"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:eastAsia="SimSun" w:hAnsi="Mangal" w:cs="Times New Roman"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">अध्यक्ष</w:t>';
+  for (const [oldStr, label] of [[dotsOld, 'dots'], [nameOld, 'name'], [titleOld, 'title']]) {
+    if (!out.includes(oldStr)) throw new Error(`signature block ${label} line not found — source changed, revisit fixSignatureAlign`);
+  }
+  out = out.replace(dotsOld, dotsNew).replace(nameOld, nameNew).replace(titleOld, titleNew);
+  return out;
+};
+
+// The registrar-notification letter's signature block (निवेदक / name /
+// "अध्यक्ष सञ्चालक") has the identical disease as the §51 page's block above,
+// just with different hand-typed padding per line — spaces on two lines, ten
+// literal <w:tab/> presses on the third — and none of the three paragraphs
+// has ANY w:jc at all, so they were never even trying to share a center.
+// Same fix, same shared column (same w:ind so every signature block in the
+// document lines up at one consistent right-of-page position).
+const fixSignatureAlign2 = s => {
+  const IND = '<w:ind w:left="5400" w:right="0"/>';
+  let out = s;
+  const nivedakOld = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">                                                                       </w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
+  const nivedakNew = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
+  const name2Old = '<w:pPr><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">                                                           {{chairmanName}}                          </w:t>';
+  const name2New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t>';
+  const title2Old = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">अध्यक्ष सञ्चालक  </w:t>';
+  const title2New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">अध्यक्ष सञ्चालक</w:t>';
+  for (const [oldStr, label] of [[nivedakOld, 'निवेदक'], [name2Old, 'name'], [title2Old, 'title']]) {
+    if (!out.includes(oldStr)) throw new Error(`registrar-letter signature block ${label} line not found — source changed, revisit fixSignatureAlign2`);
+  }
+  out = out.replace(nivedakOld, nivedakNew).replace(name2Old, name2New).replace(title2Old, title2New);
+  return out;
+};
+
+// The annual-report submission letter's own signature block ("निवेदक" / name
+// / "अध्यक्ष") — the third occurrence of this exact disease, found while
+// fixing page 5's letter. Same fix, same shared column.
+const fixSignatureAlign3 = s => {
+  const IND = '<w:ind w:left="5400" w:right="0"/>';
+  let out = s;
+  const niv3Old = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve"> </w:t><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/></w:r><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
+  const niv3New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
+  const name3Old = '<w:pPr><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">     {{chairmanName}}                                                                                  </w:t>';
+  const name3New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t>';
+  const title3Old = '<w:pPr><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">अध्यक्ष </w:t>';
+  const title3New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">अध्यक्ष</w:t>';
+  for (const [oldStr, label] of [[niv3Old, 'निवेदक'], [name3Old, 'name'], [title3Old, 'title']]) {
+    if (!out.includes(oldStr)) throw new Error(`annual-report-letter signature block ${label} line not found — source changed, revisit fixSignatureAlign3`);
+  }
+  out = out.replace(niv3Old, niv3New).replace(name3Old, name3New).replace(title3Old, title3New);
+  return out;
+};
+
+// The registrar-letter date line ("मितिः– {{letterDate}}") presses <w:tab/>
+// FOUR times against a single defined tab stop (7035 twips) — the first tab
+// lands there, the other three fall through to Word's default tab-stop grid
+// beyond it, pushing the line so far right it doesn't fit and wraps (the
+// date drops to its own line, flush left — confirmed in real Word, not just
+// the preview). A second, near-identical date line elsewhere in the document
+// presses the SAME tab exactly once and sits fine on its one stop — so this
+// is a stray extra key-presses typo in the source, not a deliberate design;
+// matching that already-working convention is the minimal fix.
+// The §92(1) Director's Declaration page's header block (registration
+// number, address, the two "कम्पनी ऐन…"/"संचालकले पेश…" heading lines) used
+// four different hand-typed leading-space counts instead of real centering
+// — the address line even had a whole separate 6pt-font run of nothing but
+// spaces as a fine-tuning hack. None of the four agreed with each other.
+// Centered all four for real instead.
+const fixDeclarationHeaderAlign = s => {
+  let out = s;
+  const regOld = '<w:pPr><w:ind w:left="2160" w:hanging="1080"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="12"/><w:szCs w:val="12"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">                    {{registrationNumberSlash}}</w:t>';
+  const regNew = '<w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="12"/><w:szCs w:val="12"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">{{registrationNumberSlash}}</w:t>';
+  const addrOld = '<w:pPr><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="12"/><w:szCs w:val="12"/></w:rPr><w:t xml:space="preserve">                            </w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="16"/></w:rPr><w:t xml:space="preserve">      {{companyAddress}}</w:t>';
+  const addrNew = '<w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="16"/></w:rPr><w:t xml:space="preserve">{{companyAddress}}</w:t>';
+  const actOld = '<w:pPr><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">          </w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/><w:lang w:val="es-CO"/></w:rPr><w:t xml:space="preserve">कम्पनी ऐन , २०६३ को दफा ९२(१) बमोजिमको</w:t>';
+  const actNew = '<w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/><w:lang w:val="es-CO"/></w:rPr><w:t xml:space="preserve">कम्पनी ऐन , २०६३ को दफा ९२(१) बमोजिमको</w:t>';
+  const titleOld = '<w:pPr><w:spacing w:line="360" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/><w:lang w:val="es-CO"/></w:rPr><w:t xml:space="preserve">                      संचालकले पेश गर्नु पर्ने विवरण</w:t>';
+  const titleNew = '<w:pPr><w:spacing w:line="360" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/><w:lang w:val="es-CO"/></w:rPr><w:t xml:space="preserve">संचालकले पेश गर्नु पर्ने विवरण</w:t>';
+  for (const [oldStr, label] of [[regOld, 'reg-no'], [addrOld, 'address'], [actOld, 'act line'], [titleOld, 'title line']]) {
+    if (!out.includes(oldStr)) throw new Error(`declaration header ${label} not found — source changed, revisit fixDeclarationHeaderAlign`);
+  }
+  out = out.replace(regOld, regNew).replace(addrOld, addrNew).replace(actOld, actNew).replace(titleOld, titleNew);
+  return out;
+};
+
+// The declaration page's own signature label ("अध्यक्षको सहि" / "संचालक/ सहि")
+// used a real indent+jc, but नाम/पद below it used 9 literal tabs each with
+// no jc at all — a third alignment mechanism disagreeing with the other two
+// on the very same page. Shared indent + center for all three.
+const fixDeclarationSignatureAlign = s => {
+  const IND = '<w:ind w:left="6480" w:right="0"/>';
+  let out = s;
+  const labelOld = '<w:pPr><w:ind w:left="6480" w:hanging="720"/><w:jc w:val="both"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr>';
+  const labelNew = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr>';
+  const naamOld = '<w:pPr><w:spacing w:line="362" w:lineRule="auto"/><w:ind w:left="-18"/><w:jc w:val="both"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">नाम ः– </w:t>';
+  const naamNew = '<w:pPr><w:spacing w:line="362" w:lineRule="auto"/>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">नाम ः– </w:t>';
+  const padOld = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="680"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">पद ः– ';
+  const padNew = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">पद ः– ';
+  for (const [oldStr, label] of [[labelOld, 'label'], [naamOld, 'नाम'], [padOld, 'पद']]) {
+    if (!out.includes(oldStr)) throw new Error(`declaration signature ${label} not found — source changed, revisit fixDeclarationSignatureAlign`);
+  }
+  out = out.replace(labelOld, labelNew).replace(naamOld, naamNew).replace(padOld, padNew);
+  return out;
+};
+
+// "In case of Change of Board of Director" is a marker the firm typed into
+// the source purely to mark the conditional block's boundary for whoever's
+// rebuilding the template — it was never meant to print (confirmed by the
+// user). Both occurrences happen to carry the BmPageStart style (the
+// page-break trigger for their section), so the paragraphs can't just be
+// deleted outright — that would drop the page break too. Strip the runs,
+// keep the empty paragraph.
+const stripBoardChangeMarker = s => {
+  const marker1Old = '<w:p w14:paraId="752D0F38" w14:textId="009825D8" w:rsidR="006D783B" w:rsidRPr="006D783B" w:rsidRDefault="006D783B" w:rsidP="00D55E09"><w:pPr><w:pStyle w:val="BmPageStart"/><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">In case of Change of Board of Director</w:t></w:r></w:p>';
+  const marker1New = '<w:p w14:paraId="752D0F38" w14:textId="009825D8" w:rsidR="006D783B" w:rsidRPr="006D783B" w:rsidRDefault="006D783B" w:rsidP="00D55E09"><w:pPr><w:pStyle w:val="BmPageStart"/><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr></w:p>';
+  const marker2Old = '<w:p w14:paraId="6BC83456" w14:textId="67C6B2B0" w:rsidR="000B30C7" w:rsidRPr="000B30C7" w:rsidRDefault="000B30C7" w:rsidP="000B30C7"><w:pPr><w:pStyle w:val="BmPageStart"/><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:bCs/><w:sz w:val="68"/><w:szCs w:val="68"/></w:rPr><w:t xml:space="preserve">       </w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">In case of Change of Board of Director</w:t></w:r></w:p>';
+  const marker2New = '<w:p w14:paraId="6BC83456" w14:textId="67C6B2B0" w:rsidR="000B30C7" w:rsidRPr="000B30C7" w:rsidRDefault="000B30C7" w:rsidP="000B30C7"><w:pPr><w:pStyle w:val="BmPageStart"/><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr></w:p>';
+  if (!s.includes(marker1Old)) throw new Error('board-change marker 1 not found — source changed, revisit stripBoardChangeMarker');
+  if (!s.includes(marker2Old)) throw new Error('board-change marker 2 not found — source changed, revisit stripBoardChangeMarker');
+  return s.replace(marker1Old, marker1New).replace(marker2Old, marker2New);
+};
+
+const fixDateLineTabs = s => {
+  const old4Tab = '<w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">मितिः– {{letterDate}}</w:t>';
+  const new1Tab = '<w:tab/><w:t xml:space="preserve">मितिः– {{letterDate}}</w:t>';
+  if (!s.includes(old4Tab)) throw new Error('registrar-letter date line (4-tab form) not found — source changed, revisit fixDateLineTabs');
+  return s.replace(old4Tab, new1Tab);
+};
+
+files['word/document.xml'] = Buffer.from(
+  fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail)))))))))))),
+  'utf8'
+);
 for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml']) {
   if (files[name]) files[name] = Buffer.from(swapFonts(files[name].toString('utf8')), 'utf8');
 }
@@ -540,6 +735,24 @@ for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml'
   console.log('table structure preserved: %d table(s), %d cells', outTbl, outCells);
   if (built.includes('Preeti')) throw new Error('a Preeti font reference survived');
   if (built.includes('w:highlight')) throw new Error('a highlight survived');
+  if (built.includes('w:numPr') || built.includes('ListParagraph')) throw new Error('a stray list bullet survived');
+  if (/w:ascii="Arial"\/><w:sz w:val="30"\/><w:szCs w:val="30"\/><\/w:rPr><w:t[^>]*>\s*\{\{(?:bm|agm)ExtraProposalDecision\}\}/.test(built)) {
+    throw new Error('the extra-proposal decision run is still Arial');
+  }
+  if (!built.includes('<w:tblCellMar>')) throw new Error('§51 table cell padding did not survive');
+  if ((built.match(/w:left="5400" w:right="0"/g) || []).length !== 9) {
+    throw new Error('signature block indent did not apply to all 9 lines (3 blocks x 3 lines)');
+  }
+  if (built.includes('<w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">मितिः– {{letterDate}}</w:t>')) {
+    throw new Error('registrar-letter date line still presses tab 4 times');
+  }
+  if (built.includes('In case of Change of Board of Director')) throw new Error('board-change marker text survived — it should never print');
+  if ((built.match(/isChairman/g) || []).length !== 8) {
+    throw new Error('isChairman conditional count is off — the replaceAcross self-match bug may have regressed');
+  }
+  if ((built.match(/w:left="6480" w:right="0"/g) || []).length !== 3) {
+    throw new Error('declaration-page signature block indent did not apply to all 3 lines');
+  }
 
   // Every sample value MUST have become a token. A value that survives is a
   // field silently hard-coded to the sample client — the company title did
