@@ -138,8 +138,15 @@ const PARA_TOKENS = {
   45: [[S.meetingDateDot, '{{meetingDate}}']],
 };
 
-// Row 8 — the second hard-coded attendee, now produced by the loop.
-const DROP = new Set([8]);
+// 8  — the second hard-coded attendee, now produced by the loop.
+// 51 — one of the THREE blank paragraphs the source puts between "निवेदक"
+//      and the chairman's name. Three is a signing gap wide enough that the
+//      label stops reading as part of the same block as the name below it
+//      (user-reported, 2026-08-21 — measured at 35pt in Word while the name
+//      and its title sat 21pt apart, so the block looked lopsided). Two
+//      blanks leave ~23pt: still real room to sign above the printed name,
+//      but tight enough that the four lines read as one signature block.
+const DROP = new Set([8, 51]);
 
 // paragraphLoop markers. The loop opens before row 7 and closes after it,
 // so the break-free body is exactly one row per attendee.
@@ -218,9 +225,21 @@ const ACCEPTED_MISMATCHES = new Set([41]);
 //  re-typed source fails loudly instead of silently printing the old spacing.
 // ════════════════════════════════════════════
 
-// The signature column. Wide enough that a long Nepali name at this size
-// still fits inside it: page text width is 9026 twips (A4 less 1" margins),
-// so this leaves 4346 twips (~3.0in) for the centred content.
+// The signature column — a LEFT indent with no <w:jc>, so all three lines
+// start at the same x.
+//
+// The source types them with 55, 54 and 54 leading spaces: near-identical
+// counts, which is a left-alignment attempt that space-counting could not
+// quite land, not a centring one. The first pass here centred them instead.
+// That is mathematically "aligned" — Word reports the same indent and the
+// same centre on all three — but centred lines of different widths each
+// START at a different x, and since these three are deliberately different
+// sizes (16pt underlined label, 18pt bold name, 18pt title) the result reads
+// as crooked, which is exactly what the user saw (2026-08-21).
+//
+// Left-aligning reproduces what the source was reaching for, and is what
+// makes the three read as one block. 4680 twips ≈ 3.25in, which is where
+// the source's own ~54 Preeti spaces landed.
 const SIG_IND = '<w:ind w:left="4680" w:right="0"/>';
 
 // The attendee row's role column. A name longer than this simply pushes the
@@ -283,17 +302,17 @@ const fixSignatureBlock = s => {
 
   out = swapExact(out,
     '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">' + SP55 + '</w:t></w:r>',
-    '<w:pPr>' + SIG_IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr>',
+    '<w:pPr>' + SIG_IND + '<w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr>',
     'signature block निवेदक line');
 
   out = swapExact(out,
     '<w:pPr><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">' + SP54 + '{{chairmanName}}     </w:t></w:r>',
-    '<w:pPr>' + SIG_IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t></w:r>',
+    '<w:pPr>' + SIG_IND + '<w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t></w:r>',
     'signature block name line');
 
   out = swapExact(out,
     '<w:pPr><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr><w:t xml:space="preserve">' + SP54 + '</w:t></w:r>',
-    '<w:pPr>' + SIG_IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr>',
+    '<w:pPr>' + SIG_IND + '<w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:pPr>',
     'signature block title line');
 
   return out;
@@ -469,6 +488,14 @@ files['word/styles.xml'] = Buffer.from(
   if (!built.includes(ATTENDEE_TAB)) throw new Error('the attendee row lost its tab stop — the role column would fall back to a default stop');
   if ((built.match(/w:left="4680" w:right="0"/g) || []).length !== 3) {
     throw new Error('signature block indent did not apply to all 3 lines');
+  }
+  // The three signature lines must be LEFT-aligned on that shared indent, not
+  // centred. Centring them is mathematically "aligned" — same indent, same
+  // centre — but the three are deliberately different sizes, so centring
+  // gives each a different left edge and the block reads as crooked. This
+  // shipped once; the guard is here so it cannot come back unnoticed.
+  if (/w:left="4680" w:right="0"\/><w:jc /.test(built)) {
+    throw new Error('a signature line carries a <w:jc> — the block must be left-aligned on its shared indent, not centred');
   }
   {
     const visarga = (built.match(/ः/g) || []).length;
