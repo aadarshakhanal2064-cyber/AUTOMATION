@@ -182,9 +182,34 @@ function bmParseBsDate(str) {
   return NepaliLocale.parseBsDate(str);
 }
 
-// "2078-79" -> { fy:"०७८/७९", next:"०७९/८०" }
-function bmFiscalParts(fyValue) {
-  return NepaliLocale.fiscalParts(fyValue);
+// The firm's source document writes both dates and fiscal years with the
+// Nepali danda as separator — २०८३।०४।२० and २०८१।८२ — and the fiscal year
+// in full four digits, not the ०८१/८२ short form NepaliLocale.fiscalParts
+// returns. Fiscal-year formats differ per module BY DECISION (CLAUDE.md
+// §8); this is BM/AGM's, taken from the document this module reproduces.
+function bmDandaDate(parsed) {
+  return parsed ? parsed.full.replace(/\//g, '।') : '';
+}
+
+// The §92 Director's Declaration pages carry the company name in its
+// ABBREVIATED form (…प्रा. लि.) and the registration number with slashes,
+// where every other page uses the full name and dandas. That is the firm's
+// own convention on that form — the template keeps separate tokens for it,
+// and these two derive the short forms so nobody has to type the name twice.
+function bmShortCompanyName(name) {
+  return String(name || '')
+    .replace(/प्रा(?:इ|ई)भेट\s*लिमिटेड/g, 'प्रा. लि.')
+    .replace(/प्रा\.?\s*लि\.?/g, 'प्रा. लि.')
+    .trim();
+}
+
+// "2081-82" -> { fy:"२०८१।८२", next:"२०८२।८३" }
+function bmFiscalDanda(fyValue) {
+  const m = String(fyValue || '').match(/(\d{4})\D+(\d{2})/);
+  if (!m) return { fy: '', next: '' };
+  const y = parseInt(m[1], 10);
+  const fmt = a => bmToDevanagari(String(a) + '।' + String(a + 1).slice(-2));
+  return { fy: fmt(y), next: fmt(y + 1) };
 }
 
 function bmStatus(html, type) {
@@ -213,13 +238,15 @@ function bmBuildData() {
   const boardChanged = document.getElementById('bm-boardChanged').checked;
   const boardChangeDateVal = $('bm-boardChangeDate');
   const boardChangeParsed = boardChanged && boardChangeDateVal ? bmParseBsDate(boardChangeDateVal) : null;
-  const fy = bmFiscalParts(document.getElementById('bm-fiscalYear').value);
+  const fy = bmFiscalDanda(document.getElementById('bm-fiscalYear').value);
   const firmIdx = document.getElementById('bm-auditorFirm').value;
   const firm = firmIdx !== '' ? BM_AUDIT_FIRMS[firmIdx] : null;
   const attendees = bmBuildAttendees();
   return { bm, agm, letter, boardChanged, boardChangeParsed, data: {
     companyName:        $('bm-companyName'),
+    companyNameShort:   bmShortCompanyName($('bm-companyName')),
     registrationNumber: $('bm-regNo'),
+    registrationNumberSlash: $('bm-regNo').replace(/।/g, '/'),
     companyAddress:     $('bm-address'),
     chairmanName:        $('bm-chairmanName'),
     attendees,
@@ -231,10 +258,10 @@ function bmBuildData() {
     paidUpCapital:      bmFormatAmount($('bm-paidUpCapital')),
     fiscalYear:         fy.fy,
     nextFiscalYear:     fy.next,
-    bmDate:             bm ? bm.full : '',
-    agmDate:            agm ? agm.full : '',
-    letterDate:         letter ? letter.full : '',
-    boardChangeDate:    boardChangeParsed ? boardChangeParsed.full : '',
+    bmDate:             bmDandaDate(bm),
+    agmDate:            bmDandaDate(agm),
+    letterDate:         bmDandaDate(letter),
+    boardChangeDate:    bmDandaDate(boardChangeParsed),
     directorTermYears:  bmToDevanagari($('bm-termYears') || '4'),
     bmExtraProposalTitle:     $('bm-bmExtraTitle') || 'थप प्रस्ताव छैन',
     bmExtraProposalDecision:  $('bm-bmExtraDecision') || 'छैन ।',

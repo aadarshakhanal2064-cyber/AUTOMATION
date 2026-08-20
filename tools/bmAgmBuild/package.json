@@ -4,8 +4,10 @@
   "type": "module",
   "description": "One-time build tool for assets/templates/bm-agm-minutes.docx. Not part of the shipped app — see build.mjs's header comment for why this subfolder has npm dependencies when the rest of the repo deliberately has none.",
   "dependencies": {
-    "preeti-to-unicode": "^1.0.12",
+    "docxtemplater": "^3.69.3",
+    "jszip": "^3.10.1",
+    "pizzip": "^3.2.0",
     "preeti": "^1.0.3",
-    "jszip": "^3.10.1"
+    "preeti-to-unicode": "^1.0.12"
   }
 }
