@@ -284,6 +284,8 @@ The app is being converted from one firm to ~10. Full scope: the published plan 
 
 **When adding a new table: enable RLS + add membership policies in the same migration, or the app can't read it at all.**
 
+**Every policy qual wraps the `private.*` helpers in `(select …)` — write new policies that way too** (2026-08-21, `db/2026-08-21_rls_initplan_policies.sql`). Bare `private.is_app_user()` in a qual is re-evaluated **per candidate row** (each call an `org_members` join); wrapped, it becomes an InitPlan evaluated once per query. Identical semantics — the functions depend only on the JWT, never the row — but measured on production it is the difference between 200 ms and 4 ms on `audit_log`, and it applied to every read and write in the app. Verified by `tools/tenantVerify.mjs` (65/65) on staging before production. A new policy written bare will work and silently reintroduce the per-row tax, so the wrapped form is the house style.
+
 ---
 
 ## 7. Authentication
