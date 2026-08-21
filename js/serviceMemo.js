@@ -653,7 +653,11 @@ function smOpenCreate(existing, prefill) {
   smPopulateCategorySelect();
   smPopulateFyDatalist(false);
 
-  document.getElementById('sm-firm-key').value = existing ? existing.firm_key : 'shailesh';
+  // Default firm = the organisation's FIRST letterhead, not a hardcoded key —
+  // 'shailesh' is another practice's firm on every other tenant's screen, and
+  // SERVICE_MEMO_FIRMS is filled per-organisation by OrgIdentity (same order
+  // the <select> options are built in at smPopulateFirmSelect).
+  document.getElementById('sm-firm-key').value = existing ? existing.firm_key : (Object.keys(window.SERVICE_MEMO_FIRMS)[0] || '');
   document.getElementById('sm-firm-other').value = existing ? (existing.firm_other || '') : '';
   smOnFirmChange();
   document.getElementById('sm-memo-date').value = existing ? existing.memo_date : NepaliLocale.todayISO();
@@ -791,7 +795,7 @@ async function smDeleteMemo(row) {
 // 2026-08-18); this is now the app's only PDF-Lib caller, so the WinAnsi
 // fold-to-ASCII rule lives or dies here — standard fonts THROW on Devanagari.
 function smFirmIdentity(memo) {
-  const f = window.SERVICE_MEMO_FIRMS[memo.firm_key] || window.SERVICE_MEMO_FIRMS.shailesh;
+  const f = window.SERVICE_MEMO_FIRMS[memo.firm_key] || Object.values(window.SERVICE_MEMO_FIRMS)[0] || {};
   const base = f.ref ? window.REP_FIRMS[f.ref] : null;
   return {
     name: smFirmName(memo),
