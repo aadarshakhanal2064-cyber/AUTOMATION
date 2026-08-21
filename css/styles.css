@@ -886,6 +886,22 @@ textarea { resize: vertical; min-height: 100px; }
    never block a click. */
 #net-slow-banner { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 400; background: var(--yellow-bg); border: 1px solid var(--yellow-border); color: var(--yellow-dk); font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 20px; box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 9px; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 #net-slow-banner.visible { opacity: 1; }
+
+/* ── TOASTS ── (showToast in js/core/statusBox.js — same .status-box types,
+   fixed bottom-right so a save confirmation is visible regardless of where
+   the panel's own status div happens to sit) */
+#toast-stack { position: fixed; right: 20px; bottom: 20px; z-index: 400; display: flex; flex-direction: column; gap: 10px; max-width: 380px; }
+#toast-stack .toast { margin: 0; box-shadow: var(--shadow-md); opacity: 0; transform: translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; font-size: 13.5px; }
+#toast-stack .toast.toast-in { opacity: 1; transform: none; }
+
+/* ── SKELETON LOADER ── (replaces the static "Loading…" text the list panels
+   shipped in index.html — reads as "content on its way", and unlike the text
+   it is obviously a placeholder, not an empty result) */
+.loading-skeleton { display: flex; flex-direction: column; gap: 12px; padding: 20px 18px; }
+.loading-skeleton i { display: block; height: 13px; border-radius: 6px; background: linear-gradient(90deg, #edeff3 25%, #f8f9fb 45%, #edeff3 65%); background-size: 200% 100%; animation: skeletonShimmer 1.2s linear infinite; }
+.loading-skeleton i:nth-child(2) { width: 86%; }
+.loading-skeleton i:nth-child(3) { width: 68%; }
+@keyframes skeletonShimmer { to { background-position: -200% 0; } }
 #loading-screen img { max-width: 560px; width: 80vw; }
 #loading-screen p { color: var(--text-muted); font-size: 14px; font-weight:500; }
 #loading-screen .loading-reg { color: var(--text-muted); font-size: 13px; font-weight: 500; margin: -14px 0 0; letter-spacing: 0.2px; }

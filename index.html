@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608212100">
+<link rel="stylesheet" href="css/styles.css?v=202608212200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -447,7 +447,7 @@ function cropLoginLogoIcon(img) {
       <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:24px; margin-top:24px; align-items:start;">
         <div class="table-wrap" style="padding:24px;">
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Activity</h3>
-          <div id="dash-activity-list"><div class="log-empty">Loading…</div></div>
+          <div id="dash-activity-list"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
         <div class="table-wrap" style="padding:24px;">
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Documents by Module</h3>
@@ -632,7 +632,7 @@ function cropLoginLogoIcon(img) {
       <div id="sm-memos-view">
         <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
           <h3 style="margin:0 0 16px; font-size:15px; color:var(--brand-navy);">Recent Memos</h3>
-          <div id="sm-recent-list"><div class="log-empty">Loading…</div></div>
+          <div id="sm-recent-list"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
 
         <div class="table-wrap" style="padding:24px;">
@@ -653,7 +653,7 @@ function cropLoginLogoIcon(img) {
           </div>
           <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="smClearFilters()">Clear Filters</button></div>
           <div id="sm-status-area"></div>
-          <div id="sm-table-wrap"><div class="log-empty">Loading…</div></div>
+          <div id="sm-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
 
@@ -662,7 +662,7 @@ function cropLoginLogoIcon(img) {
           <p class="page-subtitle" style="margin:0 0 14px;">
             Clients whose IT Return, Estimate Return or Tax Clearance has been verified in <strong>Audit Report Finalization</strong>, and clients with a saved <strong>Projection Report</strong>, who don't yet have a matching fee memo. Nothing is entered twice — this reads straight from those two modules; adding the fee here takes it off this list.
           </p>
-          <div id="sm-pending-wrap"><div class="log-empty">Loading…</div></div>
+          <div id="sm-pending-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
     </div>
@@ -1644,7 +1644,7 @@ function cropLoginLogoIcon(img) {
             </div>
 
             <div id="cp-table-wrap">
-              <div class="log-empty">Loading companies…</div>
+              <div class="loading-skeleton"><i></i><i></i><i></i></div>
             </div>
           </div>
 
@@ -2275,7 +2275,7 @@ function cropLoginLogoIcon(img) {
       </div>
 
       <div class="table-wrap" style="padding:24px;">
-        <div id="fa-report-output"><div class="log-empty">Loading…</div></div>
+        <div id="fa-report-output"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
       </div>
     </div>
 
@@ -2374,7 +2374,7 @@ function cropLoginLogoIcon(img) {
             </button>
             </div>
           </div>
-          <div id="bb-accounts-table-wrap"><div class="log-empty">Loading…</div></div>
+          <div id="bb-accounts-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
 
@@ -2402,7 +2402,7 @@ function cropLoginLogoIcon(img) {
             <div class="form-group" style="margin:0;"><label>To (B.S.)</label><input type="text" id="bb-filter-to" placeholder="2083.06.30" oninput="bbOnTxnFilterChange()" /></div>
           </div>
           <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="bbClearTxnFilters()">Clear Filters</button></div>
-          <div id="bb-txn-table-wrap"><div class="log-empty">Loading…</div></div>
+          <div id="bb-txn-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
 
@@ -3194,7 +3194,7 @@ function cropLoginLogoIcon(img) {
         </div>
 
         <div id="clients-table-wrap">
-          <div class="log-empty">Loading clients…</div>
+          <div class="loading-skeleton"><i></i><i></i><i></i></div>
         </div>
         <div class="clients-showall-wrap" id="clients-showall-wrap"></div>
       </div>
@@ -3315,7 +3315,7 @@ function cropLoginLogoIcon(img) {
         </div>
         <div style="margin-bottom:12px;"><button class="btn btn-outline btn-sm" onclick="fmClearFilters()">Clear Filters</button></div>
         <div id="fm-status-area"></div>
-        <div id="fm-table-wrap"><div class="log-empty">Loading…</div></div>
+        <div id="fm-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
       </div>
     </div>
 
@@ -3380,7 +3380,7 @@ function cropLoginLogoIcon(img) {
           <div class="form-group" style="margin:0;"><label>Recorded To</label><input type="date" id="arf-filter-to" onchange="arfOnFilterChange()" /></div>
         </div>
         <div id="arf-status-area"></div>
-        <div id="arf-table-wrap"><div class="log-empty">Loading…</div></div>
+        <div id="arf-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
       </div>
     </div>
 
@@ -3434,7 +3434,7 @@ function cropLoginLogoIcon(img) {
           <div class="form-group" style="margin:0;"><label>Recorded To</label><input type="date" id="achk-filter-to" onchange="achkOnFilterChange()" /></div>
         </div>
         <div id="achk-status-area"></div>
-        <div id="achk-table-wrap"><div class="log-empty">Loading…</div></div>
+        <div id="achk-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
       </div>
     </div>
 
@@ -3500,7 +3500,7 @@ function cropLoginLogoIcon(img) {
             <div class="form-group" style="margin:0;"><label>Recorded To</label><input type="date" id="wd-filter-to" onchange="wdOnFilterChange()" /></div>
           </div>
           <div id="wd-status-area"></div>
-          <div id="wd-table-wrap"><div class="log-empty">Loading…</div></div>
+          <div id="wd-table-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
 
@@ -3510,7 +3510,7 @@ function cropLoginLogoIcon(img) {
             Sales Registers, Purchase Registers and Stock Books received in <strong>File In Out</strong> whose work is not yet marked Done — longest waiting first. Nothing is entered twice; this list is read straight from the document register.
           </p>
           <div id="wd-pending-note"></div>
-          <div id="wd-pending-wrap"><div class="log-empty">Loading…</div></div>
+          <div id="wd-pending-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
 
@@ -3577,7 +3577,7 @@ function cropLoginLogoIcon(img) {
             <div class="form-group" style="margin:0;"><label>Priority</label><select id="wt-filter-priority" onchange="wtOnFilterChange()"></select></div>
           </div>
           <div id="wt-status-area"></div>
-          <div id="wt-list"><div class="log-empty">Loading…</div></div>
+          <div id="wt-list"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
         </div>
       </div>
     </div>
@@ -4100,7 +4100,7 @@ function cropLoginLogoIcon(img) {
       <p class="wd-activity-hint">Shows the last 90 days by default — set a <strong>From</strong> date to look further back. Repeats of the same work on the same client within <strong>3 hours</strong> appear once, as the latest, marked <span class="wd-activity-repeat">×N</span>. Depreciation and Generate Report list only work <strong>saved to the database</strong>, not generate/print/download steps.</p>
 
       <div id="wd-activity-status"></div>
-      <div id="wd-activity-wrap"><div class="log-empty">Loading…</div></div>
+      <div id="wd-activity-wrap"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
     </div>
   </div>
 </div>
@@ -4441,12 +4441,12 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/config.js?v=202608212100"></script>
 <script defer src="js/utils.js?v=202608182300"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
-<script defer src="js/core/statusBox.js?v=202608022300"></script>
+<script defer src="js/core/statusBox.js?v=202608212200"></script>
 <script defer src="js/core/nepaliLocale.js?v=202608202300"></script>
 <script defer src="js/core/documentEngine.js?v=202608211200"></script>
 <script defer src="js/core/searchEngine.js?v=202608022300"></script>
 <script defer src="js/core/tableEngine.js?v=202608022300"></script>
-<script defer src="js/core/workflowEngine.js?v=202608181600"></script>
+<script defer src="js/core/workflowEngine.js?v=202608212200"></script>
 <script defer src="js/core/auditLog.js?v=202608181500"></script>
 <script defer src="js/core/reportExport.js?v=202608022300"></script>
 <script defer src="js/core/workbookReader.js?v=202608022300"></script>

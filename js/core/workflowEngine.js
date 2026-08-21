@@ -158,5 +158,33 @@ window.WorkflowEngine = (function () {
     return { select, refresh, invalidate, reset, get: () => current, id: () => (current && current.id != null ? current.id : null) };
   }
 
-  return { attachFormWatcher, createDebouncedRefresh, createAutosave, updateCompletionIndicator, createZoomControl, createStatusFlow, createClientScope };
+  // One in-flight contract for every async button (Stage 3, 2026-08-21).
+  // Phase 0 found exactly 6 call sites in the whole app that disabled a
+  // button during a save and ZERO that changed its label — every drawer's
+  // Save stayed clickable, so a double-click submitted twice and a slow
+  // write read as a frozen screen. This is the choke point that fixes the
+  // class: disables, swaps the label for a spinner + busy text, restores in
+  // finally, and swallows re-entry while busy (the double-click guard is the
+  // dataset flag, not the disabled attribute, because a programmatic second
+  // call never sees the repaint). The caller's fn does the actual work and
+  // its rejection still propagates after the button is restored.
+  async function withBusyButton(btnOrId, busyLabel, fn) {
+    const el = typeof btnOrId === 'string' ? document.getElementById(btnOrId) : btnOrId;
+    if (!el) return fn();
+    if (el.dataset.busy) return;
+    el.dataset.busy = '1';
+    const prevHtml = el.innerHTML;
+    const prevDisabled = el.disabled;
+    el.disabled = true;
+    el.innerHTML = `<span class="spinner"></span> ${escHtml(busyLabel || 'Saving…')}`;
+    try {
+      return await fn();
+    } finally {
+      delete el.dataset.busy;
+      el.disabled = prevDisabled;
+      el.innerHTML = prevHtml;
+    }
+  }
+
+  return { attachFormWatcher, createDebouncedRefresh, createAutosave, updateCompletionIndicator, createZoomControl, createStatusFlow, createClientScope, withBusyButton };
 })();
