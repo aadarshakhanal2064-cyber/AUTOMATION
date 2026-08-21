@@ -980,6 +980,14 @@ function cropLoginLogoIcon(img) {
               <button type="button" id="cr-tab-preview" class="rep-view-btn" onclick="crSetView('preview')">Preview</button>
             </div>
             <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="crOpenSaved()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                Saved registrations
+              </button>
+              <button type="button" class="btn btn-outline" onclick="crSaveToDb()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save to database
+              </button>
               <button type="button" class="btn btn-outline" onclick="crAddToRegister()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path></svg>
                 Add to Company Register
@@ -1118,6 +1126,14 @@ function cropLoginLogoIcon(img) {
               <button type="button" id="ac-tab-preview" class="rep-view-btn" onclick="acSetView('preview')">Preview</button>
             </div>
             <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="acOpenSaved()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                Saved documents
+              </button>
+              <button type="button" class="btn btn-outline" onclick="acSaveToDb()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save to database
+              </button>
               <button type="button" class="btn btn-outline" onclick="generateAuditorChangeResolution()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                 Save Resolution as Word
@@ -1249,6 +1265,14 @@ function cropLoginLogoIcon(img) {
               <button type="button" id="cs-tab-preview" class="rep-view-btn" onclick="csSetView('preview')">Preview</button>
             </div>
             <div class="bm-action-buttons">
+              <button type="button" class="btn btn-outline" onclick="csOpenSaved()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                Saved appointments
+              </button>
+              <button type="button" class="btn btn-outline" onclick="csSaveToDb()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save to database
+              </button>
               <button type="button" class="btn btn-outline" onclick="generateCompanySecretaryDocs()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                 Save as Word
@@ -4397,7 +4421,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608211500"></script>
+<script src="js/config.js?v=202608211900"></script>
 <script src="js/utils.js?v=202608182300"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -4427,10 +4451,10 @@ function cropLoginLogoIcon(img) {
 <script src="js/depreciation.js?v=202608171700"></script>
 <script src="js/depreciationSlm.js?v=202608171400"></script>
 <script src="js/bmAgmMinutes.js?v=202608211500"></script>
-<script src="js/auditorChange.js?v=202608201200"></script>
+<script src="js/auditorChange.js?v=202608211900"></script>
 <script src="js/companyProfile.js?v=202608201200"></script>
-<script src="js/companySecretary.js?v=202608201200"></script>
-<script src="js/companyRegistration.js?v=202608211200"></script>
+<script src="js/companySecretary.js?v=202608211900"></script>
+<script src="js/companyRegistration.js?v=202608211900"></script>
 <script src="js/salesPurchaseBook.js?v=202608170900"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->

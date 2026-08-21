@@ -483,6 +483,71 @@ async function crPrintDocument() {
 }
 
 // ════════════════════════════════════════════
+//  SAVE TO DATABASE / SAVED REGISTRATIONS
+//
+//  The same pair BM/AGM Minutes, Generate Report and Notes to Accounts have,
+//  over the shared saved_documents table and the one shared picker drawer
+//  (CLAUDE.md §15: saved documents are ONE table with a `module`
+//  discriminator, so this is a CHECK value —
+//  db/2026-08-21_saved_documents_registrar_docs.sql — not a new table).
+//  client_id stays NULL here for an even stronger reason than BM/AGM's: the
+//  company being registered exists in NO directory yet. No doc_html — the
+//  Word file regenerates from `state` byte for byte.
+//
+//  Re-saving in the same session amends the same row, matching the others.
+// ════════════════════════════════════════════
+let crSavedId = null;
+
+async function crSaveToDb() {
+  const companyName = (document.getElementById('cr-companyName').value || '').trim();
+  if (!companyName) {
+    crStatus('कम्पनीको नाम भर्नुहोस् (enter the company name before saving).', 'error');
+    return;
+  }
+  try {
+    crStatus('<span class="spinner spinner-navy"></span> सुरक्षित गर्दै (saving)…', 'searching');
+    crSavedId = await DocumentStore.save(crSavedId, {
+      module: 'companyRegistration',
+      client_id: null,
+      client_name: companyName,
+      pan: null,
+      fiscal_year: null,
+      doc_type: crVariant() === 'single'
+        ? 'Company Registration (single-shareholder)' : 'Company Registration (multi-shareholder)',
+      title: 'Company Registration — ' + companyName,
+      state: crFormState(),
+    });
+    crStatus(`✅ सुरक्षित भयो (saved as record #${crSavedId}) — <strong>Saved registrations</strong> बाट पुन: खोल्न सकिन्छ.`, 'success');
+    AuditLog.record('company_registration_saved', {
+      module: 'companyRegistration', clientName: companyName, status: 'success', recordRef: crSavedId,
+    });
+  } catch (e) {
+    console.error(e);
+    crStatus('❌ सुरक्षित हुन सकेन (save failed): ' + escHtml(e.message), 'error');
+  }
+}
+
+function crOpenSaved() {
+  DocumentStore.openPicker({
+    module: 'companyRegistration',
+    label: 'Saved registration filings',
+    searchPlaceholder: 'Search by company…',
+    onOpen: row => {
+      if (!crApplyState(row.state)) {
+        crStatus('यो रेकर्डमा फारम विवरण छैन (this record has no form state saved).', 'error');
+        return;
+      }
+      crSavedId = row.id;
+      crUpdateDerived();
+      crUpdateShareWarning();
+      crUpdateCompletionIndicator();
+      if (crIsPreviewOpen()) crSchedulePreviewRefresh();
+      crStatus(`📂 सुरक्षित रेकर्ड #${row.id} खोलियो — Save to database फेरि थिच्दा यही रेकर्ड अद्यावधिक हुन्छ (opened; saving again updates this same record).`, 'info');
+    },
+  });
+}
+
+// ════════════════════════════════════════════
 //  ADD TO COMPANY REGISTER  (optional, explicit, admin-only)
 //
 //  The registration module deliberately reads nothing from the register —
@@ -586,35 +651,51 @@ function crValidateDateField(fieldId) {
   }
 }
 
+// ONE serialisation of the form, shared by the localStorage autosave and the
+// Save-to-database record — the bmFormState()/bmApplyState() rule: keeping
+// them separate is how a field added to the form ends up captured by one and
+// silently missed by the other.
+function crFormState() {
+  const values = {};
+  document.querySelectorAll('#regd-companyRegistration-panel input[id^="cr-"]').forEach(el => { values[el.id] = el.value; });
+  return {
+    values,
+    natureManual: document.getElementById('cr-businessNature').dataset.auto === '0',
+    objectives: Array.from(document.querySelectorAll('#cr-objectives .cr-objective-input')).map(t => t.value),
+    founders: crGetFounderCards().map(card => {
+      const f = {};
+      card.querySelectorAll('.cr-founder-input').forEach(inp => { f[inp.dataset.key] = inp.value; });
+      f.sharesManual = card.querySelector('.cr-founder-input[data-key="shares"]').dataset.auto === '0';
+      return f;
+    }),
+  };
+}
+
+// Clears the objective/founder rows before re-adding them — otherwise opening
+// a second saved record stacks its rows under the previous one's (CLAUDE.md §9).
+function crApplyState(state) {
+  if (!state || !state.values) return false;
+  Object.entries(state.values).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+  // Always assign (§9): a record whose nature was the auto seed must not
+  // inherit a previous record's manual flag, and vice versa.
+  document.getElementById('cr-businessNature').dataset.auto = state.natureManual ? '0' : '1';
+  document.getElementById('cr-objectives').innerHTML = '';
+  (state.objectives || []).forEach(t => { if (t) crAddObjectiveRow(t); });
+  document.getElementById('cr-founders').innerHTML = '';
+  (state.founders || []).forEach(f => crAddFounderRow(f));
+  return true;
+}
+
 const crAutosave = WorkflowEngine.createAutosave('companyRegistrationDraft', {
-  collect: () => {
-    const values = {};
-    document.querySelectorAll('#regd-companyRegistration-panel input[id^="cr-"]').forEach(el => { values[el.id] = el.value; });
-    return {
-      values,
-      natureManual: document.getElementById('cr-businessNature').dataset.auto === '0',
-      objectives: Array.from(document.querySelectorAll('#cr-objectives .cr-objective-input')).map(t => t.value),
-      founders: crGetFounderCards().map(card => {
-        const f = {};
-        card.querySelectorAll('.cr-founder-input').forEach(inp => { f[inp.dataset.key] = inp.value; });
-        f.sharesManual = card.querySelector('.cr-founder-input[data-key="shares"]').dataset.auto === '0';
-        return f;
-      }),
-    };
-  },
+  collect: crFormState,
   restore: (draft) => {
     const any = (draft.values && Object.values(draft.values).some(v => v)) ||
       (draft.founders || []).length || (draft.objectives || []).some(v => v);
     if (!any) return;
-    Object.entries(draft.values || {}).forEach(([id, val]) => {
-      const el = document.getElementById(id);
-      if (el) el.value = val;
-    });
-    if (draft.natureManual) document.getElementById('cr-businessNature').dataset.auto = '0';
-    document.getElementById('cr-objectives').innerHTML = '';
-    (draft.objectives || []).forEach(t => { if (t) crAddObjectiveRow(t); });
-    document.getElementById('cr-founders').innerHTML = '';
-    (draft.founders || []).forEach(f => crAddFounderRow(f));
+    crApplyState(draft);
     crStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
   },
   debounceMs: 600,
@@ -633,6 +714,9 @@ function crUpdateCompletionIndicator() {
 function crResetForm() {
   const panel = document.getElementById('regd-companyRegistration-panel');
   if (!panel) return;
+  // drop the link to any opened record, or the next Save silently overwrites
+  // the document that was just cleared off the screen
+  crSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
   const nature = document.getElementById('cr-businessNature');
   nature.dataset.auto = '1';

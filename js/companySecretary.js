@@ -255,6 +255,66 @@ async function generateCompanySecretaryDocs() {
   }
 }
 
+// ── Save to database / Saved appointments ──
+//
+// The same pair BM/AGM Minutes, Generate Report and Notes to Accounts have,
+// over the shared saved_documents table and the one shared picker drawer
+// (CLAUDE.md §15: saved documents are ONE table with a `module` discriminator,
+// so this is a CHECK value — db/2026-08-21_saved_documents_registrar_docs.sql
+// — not a new table). Like BM/AGM: client_id stays NULL (a registrar company
+// is not a clients row) and no doc_html (the Word file regenerates from
+// `state` byte for byte).
+//
+// Re-saving in the same session amends the same row, matching the others.
+let csSavedId = null;
+
+async function csSaveToDb() {
+  const companyName = (document.getElementById('cs-companyName').value || '').trim();
+  if (!companyName) {
+    csStatus('कम्पनीको नाम भर्नुहोस् (enter the company name before saving).', 'error');
+    return;
+  }
+  try {
+    csStatus('<span class="spinner spinner-navy"></span> सुरक्षित गर्दै (saving)…', 'searching');
+    csSavedId = await DocumentStore.save(csSavedId, {
+      module: 'companySecretary',
+      client_id: null,
+      client_name: companyName,
+      pan: (document.getElementById('cs-registrationNumber').value || '').trim()
+        || (document.getElementById('cs-pan').value || '').trim() || null,
+      fiscal_year: null,
+      doc_type: 'Company Secretary Appointment',
+      title: 'Company Secretary Appointment — ' + companyName,
+      state: csFormState(),
+    });
+    csStatus(`✅ सुरक्षित भयो (saved as record #${csSavedId}) — <strong>Saved appointments</strong> बाट पुन: खोल्न सकिन्छ.`, 'success');
+    AuditLog.record('company_secretary_saved', {
+      module: 'companySecretary', clientName: companyName, status: 'success', recordRef: csSavedId,
+    });
+  } catch (e) {
+    console.error(e);
+    csStatus('❌ सुरक्षित हुन सकेन (save failed): ' + escHtml(e.message), 'error');
+  }
+}
+
+function csOpenSaved() {
+  DocumentStore.openPicker({
+    module: 'companySecretary',
+    label: 'Saved secretary appointments',
+    searchPlaceholder: 'Search by company, secretary…',
+    onOpen: row => {
+      if (!csApplyState(row.state)) {
+        csStatus('यो रेकर्डमा फारम विवरण छैन (this record has no form state saved).', 'error');
+        return;
+      }
+      csSavedId = row.id;
+      csUpdateCompletionIndicator();
+      if (csIsPreviewOpen()) csSchedulePreviewRefresh();
+      csStatus(`📂 सुरक्षित रेकर्ड #${row.id} खोलियो — Save to database फेरि थिच्दा यही रेकर्ड अद्यावधिक हुन्छ (opened; saving again updates this same record).`, 'info');
+    },
+  });
+}
+
 // ════════════════════════════════════════════
 //  LIVE PREVIEW
 // ════════════════════════════════════════════
@@ -364,6 +424,9 @@ async function csPrintDocument() {
 function csResetForm() {
   const panel = document.getElementById('regd-companySecretary-panel');
   if (!panel) return;
+  // drop the link to any opened record, or the next Save silently overwrites
+  // the document that was just cleared off the screen
+  csSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
   document.getElementById('cs-meetingTime').value = CS_DEFAULT_TIME;
   csClearDirectors();
@@ -414,21 +477,36 @@ function csValidateDateField(fieldId) {
 }
 
 // ── Autosave (session-local draft, never sent to Supabase) ──
+// ONE serialisation of the form, shared by the localStorage autosave and the
+// Save-to-database record — the bmFormState()/bmApplyState() rule: keeping
+// them separate is how a field added to the form ends up captured by one and
+// silently missed by the other.
+function csFormState() {
+  const panel = document.getElementById('regd-companySecretary-panel');
+  const values = {};
+  panel.querySelectorAll('input[id^="cs-"]').forEach(el => { values[el.id] = el.value; });
+  const directors = Array.from(document.querySelectorAll('#cs-directors .cs-director-input')).map(i => i.value);
+  return { values, directors };
+}
+
+// Clears the director rows before re-adding them — otherwise opening a second
+// saved record stacks its directors underneath the previous one's (CLAUDE.md §9).
+function csApplyState(state) {
+  if (!state || !state.values) return false;
+  csClearDirectors();
+  Object.entries(state.values).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+  (state.directors || []).forEach(name => { if (name) csAddDirectorRow(name); });
+  return true;
+}
+
 const csAutosave = WorkflowEngine.createAutosave('companySecretaryDraft', {
-  collect: () => {
-    const panel = document.getElementById('regd-companySecretary-panel');
-    const values = {};
-    panel.querySelectorAll('input[id^="cs-"]').forEach(el => { values[el.id] = el.value; });
-    const directors = Array.from(document.querySelectorAll('#cs-directors .cs-director-input')).map(i => i.value);
-    return { values, directors };
-  },
+  collect: csFormState,
   restore: (draft) => {
     if (!draft.values || !Object.values(draft.values).some(v => v)) return;
-    Object.entries(draft.values).forEach(([id, val]) => {
-      const el = document.getElementById(id);
-      if (el) el.value = val;
-    });
-    (draft.directors || []).forEach(name => { if (name) csAddDirectorRow(name); });
+    csApplyState(draft);
     if (csIsPreviewOpen()) csSchedulePreviewRefresh();
     csStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
   },

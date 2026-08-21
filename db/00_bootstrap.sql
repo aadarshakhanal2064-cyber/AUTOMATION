@@ -332,7 +332,8 @@ create table public.saved_documents (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint saved_documents_module_check
-    check (module = any (array['report','notesToAccounts']))
+    check (module = any (array['report','notesToAccounts','bmAgmMinutes',
+                               'companySecretary','auditorChange','companyRegistration']))
 );
 
 -- ── 2.6 Autobooks ───────────────────────────────────────────────────────────

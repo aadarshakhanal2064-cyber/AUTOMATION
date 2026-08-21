@@ -609,6 +609,9 @@ window.ACTIVITY_EVENT_LABELS = {
   bank_txn_created: 'Bank entry recorded', bank_txn_updated: 'Bank entry updated',
   bank_txn_deleted: 'Bank entry deleted',
   bm_agm_saved: 'BM/AGM minutes saved',
+  company_secretary_saved: 'Secretary appointment saved',
+  auditor_change_saved: 'Auditor change saved',
+  company_registration_saved: 'Company registration saved',
   clients_nonfilers_printed: 'Non-filers list printed',
   // company_profile_saved is the pre-2026-08-20 event, kept so historical rows
   // still read as words rather than a raw code id — the same reason the removed

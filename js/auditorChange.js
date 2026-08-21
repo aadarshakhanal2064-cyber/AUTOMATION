@@ -102,6 +102,93 @@ async function acRenderLetterDocx(data) {
   return DocumentEngine.renderWord(buffer, data);
 }
 
+// ── Save to database / Saved documents ──
+//
+// The same pair BM/AGM Minutes, Generate Report and Notes to Accounts have,
+// over the shared saved_documents table and the one shared picker drawer
+// (CLAUDE.md §15: saved documents are ONE table with a `module` discriminator,
+// so this is a CHECK value — db/2026-08-21_saved_documents_registrar_docs.sql
+// — not a new table). Like BM/AGM: client_id stays NULL (a registrar company
+// is not a clients row) and no doc_html (both Word files regenerate from
+// `state` byte for byte).
+//
+// This module deliberately has no localStorage autosave (see the header), so
+// unlike its siblings this serialisation pair has ONE consumer today — but it
+// stays a named pair so an autosave added later shares it rather than growing
+// a second, drifting copy (the bmFormState()/bmApplyState() rule).
+//
+// Re-saving in the same session amends the same row, matching the others.
+let acSavedId = null;
+
+// Scoped to the panel: the `ac-` prefix is shared with Add Client (CLAUDE.md
+// §9's historical overlap), so a bare id-prefix query would sweep in that
+// form's fields too.
+function acFormState() {
+  const panel = document.getElementById('regd-auditorChange-panel');
+  const values = {};
+  panel.querySelectorAll('input[id^="ac-"], select[id^="ac-"]').forEach(el => { values[el.id] = el.value; });
+  return { values };
+}
+
+function acApplyState(state) {
+  if (!state || !state.values) return false;
+  const panel = document.getElementById('regd-auditorChange-panel');
+  Object.entries(state.values).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el && panel.contains(el)) el.value = val;
+  });
+  return true;
+}
+
+async function acSaveToDb() {
+  const companyName = (document.getElementById('ac-companyName').value || '').trim();
+  if (!companyName) {
+    acStatus('कम्पनीको नाम भर्नुहोस् (enter the company name before saving).', 'error');
+    return;
+  }
+  const fy = document.getElementById('ac-fiscalYear').value;
+  try {
+    acStatus('<span class="spinner spinner-navy"></span> सुरक्षित गर्दै (saving)…', 'searching');
+    acSavedId = await DocumentStore.save(acSavedId, {
+      module: 'auditorChange',
+      client_id: null,
+      client_name: companyName,
+      pan: null,
+      fiscal_year: fy,
+      doc_type: 'Auditor Change',
+      // Fiscal year first, matching bmOutputName()'s naming convention —
+      // a company's records then sort by year in the picker.
+      title: [fy, 'Auditor Change', companyName].filter(Boolean).join(' '),
+      state: acFormState(),
+    });
+    acStatus(`✅ सुरक्षित भयो (saved as record #${acSavedId}) — <strong>Saved documents</strong> बाट पुन: खोल्न सकिन्छ.`, 'success');
+    AuditLog.record('auditor_change_saved', {
+      module: 'auditorChange', clientName: companyName, status: 'success', recordRef: acSavedId,
+    });
+  } catch (e) {
+    console.error(e);
+    acStatus('❌ सुरक्षित हुन सकेन (save failed): ' + escHtml(e.message), 'error');
+  }
+}
+
+function acOpenSaved() {
+  DocumentStore.openPicker({
+    module: 'auditorChange',
+    label: 'Saved auditor changes',
+    searchPlaceholder: 'Search by company, fiscal year…',
+    onOpen: row => {
+      if (!acApplyState(row.state)) {
+        acStatus('यो रेकर्डमा फारम विवरण छैन (this record has no form state saved).', 'error');
+        return;
+      }
+      acSavedId = row.id;
+      acUpdateCompletionIndicator();
+      if (acIsPreviewOpen()) acSchedulePreviewRefresh();
+      acStatus(`📂 सुरक्षित रेकर्ड #${row.id} खोलियो — Save to database फेरि थिच्दा यही रेकर्ड अद्यावधिक हुन्छ (opened; saving again updates this same record).`, 'info');
+    },
+  });
+}
+
 function acValidateBeforeGenerate() {
   const val = id => document.getElementById(id).value.trim();
   if (!val('ac-companyName')) { acStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return null; }
@@ -316,6 +403,9 @@ async function acPrintDocument() {
 function acResetForm() {
   const panel = document.getElementById('regd-auditorChange-panel');
   if (!panel) return;
+  // drop the link to any opened record, or the next Save silently overwrites
+  // the document that was just cleared off the screen
+  acSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
   document.getElementById('ac-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
   document.getElementById('ac-status').innerHTML = '';
