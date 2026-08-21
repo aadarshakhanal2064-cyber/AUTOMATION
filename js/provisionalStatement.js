@@ -107,12 +107,18 @@ function psInit() {
   psPopulateFy();
   psPopulateStaff();
   if (!psEl('ps-client-search').dataset.wired) {
+    // The SearchEngine contract is getList/renderItem/onSelect — this was
+    // wired with source/render/onPick, which the engine silently ignores,
+    // so the picker never showed a single result (found 2026-08-22).
     SearchEngine.attachAutocomplete(psEl('ps-client-search'), psEl('ps-client-autocomplete'), {
-      source: () => window.clientsList || [],
+      getList: () => window.clientsList,
       keys: ['name', 'pan'],
-      render: it => `${escHtml(it.name)}${it.pan ? ` <span style="color:var(--text-muted)">· ${escHtml(it.pan)}</span>` : ''}`,
-      onPick: it => psScope.select(it),
+      renderItem: c => `<div class="ac-name">${escHtml(c.name)}</div><div class="ac-email">PAN ${escHtml(c.pan || '—')}</div>`,
+      onSelect: it => psScope.select(it),
     });
+    // Typing over the picked name detaches the screen from that client
+    // record, so a later Save can't attach to it — the Projection rule.
+    psEl('ps-client-search').addEventListener('input', () => { psScope.invalidate(); psSelectedClient = null; });
     psEl('ps-client-search').dataset.wired = '1';
   }
   psRenderPySummary();
