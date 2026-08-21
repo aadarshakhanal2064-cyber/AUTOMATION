@@ -131,3 +131,31 @@ modules, so it genuinely shares.
 **Adding a write path to one of these four tables means adding its
 invalidation.** The TTL is a safety net for *another* staff member's writes,
 not a substitute for invalidating your own.
+
+## LibLoader (`libLoader.js`) — added Stage 4, 2026-08-21
+
+On-demand loading for the five heavy vendor libraries (xlsx, exceljs,
+pdf-lib, html-docx, docx-preview — ~890 KB gzip / ~2.9 MB raw). They are no
+longer `<script>` tags in `index.html`.
+
+- **`ensure(name)`** → Promise resolving to the library's global. Injects the
+  same pinned CDN URL with the same SRI `integrity` + `crossorigin` the old
+  tag carried; concurrent calls share one in-flight promise; a FAILED load is
+  not cached, so a retry after a network blip injects a fresh tag. Names:
+  `'xlsx' | 'exceljs' | 'pdflib' | 'htmldocx' | 'docxpreview'`.
+- **`prefetchAll()`** — fired once from `js/auth.js` at boot-idle. In
+  practice every global exists within seconds of the page settling, so the
+  `await LibLoader.ensure(...)` guards at the import/export/preview entry
+  points are already-resolved no-ops; they exist for the race window (a file
+  import seconds after login on a slow connection), not as the normal path.
+- **Where the guards live:** every `XLSX.read` file handler (9), every
+  `new ExcelJS.Workbook()` generator, every PDF-Lib builder (including
+  `ReportExport.toPdf`/`toExcel`, which cover all six ReportExport views),
+  both html-docx Word saves, and `DocumentEngine.previewWordAsHtml`.
+  Final Account's guard is unconditional for both export kinds because its
+  report model bakes `PDFLib.rgb` colours in at build time.
+- **A new heavy vendor goes into this registry, not into `index.html`.**
+  When bumping a version, recompute the SRI hash exactly as for the
+  remaining tags (CLAUDE.md §2). jszip stays an eager tag — docx-preview
+  expects JSZip to exist at parse time — as do pizzip/docxtemplater
+  (DocumentEngine's Word templating, small and load-bearing).
