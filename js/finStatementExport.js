@@ -464,6 +464,15 @@ function fsxBuildReport(out) {
       R('This is the cash flow statement referred to in our report of even date.', [], 'note'),
     ],
   });
+  // A provisional cash flow reports the latest year alone (user decision
+  // 2026-08-21) — the reference workbook's own prior-year column was a broken
+  // `=+#REF!`, so there is nothing real to print there. The audited set keeps
+  // both years. Sliced here so preview, print and Excel all agree.
+  if (m.basis === 'provisional') {
+    const socf = sheets[sheets.length - 1];
+    socf.cols = socf.cols.slice(0, 1);
+    socf.rows.forEach(rw => { if (rw.vals && rw.vals.length > 1) rw.vals = rw.vals.slice(0, 1); });
+  }
 
   // ── 3.1 PPE: the fixed-asset matrix ──
   const pt = (out.ppe && out.ppe.totals) || {};
@@ -676,8 +685,6 @@ function fsxBuildReport(out) {
     // the whole figure sits on Finished Goods, as before.
     ...invRows,
     R('Total', [bal.inventories, pySfp.inventories], 'tot', { k: 'invTotal', xsum: invKeys }),
-    B(),
-    R('Finished goods include an amount of NIL carried at fair value less costs to sell.', [], 'note'),
     B(),
     R('3.5 Cash & Cash Equivalents', [], 'head', { figNpr: true }),
     R('Cash and cash equivalents for purposes of the statement of cash follows comprises :', [], 'note'),
@@ -1440,18 +1447,18 @@ function fsxSheetCol(geom, i, matrix) {
 // band — every rule in black, white and hairline grey only.
 const FSX_PRINT_CSS = `
   .fsp-root { font-family: 'Book Antiqua', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
-              color: #000; background: #fff; margin: 0; font-size: 13px;
+              color: #000; background: #fff; margin: 0; font-size: 12px;
               -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .fsp-root * { box-sizing: border-box; }
   .fsp-root .fsp-sheet { page-break-after: always; break-after: page; }
   .fsp-root .fsp-sheet:last-child { page-break-after: auto; break-after: auto; }
   /* The statement header must never sit alone at the foot of a page. */
   .fsp-root .fsp-head { text-align: center; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid; }
-  .fsp-root .fsp-co { font-size: 16.5pt; font-weight: 700; letter-spacing: .2px; }
-  .fsp-root .fsp-addr { font-size: 10.5pt; margin-top: 3px; }
-  .fsp-root .fsp-title { font-size: 12.5pt; font-weight: 700; margin-top: 6px; }
-  .fsp-root .fsp-sub { font-size: 10.5pt; font-weight: 700; margin-top: 2px; }
-  .fsp-root .fsp-fig { text-align: right; font-size: 9pt; font-weight: 700; margin-top: 4px; }
+  .fsp-root .fsp-co { font-size: 15pt; font-weight: 700; letter-spacing: .2px; }
+  .fsp-root .fsp-addr { font-size: 10pt; margin-top: 3px; }
+  .fsp-root .fsp-title { font-size: 11.5pt; font-weight: 700; margin-top: 6px; }
+  .fsp-root .fsp-sub { font-size: 10pt; font-weight: 700; margin-top: 2px; }
+  .fsp-root .fsp-fig { text-align: right; font-size: 8.5pt; font-weight: 700; margin-top: 4px; }
   .fsp-root .fsp-restated { text-align: right; font-size: 9.5pt; font-weight: 700; font-style: italic; margin: 6px 0 0; }
   .fsp-root .fsp-heading { text-align: left; font-size: 13pt; font-weight: 700; margin-bottom: 4px; }
   .fsp-root .fsp-sched-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; }
@@ -1485,9 +1492,22 @@ const FSX_PRINT_CSS = `
   /* Sheets whose budgeted column width runs narrow (SOCE's five columns, a
      PPE with many asset classes, the quad share-capital note) drop the font
      a step or two so figures never collide across the column rules. */
-  .fsp-root table.fsp-mid { font-size: 12px; }
-  .fsp-root table.fsp-tight { font-size: 11px; }
+  .fsp-root table.fsp-mid { font-size: 11px; }
+  .fsp-root table.fsp-tight { font-size: 10.5px; }
   .fsp-root table.fsp-mid td, .fsp-root table.fsp-tight td { padding-left: 5px; padding-right: 5px; }
+  /* 3.1 PPE: no rules through the body — only the header band is boxed
+     (its own top rule closes the box the outer border and band underline
+     start). */
+  .fsp-root table.fsp-novlines td { border-left: none; }
+  .fsp-root table.fsp-novlines tr.fsp-band th { border-top: 1px solid #000; }
+  /* A note's heading, caption and closing note print ABOVE and BELOW its
+     box, never inside it. */
+  .fsp-root .fsp-note-head { display: flex; justify-content: space-between; align-items: baseline;
+                             font-weight: 700; margin: 0 0 3px; }
+  .fsp-root .fsp-note-head .fsp-fig { margin: 0; }
+  .fsp-root .fsp-note-caption { font-size: .9em; margin: 0 0 3px; }
+  .fsp-root .fsp-note-sub { font-weight: 700; margin: 8px 0 3px; }
+  .fsp-root .fsp-footnote { font-weight: 700; font-size: .85em; margin-top: 6px; }
   .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; border-bottom: none; }
   .fsp-root tr.fsp-head td.fsp-fignpr-cell { text-align: right; font-size: 9pt; vertical-align: bottom; }
   .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; border-bottom: none; }
@@ -1516,7 +1536,7 @@ const FSX_PRINT_CSS = `
      the print document (margin-top:auto), directly under the table in the
      in-app preview, and never split from its Date/Place lines. */
   .fsp-root .fsp-sig { display: flex; justify-content: space-between; margin-top: auto;
-                       padding-top: 10mm; font-size: 10.5pt;
+                       padding-top: 10mm; font-size: 10pt;
                        break-inside: avoid; page-break-inside: avoid; }
   .fsp-root .fsp-sig-line { border-top: 1px dotted #000; width: 150px; margin-bottom: 5px; }
   .fsp-root .fsp-sig-r { text-align: right; }
@@ -1617,7 +1637,13 @@ function fsxSheetHtml(sh, meta) {
   const colW = hasQuad
     ? Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - 240) / 4)
     : Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - LABEL_MIN) / valueCells));
-  const sizeCls = colW < 100 ? ' class="fsp-tight"' : colW < 125 ? ' class="fsp-mid"' : '';
+  // A noted statement (SFP/SOI) fixes the label column instead, so the note
+  // number sits right beside the account head rather than across a gulf of
+  // empty label space — the year columns absorb what the label gives up.
+  const labelW = hasNote && !FSX_SCHEDULE_KEYS[sh.key] ? 300 : 0;
+  const tblCls = [colW < 100 ? 'fsp-tight' : colW < 125 ? 'fsp-mid' : '', sh.key === 'PPE' ? 'fsp-novlines' : '']
+    .filter(Boolean).join(' ');
+  const sizeCls = tblCls ? ` class="${tblCls}"` : '';
   const span = 1 + (hasNote ? 1 : 0) + valueCells;
 
   const rowHtml = (r) => {
@@ -1696,9 +1722,11 @@ function fsxSheetHtml(sh, meta) {
   };
 
   const tableHtml = (rows, withThead) => {
-    const t = [`<table${sizeCls}>`, '<colgroup><col>'];
+    const t = [`<table${sizeCls}>`, `<colgroup>${labelW ? `<col style="width:${labelW}px">` : '<col>'}`];
     if (hasNote) t.push('<col class="fsp-c-note">');
-    for (let i = 0; i < valueCells; i++) t.push(`<col style="width:${colW}px">`);
+    // With a fixed label the year columns are left unsized and share the
+    // remaining width equally; otherwise they are sized and the label absorbs.
+    for (let i = 0; i < valueCells; i++) t.push(labelW ? '<col>' : `<col style="width:${colW}px">`);
     t.push('</colgroup>');
     if (withThead) {
       t.push('<thead><tr>');
@@ -1720,6 +1748,39 @@ function fsxSheetHtml(sh, meta) {
     return rows.slice(a, b);
   };
 
+  // A note's heading rows ('3.2 Investment', a caption, 'Figures in NPR')
+  // print ABOVE its box, and its closing note lines print BELOW it — putting
+  // them inside the bordered table drew the box (and the year rules) around
+  // text that is not columnar (user feedback 2026-08-21).
+  const shiftHeadings = (rows) => {
+    const parts = [];
+    while (rows.length && ['head', 'sub', 'fignpr', 'note', 'blank'].indexOf(rows[0].kind) >= 0) {
+      if (rows[0].kind === 'sub') {
+        // A sub that heads a quad section ("Authorised Share Capital:") is
+        // the section splitter's to render, so all three sections match.
+        const nxt = rows.slice(1).find(x => x.kind !== 'blank');
+        if (nxt && nxt.kind === 'quadhead') break;
+      }
+      const r = rows.shift();
+      if (r.kind === 'head' || r.kind === 'sub') {
+        parts.push(`<div class="fsp-note-head"><span>${fsxEsc(r.label)}</span>${r.figNpr ? '<span class="fsp-fig">Figures in NPR</span>' : ''}</div>`);
+      } else if (r.kind === 'fignpr') {
+        parts.push('<div class="fsp-fig">Figures in NPR</div>');
+      } else if (r.kind === 'note' && r.label) {
+        parts.push(`<div class="fsp-note-caption">${fsxEsc(r.label)}</div>`);
+      }
+    }
+    return parts;
+  };
+  const popFootnotes = (rows) => {
+    const foot = [];
+    while (rows.length && (rows[rows.length - 1].kind === 'note' || rows[rows.length - 1].kind === 'blank')) {
+      const r = rows.pop();
+      if (r.kind === 'note' && r.label) foot.unshift(`<div class="fsp-footnote">${fsxEsc(r.label)}</div>`);
+    }
+    return foot;
+  };
+
   if (selfBanded && !sh.matrix) {
     // Sch-BS / Sch-PL: one table per 3.x note, each in a keep-together block,
     // split at the note's own 'head' row. A note that would straddle a page
@@ -1733,15 +1794,48 @@ function fsxSheetHtml(sh, meta) {
     }
     if (cur.length) chunks.push(cur);
     for (const chunk of chunks) {
-      const rows = trimBlanks(chunk);
-      if (rows.length) out.push(`<div class="fsp-note-block">${tableHtml(rows, false)}</div>`);
+      let rows = trimBlanks(chunk);
+      if (!rows.length) continue;
+      const block = [`<div class="fsp-note-block">`, ...shiftHeadings(rows)];
+      const foot = popFootnotes(rows);
+      // 3.6 Capital Account: each share-capital section (a 'sub' heading
+      // followed by the quad band) becomes its own sub-heading + box, so
+      // "Authorised Share Capital:" is a heading between boxes, not a row
+      // trapped inside one.
+      const seg = [];
+      const flushSeg = () => {
+        const body = trimBlanks(seg.splice(0));
+        if (body.length) block.push(tableHtml(body, false));
+      };
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const nxt = rows.slice(i + 1).find(x => x.kind !== 'blank');
+        if (r.kind === 'sub' && nxt && nxt.kind === 'quadhead') {
+          flushSeg();
+          block.push(`<div class="fsp-note-sub">${fsxEsc(r.label)}</div>`);
+          continue;
+        }
+        seg.push(r);
+      }
+      flushSeg();
+      block.push(...foot, '</div>');
+      out.push(block.join(''));
     }
   } else if (selfBanded) {
-    // 3.1 PPE: one matrix table, kept whole — it either fits the page it is
-    // on or starts fresh on the next.
-    out.push(`<div class="fsp-note-block">${tableHtml(trimBlanks(sh.rows), false)}</div>`);
+    // 3.1 PPE: headings above, then one matrix table kept whole — it either
+    // fits the page it is on or starts fresh on the next.
+    const rows = trimBlanks(sh.rows.slice());
+    const heads = shiftHeadings(rows);
+    const foot = popFootnotes(rows);
+    out.push(`<div class="fsp-note-block">${heads.join('')}${tableHtml(trimBlanks(rows), false)}${foot.join('')}</div>`);
   } else {
-    out.push(tableHtml(sh.rows, !sh.noHeaderBand));
+    // Statements: the closing note lines ("The notes are an integral part…")
+    // sit under the table, outside the box — so the outer border and the
+    // year rules stop exactly at the last total row.
+    const rows = sh.rows.slice();
+    const foot = popFootnotes(rows);
+    out.push(tableHtml(rows, !sh.noHeaderBand));
+    out.push(...foot);
   }
 
   if (sh.sig) {
@@ -1802,7 +1896,7 @@ const FSX_FIT_JS = `<script>
       var s = sheets[i];
       var h = contentHeight(s);
       if (!h) continue;
-      var maxUp = s.hasAttribute('data-matrix') ? 1 : 1.22;
+      var maxUp = s.hasAttribute('data-matrix') ? 1 : 1.1;
       var k = Math.max(0.72, Math.min(maxUp, target / h));
       if (Math.abs(k - 1) > 0.02) applyScale(s, k);
       var h2 = contentHeight(s);

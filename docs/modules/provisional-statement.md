@@ -467,6 +467,29 @@ structural rules came with it, each fixing a reported defect:
   figures collide across the rules. Narrow columns step the table font down
   (`fsp-mid` under 125px, `fsp-tight` under 100px).
 
+Third round (same day, user feedback on the second):
+
+- **A note's headings print ABOVE its box and its closing notes BELOW it** —
+  `shiftHeadings`/`popFootnotes` in `fsxSheetHtml`. The box (and its year
+  rules) wraps only columnar rows, so "3.6 Capital Account", "Figures in
+  NPR" and a statement's "The notes are an integral part…" lines are no
+  longer trapped inside the border, and the rules stop exactly at the last
+  total row. 3.6's three share-capital sections each get their own
+  sub-heading + box.
+- **SFP/SOI fix the label column at 300px** so the Notes number sits beside
+  the account head instead of across a gulf; the year columns share what
+  the label gives up.
+- **A provisional cash flow reports the latest year alone** (sliced in
+  `fsxBuildReport` so preview, print AND Excel agree — the reference
+  workbook's own prior column was a broken `=+#REF!`). The audited set
+  keeps both years.
+- **3.1 PPE drops the vertical rules in its body** (`fsp-novlines`); only
+  its header band is boxed (band top rule + underline + column rules).
+- **The "Finished goods include an amount of NIL…" boilerplate is removed**
+  from note 3.4 (user decision — both HTML and Excel).
+- Base font stepped down to 12px (headers scaled with it) and the fit
+  pass's upscale cap lowered to 1.1.
+
 **Column widths are budgeted against the A4 page, never a flat 142px**
 (2026-08-21). The print document is `@page A4` with 12mm side margins — about
 703 CSS px — and the tables are `table-layout: fixed`, so the unclassed label
