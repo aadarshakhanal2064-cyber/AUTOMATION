@@ -2649,17 +2649,31 @@ function cropLoginLogoIcon(img) {
           <div style="display:grid; grid-template-columns:1fr; gap:16px;">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <strong style="font-size:13px; color:var(--brand-navy);">Non-Current</strong>
-                <button class="btn btn-outline btn-sm" onclick="psAddLoanRow('nc')">+ Add</button>
+                <strong style="font-size:13px; color:var(--brand-navy);">Short Term Loan / OD / CC</strong>
+                <button class="btn btn-outline btn-sm" onclick="psAddLoanRow('st')">+ Add</button>
               </div>
-              <div id="ps-loans-nc"></div>
+              <div id="ps-loans-st"></div>
             </div>
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <strong style="font-size:13px; color:var(--brand-navy);">Current</strong>
-                <button class="btn btn-outline btn-sm" onclick="psAddLoanRow('c')">+ Add</button>
+                <strong style="font-size:13px; color:var(--brand-navy);">Long Term Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="psAddLoanRow('lt')">+ Add</button>
               </div>
-              <div id="ps-loans-c"></div>
+              <div id="ps-loans-lt"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Permanent Working Capital Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="psAddLoanRow('pwc')">+ Add</button>
+              </div>
+              <div id="ps-loans-pwc"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Hire Purchase (HP) Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="psAddLoanRow('hp')">+ Add</button>
+              </div>
+              <div id="ps-loans-hp"></div>
             </div>
             <div style="padding-top:12px; border-top:1px solid var(--border);">
               <strong style="font-size:13px; color:var(--brand-navy); display:block; margin-bottom:8px;">Interest &amp; Bank Charges</strong>
@@ -2688,14 +2702,8 @@ function cropLoginLogoIcon(img) {
 
         <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Closing Stock</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Quantity &times; rate per item, grouped. The grand total becomes Closing Stock on Sch-PL and the group totals become note 3.4 &mdash; so the figure is entered once, as the working behind it.</p>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">One amount per group. The grand total becomes Closing Stock on Sch-PL and the group totals become note 3.4 &mdash; so the figure is entered once, as the working behind it.</p>
           <div id="ps-stock"></div>
-        </div>
-
-        <div class="card" style="margin-top:20px;">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Advance Tax &mdash; deposit vouchers</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">One row per deposit, plus the credit brought forward. Total available credit is what reaches Sch-BS, and every rupee of it has a challan behind it.</p>
-          <div id="ps-advtax"></div>
         </div>
 
         <div class="card" style="margin-top:20px;">
@@ -4413,7 +4421,7 @@ function cropLoginLogoIcon(img) {
 <script src="js/finStatementExport.js?v=202608211500"></script>
 <script src="js/provisionalSources.js?v=202608201100"></script>
 <script src="js/provisionalStatementEngine.js?v=202608201100"></script>
-<script src="js/provisionalStatement.js?v=202608201100"></script>
+<script src="js/provisionalStatement.js?v=202608211500"></script>
 <script src="js/provisionalReconcile.js?v=202608201100"></script>
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>

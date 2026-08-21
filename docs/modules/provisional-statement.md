@@ -196,8 +196,16 @@ Faithfulness to the format does not mean copying its mistakes:
 Step 2 runs **Loans & Borrowings → This Year's Figures → Expense Lines & Rules →
 Depreciation**. Loans come first because every other figure leans on them.
 
-**Loans & Borrowings** — each facility by name and balance, non-current and
-current, *plus the interest each costs*. Interest sits here rather than with the
+**Loans & Borrowings** — each facility by name and balance, in the same four
+groups Projection's Loans card uses (Short Term / OD / CC · Long Term ·
+Permanent Working Capital · Hire Purchase; user ask 2026-08-21, replacing the
+abstract Non-Current / Current pair), *plus the interest each costs*. The
+grouping is presentation only: the collector folds Short Term into the engine's
+`loansC` and the other three into `loansNC`, so the engine, note 3.8 and its
+facility names are untouched. Seeding from the prior year's note 3.8 buckets by
+keyword, most specific first — hire/HP/vehicle/auto → HP, permanent/PWC → PWC
+(plain "WC Loan" is NOT Permanent WC, the Projection rule), the od/cc/hypo set →
+Short Term, everything else Long Term. Interest sits here rather than with the
 income figures because it is a fact about a facility, and a finance cost that
 lives away from the balance that produced it is one that goes missing.
 
@@ -214,9 +222,26 @@ and the preparer has the deposit slips. **A typed line loses its live Excel
 formula and exports as a value** — the honest representation of a figure that
 came off a challan rather than out of the accounts.
 
-**VAT is only asked for a registered client.** A PAN-only client carries no VAT
-row at all, and a registered one prints only the side its return leaves it on;
-figures on both sides raise a warning, because a return normally lands on one.
+The card is an **accordion of four sections — Advance Tax · TDS Withholdings ·
+VAT · Computation of Income — one open at a time** (`psTaxOpen`, user ask
+2026-08-21). Each collapsed header carries a one-line summary (figure +
+typed/derived, count of typed TDS lines, VAT side + amount, COI provision) so
+nothing is hidden, only folded. Re-rendering on toggle is safe because every
+figure lives in `psCy`/`psTds`, never only in the DOM — which is also why the
+COI checkbox's touched-override moved off the element into `psCoiTouched`: a
+DOM flag unrenders with its collapsed section and would silently revert the
+preparer's choice to the automatic rule.
+
+**VAT is only asked for a registered client, and the UI shows ONE side.** A
+PAN-only client carries no VAT row at all. A registered one gets a
+Payable/Receivable select plus a single amount box (user ask 2026-08-21 — the
+two figures never coexist on a return, so showing both boxes was an invitation
+to fill both): the select decides which of `vatPayable`/`vatReceivable` the box
+writes, defaulting to whichever key holds a value, then the register's own sign
+(`psrcVatPosition` — positive net = payable). **Switching sides moves the
+figure** and deletes the other key, which is what keeps the engine's
+"both sides carry a figure" warning unreachable from this screen; the engine
+itself still warns, for input that arrives any other way.
 
 **Drawings / Dividend Paid and Capital Introduced** feed the Statement of
 Changes in Equity. The word follows the entity — a company pays a dividend, a
@@ -309,19 +334,22 @@ implemented there. **Do not fork that file**; extend it if a row type is missing
 
 ### 5.2 Supporting schedules — detail that rolls up
 
-Three of the firm's own working sheets, so a figure is entered **once, as the
-working behind it**, rather than twice as a summary:
+The firm's own working sheets, so a figure is entered **once, as the working
+behind it**, rather than twice as a summary:
 
-- **Closing stock** (`stock`) — quantity x rate per item, grouped. The grand
+- **Closing stock** (`stock`) — one amount per group line (user ask 2026-08-21,
+  dropping the Particular / Quantity / Rate columns from the UI). The grand
   total becomes Sch-PL's closing stock and the **group totals become note
   3.4**, exactly as the firm's `stock!E11` / `stock!E19` land on separate
-  Sch-BS rows. A typed amount on a line overrides qty x rate, because some
-  lines are valued in the round. With no schedule the typed figure stands and
-  note 3.4 keeps its three standard heads.
-- **Advance tax** (`adv`) — one row per deposit voucher plus the credit brought
-  forward; total available credit reaches Sch-BS. Three sources, most specific
-  first: the schedule, a typed figure, then the formula in §2.3 — the schedule
-  wins because it is the only one with a challan behind it.
+  Sch-BS rows. Each row rides the engine's existing amount-override (an amount
+  always won over qty × rate), so the engine kept qty/rate support unchanged
+  and `psVerify` still proves that path. With no schedule the typed figure
+  stands and note 3.4 keeps its three standard heads.
+- **Advance tax** (`adv`) — **the voucher-schedule UI was removed 2026-08-21 by
+  user decision**; Advance Tax is now the typed/derived box alone. The engine
+  keeps its full three-source precedence (schedule → typed → the §2.3 formula)
+  and `tools/psVerify.mjs` keeps asserting it, so restoring the screen is a UI
+  change only.
 - **Party detail** (`p`, `s`) — built from the register, carrying the CA's own
   *"As per books / Difference"* line rather than a new invention.
 
@@ -400,6 +428,22 @@ ordinary value cell spanning the pair it sits above, so both kinds of row line
 up. The regression check is arithmetic: every `<tr>`'s total colspan must equal
 the table's `<col>` count.
 
+**Column widths are budgeted against the A4 page, never a flat 142px**
+(2026-08-21). The print document is `@page A4` with 12mm side margins — about
+703 CSS px — and the tables are `table-layout: fixed`, so the unclassed label
+`<col>` gets only what the fixed columns leave over. A flat
+`col.fsp-c-num { width: 142px }` was tuned for the two-column statements; on
+SOCE (five columns + a 46px note column = 756px) the label column resolved to
+**zero width** and `overflow-wrap` printed every row label one letter per line,
+and a 3.1 PPE with four or more asset classes broke the same way. `fsxSheetHtml`
+now computes the width per sheet — `min(142, (700 − note − 170) / columns)`,
+emitted inline on each `<col>`, quad half-columns at half a pair — so the
+two-column sheets keep exactly 142px/71px and only the matrix sheets shrink.
+Two supporting rules: a matrix sheet never renders the (always empty) Notes
+column even when its Excel geometry carries `note`, and a sheet whose budgeted
+width falls under 100px gets `table.fsp-tight`, one font step down, so figures
+still fit unclipped.
+
 Print hygiene lives in `FSX_PRINT_CSS`: a heading stays with the band and rows
 beneath it (`break-after: avoid`), a total never splits from the lines it sums
 (`break-before: avoid`), and no row breaks across a page.
@@ -428,22 +472,6 @@ which also fixes the **Audited Statement**, since both reference files agree:
    own `quadhead` / `quadsub` / `quad` row kinds over columns D/F (this year)
    and H/J (last). Share counts are the face value divided into the capital, so
    the note cannot disagree with the balance sheet; **authorised** is a
-**Column widths are budgeted against the A4 page, never a flat 142px**
-(2026-08-21). The print document is `@page A4` with 12mm side margins — about
-703 CSS px — and the tables are `table-layout: fixed`, so the unclassed label
-`<col>` gets only what the fixed columns leave over. A flat
-`col.fsp-c-num { width: 142px }` was tuned for the two-column statements; on
-SOCE (five columns + a 46px note column = 756px) the label column resolved to
-**zero width** and `overflow-wrap` printed every row label one letter per line,
-and a 3.1 PPE with four or more asset classes broke the same way. `fsxSheetHtml`
-now computes the width per sheet — `min(142, (700 − note − 170) / columns)`,
-emitted inline on each `<col>`, quad half-columns at half a pair — so the
-two-column sheets keep exactly 142px/71px and only the matrix sheets shrink.
-Two supporting rules: a matrix sheet never renders the (always empty) Notes
-column even when its Excel geometry carries `note`, and a sheet whose budgeted
-width falls under 100px gets `table.fsp-tight`, one font step down, so figures
-still fit unclipped.
-
    constitutional figure and is asked for.
 4. **`3.7 Reserves` is a sentence, not a table** — the roll-forward already has
    a home in the SOCE, and `SFP!Reserves` points there, so a second table would

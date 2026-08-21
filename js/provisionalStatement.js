@@ -28,7 +28,11 @@ let psReport = null;         // fsxBuildReport() output
 let psCy = {};               // this year's typed figures
 let psRules = {};            // per-line rule overrides
 let psPpeInput = [];         // editable 3.1 PPE grid
-let psLoans = { nc: [], c: [] };
+// Four groups, matching Projection's Loans card (user ask 2026-08-21): the
+// preparer thinks in facility types, not balance-sheet headings. Short Term /
+// OD / CC is the current side; the other three are non-current — the collector
+// folds them back into the engine's loansC / loansNC shape.
+let psLoans = { st: [], lt: [], pwc: [], hp: [] };
 let psCustom = [];           // other-expense lines the user added by hand
 let psDirectCustom = [];     // direct-cost lines the user added by hand
 let psTds = {};              // per-line TDS overrides; blank means "derive it"
@@ -45,9 +49,23 @@ let psTypedOver = {};
 // Supporting schedules — detail that rolls up into the statements, so the
 // figure is entered once as the working behind it rather than twice as a
 // summary. Empty means "no schedule", and the plain typed box stands.
+// (The advance-tax voucher schedule that used to sit beside it was removed
+// 2026-08-21 by user decision — UI only; the engine still honours
+// advanceTaxLines, so tools/psVerify.mjs keeps proving that path.)
 let psStock = [];
-let psAdvTax = [];
 let psReconcile = null;      // last ProvisionalReconcile.run() output
+// Tax card accordion — one section open at a time (user ask 2026-08-21).
+// Safe to re-render on toggle: every figure in the panel lives in psCy /
+// psTds, not the DOM, so a collapsed section loses nothing.
+let psTaxOpen = 'adv';       // 'adv' | 'tds' | 'vat' | 'coi' | ''
+// Which side the VAT return leaves the client on. The two figures never
+// coexist, so the UI shows ONE box and this picks which key it writes.
+// null = follow whichever key holds a value, then the Autobooks sign.
+let psVatSide = null;
+// The preparer's explicit COI on/off. This must be module state, not a DOM
+// dataset flag: the checkbox unrenders with its collapsed section, and an
+// override stored on the element would silently revert to the automatic rule.
+let psCoiTouched = null;
 // Trade receivables absorbs the balance by default, the way the Audited engine
 // already works (§15). Untick it to type receivables and have any residual
 // reported instead of absorbed.
@@ -132,10 +150,11 @@ const psScope = WorkflowEngine.createClientScope({
     psPy = null; psPyIssues = [];
     psResult = null; psReport = null;
     psCy = {}; psRules = {}; psPpeInput = []; psDepSource = '';
-    psLoans = { nc: [], c: [] };
+    psLoans = { st: [], lt: [], pwc: [], hp: [] };
     psCustom = []; psDirectCustom = []; psTds = {};
     psSrc = null; psItDep = null; psTypedOver = {};
-    psStock = []; psAdvTax = [];
+    psStock = [];
+    psTaxOpen = 'adv'; psVatSide = null; psCoiTouched = null;
     psSolveFor = 'purchases'; psPlugReceivables = true;
     const f = psEl('ps-py-file'); if (f) f.value = '';
     psRenderPySummary();
@@ -606,7 +625,6 @@ function psRenderFigures() {
   psRenderPpe();
   psRenderTax();
   psRenderStock();
-  psRenderAdvTax();
   psRenderParties();
 }
 
@@ -810,6 +828,34 @@ const PS_TDS_LINES = [
   { k: 'freight',   label: 'TDS Payable-Clearing & Freight', of: '1.5% of Clearing & Freight' },
 ];
 
+function psTaxToggle(sec) {
+  psTaxOpen = psTaxOpen === sec ? '' : sec;
+  psRenderTax();
+}
+
+// Which side the return leaves the client on: an explicit pick wins, then
+// whichever key already holds a figure, then the register's own sign.
+function psVatSideNow() {
+  if (psVatSide) return psVatSide;
+  if (psCy.vatPayable != null) return 'payable';
+  if (psCy.vatReceivable != null) return 'receivable';
+  if (psSrc && psSrc.vat) return psSrc.vat.payable ? 'payable' : 'receivable';
+  return 'payable';
+}
+
+// Switching sides MOVES the figure rather than leaving it stranded on the
+// hidden key — the two can never coexist, which is what keeps the engine's
+// "both sides carry a figure" warning unreachable from this UI.
+function psSetVatSide(side) {
+  psVatSide = side === 'receivable' ? 'receivable' : 'payable';
+  const from = psVatSide === 'payable' ? 'vatReceivable' : 'vatPayable';
+  const to = psVatSide === 'payable' ? 'vatPayable' : 'vatReceivable';
+  if (psCy[from] != null && psCy[to] == null) psCy[to] = psCy[from];
+  delete psCy[from];
+  psRun();
+  psRenderTax();
+}
+
 function psRenderTax() {
   const host = psEl('ps-tax');
   if (!host) return;
@@ -838,84 +884,121 @@ function psRenderTax() {
   const c = r ? r.coi : null;
   const money = v => psFmt(v);
 
-  // The Computation of Income — the bridge from accounting profit to taxable
-  // income. Shown whenever it is on, so the tax figure on the statements can
-  // be traced rather than taken on trust.
-  const coiBlock = `
-    <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
-      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500;">
-        <input type="checkbox" id="ps-use-coi" ${coiOn ? 'checked' : ''} style="width:auto;" onchange="psSetUseCoi(this.checked)" />
-        Compute tax through a Computation of Income (adds the COI sheet)
-      </label>
-      <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">
-        ${itSrc ? escHtml(itSrc.source) + (itSrc.stale ? ' — no schedule for this year yet, so last year&rsquo;s is used' : '')
-                : 'No Income-Tax depreciation schedule found for this client. Without one the bridge deducts nothing.'}
-      </div>
-      ${coiOn ? `
-      <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;">
-        <div class="form-group" style="margin:0;">
-          <label>Depreciation per Income Tax Act ${itSrc ? psSrcBadge() : ''}</label>
-          <input type="number" step="0.01" value="${psCy.itDepreciation == null ? '' : psCy.itDepreciation}"
-                 oninput="psFigureInput('itDepreciation', this.value)" />
+  // One collapsible section. The whole panel re-renders on toggle, which is
+  // safe because every figure here lives in psCy/psTds, never only the DOM.
+  const section = (key, title, summary, body) => {
+    const open = psTaxOpen === key;
+    return `
+    <div style="border:1px solid var(--border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden;">
+      <div onclick="psTaxToggle('${key}')" style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 14px; cursor:pointer;${open ? ' background:var(--bg-subtle, #f7f9fc);' : ''}">
+        <div style="display:flex; align-items:center; gap:9px;">
+          <span style="font-size:10px; color:var(--text-muted); display:inline-block; transform:rotate(${open ? '90deg' : '0deg'}); transition:transform .15s;">&#9654;</span>
+          <strong style="font-size:13px; color:var(--brand-navy);">${title}</strong>
         </div>
-        <div class="form-group" style="margin:0;">
-          <label>Brought-forward loss</label>
-          <input type="number" step="0.01" value="${psCy.broughtForwardLoss == null ? '' : psCy.broughtForwardLoss}"
-                 oninput="psFigureInput('broughtForwardLoss', this.value)" />
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Enter as a positive figure; it reduces taxable income.</div>
-        </div>
+        <div style="font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; text-align:right;">${summary}</div>
       </div>
-      ${c ? `<div class="table-wrap" style="margin-top:12px;"><table class="client-table">
-        <tbody>
-          <tr><td>Net profit as per Income Statement</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.pbt)}</td></tr>
-          <tr><td>Add: Depreciation per Accounting Standard</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.accountingDep)}</td></tr>
-          <tr><td>Less: Depreciation per Income Tax Act</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.itDep)}</td></tr>
-          <tr><td>Add: Previous year Loss</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.bfLoss)}</td></tr>
-          <tr style="font-weight:600;"><td>Total taxable income</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.taxableProfit)}</td></tr>
-          <tr style="font-weight:600;"><td>Provision for tax</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.tax)}</td></tr>
-        </tbody></table></div>` : ''}` : ''}
+      ${open ? `<div style="padding:12px 14px 14px; border-top:1px solid var(--border);">${body}</div>` : ''}
     </div>`;
+  };
 
-  host.innerHTML = `
-    <div class="form-grid" style="grid-template-columns:repeat(2,1fr); gap:14px; align-items:start;">
-      <div class="form-group" style="margin:0;">
-        <label>Advance Tax ${advTyped ? '' : '<span class="log-badge badge-info" style="font-size:10px;">derived</span>'}</label>
-        <input type="number" step="0.01" id="ps-adv-tax" value="${advTyped ? psCy.advanceTax : (r ? Number(r.advanceTax.amount).toFixed(2) : '')}"
-               oninput="psFigureInput('advanceTax', this.value)" />
-        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
-          Last year&rsquo;s advance tax less the provision it settled, plus TDS on this year&rsquo;s other income
-          &mdash; ${psFmt(derivedAdv)}. Type over it if you have the challans.
-        </div>
+  // ── Advance Tax ──
+  const advBody = `
+    <div class="form-group" style="margin:0; max-width:340px;">
+      <label>Advance Tax ${advTyped ? '' : '<span class="log-badge badge-info" style="font-size:10px;">derived</span>'}</label>
+      <input type="number" step="0.01" id="ps-adv-tax" value="${advTyped ? psCy.advanceTax : (r ? Number(r.advanceTax.amount).toFixed(2) : '')}"
+             oninput="psFigureInput('advanceTax', this.value)" />
+      <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+        Last year&rsquo;s advance tax less the provision it settled, plus TDS on this year&rsquo;s other income
+        &mdash; ${psFmt(derivedAdv)}. Type over it if you have the challans.
       </div>
-      <div class="form-group" style="margin:0;">
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-          <input type="checkbox" ${vatOn ? 'checked' : ''} style="width:auto;" onchange="psSetVat(this.checked)" />
-          Client is registered for VAT
-        </label>
-        ${vatOn ? `
-        <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
-          <div class="form-group" style="margin:0;"><label>VAT Receivable</label>
-            <input type="number" step="0.01" value="${psCy.vatReceivable == null ? '' : psCy.vatReceivable}"
-                   oninput="psFigureInput('vatReceivable', this.value)" /></div>
-          <div class="form-group" style="margin:0;"><label>VAT Payable</label>
-            <input type="number" step="0.01" value="${psCy.vatPayable == null ? '' : psCy.vatPayable}"
-                   oninput="psFigureInput('vatPayable', this.value)" /></div>
-        </div>
-        <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">Whichever side the return leaves the client on. The other stays blank and prints nothing.</div>`
-        : `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">A PAN-only client carries no VAT line, so none is printed.</div>`}
-      </div>
-    </div>
-    <div class="table-wrap" style="margin-top:16px;"><table class="client-table">
+    </div>`;
+  const advShown = advTyped ? psNum(psCy.advanceTax) : (r ? r.advanceTax.amount : 0);
+  const advSummary = `${psFmt(advShown)} &middot; ${advTyped ? 'typed' : 'derived'}`;
+
+  // ── TDS ──
+  const tdsTyped = PS_TDS_LINES.filter(l => psTds[l.k] != null && psTds[l.k] !== '').length;
+  const tdsTotal = r ? PS_TDS_LINES.reduce((s, l) => s + psNum(r.tds[l.k]), 0) : 0;
+  const tdsBody = `
+    <div class="table-wrap"><table class="client-table">
       <thead><tr><th style="width:55%;">Withholding</th><th style="text-align:right;">This year</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>
-    ${coiBlock}`;
+    </table></div>`;
+  const tdsSummary = `${psFmt(tdsTotal)}${tdsTyped ? ` &middot; ${tdsTyped} typed` : ''}`;
+
+  // ── VAT — one side only ──
+  const side = vatOn ? psVatSideNow() : null;
+  const sideKey = side === 'receivable' ? 'vatReceivable' : 'vatPayable';
+  const vSrc = vatOn ? psSourceOf(sideKey) : null;
+  const vatBody = `
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+      <input type="checkbox" ${vatOn ? 'checked' : ''} style="width:auto;" onchange="psSetVat(this.checked)" />
+      Client is registered for VAT
+    </label>
+    ${vatOn ? `
+    <div class="form-grid" style="grid-template-columns:200px 1fr; gap:10px; margin-top:10px; max-width:440px;">
+      <div class="form-group" style="margin:0;"><label>Position</label>
+        <select onchange="psSetVatSide(this.value)">
+          <option value="payable"${side === 'payable' ? ' selected' : ''}>VAT Payable</option>
+          <option value="receivable"${side === 'receivable' ? ' selected' : ''}>VAT Receivable</option>
+        </select></div>
+      <div class="form-group" style="margin:0;"><label>Amount ${vSrc ? psSrcBadge() : ''}</label>
+        <input type="number" step="0.01" value="${psCy[sideKey] == null ? '' : psCy[sideKey]}"
+               oninput="psFigureInput('${sideKey}', this.value)" /></div>
+    </div>
+    ${vSrc ? psSrcNote(sideKey, vSrc) : `<div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">Payable when the return owes the office, Receivable when credit is carried &mdash; the other side prints nothing.</div>`}`
+    : `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">A PAN-only client carries no VAT line, so none is printed.</div>`}`;
+  const vatSummary = vatOn
+    ? `${side === 'receivable' ? 'Receivable' : 'Payable'} ${psFmt(psNum(psCy[sideKey]))}`
+    : 'Not registered';
+
+  // ── COI — the bridge from accounting profit to taxable income, shown
+  //    whenever it is on so the tax figure can be traced rather than trusted ──
+  const coiBody = `
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500;">
+      <input type="checkbox" id="ps-use-coi" ${coiOn ? 'checked' : ''} style="width:auto;" onchange="psSetUseCoi(this.checked)" />
+      Compute tax through a Computation of Income (adds the COI sheet)
+    </label>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">
+      ${itSrc ? escHtml(itSrc.source) + (itSrc.stale ? ' — no schedule for this year yet, so last year&rsquo;s is used' : '')
+              : 'No Income-Tax depreciation schedule found for this client. Without one the bridge deducts nothing.'}
+    </div>
+    ${coiOn ? `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;">
+      <div class="form-group" style="margin:0;">
+        <label>Depreciation per Income Tax Act ${itSrc ? psSrcBadge() : ''}</label>
+        <input type="number" step="0.01" value="${psCy.itDepreciation == null ? '' : psCy.itDepreciation}"
+               oninput="psFigureInput('itDepreciation', this.value)" />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Brought-forward loss</label>
+        <input type="number" step="0.01" value="${psCy.broughtForwardLoss == null ? '' : psCy.broughtForwardLoss}"
+               oninput="psFigureInput('broughtForwardLoss', this.value)" />
+        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Enter as a positive figure; it reduces taxable income.</div>
+      </div>
+    </div>
+    ${c ? `<div class="table-wrap" style="margin-top:12px;"><table class="client-table">
+      <tbody>
+        <tr><td>Net profit as per Income Statement</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.pbt)}</td></tr>
+        <tr><td>Add: Depreciation per Accounting Standard</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.accountingDep)}</td></tr>
+        <tr><td>Less: Depreciation per Income Tax Act</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.itDep)}</td></tr>
+        <tr><td>Add: Previous year Loss</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.bfLoss)}</td></tr>
+        <tr style="font-weight:600;"><td>Total taxable income</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.taxableProfit)}</td></tr>
+        <tr style="font-weight:600;"><td>Provision for tax</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.tax)}</td></tr>
+      </tbody></table></div>` : ''}` : ''}`;
+  const coiSummary = coiOn ? (c ? `Provision ${psFmt(c.tax)}` : 'On') : 'Off &mdash; flat rate';
+
+  host.innerHTML =
+    section('adv', 'Advance Tax', advSummary, advBody)
+    + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
+    + section('vat', 'VAT', vatSummary, vatBody)
+    + section('coi', 'Computation of Income', coiSummary, coiBody);
 }
 
 // ════════════════════════════════════════════════════════════════
-//  CLOSING STOCK — the firm's `stock` sheet: qty x rate per item, grouped.
-//  Its group totals feed note 3.4 and its grand total feeds Sch-PL's closing
-//  stock, so one schedule answers both instead of a figure typed twice.
+//  CLOSING STOCK — one amount per group line (user ask 2026-08-21, dropping
+//  the qty × rate working). Each row's `amount` rides the engine's existing
+//  amount-override, so the engine and note 3.4 grouping are unchanged: group
+//  totals feed note 3.4, the grand total feeds Sch-PL's closing stock.
 // ════════════════════════════════════════════════════════════════
 
 const PS_STOCK_GROUPS = ['Raw Material', 'Work-in-progress', 'Finished Goods', 'Biological Assets', 'Consumables'];
@@ -924,27 +1007,21 @@ function psRenderStock() {
   const host = psEl('ps-stock');
   if (!host) return;
   const r = psResult;
-  const rows = psStock.map((l, i) => {
-    const amt = l.amount != null && l.amount !== '' ? psNum(l.amount) : psNum(l.qty) * psNum(l.rate);
-    return `<tr>
+  const rows = psStock.map((l, i) => `<tr>
       <td><select onchange="psStockSet(${i},'group',this.value)" style="max-width:180px;">
         ${PS_STOCK_GROUPS.map(g => `<option${g === l.group ? ' selected' : ''}>${escHtml(g)}</option>`).join('')}
       </select></td>
-      <td><input type="text" value="${escHtml(l.particular || '')}" onchange="psStockSet(${i},'particular',this.value)" style="width:100%;" /></td>
-      <td><input type="number" step="0.01" value="${l.qty == null ? '' : l.qty}" onchange="psStockSet(${i},'qty',this.value)" style="width:100px; text-align:right;" /></td>
-      <td><input type="number" step="0.01" value="${l.rate == null ? '' : l.rate}" onchange="psStockSet(${i},'rate',this.value)" style="width:110px; text-align:right;" /></td>
-      <td style="text-align:right; font-variant-numeric:tabular-nums;"><strong>${psFmt(amt)}</strong></td>
+      <td><input type="number" step="0.01" value="${l.amount == null ? '' : l.amount}" onchange="psStockSet(${i},'amount',this.value)" style="width:160px; text-align:right;" /></td>
       <td style="width:36px;"><button class="btn btn-outline btn-sm" onclick="psStockRemove(${i})">✕</button></td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 
   const groups = (r && r.stock.fromSchedule) ? r.stock.groups : [];
   host.innerHTML = `
-    ${psStock.length ? `<div class="table-wrap"><table class="client-table">
-      <thead><tr><th style="width:170px;">Group</th><th>Particular</th><th style="width:110px;">Quantity</th><th style="width:120px;">Rate</th><th style="text-align:right; width:150px;">Amount</th><th></th></tr></thead>
+    ${psStock.length ? `<div class="table-wrap" style="max-width:480px;"><table class="client-table">
+      <thead><tr><th style="width:200px;">Group</th><th style="text-align:right; width:180px;">Amount</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr style="font-weight:600;">
-        <td colspan="4">Grand Total &mdash; goes to Sch-PL closing stock and note 3.4</td>
+        <td>Grand Total &mdash; Sch-PL &amp; note 3.4</td>
         <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(r ? r.stock.total : 0)}</td><td></td>
       </tr></tfoot></table></div>
       ${groups.length ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Note 3.4 will show: ${groups.map(g => escHtml(g.group) + ' ' + psFmt(g.amount)).join(' · ')}</div>` : ''}`
@@ -953,65 +1030,15 @@ function psRenderStock() {
 }
 
 function psStockAdd() {
-  psStock.push({ group: 'Finished Goods', particular: '', qty: null, rate: null });
+  psStock.push({ group: 'Finished Goods', amount: null });
   psRun(); psRenderStock(); psRenderFigures();
 }
 function psStockRemove(i) { psStock.splice(i, 1); psRun(); psRenderStock(); psRenderFigures(); }
 function psStockSet(i, field, v) {
   const l = psStock[i];
   if (!l) return;
-  l[field] = (field === 'group' || field === 'particular') ? v : (v === '' ? null : psNum(v));
+  l[field] = field === 'group' ? v : (v === '' ? null : psNum(v));
   psRun(); psRenderStock(); psRenderFigures();
-}
-
-// ════════════════════════════════════════════════════════════════
-//  ADVANCE TAX — the firm's `adv` sheet: one row per deposit voucher, plus
-//  the credit brought forward. Total available credit is what reaches
-//  Sch-BS, and every rupee of it has a challan behind it.
-// ════════════════════════════════════════════════════════════════
-
-function psRenderAdvTax() {
-  const host = psEl('ps-advtax');
-  if (!host) return;
-  const r = psResult;
-  const rows = psAdvTax.map((l, i) => `<tr>
-    <td><input type="text" value="${escHtml(l.office || '')}" onchange="psAdvSet(${i},'office',this.value)" style="width:100%;" placeholder="Inland Revenue Office" /></td>
-    <td><input type="text" value="${escHtml(l.voucherNo || '')}" onchange="psAdvSet(${i},'voucherNo',this.value)" style="width:110px;" /></td>
-    <td><input type="text" value="${escHtml(l.date || '')}" onchange="psAdvSet(${i},'date',this.value)" style="width:110px;" placeholder="2082.03.30" /></td>
-    <td><input type="text" value="${escHtml(l.name || '')}" onchange="psAdvSet(${i},'name',this.value)" style="width:100%;" /></td>
-    <td><input type="number" step="0.01" value="${l.amount == null ? '' : l.amount}" onchange="psAdvSet(${i},'amount',this.value)" style="width:140px; text-align:right;" /></td>
-    <td style="width:36px;"><button class="btn btn-outline btn-sm" onclick="psAdvRemove(${i})">✕</button></td>
-  </tr>`).join('');
-
-  const a = r ? r.advanceTax : null;
-  host.innerHTML = `
-    ${psAdvTax.length ? `<div class="table-wrap"><table class="client-table">
-      <thead><tr><th>Paying Office</th><th style="width:120px;">Voucher No</th><th style="width:120px;">Date</th><th>Name</th><th style="text-align:right; width:150px;">Amount</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot>
-        <tr><td colspan="4" style="text-align:right;">Deposited this year</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(a ? a.deposited : 0)}</td><td></td></tr>
-        <tr style="font-weight:600;"><td colspan="4" style="text-align:right;">Total available credit &mdash; goes to Sch-BS Advance Tax</td>
-            <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(a ? a.amount : 0)}</td><td></td></tr>
-      </tfoot></table></div>`
-    : `<div style="color:var(--text-muted); font-size:13px; padding:4px 2px;">No voucher schedule &mdash; Advance Tax is being derived, or taken from the typed figure. Add vouchers here and they become the figure.</div>`}
-    <div style="margin-top:10px; display:flex; gap:14px; align-items:flex-end;">
-      <button class="btn btn-outline btn-sm" onclick="psAdvAdd()">+ Add voucher</button>
-      <div class="form-group" style="margin:0;"><label style="font-size:12px;">Add: Opening credit</label>
-        <input type="number" step="0.01" value="${psCy.advanceTaxOpening == null ? '' : psCy.advanceTaxOpening}"
-               oninput="psFigureInput('advanceTaxOpening', this.value)" style="width:160px; text-align:right;" /></div>
-    </div>`;
-}
-
-function psAdvAdd() {
-  psAdvTax.push({ office: 'Inland Revenue Office', voucherNo: '', date: '', name: '', amount: null });
-  psRun(); psRenderAdvTax(); psRenderTax();
-}
-function psAdvRemove(i) { psAdvTax.splice(i, 1); psRun(); psRenderAdvTax(); psRenderTax(); }
-function psAdvSet(i, field, v) {
-  const l = psAdvTax[i];
-  if (!l) return;
-  l[field] = field === 'amount' ? (v === '' ? null : psNum(v)) : v;
-  psRun(); psRenderAdvTax(); psRenderTax();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1064,7 +1091,7 @@ function psTdsSet(k, v) {
 
 function psSetVat(on) {
   psCy.vatRegistered = !!on;
-  if (!on) { delete psCy.vatReceivable; delete psCy.vatPayable; }
+  if (!on) { delete psCy.vatReceivable; delete psCy.vatPayable; psVatSide = null; }
   psRun();
   psRenderTax();
 }
@@ -1075,14 +1102,21 @@ function psSetVat(on) {
 // ════════════════════════════════════════════════════════════════
 
 function psSeedLoans() {
-  if (psLoans.nc.length || psLoans.c.length) return;
+  if (PS_LOAN_KINDS.some(([k]) => psLoans[k].length)) return;
   const items = (psPy && psPy.loanItems) || [];
   items.forEach(l => {
-    const bucket = /current|overdraft|od|cc|hypo/i.test(l.name || '') && !/non.?current/i.test(l.name || '') ? 'c' : 'nc';
-    psLoans[bucket].push({ name: l.name || 'Loan', amount: psNum(l.amount) });
+    const n = l.name || '';
+    // Most-specific first, the Projection rule: plain "WC Loan" is NOT
+    // Permanent WC, and a vehicle/auto loan counts as Hire Purchase.
+    let bucket = 'lt';
+    if (/hire|\bhp\b|vehicle|auto/i.test(n)) bucket = 'hp';
+    else if (/permanent|pwc/i.test(n)) bucket = 'pwc';
+    else if (/current|overdraft|od|cc|hypo/i.test(n) && !/non.?current/i.test(n)) bucket = 'st';
+    psLoans[bucket].push({ name: n || 'Loan', amount: psNum(l.amount) });
   });
-  if (!psLoans.nc.length) psLoans.nc.push({ name: 'Vehicle Loan', amount: 0 });
-  if (!psLoans.c.length) psLoans.c.push({ name: 'Bank Overdrafts/Hypothecation', amount: 0 });
+  if (!PS_LOAN_KINDS.some(([k]) => psLoans[k].length)) {
+    psLoans.st.push({ name: 'Bank Overdrafts/Hypothecation', amount: 0 });
+  }
   psRenderLoans();
 }
 
@@ -1102,8 +1136,8 @@ function psRenderInterest() {
   const total = psNum(psCy.interestTerm) + psNum(psCy.interestOD) + psNum(psCy.bankCharges);
   host.innerHTML = `
     <div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">
-      ${box('interestTerm', 'Interest on Term Loan', 'Against the non-current facilities above.')}
-      ${box('interestOD', 'Interest on STL / CC / OD', 'Against the current facilities above.')}
+      ${box('interestTerm', 'Interest on Term Loan', 'Against the Long Term / PWC / HP facilities above.')}
+      ${box('interestOD', 'Interest on STL / CC / OD', 'Against the Short Term / OD / CC facilities above.')}
       ${box('bankCharges', 'Bank Charges', '')}
     </div>
     <div style="margin-top:10px; font-size:12.5px; color:var(--text-muted);">
@@ -1111,9 +1145,16 @@ function psRenderInterest() {
     </div>`;
 }
 
+const PS_LOAN_KINDS = [
+  ['st', 'Short Term Loan / OD / CC'],
+  ['lt', 'Long Term Loan'],
+  ['pwc', 'Permanent Working Capital Loan'],
+  ['hp', 'Hire Purchase (HP) Loan'],
+];
+
 function psRenderLoans() {
   psRenderInterest();
-  [['nc', 'Non-Current'], ['c', 'Current']].forEach(([kind, label]) => {
+  PS_LOAN_KINDS.forEach(([kind, label]) => {
     const host = psEl('ps-loans-' + kind);
     if (!host) return;
     host.innerHTML = psLoans[kind].map((l, i) => `
@@ -1145,16 +1186,17 @@ function psInterestInput(k, v) { psFigureInput(k, v); }
 // ════════════════════════════════════════════════════════════════
 
 // COI is on when there is an Income-Tax depreciation schedule to bridge to.
-// The checkbox overrides in either direction once the preparer touches it.
+// The checkbox overrides in either direction once the preparer touches it —
+// held in psCoiTouched, not on the element: the checkbox unrenders with its
+// collapsed accordion section, and a DOM flag would silently revert the
+// preparer's choice to the automatic rule.
 function psUseCoi() {
-  const el = psEl('ps-use-coi');
-  if (el && el.dataset.touched === '1') return el.checked;
+  if (psCoiTouched != null) return psCoiTouched;
   return !!(psItDep || psNum(psCy.itDepreciation));
 }
 
 function psSetUseCoi(on) {
-  const el = psEl('ps-use-coi');
-  if (el) el.dataset.touched = '1';
+  psCoiTouched = !!on;
   psRun();
   psRenderFigures();
   psRenderTax();
@@ -1186,11 +1228,12 @@ function psCollectInput() {
       investmentsNC: p.sfp && p.sfp.investmentsNC, investmentsC: p.sfp && p.sfp.investmentsC,
     },
     cy: Object.assign({}, psCy, {
-      loansNC: psLoans.nc, loansC: psLoans.c,
+      // The engine keeps its balance-sheet shape: Short Term / OD / CC is the
+      // current side, the other three groups are non-current.
+      loansNC: [...psLoans.lt, ...psLoans.pwc, ...psLoans.hp],
+      loansC: psLoans.st,
       tds: psTds,
       stockLines: psStock,
-      advanceTaxLines: psAdvTax,
-      advanceTaxOpening: psCy.advanceTaxOpening,
     }),
     rules: psRules,
     options: {
@@ -1228,7 +1271,6 @@ function psRecalcDebounced() {
     psRenderInterest();
     psRenderTax();
     psRenderStock();
-    psRenderAdvTax();
     psRenderParties();
     psSyncSeesaw();
   }, 220);
