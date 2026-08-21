@@ -11,7 +11,7 @@
 //
 //  Usage:
 //    node sampleCompanyReg.mjs
-//    powershell -File wordPages.ps1 sample-cr-single.docx=9 sample-cr-multi-2.docx=17 sample-cr-multi-5.docx=17
+//    powershell -File wordPages.ps1 sample-cr-single.docx=9 sample-cr-multi-2.docx=18 sample-cr-multi-5.docx=20
 //
 //  (Expected page counts MEASURED in Word on 2026-08-20, at the templates'
 //  default line height — buildCompanyReg.mjs's footer holds the grid the

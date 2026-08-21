@@ -555,6 +555,80 @@ if (variant === 'multi') {
   out = injectPPr(out, '{{#hasRight}}दा.', PAIR_TABS, 2, 'pair thumb tab stops');
 }
 
+// ════════════════════════════════════════════
+//  KEEP EACH NUMBERED POINT TOGETHER  (user ask, 2026-08-21)
+//
+//  A दफा/नियम must not split across a page: its own lines stay together
+//  (<w:keepLines/> — Word still splits a paragraph genuinely taller than a
+//  page, which is the user's stated exception), and its sub-paragraphs
+//  chain to it (<w:keepNext/> on every paragraph whose successor belongs to
+//  the same point), so a point that doesn't fit moves whole to the next
+//  sheet.
+//
+//  Telling a NEW top-level point from a sub-item is the subtle part — both
+//  can be numbered "१." in these sources (दफा २६'s sub-items are dotted,
+//  and दफा ५'s sub-list uses "१)" while some run to "६)"). The rule that
+//  holds for both documents: a top-level point is DOT-numbered AND
+//  continues the running sequence (topCounter + 1); paren forms and
+//  out-of-sequence numbers are content of the current point. The counter
+//  resets at every CrPageStart, because each sub-document restarts at १.
+//  Blank spacers and loop-marker paragraphs break a chain (so rendered
+//  loop iterations — objectives, founder pairs — never chain to each
+//  other), and nothing binds INTO a page-break paragraph.
+// ════════════════════════════════════════════
+function keepPointsTogether(xml) {
+  const DEV = '०१२३४५६७८९';
+  const devInt = s => parseInt(s.replace(/[०-९]/g, d => DEV.indexOf(d)), 10);
+  let keepLines = 0, keepNexts = 0;
+
+  const chunks = xml.split(/(<w:tbl>[\s\S]*?<\/w:tbl>)/);
+  let topCounter = 0;
+  const processed = chunks.map(chunk => {
+    if (chunk.startsWith('<w:tbl>')) return chunk;
+
+    const paras = [];
+    const RE = new RegExp(PARA_RE.source, 'g');
+    let m;
+    while ((m = RE.exec(chunk))) paras.push({ xml: m[0], start: m.index, end: m.index + m[0].length });
+    const texts = paras.map(p => paragraphText(p.xml).trim());
+
+    const isBlank = t => t === '';
+    const isMarker = t => /^\{\{[#/][^}]*\}\}$/.test(t);
+    const classify = (t, pXml) => {
+      if (pXml.includes('CrPageStart')) topCounter = 0;
+      const dm = t.match(/^([०-९]+)\./);
+      if (dm && devInt(dm[1]) === topCounter + 1) { topCounter++; return 'point'; }
+      if (/^परिच्छेद/.test(t)) return 'point';   // chapter headings start a fresh block
+      return 'body';
+    };
+
+    const kinds = paras.map((p, i) => isBlank(texts[i]) ? 'blank' : isMarker(texts[i]) ? 'marker' : classify(texts[i], p.xml));
+
+    let outChunk = '', cursor = 0;
+    paras.forEach((p, i) => {
+      outChunk += chunk.slice(cursor, p.start);
+      cursor = p.end;
+      if (kinds[i] === 'blank' || kinds[i] === 'marker') { outChunk += p.xml; return; }
+      const next = kinds[i + 1];
+      const bindNext = next === 'body' && !paras[i + 1].xml.includes('CrPageStart');
+      let props = '<w:keepLines/>';
+      keepLines++;
+      if (bindNext) { props = '<w:keepNext/>' + props; keepNexts++; }
+      let px = p.xml.replace(/<w:keepNext\/>|<w:keepLines\/>/g, '');
+      if (/<w:pPr>/.test(px)) px = px.replace(/(<w:pPr>)(<w:pStyle[^>]*\/>)?/, (mm, a, st) => a + (st || '') + props);
+      else if (/<w:pPr\/>/.test(px)) px = px.replace('<w:pPr/>', '<w:pPr>' + props + '</w:pPr>');
+      else px = px.replace(/^(<w:p\b[^>]*>)/, '$1<w:pPr>' + props + '</w:pPr>');
+      outChunk += px;
+    });
+    outChunk += chunk.slice(cursor);
+    return outChunk;
+  });
+  console.log('point keep-together: %d keepLines, %d keepNext chains', keepLines, keepNexts);
+  if (!keepLines) throw new Error('keepPointsTogether matched no paragraphs — the walk changed shape');
+  return processed.join('');
+}
+out = keepPointsTogether(out);
+
 // The source types every colon as the Devanagari visarga (Preeti keyboard
 // habit) and is inconsistent about the space before it — same normalisation,
 // same क्रमशः guard, as the BM/AGM and Company Secretary templates.
@@ -784,12 +858,17 @@ console.log('written:', OUT_PATH);
 // ── WORD PAGINATION ──
 // Measured, never assumed (CLAUDE.md §2/§12). After building BOTH variants:
 //   node sampleCompanyReg.mjs
-//   powershell -File wordPages.ps1 sample-cr-single.docx=9 sample-cr-multi-2.docx=17 sample-cr-multi-5.docx=17
+//   powershell -File wordPages.ps1 sample-cr-single.docx=9 sample-cr-multi-2.docx=18 sample-cr-multi-5.docx=20
 //
 // The line-height grid, measured 2026-08-20 (single / multi-2 / multi-5):
 //   336 (1.40)   9 / 17 / 19
 //   312 (1.30)   9 / 17 / 17   <- chosen
 //   288 (1.20)   9 / 15 / 17
+// keepPointsTogether (2026-08-21) then moved the multi counts to 18 / 20 —
+// whole दफा now step to a fresh sheet instead of splitting, which is the
+// user's explicit trade. Verified the same day: ZERO paragraphs span a page
+// boundary in either sample, and every multi content page begins with a
+// numbered point heading.
 // Unlike BM/AGM there is no one-sheet-per-section constraint here — the MOA
 // and AOA are genuinely multi-page — so the counts above are a regression
 // baseline, not a design target. The sources' own Preeti pages were denser
