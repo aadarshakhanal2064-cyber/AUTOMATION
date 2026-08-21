@@ -628,6 +628,8 @@ window.ACTIVITY_EVENT_LABELS = {
   finstatement_printed: 'Financial statement printed', finstatement_py_parsed: 'Prior-year statement parsed',
   provisional_py_parsed: 'Provisional — prior-year statement read',
   provisional_excel_generated: 'Provisional statement generated',
+  provisional_saved: 'Provisional statement saved',
+  provisional_deleted: 'Saved provisional statement deleted',
   notes_to_accounts_saved: 'Notes to Accounts saved',
   party_opening_saved: 'Party opening balance saved',
   projection_generated: 'Projection generated', projection_saved: 'Projection saved',

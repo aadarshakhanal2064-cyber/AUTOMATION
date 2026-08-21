@@ -69,6 +69,9 @@ export const TABLE_ORDER = [
   'financial_statements',
   'party_opening_balances',
   'projection_reports',
+  // Saved Provisional Statement workings (2026-08-22) — FKs organizations
+  // and clients, both replayed above.
+  'provisional_statements',
   'saved_documents',
   'service_memos',
   'service_memo_fee_skips',

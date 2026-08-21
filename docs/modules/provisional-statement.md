@@ -492,6 +492,34 @@ Third round (same day, user feedback on the second):
 - Base font stepped down to 12px (headers scaled with it) and the fit
   pass's upscale cap lowered to 1.1.
 
+**Save to database** (2026-08-22, user ask "reuse the projection report
+database saved and search system") — the module is no longer stateless.
+`provisional_statements` (see `docs/database.md`) stores identity columns
+plus one `inputs` jsonb from `psCollectSaveState()`; **figures are always
+re-derived on load** through `psRun()`, never read back from a stored total.
+The pieces, each a deliberate reuse:
+
+- **Save** (`psSaveToDb`) — one row per (company, fiscal year): with no
+  `psSavedId` it first adopts an existing match by `ilike` name + year, so a
+  re-open-and-save can never duplicate; an update never resends
+  `created_by` (the projection idiom). Every clear nulls `psSavedId` — a
+  stale id once made Projection UPDATE the previous client's row.
+- **Browse/search/delete** — the shared `ds-` drawer via
+  `DocumentStore.openPicker({fetchRows, describe, onChoose, onDelete})`,
+  exactly Projection's shape, with the same orphan guard on delete.
+- **Load** (`psLoadSaved`) — clears through `psScope.reset()` first (§9),
+  restores every state var and UI field (`psSetFyOption` adds a missing
+  fiscal-year option — the `depSetFyOption` lesson), re-runs the engine,
+  then calls `psLoadSources({keepTyped: true})`: sources come back for
+  provenance badges, party detail and the register reconciliation but
+  **never write a figure** — a saved statement's own figures are the
+  record, and `psApplySources` would overwrite any the preparer never
+  claimed. `psLoadDepreciation()` is deliberately NOT called on load, for
+  the same reason: the saved PPE grid is authoritative.
+- Audit events `provisional_saved` / `provisional_deleted` (numeric
+  `recordRef`, labels in `config.js`); `tools/dbBackup.mjs` `TABLE_ORDER`
+  extended in the same commit, or the guard refuses to back up.
+
 **Zero-line suppression, provisional sets only** (2026-08-22, user's
 per-note ruleset; gated on `meta.basis === 'provisional'` in
 `fsxBuildReport`, so preview, print and Excel agree and the audited set is

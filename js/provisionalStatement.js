@@ -72,6 +72,10 @@ let psCoiTouched = null;
 let psPlugReceivables = true;
 let psSheetKey = 'SFP';
 let psDepSource = '';        // where the PPE grid came from, for the caption
+// provisional_statements row id once saved/loaded — the projection_reports
+// idiom: Save UPDATEs this row rather than inserting a sibling, and any
+// clear nulls it so a stale id can never update the wrong client's record.
+let psSavedId = null;
 
 function psStatus(html, type) { showStatus(html, type, 'ps-status-area'); }
 function psEl(id) { return document.getElementById(id); }
@@ -156,6 +160,7 @@ const psScope = WorkflowEngine.createClientScope({
     psStock = [];
     psTaxOpen = 'adv'; psVatSide = null; psCoiTouched = null;
     psSolveFor = 'purchases'; psPlugReceivables = true;
+    psSavedId = null;
     const f = psEl('ps-py-file'); if (f) f.value = '';
     psRenderPySummary();
     psRenderFigures();
@@ -196,7 +201,12 @@ function psOnFyChange() {
 //  it just leaves the figure typed.
 // ════════════════════════════════════════════════════════════════
 
-async function psLoadSources() {
+// opts.keepTyped: resolve the sources for provenance badges, party detail
+// and the reconcile checks WITHOUT writing a single figure — the restore
+// path uses it, because a saved statement's own figures are the record and
+// psApplySources would overwrite any of them the preparer never claimed.
+async function psLoadSources(opts) {
+  const keepTyped = !!(opts && opts.keepTyped);
   const fy = (psEl('ps-fy') || {}).value;
   const name = (psEl('ps-company') || {}).value;
   const id = psSelectedClient ? psSelectedClient.id : null;
@@ -208,9 +218,10 @@ async function psLoadSources() {
     ]);
     psSrc = reg;
     psItDep = itDep;
-    psApplySources();
+    if (!keepTyped) psApplySources();
     psRenderFigures();
     psRun();
+    if (keepTyped) return;
 
     const got = [];
     if (reg) got.push(`revenue and purchases from ${reg.source}`);
@@ -1392,6 +1403,203 @@ function psToOut(r) {
     },
     issues: (r.issues || []).concat(psPyIssues),
   };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SAVE / LOAD — provisional_statements, the projection_reports pattern:
+//  identity snapshot columns for the picker, one `inputs` jsonb carrying
+//  everything needed to rehydrate the screen, and the engine re-deriving
+//  the statements on load — figures are never read back from a stored
+//  total that could have drifted. Saving updates the SAME row for a
+//  (company, fiscal year) rather than inserting a sibling.
+// ════════════════════════════════════════════════════════════════
+
+function psCollectSaveState() {
+  const val = (id) => { const e = psEl(id); return e ? e.value : ''; };
+  return {
+    py: psPy, pyIssues: psPyIssues,
+    cy: psCy, rules: psRules, ppe: psPpeInput, loans: psLoans,
+    custom: psCustom, directCustom: psDirectCustom, tds: psTds,
+    stock: psStock, typedOver: psTypedOver,
+    vatSide: psVatSide, coiTouched: psCoiTouched,
+    solveFor: psSolveFor, plugReceivables: psPlugReceivables,
+    depSource: psDepSource,
+    ui: {
+      address: val('ps-address'), growth: val('ps-growth'),
+      taxProfile: val('ps-tax-profile'), staff: val('ps-staff'),
+      faceValue: val('ps-face-value'), authShares: val('ps-auth-shares'),
+      titleProvisional: (psEl('ps-title-provisional') || {}).checked !== false,
+    },
+  };
+}
+
+async function psSaveToDb() {
+  if (!psPy) {
+    psStatus('Nothing to save yet — upload the prior-year statement first.', 'error');
+    return;
+  }
+  const company = ((psEl('ps-company') || {}).value || '').trim();
+  const fy = (psEl('ps-fy') || {}).value || '';
+  if (!company || !fy) {
+    psStatus('A company name and fiscal year are needed to save.', 'error');
+    return;
+  }
+  const row = {
+    client_id: psSelectedClient && psSelectedClient.id != null ? psSelectedClient.id : null,
+    company_name: company,
+    pan: (psEl('ps-pan') || {}).value || null,
+    fiscal_year: fy,
+    inputs: psCollectSaveState(),
+  };
+  try {
+    psStatus('Saving to the database…', 'searching');
+    // One row per (company, fiscal year): a save with no loaded row first
+    // adopts an existing match, so a re-open-and-save can never duplicate.
+    if (!psSavedId) {
+      const { data, error } = await window.sb.from('provisional_statements')
+        .select('id').ilike('company_name', company).eq('fiscal_year', fy).limit(1);
+      if (error) throw error;
+      if (data && data.length) psSavedId = data[0].id;
+    }
+    if (psSavedId) {
+      // An update deliberately does not resend created_by — the projection idiom.
+      const { error } = await window.sb.from('provisional_statements')
+        .update(row).eq('id', psSavedId);
+      if (error) throw error;
+    } else {
+      row.created_by = (window.currentUser || {}).email || null;
+      const { data, error } = await window.sb.from('provisional_statements')
+        .insert(row).select('id').single();
+      if (error) throw error;
+      psSavedId = data.id;
+    }
+    psStatus(`Saved provisional statement #${psSavedId} for ${escHtml(company)} (${escHtml(fy)}). Saving again updates this record.`, 'success');
+    AuditLog.record('provisional_saved', {
+      module: 'provisionalStatement', clientName: company, status: 'success',
+      recordRef: psSavedId, detail: { fiscalYear: fy },
+    });
+  } catch (e) {
+    console.error(e);
+    psStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
+  }
+}
+
+// The shared saved-documents drawer (js/core/documentStore.js), the same
+// {fetchRows, describe, onChoose, onDelete} shape Projection passes.
+const PS_SAVED_COLS = 'id, client_id, company_name, pan, fiscal_year, created_by, created_at, updated_at';
+
+function psOpenSavedDrawer() {
+  DocumentStore.openPicker({
+    label: 'Saved provisional statements',
+    empty: 'Nothing saved yet. Use <strong>Save to Database</strong> on a statement and it will be listed here.',
+    fetchRows: async () => {
+      const { data, error } = await window.sb.from('provisional_statements')
+        .select(PS_SAVED_COLS).order('updated_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      return data || [];
+    },
+    describe: r => {
+      const when = r.updated_at || r.created_at;
+      const d = when ? new Date(when) : null;
+      const stamp = d && !isNaN(d)
+        ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      return {
+        title: `${r.company_name || '—'} (F.Y. ${r.fiscal_year || '—'})`,
+        meta: (stamp ? `saved ${stamp}` : '') + ` · ${r.created_by || 'not recorded'}`,
+      };
+    },
+    onChoose: id => psLoadSaved(id),
+    onDelete: async id => {
+      const { error } = await window.sb.from('provisional_statements').delete().eq('id', id);
+      if (error) throw error;
+      // Orphan guard: a stale psSavedId would make the next Save issue an
+      // UPDATE that silently matches nothing.
+      if (psSavedId === id) psSavedId = null;
+      AuditLog.record('provisional_deleted', {
+        module: 'provisionalStatement', clientName: (psEl('ps-company') || {}).value || '',
+        status: 'success', recordRef: id,
+      });
+    },
+  });
+}
+
+// A saved statement may carry a fiscal year the select no longer offers —
+// `sel.value = fy` on a missing option silently loads a DIFFERENT year than
+// the one clicked (the depSetFyOption lesson).
+function psSetFyOption(fy) {
+  const sel = psEl('ps-fy');
+  if (!sel || !fy) return;
+  if (![...sel.options].some(o => o.value === fy)) {
+    const o = document.createElement('option');
+    o.value = o.textContent = fy;
+    sel.appendChild(o);
+  }
+  sel.value = fy;
+}
+
+async function psLoadSaved(id) {
+  psStatus('Loading saved provisional statement…', 'searching');
+  try {
+    const { data, error } = await window.sb.from('provisional_statements').select('*').eq('id', id).single();
+    if (error) throw error;
+    const inp = data.inputs || {};
+    if (!inp.py) {
+      psStatus('That saved record does not carry its prior-year statement, so it cannot be re-opened. Upload the workbook and save it again.', 'error');
+      return;
+    }
+    // Clear through the scope so no path can leak the previous client's
+    // figures under this record (§9), then rebuild the exact state saved.
+    psScope.reset();
+    psInit();
+    psSavedId = data.id;
+    psSelectedClient = (window.clientsList || []).find(c => c.id === data.client_id) || null;
+    psEl('ps-company').value = data.company_name || '';
+    psEl('ps-pan').value = data.pan || '';
+    psEl('ps-client-search').value = data.company_name || '';
+    psSetFyOption(data.fiscal_year);
+    const ui = inp.ui || {};
+    const set = (elId, v) => { const e = psEl(elId); if (e) e.value = v == null ? '' : v; };
+    set('ps-address', ui.address);
+    set('ps-growth', ui.growth);
+    set('ps-tax-profile', ui.taxProfile || 'corporate');
+    if (ui.staff) set('ps-staff', ui.staff);
+    set('ps-face-value', ui.faceValue);
+    set('ps-auth-shares', ui.authShares);
+    const tp = psEl('ps-title-provisional');
+    if (tp) tp.checked = ui.titleProvisional !== false;
+
+    psPy = inp.py; psPyIssues = inp.pyIssues || [];
+    psCy = inp.cy || {}; psRules = inp.rules || {}; psPpeInput = inp.ppe || [];
+    psLoans = inp.loans && inp.loans.st ? inp.loans : { st: [], lt: [], pwc: [], hp: [] };
+    psCustom = inp.custom || []; psDirectCustom = inp.directCustom || [];
+    psTds = inp.tds || {}; psStock = inp.stock || [];
+    psTypedOver = inp.typedOver || {};
+    psVatSide = inp.vatSide || null; psCoiTouched = inp.coiTouched != null ? inp.coiTouched : null;
+    psSolveFor = inp.solveFor || 'purchases';
+    psPlugReceivables = inp.plugReceivables !== false;
+    psDepSource = inp.depSource || '';
+
+    psRenderPySummary();
+    psRenderFigures();
+    psRenderLoans();
+    psShowSection('figures');
+    // The derive runs in its own guard: the state above is already restored,
+    // and a record that cannot derive should land the user on the figures
+    // step with a message, not strand them on setup looking un-loaded.
+    let derived = true;
+    try { psRun(); } catch (e2) { console.error(e2); derived = false; }
+    // Provenance, party detail and the register reconciliation come back
+    // from live app data — but never overwrite the saved figures.
+    psLoadSources({ keepTyped: true });
+    psStatus(derived
+      ? `Loaded saved provisional statement #${data.id} — change any figure and Save to update this record.`
+      : `Loaded saved provisional statement #${data.id}, but the statements could not be re-derived from it — check the figures on this screen.`,
+      derived ? 'success' : 'error');
+  } catch (e) {
+    console.error(e);
+    psStatus('Could not load that statement: ' + escHtml(e.message || String(e)), 'error');
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
