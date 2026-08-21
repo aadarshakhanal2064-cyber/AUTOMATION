@@ -1434,37 +1434,39 @@ function fsxSheetCol(geom, i, matrix) {
 // module's tables the moment the Review step was opened. The wrapper is what
 // keeps one stylesheet serving both the preview and the print document
 // without leaking out of either.
+// Monochrome cousin of Projection's PJX_PRINT_CSS (user ask 2026-08-21:
+// "just like the projection report format, but no colours"): same centred
+// header hierarchy, same bordered-table body, same foot-of-page signature
+// band — every rule in black, white and hairline grey only.
 const FSX_PRINT_CSS = `
   .fsp-root { font-family: 'Book Antiqua', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
-              color: #000; background: #fff; margin: 0; font-size: 13px; }
+              color: #000; background: #fff; margin: 0; font-size: 12px; }
   .fsp-root * { box-sizing: border-box; }
-  .fsp-root .fsp-sheet { page-break-after: always; padding-bottom: 6mm; }
-  .fsp-root .fsp-sheet:last-child { page-break-after: auto; }
-  /* A schedule is a RUN of short 3.x notes, not one page of table. Breaking
-     after every sheet is right for the four statements and wrong here — it
-     would give Sch-BS's nine notes a page each. So the schedule flows, and a
-     note breaks only when it will not fit whole. */
-  .fsp-root .fsp-sheet.fsp-sched { page-break-after: always; }
-  .fsp-root .fsp-sched tr.fsp-head td { break-before: auto; page-break-before: auto; }
-  .fsp-root .fsp-sched tr.fsp-head td, .fsp-root .fsp-sched tr.fsp-band th {
-    break-after: avoid; page-break-after: avoid; }
-  .fsp-root .fsp-co { text-align: center; font-size: 19px; font-weight: 700; }
-  .fsp-root .fsp-addr { text-align: center; font-size: 19px; font-weight: 700; margin-top: 2px; }
-  .fsp-root .fsp-title { text-align: center; font-size: 16px; font-weight: 700; margin-top: 8px; }
-  .fsp-root .fsp-sub { text-align: center; font-size: 14px; font-weight: 700; margin-top: 2px; }
-  .fsp-root .fsp-fig { text-align: right; font-size: 12px; font-weight: 700; margin-top: 3px; }
-  .fsp-root .fsp-restated { text-align: right; font-size: 12px; font-weight: 700; font-style: italic; margin: 6px 0 0; }
-  .fsp-root .fsp-heading { text-align: left; font-size: 16px; font-weight: 700; }
+  .fsp-root .fsp-sheet { page-break-after: always; break-after: page; }
+  .fsp-root .fsp-sheet:last-child { page-break-after: auto; break-after: auto; }
+  /* The statement header must never sit alone at the foot of a page. */
+  .fsp-root .fsp-head { text-align: center; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid; }
+  .fsp-root .fsp-co { font-size: 16.5pt; font-weight: 700; letter-spacing: .2px; }
+  .fsp-root .fsp-addr { font-size: 10.5pt; margin-top: 3px; }
+  .fsp-root .fsp-title { font-size: 12.5pt; font-weight: 700; margin-top: 6px; }
+  .fsp-root .fsp-sub { font-size: 10.5pt; font-weight: 700; margin-top: 2px; }
+  .fsp-root .fsp-fig { text-align: right; font-size: 9pt; font-weight: 700; margin-top: 4px; }
+  .fsp-root .fsp-restated { text-align: right; font-size: 9.5pt; font-weight: 700; font-style: italic; margin: 6px 0 0; }
+  .fsp-root .fsp-heading { text-align: left; font-size: 13pt; font-weight: 700; margin-bottom: 4px; }
   .fsp-root .fsp-sched-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; }
-  .fsp-root .fsp-sched-row .fsp-title-sched { font-size: 14px; font-weight: 700; }
+  .fsp-root .fsp-sched-row .fsp-title-sched { font-size: 11pt; font-weight: 700; }
   .fsp-root .fsp-sched-row .fsp-fig { margin-top: 0; }
-  .fsp-root table { width: 100%; border-collapse: collapse; margin-top: 4px; table-layout: fixed; }
-  .fsp-root thead th { font-size: 13px; font-weight: 700; padding: 5px 7px; text-align: right;
-                       vertical-align: bottom; border-bottom: 2px solid #000; }
-  .fsp-root thead th.fsp-lab { text-align: center; vertical-align: middle; }
+  .fsp-root table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #000; }
+  /* A schedule is a RUN of short 3.x notes, each rendered as its own table
+     inside a keep-together block — a note either fits where it is or moves
+     WHOLE to the next page, never half-and-half (user ask 2026-08-21). */
+  .fsp-root .fsp-note-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
+  .fsp-root thead th { font-size: 12px; font-weight: 700; padding: 5px 7px; text-align: right;
+                       vertical-align: bottom; border-bottom: 1.5px solid #000; }
+  .fsp-root thead th.fsp-lab { text-align: left; vertical-align: middle; }
   .fsp-root thead th.fsp-note { text-align: center; vertical-align: middle; width: 46px; }
-  .fsp-root .fsp-hdr-date { display: block; white-space: nowrap; }
-  .fsp-root td { padding: 2.5px 7px; border: none; vertical-align: baseline; }
+  .fsp-root .fsp-hdr-date { display: block; white-space: nowrap; font-weight: 400; font-size: .92em; }
+  .fsp-root td { padding: 2.5px 7px; border-bottom: 1px solid #ddd; vertical-align: baseline; }
   .fsp-root td.fsp-lab { text-align: left; word-break: normal; overflow-wrap: break-word; }
   .fsp-root td.fsp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .fsp-root td.fsp-note { text-align: center; width: 46px; }
@@ -1477,22 +1479,23 @@ const FSX_PRINT_CSS = `
      asset classes) drop the font a step so figures still fit unclipped. */
   .fsp-root table.fsp-tight { font-size: 11px; }
   .fsp-root table.fsp-tight thead th, .fsp-root table.fsp-tight tr.fsp-band th { font-size: 11px; }
-  .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; }
-  .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; }
+  .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; border-bottom: none; }
+  .fsp-root tr.fsp-head td.fsp-fignpr-cell { text-align: right; font-size: 9pt; vertical-align: bottom; }
+  .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; border-bottom: none; }
   .fsp-root tr.fsp-tot td.fsp-num { border-top: 1px solid #000; border-bottom: 3px double #000; }
   .fsp-root tr.fsp-grand td.fsp-num { border-top: 1px solid #000; border-bottom: 3px double #000; }
   .fsp-root tr.fsp-grand.fsp-notop td.fsp-num { border-top: none; }
   .fsp-root tr.fsp-tot.fsp-notop td.fsp-num { border-top: none; }
-  .fsp-root tr.fsp-note-row td { font-weight: 700; font-size: 12px; padding-top: 8px; }
-  .fsp-root tr.fsp-blank td { height: 6px; padding: 0; }
+  .fsp-root tr.fsp-note-row td { font-weight: 700; font-size: 11px; padding-top: 8px; border-bottom: none; }
+  .fsp-root tr.fsp-blank td { height: 5px; padding: 0; border-bottom: none; }
   /* A note's own band, repeated per 3.x note on a schedule. */
-  .fsp-root tr.fsp-band th { font-size: 13px; font-weight: 700; padding: 6px 7px 4px;
-                             text-align: right; vertical-align: bottom; border-bottom: 2px solid #000; }
-  .fsp-root tr.fsp-band th.fsp-lab { text-align: center; vertical-align: middle; }
+  .fsp-root tr.fsp-band th { font-size: 12.5px; font-weight: 700; padding: 6px 7px 4px;
+                             text-align: right; vertical-align: bottom; border-bottom: 1.5px solid #000; }
+  .fsp-root tr.fsp-band th.fsp-lab { text-align: left; vertical-align: middle; }
   .fsp-root tr.fsp-band th.fsp-note { text-align: center; }
   .fsp-root tr.fsp-quadhead th { border-bottom: none; border-top: 1px solid #000; text-align: center; }
   .fsp-root tr.fsp-quadsub th { text-align: center; font-weight: 400; }
-  .fsp-root tr.fsp-fignpr td { text-align: right; font-size: 12px; font-weight: 700; padding-top: 2px; }
+  .fsp-root tr.fsp-fignpr td { text-align: right; font-size: 9pt; font-weight: 700; padding-top: 2px; border-bottom: none; }
   /* Keep a note's heading with the band and first rows beneath it, and never
      split a total off the lines it sums — the two ways a printed schedule
      comes out looking broken. */
@@ -1500,18 +1503,41 @@ const FSX_PRINT_CSS = `
   .fsp-root tr.fsp-band th { break-after: avoid; page-break-after: avoid; }
   .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { break-before: avoid; page-break-before: avoid; }
   .fsp-root tr { break-inside: avoid; page-break-inside: avoid; }
-  .fsp-root table { break-inside: auto; }
-  .fsp-root .fsp-sig { margin-top: 16mm; width: 100%; }
-  .fsp-root .fsp-sig td { border: none; font-size: 13px; padding: 2px 7px; }
-  .fsp-root .fsp-sig .fsp-line { padding-bottom: 2px; letter-spacing: 1px; }
-  .fsp-root .fsp-meta { margin-top: 6mm; font-size: 13px; }
+  /* The signature band: pinned to the foot of the page by the flex sheet in
+     the print document (margin-top:auto), directly under the table in the
+     in-app preview, and never split from its Date/Place lines. */
+  .fsp-root .fsp-sig { display: flex; justify-content: space-between; margin-top: auto;
+                       padding-top: 10mm; font-size: 10.5pt;
+                       break-inside: avoid; page-break-inside: avoid; }
+  .fsp-root .fsp-sig-line { border-top: 1px dotted #000; width: 150px; margin-bottom: 5px; }
+  .fsp-root .fsp-sig-r { text-align: right; }
+  .fsp-root .fsp-sig-r .fsp-sig-line { margin-left: auto; }
+  .fsp-root .fsp-sig-meta { margin-top: 3px; }
   @media print { .fsp-root .fsp-noprint { display: none !important; } }
 `;
 
-// Page box: only meaningful in the standalone print document, and deliberately
-// kept out of FSX_PRINT_CSS so the preview cannot change how the app itself
-// prints.
-const FSX_PAGE_CSS = `@page { size: A4 portrait; margin: 14mm 12mm; }`;
+// Page chrome: only meaningful in the standalone print document, and
+// deliberately kept out of FSX_PRINT_CSS so the preview cannot change how the
+// app itself prints. On screen the print window shows white A4 "paper" cards
+// on a grey ground, the Projection treatment; in print each statement sheet is
+// a flex column with a page-height minimum, which is what pushes the signature
+// band to the physical foot of its page instead of letting the date and place
+// spill onto the next one. Schedule sheets stay block display — flex
+// containers fragment poorly across pages, and a schedule legitimately runs
+// past one page.
+const FSX_PAGE_CSS = `
+  @page { size: A4 portrait; margin: 12mm; }
+  body { margin: 0; background: #eef1f5; }
+  .fsp-root { background: transparent; }
+  .fsp-root .fsp-sheet { background: #fff; width: 210mm; min-height: 297mm; margin: 0 auto 18px;
+                         padding: 14mm 12mm; box-shadow: 0 2px 14px rgba(15,23,42,.18);
+                         display: flex; flex-direction: column; }
+  .fsp-root .fsp-sheet.fsp-sched { display: block; min-height: 0; }
+  @media print {
+    body { background: #fff; }
+    .fsp-root .fsp-sheet { width: auto; min-height: 262mm; margin: 0; padding: 0; box-shadow: none; }
+    .fsp-root .fsp-sheet.fsp-sched { min-height: 0; }
+  }`;
 
 function fsxEsc(s) {
   return String(s == null ? '' : s)
@@ -1533,29 +1559,32 @@ function fsxSheetHtml(sh, meta) {
   const hasQuad = (sh.rows || []).some(r => r.kind && r.kind.indexOf('quad') === 0);
   const unit = hasQuad ? 2 : 1;
   const valueCells = hasQuad ? 4 : nCols;
+  // A self-banded schedule heads each of its own notes ("3.2 Investment",
+  // each with its own band), so a sheet-wide "Particulars" header above them
+  // would put furniture on the page that the Excel does not have — the Excel
+  // writer skips the sheet band for exactly these sheets (layout.selfBanded).
+  const selfBanded = !!(FSX_SCHEDULE_KEYS[sh.key] && sh.firstRow);
   const out = [];
   out.push(`<div class="fsp-sheet${FSX_SCHEDULE_KEYS[sh.key] ? ' fsp-sched' : ''}">`);
   if (!sh.noHeaderBand) {
     if (!FSX_SCHEDULE_KEYS[sh.key]) {
       // Statement sheets carry the company header; schedule sheets never
       // repeat it — confirmed against the template, whose Sch-BS starts
-      // straight at "3.2 Investment" with nothing above it.
+      // straight at "3.2 Investment" with nothing above it. The block is one
+      // keep-together unit so a page break can never strand it.
+      out.push('<div class="fsp-head">');
       out.push(`<div class="fsp-co">${fsxEsc((meta.company || {}).name)}</div>`);
       out.push(`<div class="fsp-addr">${fsxEsc((meta.company || {}).address)}</div>`);
       out.push(`<div class="fsp-title">${fsxEsc(sh.title || '')}</div>`);
       if (sh.subtitle) out.push(`<div class="fsp-sub">${fsxEsc(sh.subtitle)}</div>`);
       out.push('<div class="fsp-fig">Figures in NPR</div>');
-    } else {
-      // A self-banded schedule heads each of its own notes ("3.2 Investment",
-      // "3.11 Revenue from Operations", each with its own band), so printing a
-      // sheet-wide title above them would put a heading on the page that the
-      // Excel does not have. Only the older non-self-banded layout keeps one.
-      if (!sh.firstRow) {
-        if (sh.heading) out.push(`<div class="fsp-heading">${fsxEsc(sh.heading)}</div>`);
-        out.push(`<div class="fsp-sched-row"><span class="fsp-title-sched">${fsxEsc(sh.title || '')}</span><span class="fsp-fig">Figures in NPR</span></div>`);
-      }
+      if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
+      out.push('</div>');
+    } else if (!sh.firstRow) {
+      if (sh.heading) out.push(`<div class="fsp-heading">${fsxEsc(sh.heading)}</div>`);
+      out.push(`<div class="fsp-sched-row"><span class="fsp-title-sched">${fsxEsc(sh.title || '')}</span><span class="fsp-fig">Figures in NPR</span></div>`);
+      if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
     }
-    if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
   }
 
   // Fixed layout + an explicit colgroup: without it the value columns get
@@ -1573,103 +1602,140 @@ function fsxSheetHtml(sh, meta) {
   const headerCols = hasQuad ? 2 : valueCells;
   const grpW = Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - LABEL_MIN) / headerCols));
   const colW = hasQuad ? Math.floor(grpW / 2) : grpW;
-  out.push(`<table${grpW < 100 ? ' class="fsp-tight"' : ''}>`);
-  out.push('<colgroup><col>');
-  if (hasNote) out.push('<col class="fsp-c-note">');
-  for (let i = 0; i < valueCells; i++) out.push(`<col style="width:${colW}px">`);
-  out.push('</colgroup>');
-  if (!sh.noHeaderBand) {
-    out.push('<thead><tr>');
-    out.push('<th class="fsp-lab">Particulars</th>');
-    if (hasNote) out.push('<th class="fsp-note">Notes</th>');
-    for (const c of (sh.cols || [])) {
-      out.push(`<th colspan="${unit}">${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
-    }
-    out.push('</tr></thead>');
-  }
-  out.push('<tbody>');
   const span = 1 + (hasNote ? 1 : 0) + valueCells;
-  for (const r of sh.rows) {
-    if (r.kind === 'blank') { out.push(`<tr class="fsp-blank"><td colspan="${span}"></td></tr>`); continue; }
+
+  const rowHtml = (r) => {
+    const o = [];
+    if (r.kind === 'blank') return `<tr class="fsp-blank"><td colspan="${span}"></td></tr>`;
     if (r.kind === 'note') {
-      if (!r.label) continue;
-      out.push(`<tr class="fsp-note-row"><td colspan="${span}">${fsxEsc(r.label)}</td></tr>`);
-      continue;
+      return r.label ? `<tr class="fsp-note-row"><td colspan="${span}">${fsxEsc(r.label)}</td></tr>` : '';
     }
     // A note's own header band — schedules repeat it under every 3.x heading.
     if (r.kind === 'band') {
-      out.push('<tr class="fsp-band">');
-      out.push(`<th class="fsp-lab">${fsxEsc(r.label || 'Particulars')}</th>`);
-      if (hasNote) out.push('<th class="fsp-note">Notes</th>');
+      o.push('<tr class="fsp-band">');
+      o.push(`<th class="fsp-lab">${fsxEsc(r.label || 'Particulars')}</th>`);
+      if (hasNote) o.push('<th class="fsp-note">Notes</th>');
       for (const c of (sh.cols || [])) {
-        out.push(`<th colspan="${unit}">${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
+        o.push(`<th colspan="${unit}">${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
       }
-      out.push('</tr>');
-      continue;
+      o.push('</tr>');
+      return o.join('');
     }
     // A standalone "Figures in NPR" line (3.1 PPE puts it on its own row).
-    if (r.kind === 'fignpr') {
-      out.push(`<tr class="fsp-fignpr"><td colspan="${span}">Figures in NPR</td></tr>`);
-      continue;
-    }
+    if (r.kind === 'fignpr') return `<tr class="fsp-fignpr"><td colspan="${span}">Figures in NPR</td></tr>`;
     // The share-capital note splits each year into Number and NPR, so its rows
     // carry four values across a table sized for two. They are rendered with
     // their own colspans rather than dropped.
     if (r.kind === 'quadhead' || r.kind === 'quadsub' || r.kind === 'quad' || r.kind === 'quadtot') {
-      const lead = hasNote ? '<td class="fsp-note"></td>' : '';
       if (r.kind === 'quadhead') {
-        out.push('<tr class="fsp-band fsp-quadhead">');
-        out.push(`<th class="fsp-lab">${fsxEsc(r.label || 'Type of Shares')}</th>`);
-        if (hasNote) out.push('<th class="fsp-note"></th>');
-        out.push(`<th colspan="2">As at<span class="fsp-hdr-date">${fsxEsc(meta.asAtCy || '')}</span></th>`);
-        out.push(`<th colspan="2">As at<span class="fsp-hdr-date">${fsxEsc(meta.asAtPy || '')}</span></th>`);
-        out.push('</tr>');
-        continue;
+        o.push('<tr class="fsp-band fsp-quadhead">');
+        o.push(`<th class="fsp-lab">${fsxEsc(r.label || 'Type of Shares')}</th>`);
+        if (hasNote) o.push('<th class="fsp-note"></th>');
+        o.push(`<th colspan="2">As at<span class="fsp-hdr-date">${fsxEsc(meta.asAtCy || '')}</span></th>`);
+        o.push(`<th colspan="2">As at<span class="fsp-hdr-date">${fsxEsc(meta.asAtPy || '')}</span></th>`);
+        o.push('</tr>');
+        return o.join('');
       }
       if (r.kind === 'quadsub') {
-        out.push('<tr class="fsp-band fsp-quadsub"><th class="fsp-lab"></th>');
-        if (hasNote) out.push('<th class="fsp-note"></th>');
-        ['Number', 'NPR', 'Number', 'NPR'].forEach(t => out.push(`<th>${t}</th>`));
-        out.push('</tr>');
-        continue;
+        o.push('<tr class="fsp-band fsp-quadsub"><th class="fsp-lab"></th>');
+        if (hasNote) o.push('<th class="fsp-note"></th>');
+        ['Number', 'NPR', 'Number', 'NPR'].forEach(t => o.push(`<th>${t}</th>`));
+        o.push('</tr>');
+        return o.join('');
       }
-      out.push(`<tr class="${r.kind === 'quadtot' ? 'fsp-tot' : 'fsp-item'}">`);
-      out.push(`<td class="fsp-lab">${fsxEsc(r.label || '')}</td>`);
-      out.push(lead);
+      o.push(`<tr class="${r.kind === 'quadtot' ? 'fsp-tot' : 'fsp-item'}">`);
+      o.push(`<td class="fsp-lab">${fsxEsc(r.label || '')}</td>`);
+      if (hasNote) o.push('<td class="fsp-note"></td>');
       [0, 1, 2, 3].forEach(i => {
         const v = (r.vals || [])[i];
-        out.push(`<td class="fsp-num">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : '')}</td>`);
+        o.push(`<td class="fsp-num">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : '')}</td>`);
       });
-      out.push('</tr>');
-      continue;
+      o.push('</tr>');
+      return o.join('');
     }
 
     const cls = 'fsp-' + (r.kind === 'kv' ? 'kv' : r.kind) + (r.noTopRule ? ' fsp-notop' : '');
-    out.push(`<tr class="${cls}">`);
-    out.push(`<td class="fsp-lab">${fsxEsc(r.label)}</td>`);
-    if (hasNote) out.push(`<td class="fsp-note">${fsxEsc(r.note || '')}</td>`);
+    o.push(`<tr class="${cls}">`);
+    o.push(`<td class="fsp-lab">${fsxEsc(r.label)}</td>`);
+    if (hasNote) o.push(`<td class="fsp-note">${fsxEsc(r.note || '')}</td>`);
     for (let i = 0; i < nCols; i++) {
       const v = (r.vals || [])[i];
-      if (r.kind === 'head' || r.kind === 'sub') { out.push(`<td class="fsp-num" colspan="${unit}"></td>`); continue; }
-      out.push(`<td class="fsp-num" colspan="${unit}">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : (v == null ? '' : v))}</td>`);
+      if (r.kind === 'head' || r.kind === 'sub') {
+        // A note heading carries "Figures in NPR" at the far right of its own
+        // row, the way the Excel writes every 3.x head on Sch-BS and Sch-PL.
+        o.push(r.figNpr && i === nCols - 1
+          ? `<td class="fsp-num fsp-fignpr-cell" colspan="${unit}">Figures in NPR</td>`
+          : `<td class="fsp-num" colspan="${unit}"></td>`);
+        continue;
+      }
+      o.push(`<td class="fsp-num" colspan="${unit}">${fsxEsc(fsxIsNum(v) ? fsxAmt(v) : (v == null ? '' : v))}</td>`);
     }
-    out.push('</tr>');
+    o.push('</tr>');
+    return o.join('');
+  };
+
+  const tableHtml = (rows, withThead) => {
+    const t = [`<table${grpW < 100 ? ' class="fsp-tight"' : ''}>`, '<colgroup><col>'];
+    if (hasNote) t.push('<col class="fsp-c-note">');
+    for (let i = 0; i < valueCells; i++) t.push(`<col style="width:${colW}px">`);
+    t.push('</colgroup>');
+    if (withThead) {
+      t.push('<thead><tr>');
+      t.push('<th class="fsp-lab">Particulars</th>');
+      if (hasNote) t.push('<th class="fsp-note">Notes</th>');
+      for (const c of (sh.cols || [])) {
+        t.push(`<th colspan="${unit}">${fsxEsc(c.h1)}${c.h2 ? `<span class="fsp-hdr-date">${fsxEsc(c.h2)}</span>` : ''}</th>`);
+      }
+      t.push('</tr></thead>');
+    }
+    t.push('<tbody>', rows.map(rowHtml).join(''), '</tbody></table>');
+    return t.join('');
+  };
+
+  const trimBlanks = (rows) => {
+    let a = 0, b = rows.length;
+    while (a < b && rows[a].kind === 'blank') a++;
+    while (b > a && rows[b - 1].kind === 'blank') b--;
+    return rows.slice(a, b);
+  };
+
+  if (selfBanded && !sh.matrix) {
+    // Sch-BS / Sch-PL: one table per 3.x note, each in a keep-together block,
+    // split at the note's own 'head' row. A note that would straddle a page
+    // boundary moves whole to the next page instead. No sheet-level thead —
+    // the Excel these sheets mirror has none.
+    const chunks = [];
+    let cur = [];
+    for (const r of sh.rows) {
+      if (r.kind === 'head' && cur.some(x => x.kind !== 'blank')) { chunks.push(cur); cur = []; }
+      cur.push(r);
+    }
+    if (cur.length) chunks.push(cur);
+    for (const chunk of chunks) {
+      const rows = trimBlanks(chunk);
+      if (rows.length) out.push(`<div class="fsp-note-block">${tableHtml(rows, false)}</div>`);
+    }
+  } else if (selfBanded) {
+    // 3.1 PPE: one matrix table, kept whole — it either fits the page it is
+    // on or starts fresh on the next.
+    out.push(`<div class="fsp-note-block">${tableHtml(trimBlanks(sh.rows), false)}</div>`);
+  } else {
+    out.push(tableHtml(sh.rows, !sh.noHeaderBand));
   }
-  out.push('</tbody></table>');
 
   if (sh.sig) {
     const T = meta.terms || {};
     const showAuditor = !!(meta.auditor && meta.auditor.name);
-    out.push('<table class="fsp-sig"><tr>');
-    out.push('<td class="fsp-line">…………………………</td><td class="fsp-line">………………….</td>');
-    out.push(`<td class="fsp-line" style="text-align:right">${showAuditor ? '……………………………….' : ''}</td>`);
-    out.push('</tr><tr>');
-    out.push(`<td class="fsp-role">${fsxEsc(T.person || 'Director')}</td><td class="fsp-role">Accountant</td>`);
-    out.push(`<td class="fsp-role" style="text-align:right">${showAuditor ? 'Registered Auditor' : ''}</td>`);
-    out.push('</tr>');
-    if (showAuditor) out.push(`<tr><td></td><td></td><td style="text-align:right">${fsxEsc(meta.auditor.name)}</td></tr>`);
-    out.push('</table>');
-    out.push(`<div class="fsp-meta">Date: ${fsxEsc(meta.dateBs || '')}<br>Place: ${fsxEsc(meta.place || 'Chitwan')}</div>`);
+    out.push('<div class="fsp-sig">');
+    out.push(`<div><div class="fsp-sig-line"></div><div>${fsxEsc(T.person || 'Director')}</div>`
+      + `<div class="fsp-sig-meta">Date : ${fsxEsc(meta.dateBs || '')}</div>`
+      + `<div class="fsp-sig-meta">Place : ${fsxEsc(meta.place || 'Chitwan')}</div></div>`);
+    out.push('<div><div class="fsp-sig-line"></div><div>Accountant</div></div>');
+    if (showAuditor) {
+      out.push('<div class="fsp-sig-r"><div class="fsp-sig-line"></div><div>Registered Auditor</div>'
+        + `<div class="fsp-sig-meta">${fsxEsc(meta.auditor.name)}</div></div>`);
+    }
+    out.push('</div>');
   }
   out.push('</div>');
   return out.join('');

@@ -428,6 +428,29 @@ ordinary value cell spanning the pair it sits above, so both kinds of row line
 up. The regression check is arithmetic: every `<tr>`'s total colspan must equal
 the table's `<col>` count.
 
+**The print document is the monochrome cousin of Projection's** (2026-08-21,
+user ask: "just like the projection report format, but no colours"). Same
+chrome — white A4 paper cards on a grey ground in the print window, centred
+header hierarchy (company 16.5pt, address small and unbolded, title 12.5pt),
+bordered tables, and a signature band pinned to the physical foot of each
+statement page — every rule in black, white and hairline grey. Three
+structural rules came with it, each fixing a reported defect:
+
+- **Statement sheets are flex columns with a page-height minimum in print**
+  (`FSX_PAGE_CSS`), which is what pins the signature band (and its Date/Place
+  lines) to the same page as its statement instead of letting them spill onto
+  the next. Schedule sheets stay block display — flex containers fragment
+  poorly, and a schedule legitimately runs past one page.
+- **Sch-BS and Sch-PL render one table per 3.x note, each in a
+  `.fsp-note-block` keep-together wrapper** — a note either fits where it is
+  or moves whole to the next page, never half-and-half. The chunks split at
+  each note's own `head` row; 3.1 PPE is one whole block. Verified with
+  headless Edge print-to-pdf: all 16 notes of the reference set land on
+  single pages.
+- **A self-banded schedule gets NO sheet-level thead** — the "Particulars +
+  years" header the HTML used to print above Sch-BS was furniture the Excel
+  (and the firm's own workbook) never had; each note's own band carries it.
+
 **Column widths are budgeted against the A4 page, never a flat 142px**
 (2026-08-21). The print document is `@page A4` with 12mm side margins — about
 703 CSS px — and the tables are `table-layout: fixed`, so the unclassed label
