@@ -216,11 +216,22 @@ function spbStampGroupKeys() {
 // request that large is both slower and harder to recover from than five.
 const SPB_INSERT_CHUNK = 400;
 
-async function spbInsertChunked(table, rows) {
-  for (let i = 0; i < rows.length; i += SPB_INSERT_CHUNK) {
-    const { error } = await window.sb.from(table).insert(rows.slice(i, i + SPB_INSERT_CHUNK));
+// Chunks run in PARALLEL since Stage 3 — rows within one save have no
+// ordering dependency (the register's order lives in each row's own sort
+// fields), so four serial ~400-row round-trips were pure wall-clock. A
+// mid-save failure leaves a partial insert either way (serial did too);
+// the next save's delete-then-reinsert is the recovery path. onProgress
+// reports rows landed so a 1,600-line save can show real progress.
+async function spbInsertChunked(table, rows, onProgress) {
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += SPB_INSERT_CHUNK) chunks.push(rows.slice(i, i + SPB_INSERT_CHUNK));
+  let done = 0;
+  await Promise.all(chunks.map(async (chunk) => {
+    const { error } = await window.sb.from(table).insert(chunk);
     if (error) throw error;
-  }
+    done += chunk.length;
+    if (onProgress) onProgress(done, rows.length);
+  }));
 }
 
 async function spbSaveBook() {
@@ -266,7 +277,10 @@ async function spbSaveBook() {
       if (!spbData[key]) return;
       spbData[key].txns.forEach((x, i) => entries.push(spbEntryRow(spbBookId, key, x, i)));
     });
-    await spbInsertChunked('autobooks_entries', entries);
+    // A big book is honestly slow — so it says where it is instead of
+    // freezing on one message (Stage 3).
+    await spbInsertChunked('autobooks_entries', entries, (done, total) =>
+      spbLedgerStatus(`⏳ Saving bill lines… ${done.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}`, 'searching'));
 
     // 3. Confirmation-ledger rows — one per party per register. Only MISSING
     //    ones are created. An existing row holds figures typed off a signed
@@ -322,11 +336,14 @@ async function spbSyncPartyRows() {
   });
 
   if (toInsert.length) await spbInsertChunked('autobooks_parties', toInsert);
-  for (const u of toUpdate) {
+  // Display-name/PAN refreshes are independent single-row updates — run in
+  // parallel (Stage 3; this was a serial per-row loop, and a merge approval
+  // changes many parties at once).
+  await Promise.all(toUpdate.map(async (u) => {
     const { error } = await window.sb.from('autobooks_parties')
       .update({ party_name: u.party_name, pan: u.pan }).eq('id', u.id);
     if (error) throw error;
-  }
+  }));
   await spbLoadPartyRows();
 }
 
