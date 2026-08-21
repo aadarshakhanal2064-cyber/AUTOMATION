@@ -378,8 +378,14 @@ function stripLeadingSpaces(pXml) {
   });
 }
 function centerParagraph(pXml) {
-  let out = stripLeadingSpaces(pXml);
-  if (out.includes('<w:jc ')) return out;
+  // Strip any alignment/indent the source hand-typed UNDER its centring —
+  // the single AOA's नियमावली carries jc=center plus a 2.5in left indent
+  // and a first-line indent, which centres it inside a box that starts at
+  // mid-page (user-reported 2026-08-21: "it should sit at middle"); the
+  // multi headers carry negative right indents that skew the centre too.
+  let out = stripLeadingSpaces(pXml)
+    .replace(/<w:jc [^>]*\/>/g, '')
+    .replace(/<w:ind [^>]*\/>/g, '');
   const JC = '<w:jc w:val="center"/>';
   if (/<w:pPr>/.test(out)) return out.replace(/(<w:pPr>)(<w:pStyle[^>]*\/>)?/, (m, a, st) => a + (st || '') + JC);
   if (/<w:pPr\/>/.test(out)) return out.replace('<w:pPr/>', '<w:pPr>' + JC + '</w:pPr>');

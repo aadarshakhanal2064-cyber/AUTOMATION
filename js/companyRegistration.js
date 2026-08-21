@@ -323,7 +323,7 @@ function crBuildData() {
     letterDateNum: crDandaDate(letterDate),
     letterDateLong: crDocDateLong(letterDate),
     advocateName: $('cr-advocateName'),
-    advocateLicense: $('cr-advocateLicense'),
+    advocateLicense: crDev($('cr-advocateLicense')),
   };
 
   if (variant === 'multi') {
@@ -430,7 +430,12 @@ async function crRefreshPreview(isCurrent) {
     root.style.display = 'block';
     // flow, not fit: the MOA and AOA legitimately span several sheets, and
     // one-sheet fitting would shrink-and-clip them (see fitPagesToSheet).
+    // The paginator then splits each flow section into A4 sheets by the
+    // keep rules the blob itself carries, so the preview shows the same
+    // page-break behaviour the Word file has.
     DocumentEngine.fitPagesToSheet(root, CR_DOCX_CLASS, { flow: true });
+    await DocumentEngine.paginateFlowSections(root, CR_DOCX_CLASS, blob);
+    if (!isCurrent()) return;
   } catch (err) {
     console.error('Company Registration preview render failed:', err);
   }

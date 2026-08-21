@@ -179,6 +179,131 @@ window.DocumentEngine = (function () {
     }
   }
 
+  // ── Word-parity pagination for flow-mode documents ──
+  // docx-preview cannot paginate flowed content: a multi-sheet sub-document
+  // renders as one tall section, so the preview showed no page boundaries
+  // and Save-as-PDF let the browser break pages by rules unrelated to the
+  // Word file's. This splits each flow section into real page-sized
+  // sections by the SAME rules the .docx carries: it reads every block's
+  // <w:keepNext/> out of the rendered blob itself (so template and preview
+  // can never disagree about what chains to what), welds keep-chains and
+  // tables into atomic units, and moves whole units onto A4-sized pages.
+  // A unit taller than one page keeps a page to itself and overruns it —
+  // the print CSS's break-inside hints then split it gracefully, the same
+  // "genuinely too long" exception Word applies.
+  //
+  // Pixel-identical page breaks to Word are NOT promised — two renderers,
+  // one font — but the RULES match: a paragraph never splits, a table row
+  // never splits, and a chained unit (a दफा with sub-clauses, a signature
+  // block with its table) moves whole.
+  async function paginateFlowSections(container, className, blob) {
+    // The blocks and their keep flags, straight from the document body.
+    // Table-cell paragraphs never appear here: tables are separate chunks,
+    // and a table chains onward when its LAST row's paragraphs keep-next.
+    const xml = new PizZip(await blob.arrayBuffer()).file('word/document.xml').asText();
+    const body = xml.slice(xml.indexOf('<w:body>') + 8, xml.indexOf('</w:body>'));
+    const blocks = [];
+    body.split(/(<w:tbl>[\s\S]*?<\/w:tbl>)/).forEach(chunk => {
+      if (chunk.startsWith('<w:tbl>')) {
+        const rows = chunk.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
+        blocks.push({ keepNext: (rows[rows.length - 1] || '').includes('<w:keepNext/>') });
+        return;
+      }
+      const RE = /<w:p\b[^>]*\/>|<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+      let m;
+      while ((m = RE.exec(chunk))) {
+        const pPr = (m[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/) || [''])[0];
+        blocks.push({ keepNext: pPr.includes('<w:keepNext/>') });
+      }
+    });
+
+    const sections = Array.from(container.querySelectorAll('section.' + className));
+    if (!sections.length) return 0;
+
+    // Word's lineRule="auto" spacing is value/240 × the FONT'S OWN single-
+    // line metric, and for Nirmala UI that metric is ~1.36em — docx-preview
+    // maps the same value to a flat CSS line-height, so the browser packs
+    // ~⅓ more lines per page and the preview's page breaks land three pages
+    // early of the Word file's. Scaling every paragraph's computed
+    // line-height by the font metric makes the two renderers lay out at the
+    // same density (verified against Word's own page map — see
+    // docs/modules/registrar.md §5.11d).
+    const LINE_METRIC = 1.36;
+    sections.forEach(sec => sec.querySelectorAll('p').forEach(p => {
+      if (p.dataset.deLineAdj) return;
+      const lh = parseFloat(getComputedStyle(p).lineHeight);
+      if (isFinite(lh)) { p.style.lineHeight = (lh * LINE_METRIC) + 'px'; p.dataset.deLineAdj = '1'; }
+    }));
+
+    // docx-preview may wrap a section's blocks in a single inner element;
+    // walk down single-child wrappers to whatever actually holds the <p>s.
+    const perSection = sections.map(sec => {
+      let host = sec;
+      const wrappers = [];
+      while (host.children.length === 1 && !/^(P|TABLE)$/.test(host.children[0].tagName)) {
+        wrappers.push(host.children[0]);
+        host = host.children[0];
+      }
+      return { sec, host, wrappers, els: Array.from(host.children) };
+    });
+
+    // The XML block list and the DOM block list must be the same list. If a
+    // docx-preview version ever renders extra elements, fall back to
+    // per-block units — pages still never split a paragraph or a table,
+    // only the chains are lost — rather than mis-assigning keep flags.
+    const domTotal = perSection.reduce((s, x) => s + x.els.length, 0);
+    const chained = domTotal === blocks.length &&
+      perSection.every(x => x.els.every(el => /^(P|TABLE)$/.test(el.tagName)));
+    if (!chained) console.warn('paginateFlowSections: block lists disagree (' + domTotal + ' rendered vs ' + blocks.length + ' in the document) — paginating without keep-chains');
+
+    // Measure everything before anything moves.
+    const height = new Map();
+    perSection.forEach(({ els }) => els.forEach(el => {
+      const cs = getComputedStyle(el);
+      height.set(el, el.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0));
+    }));
+
+    let bi = 0, pageCount = 0;
+    perSection.forEach(({ sec, wrappers, els }) => {
+      const cs = getComputedStyle(sec);
+      const usable = parseFloat(cs.minHeight) - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+
+      // Weld keep-chains into atomic units: a block with keepNext binds the
+      // block after it into the same unit.
+      const units = [];
+      let cur = null;
+      els.forEach(el => {
+        const keepNext = chained ? blocks[bi++].keepNext : false;
+        if (!cur) { cur = []; units.push(cur); }
+        cur.push(el);
+        if (!keepNext) cur = null;
+      });
+
+      // Greedy fill: a unit that no longer fits starts the next page; a unit
+      // taller than a page keeps one to itself and overruns.
+      const pages = [];
+      let page = null, used = 0;
+      units.forEach(u => {
+        const uh = u.reduce((s, el) => s + height.get(el), 0);
+        if (!page || (used + uh > usable && used > 0)) { page = []; pages.push(page); used = 0; }
+        page.push(...u);
+        used += uh;
+      });
+      pageCount += pages.length || 1;
+      if (pages.length <= 1) return;
+
+      pages.forEach(pageEls => {
+        const ns = sec.cloneNode(false);
+        let into = ns;
+        wrappers.forEach(w => { const c = w.cloneNode(false); into.appendChild(c); into = c; });
+        pageEls.forEach(el => into.appendChild(el));
+        sec.parentNode.insertBefore(ns, sec);
+      });
+      sec.remove();
+    });
+    return pageCount;
+  }
+
   // Renders `blob` offscreen, fits it to sheets, and returns a standalone
   // HTML document string that prints one template page per sheet — the same
   // pagination the on-screen preview shows, because it is the same code.
@@ -200,10 +325,14 @@ window.DocumentEngine = (function () {
       const fit = fitPagesToSheet(content, className, { flow });
       if (!fit) return null;
       const { pageW, pageH } = fit;
+      if (flow) await paginateFlowSections(content, className, blob);
 
       // textContent, not innerHTML — docx-preview injects its CSS as a real
       // nested <style> element, and innerHTML would serialize that tag
       // literally, closing our own wrapping <style> block early.
+      // The flow-mode break hints only matter on a page a too-tall unit
+      // overran: the browser then splits it without cutting a paragraph's
+      // lines or a table row in half.
       return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>
     @page { size: ${pageW}px ${pageH}px; margin: 0; }
     html, body { margin:0; padding:0; background:#fff; }
@@ -211,6 +340,7 @@ window.DocumentEngine = (function () {
     .${className}-wrapper { display:block !important; background:#fff !important; padding:0 !important; }
     .${className}-wrapper > section.${className} { box-shadow:none !important; margin:0 auto !important; page-break-after: always; }
     .${className}-wrapper > section.${className}:last-child { page-break-after: auto; }
+    ${flow ? `section.${className} p { break-inside: avoid; } section.${className} tr { break-inside: avoid; }` : ''}
   </style></head><body>${content.innerHTML}
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
   </body></html>`;
@@ -219,5 +349,5 @@ window.DocumentEngine = (function () {
     }
   }
 
-  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml, fitPagesToSheet, buildPrintableHtml };
+  return { downloadBlob, getTemplate, renderWord, previewWordAsHtml, fitPagesToSheet, paginateFlowSections, buildPrintableHtml };
 })();
