@@ -422,11 +422,22 @@ if (mismatches.length) {
 //  paragraphs" would produce invalid OOXML — the row goes as one piece.
 // ════════════════════════════════════════════
 {
-  let tables = 0, removedRows = 0, loopsInstalled = 0;
+  let tables = 0, removedRows = 0, loopsInstalled = 0, floatsRemoved = 0;
   out = out.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/g, tbl => {
     if (!tbl.includes('संस्थापकको नाम')) return tbl;
     tables++;
     if ((tbl.match(/<w:tbl>/g) || []).length !== 1) throw new Error('nested table inside a founders table — the row splitter cannot handle that');
+
+    // The single source's tables are FLOATING (text-anchored <w:tblpPr>,
+    // found 2026-08-21) — and a floating table ignores every pagination
+    // keep rule, which is how a header row printed at the foot of one page
+    // with its founder row on the next while Word reported cantSplit and
+    // keepNext as set. Inline the table; its centred position survives as
+    // a real <w:jc>.
+    tbl = tbl.replace(/<w:tblpPr[^/]*\/>/g, () => { floatsRemoved++; return ''; });
+    if (floatsRemoved && !/<w:tblPr>[\s\S]*?<w:jc /.test(tbl)) {
+      tbl = tbl.replace(/(<w:tblW[^/]*\/>)/, '$1<w:jc w:val="center"/>');
+    }
 
     let rows = tbl.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
     if (variant === 'multi') {
@@ -452,12 +463,51 @@ if (mismatches.length) {
       loopsInstalled++;
     }
 
+    // Keep the table together across page breaks (user-reported 2026-08-21:
+    // the header row printed at the foot of one page with the founder row on
+    // the next). Two real Word properties, not spacing tricks:
+    //   * <w:cantSplit/> on every row — a row is never cut mid-way, so a row
+    //     that doesn't fit moves whole to the next sheet. A many-founder
+    //     table may still break BETWEEN rows, which is correct.
+    //   * <w:keepNext/> on every paragraph of the HEADER row — binds the
+    //     header to the first data row, so it can never strand alone.
+    rows = rows.map((r, i) => {
+      // The single source's rows already carry cantSplit (in a trPr after
+      // tblPrEx); only the multi source's need it added. In the OOXML
+      // schema trPr follows tblPrEx inside <w:tr>, so a fresh trPr goes
+      // after that element when present.
+      let withSplit = r;
+      if (!/<w:cantSplit\/>/.test(r)) {
+        withSplit = /<w:trPr>/.test(r)
+          ? r.replace('<w:trPr>', '<w:trPr><w:cantSplit/>')
+          : /<w:tblPrEx>[\s\S]*?<\/w:tblPrEx>/.test(r)
+            ? r.replace(/(<\/w:tblPrEx>)/, '$1<w:trPr><w:cantSplit/></w:trPr>')
+            : r.replace(/^(<w:tr\b[^>]*>)/, '$1<w:trPr><w:cantSplit/></w:trPr>');
+      }
+      if (i === 0) {
+        // Skip self-closing empty paragraphs, and keep keepNext after any
+        // pStyle (schema order: pStyle comes first in pPr).
+        withSplit = withSplit
+          .replace(/<w:p(?:\s[^>]*[^/])?>(?:<w:pPr>)?/g, m =>
+            m.endsWith('<w:pPr>')
+              ? m.replace(/<w:pPr>$/, '<w:pPr><w:keepNext/>')
+              : m + '<w:pPr><w:keepNext/></w:pPr>')
+          .replace(/<w:pPr><w:keepNext\/>(<w:pStyle[^>]*\/>)/g, '<w:pPr>$1<w:keepNext/>');
+      }
+      return withSplit;
+    });
+    if (!rows.every(r => r.includes('<w:cantSplit/>'))) {
+      throw new Error('cantSplit did not reach every founders-table row');
+    }
+    if (!rows[0].includes('<w:keepNext/>')) throw new Error('the header row got no keepNext');
+
     // reassemble: everything before the first row + rows + everything after the last
     const headEnd = tbl.indexOf('<w:tr');
     const tailStart = tbl.lastIndexOf('</w:tr>') + '</w:tr>'.length;
     return tbl.slice(0, headEnd) + rows.join('') + tbl.slice(tailStart);
   });
   if (tables !== 2) throw new Error(`expected 2 founders tables, found ${tables}`);
+  console.log('floating-table anchors removed:', floatsRemoved);
   if (variant === 'multi') {
     if (removedRows !== 2) throw new Error(`expected to remove 2 second-founder rows, removed ${removedRows}`);
     if (loopsInstalled !== 2) throw new Error(`founders row loop installed ${loopsInstalled} times, expected 2`);
@@ -636,6 +686,7 @@ for (const name of ['word/fontTable.xml', 'word/settings.xml']) {
   const doc = files['word/document.xml'].toString('utf8');
 
   if (doc.includes('Preeti')) throw new Error('a Preeti font reference survived');
+  if (doc.includes('<w:tblpPr')) throw new Error('a floating-table anchor survived — a positioned table ignores cantSplit/keepNext and the founders table splits again');
   if (doc.includes('w:highlight')) throw new Error('a highlight survived — the firm marks fill-in spots in colour and none of it may print');
   if (doc.includes('<w:proofErr')) throw new Error('a proofErr marker survived');
   if (doc.includes('w:numPr') || doc.includes('ListParagraph')) throw new Error('a stray list bullet survived');
