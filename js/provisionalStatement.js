@@ -1334,7 +1334,11 @@ function psToOut(r) {
         return {
           person: prop ? 'Proprietor' : 'Director/Chairman',
           distribution: psDistLabel(),
-          capital: prop ? 'Capital Account' : 'Share Capital',
+          // Always "Share Capital", even for a proprietorship (user decision
+          // 2026-08-22) — the entity word still drives the note's LAYOUT
+          // (single Proprietor's/Partner's Capital line), only the heading
+          // stays put.
+          capital: 'Share Capital',
           entity: prop ? 'Proprietorship' : 'Private Limited Company',
         };
       })(),

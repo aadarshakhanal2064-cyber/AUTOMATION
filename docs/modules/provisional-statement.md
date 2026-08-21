@@ -471,7 +471,9 @@ Third round (same day, user feedback on the second):
 
 - **A note's headings print ABOVE its box and its closing notes BELOW it** —
   `shiftHeadings`/`popFootnotes` in `fsxSheetHtml`. The box (and its year
-  rules) wraps only columnar rows, so "3.6 Capital Account", "Figures in
+  rules) wraps only columnar rows, so "3.6 Share Capital" (always that
+  heading, even for a proprietorship — user decision 2026-08-22; the entity
+  word drives only the note's layout), "Figures in
   NPR" and a statement's "The notes are an integral part…" lines are no
   longer trapped inside the border, and the rules stop exactly at the last
   total row. 3.6's three share-capital sections each get their own
