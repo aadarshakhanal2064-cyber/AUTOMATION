@@ -1468,9 +1468,15 @@ const FSX_PRINT_CSS = `
   .fsp-root td.fsp-lab { text-align: left; word-break: normal; overflow-wrap: break-word; }
   .fsp-root td.fsp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .fsp-root td.fsp-note { text-align: center; width: 46px; }
-  .fsp-root col.fsp-c-num { width: 142px; }
-  .fsp-root col.fsp-c-half { width: 71px; }
+  /* Value-column widths are computed per sheet in fsxSheetHtml and emitted
+     inline on the <col>s — a flat width here cannot know how many columns a
+     matrix sheet carries, and 142px × SOCE's five columns is wider than an
+     A4 page. Only the note column keeps a fixed width. */
   .fsp-root col.fsp-c-note { width: 46px; }
+  /* Sheets whose budgeted column width falls under 100px (a PPE with many
+     asset classes) drop the font a step so figures still fit unclipped. */
+  .fsp-root table.fsp-tight { font-size: 11px; }
+  .fsp-root table.fsp-tight thead th, .fsp-root table.fsp-tight tr.fsp-band th { font-size: 11px; }
   .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; }
   .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; }
   .fsp-root tr.fsp-tot td.fsp-num { border-top: 1px solid #000; border-bottom: 3px double #000; }
@@ -1516,7 +1522,10 @@ function fsxEsc(s) {
 // One sheet as an HTML table. Used by the preview pane and the print document.
 function fsxSheetHtml(sh, meta) {
   const nCols = (sh.cols || []).length || 1;
-  const hasNote = !!(sh.geom && sh.geom.note);
+  // A matrix sheet never carries row notes (SOCE's geom.note is Excel column
+  // geometry, not a promise of a Notes column), and on the print page it is
+  // the sheet that can least afford the 46px — so the HTML path drops it.
+  const hasNote = !!(sh.geom && sh.geom.note) && !sh.matrix;
   // 3.6 Share Capital splits each year into Number and NPR. When a sheet
   // carries those rows the whole table is widened to label + 4, and every
   // ordinary value cell spans the pair it sits above — otherwise the quad rows
@@ -1549,13 +1558,25 @@ function fsxSheetHtml(sh, meta) {
     if ((sh.cols || []).some(c => c.restated)) out.push('<div class="fsp-restated">Restated</div>');
   }
 
-  out.push('<table>');
   // Fixed layout + an explicit colgroup: without it the value columns get
   // squeezed and a header like "32nd Ashadh 2083" wraps onto a third line
-  // while its sibling wraps onto two.
+  // while its sibling wraps onto two. But the width cannot be a flat 142px:
+  // the print page is A4 with 12mm side margins (~703 CSS px) and under
+  // `table-layout: fixed` the unclassed label <col> gets only what the fixed
+  // columns leave over — SOCE's five columns at 142px overran the page and
+  // the label column collapsed to zero, printing one letter per line. So the
+  // width is budgeted: never wider than 142px, never so wide the label drops
+  // under its floor. A quad sheet's half-columns are half a pair's width, so
+  // the budget is computed per header-level column, then split.
+  const A4_CONTENT = 700;
+  const LABEL_MIN = 170;
+  const headerCols = hasQuad ? 2 : valueCells;
+  const grpW = Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - LABEL_MIN) / headerCols));
+  const colW = hasQuad ? Math.floor(grpW / 2) : grpW;
+  out.push(`<table${grpW < 100 ? ' class="fsp-tight"' : ''}>`);
   out.push('<colgroup><col>');
   if (hasNote) out.push('<col class="fsp-c-note">');
-  for (let i = 0; i < valueCells; i++) out.push(`<col class="fsp-c-num${hasQuad ? ' fsp-c-half' : ''}">`);
+  for (let i = 0; i < valueCells; i++) out.push(`<col style="width:${colW}px">`);
   out.push('</colgroup>');
   if (!sh.noHeaderBand) {
     out.push('<thead><tr>');

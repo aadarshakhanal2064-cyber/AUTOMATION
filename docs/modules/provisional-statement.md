@@ -428,6 +428,22 @@ which also fixes the **Audited Statement**, since both reference files agree:
    own `quadhead` / `quadsub` / `quad` row kinds over columns D/F (this year)
    and H/J (last). Share counts are the face value divided into the capital, so
    the note cannot disagree with the balance sheet; **authorised** is a
+**Column widths are budgeted against the A4 page, never a flat 142px**
+(2026-08-21). The print document is `@page A4` with 12mm side margins — about
+703 CSS px — and the tables are `table-layout: fixed`, so the unclassed label
+`<col>` gets only what the fixed columns leave over. A flat
+`col.fsp-c-num { width: 142px }` was tuned for the two-column statements; on
+SOCE (five columns + a 46px note column = 756px) the label column resolved to
+**zero width** and `overflow-wrap` printed every row label one letter per line,
+and a 3.1 PPE with four or more asset classes broke the same way. `fsxSheetHtml`
+now computes the width per sheet — `min(142, (700 − note − 170) / columns)`,
+emitted inline on each `<col>`, quad half-columns at half a pair — so the
+two-column sheets keep exactly 142px/71px and only the matrix sheets shrink.
+Two supporting rules: a matrix sheet never renders the (always empty) Notes
+column even when its Excel geometry carries `note`, and a sheet whose budgeted
+width falls under 100px gets `table.fsp-tight`, one font step down, so figures
+still fit unclipped.
+
    constitutional figure and is asked for.
 4. **`3.7 Reserves` is a sentence, not a table** — the roll-forward already has
    a home in the SOCE, and `SFP!Reserves` points there, so a second table would
