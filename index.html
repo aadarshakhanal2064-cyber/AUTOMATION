@@ -50,9 +50,9 @@
 <!-- Inter, from <head> instead of an @import on styles.css line 1 — the import
      made the font chain strictly serial (HTML → CSS → Google CSS → woff2).
      Weight 300 dropped: nothing in the app uses it. -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608212200">
+<link rel="stylesheet" href="css/styles.css?v=202608212400">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1666,10 +1666,12 @@ function cropLoginLogoIcon(img) {
               <button type="button" class="btn btn-outline btn-sm cp-add-shareholder" onclick="cpAddShareholderRow('')">+ Add shareholder</button>
             </div>
 
-            <div class="action-row">
-              <button class="btn btn-primary" onclick="cpSave(this)">Save Company</button>
-              <button class="btn btn-outline" onclick="cpCloseEditor()">Cancel</button>
+            <div class="action-row" style="justify-content:space-between;">
               <button class="btn btn-danger" id="cp-delete-btn" style="display:none;" onclick="cpDelete(null)">Delete</button>
+              <div style="display:flex; gap:10px; margin-left:auto;">
+                <button class="btn btn-outline" onclick="cpCloseEditor()">Cancel</button>
+                <button class="btn btn-primary" onclick="cpSave(this)">Save Company</button>
+              </div>
             </div>
             <div id="cp-status"></div>
           </div>
@@ -3027,54 +3029,9 @@ function cropLoginLogoIcon(img) {
         </div>
       </div>
 
-      <!-- Client portfolio dashboard. Every figure is derived from
-           window.clientsList at render time — nothing here is stored. -->
-      <div class="stat-grid" id="client-stat-grid">
-        <div class="stat-card">
-          <div class="stat-icon blue">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-          </div>
-          <div class="stat-num" id="stat-total-clients">0</div>
-          <div class="stat-label">Total Clients</div>
-          <div class="stat-sub" id="stat-total-sub">All registered clients</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon purple">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-          </div>
-          <div class="stat-num" id="stat-d12">0</div>
-          <div class="stat-label">D-1 / D-2 Filers</div>
-          <div class="stat-sub">Income-tax return type</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon amber">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"></path><path d="M12 2v13"></path><polyline points="8 6 12 2 16 6"></polyline></svg>
-          </div>
-          <div class="stat-num" id="stat-d3">0</div>
-          <div class="stat-label">D-3 Filers</div>
-          <div class="stat-sub">Income-tax return type</div>
-        </div>
-      </div>
-
-      <div class="cd-grid">
-        <div class="card cd-panel">
-          <div class="card-header"><h3>Entity Type</h3><span class="cd-count" id="cd-entity-count">0 types</span></div>
-          <div class="cd-bars" id="cd-entity-bars"></div>
-        </div>
-        <div class="card cd-panel">
-          <div class="card-header"><h3>District</h3><span class="cd-count" id="cd-district-count">0 districts</span></div>
-          <div class="cd-bars" id="cd-district-bars"></div>
-        </div>
-        <div class="card cd-panel">
-          <div class="card-header"><h3>Nature of Business</h3><span class="cd-count" id="cd-nature-count">0 sectors</span></div>
-          <div class="cd-bars" id="cd-nature-bars"></div>
-        </div>
-        <div class="card cd-panel">
-          <div class="card-header"><h3>Record Completeness</h3><span class="cd-count">Fields on file</span></div>
-          <div class="cd-meters" id="cd-completeness"></div>
-        </div>
-      </div>
-
+      <!-- The directory table comes FIRST (Stage 5, 2026-08-21): this is the
+           screen staff work in all day, and the portfolio dashboard below it
+           had pushed the first client row ~800px down a 1080p screen. -->
       <div class="add-client-form" id="add-client-form">
         <h4 id="add-client-title">Add New Client</h4>
         <div class="form-grid">
@@ -3148,9 +3105,9 @@ function cropLoginLogoIcon(img) {
           Registration number, chairman, shareholder, the three capitals and VAT status
           are edited under <strong>Company Registrar → Company Profile</strong>.
         </p>
-        <div class="action-row">
-          <button class="btn btn-primary" onclick="saveClient(this)">Save Client</button>
+        <div class="action-row" style="justify-content:flex-end;">
           <button class="btn btn-outline" onclick="cancelAddClient()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveClient(this)">Save Client</button>
         </div>
         <div id="client-form-status"></div>
       </div>
@@ -3197,6 +3154,55 @@ function cropLoginLogoIcon(img) {
           <div class="loading-skeleton"><i></i><i></i><i></i></div>
         </div>
         <div class="clients-showall-wrap" id="clients-showall-wrap"></div>
+
+      <!-- Client portfolio dashboard. Every figure is derived from
+           window.clientsList at render time — nothing here is stored. -->
+      <div class="stat-grid" id="client-stat-grid">
+        <div class="stat-card">
+          <div class="stat-icon blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          </div>
+          <div class="stat-num" id="stat-total-clients">0</div>
+          <div class="stat-label">Total Clients</div>
+          <div class="stat-sub" id="stat-total-sub">All registered clients</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          </div>
+          <div class="stat-num" id="stat-d12">0</div>
+          <div class="stat-label">D-1 / D-2 Filers</div>
+          <div class="stat-sub">Income-tax return type</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon amber">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"></path><path d="M12 2v13"></path><polyline points="8 6 12 2 16 6"></polyline></svg>
+          </div>
+          <div class="stat-num" id="stat-d3">0</div>
+          <div class="stat-label">D-3 Filers</div>
+          <div class="stat-sub">Income-tax return type</div>
+        </div>
+      </div>
+
+      <div class="cd-grid">
+        <div class="card cd-panel">
+          <div class="card-header"><h3>Entity Type</h3><span class="cd-count" id="cd-entity-count">0 types</span></div>
+          <div class="cd-bars" id="cd-entity-bars"></div>
+        </div>
+        <div class="card cd-panel">
+          <div class="card-header"><h3>District</h3><span class="cd-count" id="cd-district-count">0 districts</span></div>
+          <div class="cd-bars" id="cd-district-bars"></div>
+        </div>
+        <div class="card cd-panel">
+          <div class="card-header"><h3>Nature of Business</h3><span class="cd-count" id="cd-nature-count">0 sectors</span></div>
+          <div class="cd-bars" id="cd-nature-bars"></div>
+        </div>
+        <div class="card cd-panel">
+          <div class="card-header"><h3>Record Completeness</h3><span class="cd-count">Fields on file</span></div>
+          <div class="cd-meters" id="cd-completeness"></div>
+        </div>
+      </div>
+
       </div>
     </div>
 
@@ -4383,9 +4389,9 @@ function cropLoginLogoIcon(img) {
       <div class="import-step" id="import-step-2">
         <p id="import-map-intro" style="font-size:14px; color:var(--text-muted); margin-bottom:16px;">Map your spreadsheet columns to client fields.</p>
         <div id="import-map-rows"></div>
-        <div class="action-row">
-          <button class="btn btn-primary" onclick="buildImportPreview()">Next: Preview →</button>
+        <div class="action-row" style="justify-content:flex-end;">
           <button class="btn btn-outline" onclick="closeImportModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="buildImportPreview()">Next: Preview →</button>
         </div>
       </div>
 
@@ -4399,10 +4405,10 @@ function cropLoginLogoIcon(img) {
             <tbody id="import-preview-body"></tbody>
           </table>
         </div>
-        <div class="action-row">
-          <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">Import Clients</button>
+        <div class="action-row" style="justify-content:flex-end;">
           <button class="btn btn-outline" onclick="showImportStep(2)">← Back</button>
           <button class="btn btn-outline" onclick="closeImportModal()">Cancel</button>
+          <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">Import Clients</button>
         </div>
         <div id="import-result-status"></div>
       </div>
