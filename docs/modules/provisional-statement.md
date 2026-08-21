@@ -490,6 +490,18 @@ Third round (same day, user feedback on the second):
 - Base font stepped down to 12px (headers scaled with it) and the fit
   pass's upscale cap lowered to 1.1.
 
+Fifth round (user, with the firm's own reference note): **3.6 Share Capital
+is ONE box, not three quad sub-tables.** An italic sub-heading (Authorized /
+Issued / Paid-Up Share Capital) and a single "{count} Equity Shares @ Rs.
+{face} each" line per section, both years side by side, one Total — and a
+proprietorship/partnership (detected from `terms.entity`/`terms.capital`)
+carries a single "Proprietor's/Partner's Capital" line instead. Changed in
+`fsxBuildReport`, so preview, print and Excel all agree; the Number×NPR quad
+machinery stays in the renderer and writer for reversion but nothing emits
+quad rows any more. (The SOCE's `capOpen`/`capAdd` Excel formula lookups
+already resolved to nothing — the quad rows never carried keys — so those
+cells keep writing values, unchanged.)
+
 Fourth round (user: "consume less of the page, no format change"): base font
 11.5px, tighter cell padding and header spacing, the Notes column 40px, and
 **SFP/SOI now fix every column (270px label + 40 + 2 × 150) and the table

@@ -590,42 +590,42 @@ function fsxBuildReport(out) {
     );
   }
 
-  // ── 3.6 Share Capital ──
-  // Three sub-tables (authorised, issued, fully paid), each Number x NPR for
-  // both years. Share COUNTS are the face value divided into the capital, so
-  // the note cannot disagree with the balance sheet; authorised is a
-  // constitutional figure the preparer states and defaults to the issued count
-  // when nothing is on file.
+  // ── 3.6 Share Capital — ONE box, matching the firm's own reference note
+  // (user ask 2026-08-21, replacing the three Number×NPR quad sub-tables):
+  // an italic sub-heading and a single "{count} Equity Shares @ Rs. {face}
+  // each" line per section, both years side by side, one Total. Share COUNTS
+  // are the face value divided into the capital, so the note cannot disagree
+  // with the balance sheet; authorised is a constitutional figure the
+  // preparer states and defaults to the issued count when nothing is on
+  // file. A proprietorship/partnership carries one capital line instead.
   const capFace = fsxIsNum(m.shareFace) && m.shareFace > 0 ? m.shareFace : 100;
   const capCy = bal.shareCapital || 0;
   const capPy = pySfp.shareCapital || 0;
-  const capAddAmt = (out.soce || {}).capital || 0;
-  const capOpenAmt = capCy - capAddAmt;
   const nShares = (v) => (capFace ? v / capFace : 0);
   const capAuthNum = fsxIsNum(m.authorisedShares) && m.authorisedShares > 0
     ? m.authorisedShares : nShares(Math.max(capCy, capPy));
-  const capLabel = `Ordinary shares of NPR Rs. ${capFace} each`;
-  const capitalBlock = [
-    R('Authorised Share Capital:', [], 'sub'),
-    QHEAD(), QSUB(),
-    Q(capLabel, [capAuthNum, capAuthNum * capFace, capAuthNum, capAuthNum * capFace]),
-    Q('Total', [capAuthNum, capAuthNum * capFace, capAuthNum, capAuthNum * capFace], 'quadtot'),
-    B(),
-    R('Issued Share Capital:', [], 'sub'),
-    QHEAD(), QSUB(),
-    Q(capLabel, []),
-    Q('At the beginning of the year', [nShares(capOpenAmt), capOpenAmt, nShares(capPy), capPy]),
-    Q('Issues for cash during the year', [nShares(capAddAmt), capAddAmt, 0, 0]),
-    Q('Total', [nShares(capCy), capCy, nShares(capPy), capPy], 'quadtot'),
-    B(), B(), B(),
-    R('Fully Paid Equity Share Capital', [], 'sub'),
-    QHEAD(), QSUB(),
-    Q(capLabel, []),
-    Q('At the beginning of the year', [nShares(capOpenAmt), capOpenAmt, nShares(capPy), capPy]),
-    Q('Call money received during the year', [nShares(capAddAmt), capAddAmt, 0, 0]),
-    Q('Total', [nShares(capCy), capCy, nShares(capPy), capPy], 'quadtot'),
-    B(), B(),
-  ];
+  const shareLine = (n) => `${Math.round(n)} Equity Shares @ Rs. ${capFace} each`;
+  const capProp = /proprietor|partner/i.test(`${T.entity || ''} ${T.capital || ''}`);
+  const capitalBlock = capProp
+    ? [
+      BAND(),
+      R("Proprietor's/Partner's Capital", [capCy, capPy], 'item', { k: 'capPaid' }),
+      R('Total', [capCy, capPy], 'tot', { k: 'capTotal', xsum: ['capPaid'] }),
+      B(),
+    ]
+    : [
+      BAND(),
+      R('Authorized Share Capital', [], 'sub', { italic: true }),
+      R(shareLine(capAuthNum), [capAuthNum * capFace, capAuthNum * capFace], 'item', { k: 'capAuth' }),
+      B(),
+      R('Issued Share Capital', [], 'sub', { italic: true }),
+      R(shareLine(nShares(capCy)), [capCy, capPy], 'item', { k: 'capIssued' }),
+      B(),
+      R('Paid-Up Share Capital', [], 'sub', { italic: true }),
+      R(shareLine(nShares(capCy)), [capCy, capPy], 'item', { k: 'capPaid' }),
+      R('Total', [capCy, capPy], 'tot', { k: 'capTotal', xsum: ['capPaid'] }),
+      B(),
+    ];
 
   const schBsRows = [
     R('3.2 Investment', [], 'head', { figNpr: true }),
@@ -1509,6 +1509,7 @@ const FSX_PRINT_CSS = `
   .fsp-root .fsp-note-sub { font-weight: 700; margin: 8px 0 3px; }
   .fsp-root .fsp-footnote { font-weight: 700; font-size: .85em; margin-top: 6px; }
   .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; border-bottom: none; }
+  .fsp-root tr.fsp-italic td { font-style: italic; }
   .fsp-root tr.fsp-head td.fsp-fignpr-cell { text-align: right; font-size: 9pt; vertical-align: bottom; }
   .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; border-bottom: none; }
   .fsp-root tr.fsp-tot td.fsp-num { border-top: 1px solid #000; border-bottom: 3px double #000; }
@@ -1703,7 +1704,7 @@ function fsxSheetHtml(sh, meta) {
       return o.join('');
     }
 
-    const cls = 'fsp-' + (r.kind === 'kv' ? 'kv' : r.kind) + (r.noTopRule ? ' fsp-notop' : '');
+    const cls = 'fsp-' + (r.kind === 'kv' ? 'kv' : r.kind) + (r.noTopRule ? ' fsp-notop' : '') + (r.italic ? ' fsp-italic' : '');
     o.push(`<tr class="${cls}">`);
     o.push(`<td class="fsp-lab">${fsxEsc(r.label)}</td>`);
     if (hasNote) o.push(`<td class="fsp-note">${fsxEsc(r.note || '')}</td>`);
