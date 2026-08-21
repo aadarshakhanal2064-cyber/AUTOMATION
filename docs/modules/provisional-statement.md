@@ -1,9 +1,16 @@
 # Provisional Statement (`js/provisionalStatement.js`, `ps-`)
 
 > Automation Hub → **Provisional Statement**. Sibling of **Audited Statement**
-> (`finStatement`, `fs-` — renamed from "Financial Statement" 2026-08-19, display
-> name only; file names, prefixes, ids and the `financial_statements` table all
-> keep their originals, same convention as Autobooks / Bank Entry / File In Out).
+> — which since 2026-08-22 is **`js/auditedStatement.js`, a verbatim `ps-`→`as-`
+> clone of THIS module** (user decision: "same working features, everything the
+> same; differences fixed later"). The clone shares the engine, `psrc*` sources,
+> `ProvisionalReconcile` and the whole `fsx*` output layer — only the UI file is
+> duplicated. It registers under the old `finStatement` module id and saves to
+> `financial_statements` with `basis='audited'`. **A fix landing in this module
+> almost certainly belongs in the clone too, and vice versa** — keep the two
+> files in step until the audited-specific differences are specified. (The
+> previous audited UI, `js/finStatement.js`, is no longer loaded — see
+> `docs/modules/financial-statement.md`.)
 
 The Audited Statement module takes a *finished* year and lays it out. This module
 takes **last year's statement plus a handful of this year's real figures** and

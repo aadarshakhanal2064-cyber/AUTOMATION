@@ -2765,181 +2765,191 @@ function cropLoginLogoIcon(img) {
     <div id="tab-finStatement-panel" class="tab-panel">
       <div class="page-header">
         <div class="ph-text">
-          <div class="breadcrumb"><span>Automation Hub</span><span>›</span><span class="current">Audited Statement</span></div>
+          <div class="breadcrumb"><span>Automation Hub</span><span>&rsaquo;</span><span class="current">Audited Statement</span></div>
           <h2 class="page-title">Audited Statement</h2>
-          <p class="page-subtitle">Build a client's full NFRS statement set — Financial Position, Income, Changes in Equity, Cash Flows, the 3.1 PPE note and both schedules — from last year's statement plus this year's summary figures.</p>
+          <p class="page-subtitle">Upload last year&rsquo;s statement, type this year&rsquo;s few real figures, and the rest is derived by formula &mdash; growth, turnover scaling, tax and every TDS line &mdash; into the firm&rsquo;s own seven-sheet layout.</p>
         </div>
         <div class="page-header-actions">
           <div class="rep-view-toggle">
-            <button id="fs-step-setup" class="rep-view-btn active" onclick="fsShowSection('setup')">1 · Setup &amp; Upload</button>
-            <button id="fs-step-figures" class="rep-view-btn" onclick="fsShowSection('figures')">2 · Figures</button>
-            <button id="fs-step-review" class="rep-view-btn" onclick="fsShowSection('review')">3 · Review &amp; Export</button>
+            <button id="as-step-setup" class="rep-view-btn active" onclick="asShowSection('setup')">1 &middot; Setup &amp; Prior Year</button>
+            <button id="as-step-figures" class="rep-view-btn" onclick="asShowSection('figures')">2 &middot; Figures &amp; Rules</button>
+            <button id="as-step-review" class="rep-view-btn" onclick="asShowSection('review')">3 &middot; Review &amp; Export</button>
           </div>
+          <button class="btn btn-outline" onclick="asOpenSavedDrawer()">Saved Statements</button>
+          <button class="btn btn-primary" onclick="asSaveToDb()">Save to Database</button>
         </div>
       </div>
 
-      <div id="fs-status-area"></div>
+      <div id="as-status-area"></div>
 
-      <!-- Step 1: Setup & Upload -->
-      <div id="fs-section-setup">
+      <!-- Step 1 -->
+      <div id="as-section-setup">
         <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Client &amp; Basis</div></div>
-          <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Client &amp; Basics</div></div>
+          <div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">
             <div class="form-group" style="position:relative;">
               <label>Client (search directory)</label>
-              <input type="text" id="fs-client-search" placeholder="Name or PAN…" autocomplete="off" />
-              <div class="autocomplete-list" id="fs-client-autocomplete"></div>
+              <input type="text" id="as-client-search" placeholder="Name or PAN&hellip;" autocomplete="off" />
+              <div class="autocomplete-list" id="as-client-autocomplete"></div>
             </div>
-            <div class="form-group"><label>Company Name</label><input type="text" id="fs-company" /></div>
-            <div class="form-group"><label>PAN</label><input type="text" id="fs-pan" /></div>
-            <div class="form-group" style="grid-column:span 2;"><label>Address</label><input type="text" id="fs-address" /></div>
-            <div class="form-group"><label>Fiscal Year</label><select id="fs-fy" onchange="fsOnFyChange()"></select></div>
-            <div class="form-group">
-              <label>Basis</label>
-              <select id="fs-basis" onchange="fsOnBasisChange()">
-                <option value="provisional">Provisional</option>
-                <option value="audited">Audited</option>
+            <div class="form-group"><label>Company Name</label><input type="text" id="as-company" /></div>
+            <div class="form-group"><label>PAN</label><input type="text" id="as-pan" /></div>
+            <div class="form-group"><label>Address</label><input type="text" id="as-address" /></div>
+            <div class="form-group"><label>Fiscal Year</label><select id="as-fy" onchange="asOnFyChange()"></select></div>
+            <div class="form-group"><label>Tax Rule</label>
+              <select id="as-tax-profile" onchange="asRecalcDebounced()">
+                <option value="corporate">Pvt. Ltd. / Partnership &mdash; 25% flat</option>
+                <option value="progressive">Proprietorship &mdash; progressive slabs</option>
               </select>
             </div>
-            <div class="form-group">
-              <label>Entity Type</label>
-              <select id="fs-entity" onchange="fsOnEntityChange()">
-                <option value="private">Private Limited</option>
-                <option value="public">Public Limited</option>
-                <option value="partnership">Partnership Firm</option>
-                <option value="proprietorship">Proprietorship Firm</option>
-              </select>
+            <div class="form-group"><label>Default Growth %</label>
+              <input type="number" id="as-growth" value="5" step="0.5" oninput="asRecalcDebounced()"
+                     title="Applied to salary and every other-expense line whose rule is 'Last year + growth %'. Audit Fee and Rent default to flat." />
             </div>
-            <div class="form-group">
-              <label>Type of Return</label>
-              <select id="fs-return-type" onchange="fsRecalcDebounced()"></select>
-            </div>
-            <div class="form-group" id="fs-localbody-group" style="display:none;">
-              <label>Local Body (D1 rate)</label>
-              <select id="fs-localbody" onchange="fsRecalcDebounced()">
-                <option value="municipality">Municipality — Rs. 4,000</option>
-                <option value="metropolitan">Metropolitan City — Rs. 7,500</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Name of Auditor</label>
-              <select id="fs-auditor" onchange="fsOnAuditorChange()">
-                <option value="SA">Shailesh &amp; Associates</option>
-                <option value="DC">Dallakoti &amp; Company</option>
-                <option value="other">Other — specify</option>
-                <option value="nonsign">Non Sign (proprietorship only)</option>
-              </select>
-            </div>
-            <div class="form-group" id="fs-auditor-other-group" style="display:none;">
-              <label>Auditor Name</label>
-              <input type="text" id="fs-auditor-other" oninput="fsRecalcDebounced()" />
-            </div>
-            <div class="form-group">
-              <label>Options</label>
-              <label style="font-weight:400;font-size:13px;display:block;margin-top:4px;">
-                <input type="checkbox" id="fs-special" onchange="fsRecalcDebounced()" /> Special Industry (20% tax)
-              </label>
-              <label style="font-weight:400;font-size:13px;display:block;">
-                <input type="checkbox" id="fs-service" onchange="fsRecalcDebounced()" /> Service industry (revenue as services)
+            <div class="form-group"><label>Staff Performing This Task</label><select id="as-staff"></select></div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; margin:0;">
+                <input type="checkbox" id="as-title-provisional" checked style="width:auto;" onchange="asRecalcDebounced()" />
+                Print &ldquo;Provisional&rdquo; in statement titles
               </label>
             </div>
+            <div class="form-group"><label>Period date in A.D. (optional)</label>
+              <input type="text" id="as-ad-date" placeholder="e.g. 16th July 2026" oninput="asRecalcDebounced()"
+                     title="Printed in brackets after the B.S. date. Typed, not converted: the app has no B.S.-to-A.D. calendar table, and a guessed date on a signed statement would be worse than none." /></div>
+            <div class="form-group"><label>Face Value per Share (Rs)</label>
+              <input type="number" id="as-face-value" value="100" step="1" oninput="asRecalcDebounced()"
+                     title="Used by note 3.6 to state share numbers. Share counts are derived from the capital, so the note cannot disagree with the balance sheet." /></div>
+            <div class="form-group"><label>Authorised Shares (number)</label>
+              <input type="number" id="as-auth-shares" step="1" placeholder="Defaults to issued" oninput="asRecalcDebounced()"
+                     title="The constitutional figure from the company's memorandum. Blank falls back to the issued share count." /></div>
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Prior-Year Financial Statement</div></div>
-          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload last year's statement workbook (SFP · SOI · SOCE · 3.1 PPE · Sch-BS · Sch-PL). Its current-year column becomes this year's comparative column, and its expense lines become the growth base.</p>
-          <input type="file" id="fs-py-file" accept=".xlsx,.xls,.ods" onchange="fsHandlePyFile(this)" />
-          <div id="fs-py-summary" style="margin-top:16px;"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Prior-Year Statement</div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload last year&rsquo;s statement workbook (SFP &middot; SOI &middot; Sch-PL &middot; Sch-BS &middot; 3.1 PPE). Its figures become this year&rsquo;s comparative column and the base every derived line grows from.</p>
+          <input type="file" id="as-py-file" accept=".xlsx,.xls,.ods" onchange="asHandlePyFile(this)" />
+          <div id="as-py-summary" style="margin-top:16px;"></div>
         </div>
+      </div>
 
+      <!-- Step 2 -->
+      <div id="as-section-figures" style="display:none;">
         <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Sales &amp; Purchase Detail <span style="font-weight:400;color:var(--text-muted);">(optional)</span></div></div>
-          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Party-wise detail sheets. The purchase file's closing-balance total becomes Trade Payables in note 3.9; both are carried into the workbook as sheets <code>p</code> and <code>s</code>.</p>
-          <div class="form-grid" style="grid-template-columns:repeat(2, 1fr); gap:14px;">
-            <div class="form-group">
-              <label>Sales Detail</label>
-              <input type="file" id="fs-sales-file" accept=".xlsx,.xls,.ods,.csv" onchange="fsHandleDetailFile(this,'sales')" />
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Loans &amp; Borrowings</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every facility and what it costs, in one place &mdash; the balances feed note 3.8 and the interest feeds note 3.14.</p>
+          <div style="display:grid; grid-template-columns:1fr; gap:16px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Short Term Loan / OD / CC</strong>
+                <button class="btn btn-outline btn-sm" onclick="asAddLoanRow('st')">+ Add</button>
+              </div>
+              <div id="as-loans-st"></div>
             </div>
-            <div class="form-group">
-              <label>Purchase Detail</label>
-              <input type="file" id="fs-purchase-file" accept=".xlsx,.xls,.ods,.csv" onchange="fsHandleDetailFile(this,'purchase')" />
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Long Term Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="asAddLoanRow('lt')">+ Add</button>
+              </div>
+              <div id="as-loans-lt"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Permanent Working Capital Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="asAddLoanRow('pwc')">+ Add</button>
+              </div>
+              <div id="as-loans-pwc"></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:var(--brand-navy);">Hire Purchase (HP) Loan</strong>
+                <button class="btn btn-outline btn-sm" onclick="asAddLoanRow('hp')">+ Add</button>
+              </div>
+              <div id="as-loans-hp"></div>
+            </div>
+            <div style="padding-top:12px; border-top:1px solid var(--border);">
+              <strong style="font-size:13px; color:var(--brand-navy); display:block; margin-bottom:8px;">Interest &amp; Bank Charges</strong>
+              <div id="as-interest"></div>
             </div>
           </div>
-          <div id="fs-detail-summary" style="margin-top:10px;"></div>
         </div>
 
-        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
-          <button class="btn btn-primary" onclick="fsShowSection('figures')">Continue to Figures →</button>
-        </div>
-      </div>
-
-      <!-- Step 2: Figures A–N -->
-      <div id="fs-section-figures" style="display:none;">
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title" style="font-size:14px;">Current-Year Figures</div>
-            <div style="font-size:12px;color:var(--text-muted);">Purchases and Trade Receivables are solved, not entered</div>
-          </div>
-          <div id="fs-figures-grid"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">This Year&rsquo;s Figures</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">These are the only figures typed by hand. Everything else on the statement is derived from them and from last year.</p>
+          <div id="as-figures"></div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title" style="font-size:14px;">Fixed Assets — 3.1 PPE Movement</div>
-            <div style="font-size:12px;color:var(--text-muted);">Depreciation charged must total figure M</div>
-          </div>
-          <div id="fs-ppe-grid"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Expense Lines &amp; Rules</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every line is last year plus a growth rate. Change the rate, or type the figure straight into the right-hand box to override that line &mdash; the &#8635; button puts it back on the rate. Rent and Audit Fee start at 0%.</p>
+          <div id="as-rules"></div>
         </div>
 
-        <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Expense Lines</div></div>
-          <p style="font-size:13px; color:var(--text-muted); margin:0 0 12px;">Every line grows 5% on the prior year, except Rent and Audit Fee which are held flat (rule 1). Edit any figure to override.</p>
-          <div id="fs-expense-grid"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Tax, TDS &amp; VAT</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every figure here is derived from the accounts by default and shown greyed. Type over any of them when you have the challan &mdash; a typed figure stops being a live formula in the exported workbook, because it came off a deposit slip rather than out of the accounts.</p>
+          <div id="as-tax"></div>
         </div>
 
-        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
-          <button class="btn btn-outline" onclick="fsShowSection('setup')">← Back</button>
-          <button class="btn btn-primary" onclick="fsCalculate()">Build Statements →</button>
-        </div>
-      </div>
-
-      <!-- Step 3: Review & Export -->
-      <div id="fs-section-review" style="display:none;">
-        <div class="card">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Proofs</div></div>
-          <div id="fs-proofs"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Closing Stock</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">One amount per group. The grand total becomes Closing Stock on Sch-PL and the group totals become note 3.4 &mdash; so the figure is entered once, as the working behind it.</p>
+          <div id="as-stock"></div>
         </div>
 
-        <div class="card" id="fs-issues-card" style="display:none;">
-          <div class="card-header"><div class="card-title" style="font-size:14px;">Findings</div></div>
-          <div id="fs-issues"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Party Detail &amp; Reconciliation</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Creditor and debtor detail built from the client&rsquo;s Autobooks register, against the figures on the statements. A difference here means the register and the statement disagree.</p>
+          <div id="as-parties"></div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title" style="font-size:14px;">Levers</div>
-            <div style="font-size:12px;color:var(--text-muted);">Balancing figures re-solve as you edit</div>
-          </div>
-          <div id="fs-levers"></div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Depreciation &mdash; 3.1 PPE</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Seeded from the client&rsquo;s saved SLM schedule when there is one, otherwise from the prior-year note. The opening column is last year&rsquo;s carrying amount, because the note restates each year.</p>
+          <div id="as-ppe"></div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title" style="font-size:14px;">Statements</div>
-            <div class="rep-view-toggle" id="fs-sheet-tabs"></div>
-          </div>
-          <div id="fs-preview" style="max-height:640px; overflow:auto; background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px;"></div>
-        </div>
-
-        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
-          <button class="btn btn-outline" onclick="fsShowSection('figures')">← Back</button>
-          <button class="btn btn-outline" id="fs-save-btn" onclick="fsSave()">Save to Database</button>
-          <button class="btn btn-outline" id="fs-print-btn" onclick="fsPrint()">Print / Save as PDF</button>
-          <button class="btn btn-primary" id="fs-excel-btn" onclick="fsDownloadExcel()">Download Excel</button>
+        <div style="margin-top:20px;">
+          <button class="btn btn-primary" onclick="asCalculate()">Build the statement &rarr;</button>
         </div>
       </div>
 
+      <!-- Step 3 -->
+      <div id="as-section-review" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Review</div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-outline btn-sm" onclick="asPrint()">Print / PDF</button>
+              <button class="btn btn-primary btn-sm" onclick="asDownloadExcel()">Download Excel</button>
+            </div>
+          </div>
+          <div id="as-review"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Reconciliation</div></div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every identity the statements have to satisfy. A check that fails says <em>where</em> the difference comes from; anything needing accounting judgement is flagged for review rather than resolved.</p>
+          <div id="as-reconcile"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Preview</div>
+            <div class="rep-view-toggle" id="as-sheet-tabs">
+              <button class="rep-view-btn active" data-sheet="SFP" onclick="asShowSheet('SFP')">SFP</button>
+              <button class="rep-view-btn" data-sheet="SOI" onclick="asShowSheet('SOI')">SOI</button>
+              <button class="rep-view-btn" data-sheet="SOCE" onclick="asShowSheet('SOCE')">SOCE</button>
+              <button class="rep-view-btn" data-sheet="SOCF" onclick="asShowSheet('SOCF')">SOCF</button>
+              <button class="rep-view-btn" data-sheet="PPE" onclick="asShowSheet('PPE')">3.1 PPE</button>
+              <button class="rep-view-btn" data-sheet="SchBS" onclick="asShowSheet('SchBS')">Sch-BS</button>
+              <button class="rep-view-btn" data-sheet="SchPL" onclick="asShowSheet('SchPL')">Sch-PL</button>
+            </div>
+          </div>
+          <div id="as-preview" style="overflow-x:auto;"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ── TAB: CLIENTS ── -->
@@ -4368,7 +4378,7 @@ function cropLoginLogoIcon(img) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script src="js/config.js?v=202608221600"></script>
+<script src="js/config.js?v=202608221930"></script>
 <script src="js/utils.js?v=202608182300"></script>
 <script src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script src="js/core/statusBox.js?v=202608022300"></script>
@@ -4386,7 +4396,7 @@ function cropLoginLogoIcon(img) {
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
 <script src="js/core/orgIdentity.js?v=202608201030"></script>
-<script src="js/tabs.js?v=202608201200"></script>
+<script src="js/tabs.js?v=202608221930"></script>
 <script src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
@@ -4419,12 +4429,12 @@ function cropLoginLogoIcon(img) {
 <script src="js/projection.js?v=202608180900"></script>
 <script src="js/projectionExport.js?v=202608111600"></script>
 <script src="js/finStatementEngine.js?v=202608190900"></script>
-<script src="js/finStatement.js?v=202608190900"></script>
 <script src="js/finStatementExport.js?v=202608221900"></script>
 <script src="js/provisionalSources.js?v=202608201100"></script>
 <script src="js/provisionalStatementEngine.js?v=202608221900"></script>
 <script src="js/provisionalStatement.js?v=202608221900"></script>
 <script src="js/provisionalReconcile.js?v=202608201100"></script>
+<script src="js/auditedStatement.js?v=202608221930"></script>
 <script src="js/fileManagement.js?v=202608151800"></script>
 <script src="js/auditReportFinalization.js?v=202608151800"></script>
 <script src="js/auditChecklist.js?v=202608151800"></script>

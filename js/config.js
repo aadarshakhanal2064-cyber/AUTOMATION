@@ -630,6 +630,13 @@ window.ACTIVITY_EVENT_LABELS = {
   provisional_excel_generated: 'Provisional statement generated',
   provisional_saved: 'Provisional statement saved',
   provisional_deleted: 'Saved provisional statement deleted',
+  // The Audited Statement module is a clone of Provisional (js/auditedStatement.js,
+  // 2026-08-22) — its events mirror the provisional set. The finstatement_* labels
+  // above stay for the OLD audited module's historical rows.
+  audited_py_parsed: 'Audited — prior-year statement read',
+  audited_excel_generated: 'Audited statement generated',
+  audited_saved: 'Audited statement saved',
+  audited_deleted: 'Saved audited statement deleted',
   notes_to_accounts_saved: 'Notes to Accounts saved',
   party_opening_saved: 'Party opening balance saved',
   projection_generated: 'Projection generated', projection_saved: 'Projection saved',

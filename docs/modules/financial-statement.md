@@ -4,6 +4,25 @@
 > this file holds the detail for the NFRS statement-set builder (COI · SFP · SOI · SOCE · SOCF · 3.1 PPE · Sch-BS · Sch-PL).
 > Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
 
+> **⚠ The Audited Statement UI was REPLACED on 2026-08-22** (user decision:
+> "copy the provisional module to audited too — same working features; the
+> differences we will fix later"). `js/finStatement.js` — the A–N figures /
+> levers / solver UI described in §5.18 below — is **no longer loaded**
+> (removed from index.html; recoverable from git history). The Audited
+> Statement tab now runs **`js/auditedStatement.js`**, a verbatim `ps-`→`as-`
+> clone of the Provisional Statement module that registers under the same
+> `finStatement` module id and saves to `financial_statements` with
+> `basis='audited'` — read **`docs/modules/provisional-statement.md`** for how
+> it works, and keep the two clones in step until the audited-specific
+> differences are specified and built.
+>
+> **Still current in this file:** everything about `js/finStatementEngine.js`
+> (whose `parsePriorYear` both clones use) and `js/finStatementExport.js`
+> (`fsxBuildReport`/`fsxWriteWorkbook`/`fsxPreviewHtml`/`fsxSheetHtml` — the
+> shared output layer). §5.18's UI/solver detail (inputs A–N, the seeded cash,
+> the levers panel, `fsFigures`, `fsPreserveFocus`) describes the removed UI
+> and is kept as the record of what "fix the differences later" may re-need.
+
 ---
 
 ### 5.18 Financial Statement (`js/finStatement.js` + `js/finStatementEngine.js` + `js/finStatementExport.js`, `fs-` prefix, table `financial_statements`)
