@@ -353,7 +353,11 @@ function fsxBuildReport(out) {
       // targets one column by index and leaves the rest as typed figures.
       R(m.socOpenLabel || 'Balance at beginning of the year', [...openArr, sum4(openArr)], 'item', {
         k: 'open', rowTotal: true,
-        xf: ({ X, ci }) => (ci === 0 ? X('SchBS', 'capOpen', 0) : (ci === 2 ? X('SchBS', 'resOpen', 0) : null)),
+        // Opening capital IS note 3.6's prior-year paid-up cell — a live
+        // fetch the one-box 3.6 made possible (its quad predecessor's rows
+        // never registered keys, so this lookup used to resolve to nothing
+        // and the cell fell back to a written value).
+        xf: ({ X, ci }) => (ci === 0 ? X('SchBS', 'capPaid', 1) : (ci === 2 ? X('SchBS', 'resOpen', 0) : null)),
       }),
       R('Profit for the Year', [...rowProfit, sum4(rowProfit)], 'item', {
         k: 'profit', rowTotal: true,

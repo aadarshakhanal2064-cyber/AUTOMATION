@@ -492,6 +492,26 @@ Third round (same day, user feedback on the second):
 - Base font stepped down to 12px (headers scaled with it) and the fit
   pass's upscale cap lowered to 1.1.
 
+**The see-saw's third end — Closing Stock** (2026-08-22, user ask "both
+purchases and closing stock should be balancing figures for each other").
+With a profit target held, typing Purchases makes Closing Stock the residual
+(`solveFor: 'closingStock'` in the engine — the same 3.12 arithmetic read
+backwards once more, in the same solve block, so the modes cannot drift) and
+typing Closing Stock hands the balance back to Purchases. Both boxes stay
+fully editable; the derived one carries the *balancing* badge and live value.
+A stock SCHEDULE always wins (§15 — the schedule IS the figure): the engine
+guard falls back to deriving the profit, `psStockAdd` drops the mode, and
+`psVerify` proves the round trip plus the guard (140 assertions).
+
+**Typing must never fight the debounced recalc** (2026-08-22, user report:
+the Interest & Bank Charges boxes were impossible to type into). Those boxes
+and the tax panel's fire `oninput`, and `psRecalcDebounced` re-rendered both
+blocks 220ms into a pause — destroying the focused input. Both renderers now
+follow the Autobooks confirmation-grid rule: while an input inside them holds
+the caret, `psRenderInterest` patches only the running Finance Cost total
+(`#ps-fin-total`) and `psRenderTax` skips entirely (its `onchange` re-renders
+on blur). Checkboxes and selects still re-render immediately.
+
 **Save to database** (2026-08-22, user ask "reuse the projection report
 database saved and search system") — the module is no longer stateless.
 `provisional_statements` (see `docs/database.md`) stores identity columns

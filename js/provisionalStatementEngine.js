@@ -300,7 +300,10 @@ const ProvisionalStatementEngine = (() => {
     });
     const stockTotal = stockGroups.reduce((sum, g) => sum + g.amount, 0);
     const stockFromSchedule = stockLines.length > 0;
-    const closingStock = stockFromSchedule ? stockTotal : num(cy.closingStock);
+    // `let`, not `const`: the solveFor 'closingStock' mode below derives it
+    // as the residual of the see-saw. A stock SCHEDULE always wins — the
+    // schedule IS the figure (§15) and is never solved over.
+    let closingStock = stockFromSchedule ? stockTotal : num(cy.closingStock);
     // A client's cost of sales carries heads beyond labour and freight —
     // packing, loading, commission on purchase. Each behaves exactly like the
     // two named ones: same rules, same override, same place in note 3.12.
@@ -425,20 +428,38 @@ const ProvisionalStatementEngine = (() => {
     // cannot drift apart.
     const nonMaterialExpenses = employeeTotal + financeTotal + depreciation
                               + incentive.amount + otherTotal;
-    const stockMovement = openingStock + labour.amount + freight.amount + directExtraTotal - closingStock;
+    // The additive side of 3.12; closing stock subtracts from it per branch,
+    // because in the third mode closing stock is what the branch derives.
+    const stockCharge = openingStock + labour.amount + freight.amount + directExtraTotal;
+    const pbtHeld = cy.pbtTarget != null && cy.pbtTarget !== '';
 
-    let purchases, materialsTotal, pbt;
-    if (opt.solveFor === 'purchases' && cy.pbtTarget != null && cy.pbtTarget !== '') {
+    let purchases, materialsTotal, pbt, solvedFor;
+    if (opt.solveFor === 'purchases' && pbtHeld) {
       pbt = num(cy.pbtTarget);
       materialsTotal = totalIncome - pbt - nonMaterialExpenses;
-      purchases = materialsTotal - stockMovement;
+      purchases = materialsTotal - (stockCharge - closingStock);
+      solvedFor = 'purchases';
       if (purchases < 0) {
         warn(`Purchases solves to a negative figure (${purchases.toFixed(2)}) at that profit. The target is unreachable with this year's sales, stock and expenses — lower the profit, or check Closing Stock.`);
       }
+    } else if (opt.solveFor === 'closingStock' && pbtHeld && !stockFromSchedule) {
+      // Third end of the same equation (user ask 2026-08-22): hold the
+      // profit AND the typed purchases, and closing stock is the residual —
+      // 3.12 read backwards once more, never a separate model. Guarded off
+      // when a stock schedule exists: the schedule IS the figure (§15).
+      pbt = num(cy.pbtTarget);
+      purchases = num(cy.purchases);
+      materialsTotal = totalIncome - pbt - nonMaterialExpenses;
+      closingStock = stockCharge + purchases - materialsTotal;
+      solvedFor = 'closingStock';
+      if (closingStock < 0) {
+        warn(`Closing Stock solves to a negative figure (${closingStock.toFixed(2)}) at that profit and purchases. The pair is unreachable with this year's sales and expenses — adjust one of them.`);
+      }
     } else {
       purchases = num(cy.purchases);
-      materialsTotal = stockMovement + purchases;
+      materialsTotal = (stockCharge - closingStock) + purchases;
       pbt = totalIncome - (materialsTotal + nonMaterialExpenses);
+      solvedFor = 'pbt';
       if (purchases < 0) err('Purchases of goods is negative.');
     }
     const totalExpenses = materialsTotal + nonMaterialExpenses;   // `SOI F25`
@@ -712,7 +733,7 @@ const ProvisionalStatementEngine = (() => {
         financeTotal,
         depreciation,
         incentive: hasIncentive ? incentive.amount : 0,
-        solvedFor: (opt.solveFor === 'purchases' && cy.pbtTarget != null && cy.pbtTarget !== '') ? 'purchases' : 'pbt',
+        solvedFor,
         otherItems: otherExpenses,
         otherTotal,
         totalExpenses, pbt, tax: taxExpense, netProfit,

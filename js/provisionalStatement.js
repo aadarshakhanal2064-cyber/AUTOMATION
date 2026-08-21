@@ -605,13 +605,17 @@ function psRenderFigures() {
     <div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">` +
     PS_FIGURES.map(f => {
       const plugged = f.plug && psPlugReceivables;
+      // Closing Stock can be the derived end of the profit/purchases see-saw
+      // — shown solved, still fully editable (typing claims it back).
+      const derivedStock = f.k === 'closingStock' && psSolveFor === 'closingStock';
       const val = plugged
         ? (derived && psResult ? Number(psResult.balance.tradeReceivables).toFixed(2) : '')
+        : derivedStock && psResult ? Number(psResult.income.materials.closing).toFixed(2)
         : (psCy[f.k] == null ? '' : psCy[f.k]);
       const src = psSourceOf(f.k);
       return `
       <div class="form-group" style="margin:0;">
-        <label>${f.label === '@DIST@' ? escHtml(psDistLabel()) : f.label} ${plugged ? tag(true) : ''}${src ? psSrcBadge() : ''}</label>
+        <label>${f.label === '@DIST@' ? escHtml(psDistLabel()) : f.label} ${plugged || derivedStock ? tag(true) : ''}${src ? psSrcBadge() : ''}</label>
         <input type="number" step="0.01" id="ps-fig-${f.k}" value="${val}" ${plugged ? 'readonly style="background:var(--bg-subtle);"' : ''}
                oninput="psFigureInput('${f.k}', this.value)" />
         ${src ? psSrcNote(f.k, src) : (f.hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${f.hint}</div>` : '')}
@@ -624,7 +628,7 @@ function psRenderFigures() {
 
     <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
       <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:4px;">Profit &amp; Purchases</div>
-      <p style="font-size:11.5px; color:var(--text-muted); margin:0 0 10px;">Two ends of one see-saw. Type the profit you need and Purchases balances to it; type Purchases and the profit follows. Whichever you touched last is the one held.</p>
+      <p style="font-size:11.5px; color:var(--text-muted); margin:0 0 10px;">One see-saw, three ends. Type the profit you need and Purchases balances to it; with a profit held, typing Purchases hands the balance to Closing Stock instead — and typing Closing Stock hands it back to Purchases. Whichever you touched last is held.</p>
       <div class="form-grid" style="grid-template-columns:repeat(2,1fr); gap:14px;">
         <div class="form-group" style="margin:0;">
           <label>Profit Before Tax ${tag(psSolveFor === 'pbt')}</label>
@@ -665,14 +669,27 @@ function psSetPlug(on) {
 }
 
 function psSetSolve(which, v) {
-  if (which === 'pbt') { psSolveFor = 'purchases'; psCy.pbtTarget = v === '' ? null : psNum(v); }
-  else { psSolveFor = 'pbt'; psCy.purchases = v === '' ? null : psNum(v); }
+  if (which === 'pbt') {
+    psCy.pbtTarget = v === '' ? null : psNum(v);
+    if (psCy.pbtTarget == null) psSolveFor = 'pbt';
+    else if (psSolveFor !== 'closingStock') psSolveFor = 'purchases';
+  } else {
+    psCy.purchases = v === '' ? null : psNum(v);
+    // With a held profit, typing Purchases hands the balance to Closing
+    // Stock (user ask 2026-08-22) — unless a stock schedule owns that
+    // figure (§15), in which case the profit gives way, as before.
+    psSolveFor = (psCy.pbtTarget != null && psCy.pbtTarget !== '' && !psStock.length)
+      ? 'closingStock' : 'pbt';
+  }
   psRecalcDebounced();
 }
 
 function psFigureInput(k, v) {
   psCy[k] = v === '' ? undefined : psNum(v);
   if (psSourceOf(k)) psClaimTyped(k);
+  // Typing into a derived Closing Stock claims it — Purchases becomes the
+  // balancer of the held profit again, so both stay fully editable.
+  if (k === 'closingStock' && psSolveFor === 'closingStock') psSolveFor = 'purchases';
   psRecalcDebounced();
 }
 
@@ -876,6 +893,12 @@ function psSetVatSide(side) {
 function psRenderTax() {
   const host = psEl('ps-tax');
   if (!host) return;
+  // Same caret rule as psRenderInterest: the Advance Tax and VAT boxes fire
+  // oninput, so the debounced recalc must not rebuild this panel under the
+  // preparer's fingers. Header summaries catch up on the next render after
+  // blur; checkboxes and selects still re-render immediately.
+  const focused = document.activeElement;
+  if (host.contains(focused) && focused.tagName === 'INPUT' && focused.type !== 'checkbox') return;
   const r = psResult;
   const derivedAdv = r ? r.advanceTax.derived : 0;
   const vatOn = !!psCy.vatRegistered;
@@ -923,7 +946,7 @@ function psRenderTax() {
     <div class="form-group" style="margin:0; max-width:340px;">
       <label>Advance Tax ${advTyped ? '' : '<span class="log-badge badge-info" style="font-size:10px;">derived</span>'}</label>
       <input type="number" step="0.01" id="ps-adv-tax" value="${advTyped ? psCy.advanceTax : (r ? Number(r.advanceTax.amount).toFixed(2) : '')}"
-             oninput="psFigureInput('advanceTax', this.value)" />
+             oninput="psFigureInput('advanceTax', this.value)" onchange="psRenderTax()" />
       <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
         Last year&rsquo;s advance tax less the provision it settled, plus TDS on this year&rsquo;s other income
         &mdash; ${psFmt(derivedAdv)}. Type over it if you have the challans.
@@ -960,7 +983,7 @@ function psRenderTax() {
         </select></div>
       <div class="form-group" style="margin:0;"><label>Amount ${vSrc ? psSrcBadge() : ''}</label>
         <input type="number" step="0.01" value="${psCy[sideKey] == null ? '' : psCy[sideKey]}"
-               oninput="psFigureInput('${sideKey}', this.value)" /></div>
+               oninput="psFigureInput('${sideKey}', this.value)" onchange="psRenderTax()" /></div>
     </div>
     ${vSrc ? psSrcNote(sideKey, vSrc) : `<div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">Payable when the return owes the office, Receivable when credit is carried &mdash; the other side prints nothing.</div>`}`
     : `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">A PAN-only client carries no VAT line, so none is printed.</div>`}`;
@@ -1047,6 +1070,9 @@ function psRenderStock() {
 }
 
 function psStockAdd() {
+  // A stock schedule owns the closing-stock figure (§15) — it can no longer
+  // be the see-saw's derived end.
+  if (psSolveFor === 'closingStock') psSolveFor = 'purchases';
   psStock.push({ group: 'Finished Goods', amount: null });
   psRun(); psRenderStock(); psRenderFigures();
 }
@@ -1143,6 +1169,18 @@ function psSeedLoans() {
 function psRenderInterest() {
   const host = psEl('ps-interest');
   if (!host) return;
+  const total = psNum(psCy.interestTerm) + psNum(psCy.interestOD) + psNum(psCy.bankCharges);
+  // These boxes fire oninput, and the debounced recalc re-renders this block
+  // 220ms into a pause — which destroyed the input mid-typing and made the
+  // fields impossible to type into (user report 2026-08-22). While one of
+  // them holds the caret, only the running total is patched in place — the
+  // Autobooks confirmation-grid rule.
+  const focused = document.activeElement;
+  if (host.contains(focused) && focused.tagName === 'INPUT') {
+    const t = psEl('ps-fin-total');
+    if (t) t.textContent = psFmt(total);
+    return;
+  }
   const box = (k, label, hint) => `
     <div class="form-group" style="margin:0;">
       <label>${label}</label>
@@ -1150,7 +1188,6 @@ function psRenderInterest() {
              oninput="psFigureInput('${k}', this.value)" />
       ${hint ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">${hint}</div>` : ''}
     </div>`;
-  const total = psNum(psCy.interestTerm) + psNum(psCy.interestOD) + psNum(psCy.bankCharges);
   host.innerHTML = `
     <div class="form-grid" style="grid-template-columns:repeat(3,1fr); gap:14px;">
       ${box('interestTerm', 'Interest on Term Loan', 'Against the Long Term / PWC / HP facilities above.')}
@@ -1158,7 +1195,7 @@ function psRenderInterest() {
       ${box('bankCharges', 'Bank Charges', '')}
     </div>
     <div style="margin-top:10px; font-size:12.5px; color:var(--text-muted);">
-      Finance Cost (note 3.14): <strong style="color:var(--brand-navy); font-variant-numeric:tabular-nums;">${psFmt(total)}</strong>
+      Finance Cost (note 3.14): <strong id="ps-fin-total" style="color:var(--brand-navy); font-variant-numeric:tabular-nums;">${psFmt(total)}</strong>
     </div>`;
 }
 
@@ -1298,10 +1335,14 @@ function psRecalcDebounced() {
 // Autobooks confirmation grid follows.
 function psSyncSeesaw() {
   if (!psResult) return;
-  const el = psEl(psSolveFor === 'purchases' ? 'ps-fig-purchases' : 'ps-fig-pbtTarget');
-  if (el && el !== document.activeElement) {
-    const v = psSolveFor === 'purchases' ? psResult.income.materials.purchases : psResult.income.pbt;
-    el.value = Number(v).toFixed(2);
+  const seesaw = {
+    purchases: ['ps-fig-purchases', psResult.income.materials.purchases],
+    pbt: ['ps-fig-pbtTarget', psResult.income.pbt],
+    closingStock: ['ps-fig-closingStock', psResult.income.materials.closing],
+  }[psSolveFor];
+  if (seesaw) {
+    const el = psEl(seesaw[0]);
+    if (el && el !== document.activeElement) el.value = Number(seesaw[1]).toFixed(2);
   }
   const rec = psEl('ps-fig-tradeReceivables');
   if (psPlugReceivables && rec && rec !== document.activeElement) {

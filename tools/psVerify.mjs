@@ -237,6 +237,30 @@ eq('see-saw  Materials unchanged',          back.income.materials.total,     out
 eq('see-saw  Total assets unchanged',       back.balance.totalAssets,        out.balance.totalAssets, 0.01);
 eq('see-saw  Balance still nil',            back.balance.balanceGap,         0, 0.01);
 
+// ── the third end: closing stock (2026-08-22) ──
+// Hold the profit AND the typed purchases and closing stock becomes the
+// residual — the same 3.12 arithmetic read backwards once more. Feeding the
+// forward pass's own PBT and purchases must hand back the closing stock the
+// pass started from, or the three modes have drifted apart.
+const csv = Engine.derive({
+  py,
+  cy: Object.assign({}, cy, { closingStock: undefined, pbtTarget: out.income.pbt }),
+  options: { taxProfile: 'corporate', solveFor: 'closingStock' },
+});
+eq('see-saw  Closing stock re-solved',      csv.income.materials.closing,   cy.closingStock, 0.01);
+eq('see-saw  solvedFor reports it',         csv.income.solvedFor === 'closingStock' ? 1 : 0, 1);
+eq('see-saw  Inventories follow the solve', csv.balance.inventories,        cy.closingStock, 0.01);
+eq('see-saw  Balance still nil (3rd end)',  csv.balance.balanceGap,         0, 0.01);
+// A stock schedule owns the figure (§15): the mode must fall back to
+// deriving the profit, never solve over the schedule.
+const csGuard = Engine.derive({
+  py,
+  cy: Object.assign({}, cy, { pbtTarget: out.income.pbt, stockLines: [{ group: 'Finished Goods', amount: 18582170.93 }] }),
+  options: { taxProfile: 'corporate', solveFor: 'closingStock' },
+});
+eq('see-saw  schedule blocks the 3rd end',  csGuard.income.solvedFor === 'pbt' ? 1 : 0, 1);
+eq('see-saw  schedule figure stands',       csGuard.income.materials.closing, 18582170.93, 0.01);
+
 // ── manual overrides ──
 // Advance tax, every TDS line and the VAT position can each be typed instead of
 // derived. These assert BOTH directions, because the failure mode is silent: a
