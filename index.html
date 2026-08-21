@@ -1667,7 +1667,7 @@ function cropLoginLogoIcon(img) {
             </div>
 
             <div class="action-row">
-              <button class="btn btn-primary" onclick="cpSave()">Save Company</button>
+              <button class="btn btn-primary" onclick="cpSave(this)">Save Company</button>
               <button class="btn btn-outline" onclick="cpCloseEditor()">Cancel</button>
               <button class="btn btn-danger" id="cp-delete-btn" style="display:none;" onclick="cpDelete(null)">Delete</button>
             </div>
@@ -2637,7 +2637,7 @@ function cropLoginLogoIcon(img) {
             <button id="ps-step-review" class="rep-view-btn" onclick="psShowSection('review')">3 &middot; Review &amp; Export</button>
           </div>
           <button class="btn btn-outline" onclick="psOpenSavedDrawer()">Saved Statements</button>
-          <button class="btn btn-primary" onclick="psSaveToDb()">Save to Database</button>
+          <button class="btn btn-primary" onclick="psSaveToDb(this)">Save to Database</button>
         </div>
       </div>
 
@@ -2827,7 +2827,7 @@ function cropLoginLogoIcon(img) {
             <button id="as-step-review" class="rep-view-btn" onclick="asShowSection('review')">3 &middot; Review &amp; Export</button>
           </div>
           <button class="btn btn-outline" onclick="asOpenSavedDrawer()">Saved Statements</button>
-          <button class="btn btn-primary" onclick="asSaveToDb()">Save to Database</button>
+          <button class="btn btn-primary" onclick="asSaveToDb(this)">Save to Database</button>
         </div>
       </div>
 
@@ -3149,7 +3149,7 @@ function cropLoginLogoIcon(img) {
           are edited under <strong>Company Registrar → Company Profile</strong>.
         </p>
         <div class="action-row">
-          <button class="btn btn-primary" onclick="saveClient()">Save Client</button>
+          <button class="btn btn-primary" onclick="saveClient(this)">Save Client</button>
           <button class="btn btn-outline" onclick="cancelAddClient()">Cancel</button>
         </div>
         <div id="client-form-status"></div>
@@ -3697,7 +3697,7 @@ function cropLoginLogoIcon(img) {
         <button class="btn btn-danger" id="sm-delete-btn" style="display:none;" onclick="smDeleteFromDrawer()">Delete Memo</button>
         <div style="display:flex; gap:10px;">
           <button class="btn btn-outline" onclick="smCloseCreate()">Cancel</button>
-          <button class="btn btn-primary" onclick="smSaveMemo()">Save Service Memo</button>
+          <button class="btn btn-primary" onclick="smSaveMemo(this)">Save Service Memo</button>
         </div>
       </div>
       <div id="sm-drawer-status"></div>
@@ -3778,7 +3778,7 @@ function cropLoginLogoIcon(img) {
 
       <div class="action-row" style="justify-content:flex-end;">
         <button class="btn btn-outline" onclick="fmCloseEntry()">Cancel</button>
-        <button class="btn btn-primary" onclick="fmSaveEntry()">Save Intake</button>
+        <button class="btn btn-primary" onclick="fmSaveEntry(this)">Save Intake</button>
       </div>
       <div id="fm-drawer-status"></div>
     </div>
@@ -3933,7 +3933,7 @@ function cropLoginLogoIcon(img) {
 
       <div class="action-row" style="justify-content:flex-end;">
         <button class="btn btn-outline" onclick="arfCloseEntry()">Cancel</button>
-        <button class="btn btn-primary" onclick="arfSaveEntry()">Save Record</button>
+        <button class="btn btn-primary" onclick="arfSaveEntry(this)">Save Record</button>
       </div>
       <div id="arf-drawer-status"></div>
     </div>
@@ -3981,7 +3981,7 @@ function cropLoginLogoIcon(img) {
 
       <div class="action-row" style="justify-content:flex-end;">
         <button class="btn btn-outline" onclick="achkCloseEntry()">Cancel</button>
-        <button class="btn btn-primary" onclick="achkSaveEntry()">Save Checklist</button>
+        <button class="btn btn-primary" onclick="achkSaveEntry(this)">Save Checklist</button>
       </div>
       <div id="achk-drawer-status"></div>
     </div>
@@ -4037,7 +4037,7 @@ function cropLoginLogoIcon(img) {
 
       <div class="action-row" style="justify-content:flex-end;">
         <button class="btn btn-outline" onclick="wdCloseEntry()">Cancel</button>
-        <button class="btn btn-primary" onclick="wdSaveEntry()">Save Work Record</button>
+        <button class="btn btn-primary" onclick="wdSaveEntry(this)">Save Work Record</button>
       </div>
       <div id="wd-drawer-status"></div>
     </div>
@@ -4186,7 +4186,7 @@ function cropLoginLogoIcon(img) {
       </div>
       <div class="action-row" style="justify-content:flex-end;">
         <button class="btn btn-outline" onclick="fmCloseOuttake()">Cancel</button>
-        <button class="btn btn-primary" onclick="fmConfirmOuttake()">Record Outtake</button>
+        <button class="btn btn-primary" onclick="fmConfirmOuttake(this)">Record Outtake</button>
       </div>
       <div id="fm-outtake-status"></div>
     </div>
@@ -4294,7 +4294,7 @@ function cropLoginLogoIcon(img) {
         <button class="btn btn-danger" id="bb-account-delete-btn" style="display:none;" onclick="bbDeleteAccount(bbAccountById(bbEditingAccountId))">Delete</button>
         <div style="display:flex; gap:10px;">
           <button class="btn btn-outline" onclick="bbCloseAccount()">Cancel</button>
-          <button class="btn btn-primary" onclick="bbSaveAccount()">Save Account</button>
+          <button class="btn btn-primary" onclick="bbSaveAccount(this)">Save Account</button>
         </div>
       </div>
       <div id="bb-account-drawer-status"></div>
@@ -4353,7 +4353,7 @@ function cropLoginLogoIcon(img) {
         <button class="btn btn-danger" id="bb-txn-delete-btn" style="display:none;" onclick="bbDeleteTxnFromDrawer()">Delete</button>
         <div style="display:flex; gap:10px;">
           <button class="btn btn-outline" onclick="bbCloseTxn()">Cancel</button>
-          <button class="btn btn-primary" onclick="bbSaveTxn()">Save</button>
+          <button class="btn btn-primary" onclick="bbSaveTxn(this)">Save</button>
         </div>
       </div>
       <div id="bb-txn-drawer-status"></div>
@@ -4438,7 +4438,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608212100"></script>
+<script defer src="js/config.js?v=202608212200"></script>
 <script defer src="js/utils.js?v=202608182300"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
@@ -4469,7 +4469,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/depreciationSlm.js?v=202608171400"></script>
 <script defer src="js/bmAgmMinutes.js?v=202608211500"></script>
 <script defer src="js/auditorChange.js?v=202608211900"></script>
-<script defer src="js/companyProfile.js?v=202608201200"></script>
+<script defer src="js/companyProfile.js?v=202608212200"></script>
 <script defer src="js/companySecretary.js?v=202608211900"></script>
 <script defer src="js/companyRegistration.js?v=202608211900"></script>
 <script defer src="js/salesPurchaseBook.js?v=202608170900"></script>
@@ -4482,7 +4482,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/salesPurchaseBookReco.js?v=202608170900"></script>
 <script defer src="js/salesPurchaseBookVatReturn.js?v=202608170900"></script>
 <script defer src="js/confirmationLetters.js?v=202608151800"></script>
-<script defer src="js/bankBook.js?v=202608181600"></script>
+<script defer src="js/bankBook.js?v=202608212200"></script>
 <script defer src="js/partyLedger.js?v=202608022300"></script>
 <script defer src="js/finalAccount.js?v=202608022300"></script>
 <script defer src="js/projectionEngine.js?v=202608180900"></script>
@@ -4492,9 +4492,9 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/finStatementExport.js?v=202608221900"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608221900"></script>
-<script defer src="js/provisionalStatement.js?v=202608221900"></script>
+<script defer src="js/provisionalStatement.js?v=202608212200"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608221930"></script>
+<script defer src="js/auditedStatement.js?v=202608212200"></script>
 <script defer src="js/fileManagement.js?v=202608212200"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212200"></script>
 <script defer src="js/auditChecklist.js?v=202608212200"></script>

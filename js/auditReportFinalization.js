@@ -619,7 +619,7 @@ function arfOpenEntry(existing) {
 
 function arfCloseEntry() { arfEl('arf-entry-drawer').classList.remove('open'); }
 
-async function arfSaveEntry() {
+async function arfSaveEntry(btn) {
   const drawerErr = msg => showStatus(escHtml(msg), 'info', 'arf-drawer-status');
   const clientName = arfEl('arf-client-search').value.trim();
   if (!clientName) { drawerErr('Enter or select a client.'); return; }
@@ -675,30 +675,35 @@ async function arfSaveEntry() {
     updated_by: arfUserEmail(),
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'arf-drawer-status');
-  try {
-    if (arfEditingId) {
-      const { error } = await window.sb.from('audit_report_finalization').update(payload).eq('id', arfEditingId);
-      if (error) throw error;
-      AuditLog.record('arf_updated', { module: 'auditReportFinalization', clientName, recordRef: arfEditingId, detail: { fiscalYear, returnType: type } });
-    } else {
-      payload.created_by = payload.updated_by;
-      const { data, error } = await window.sb.from('audit_report_finalization').insert(payload).select('id').single();
-      if (error) throw error;
-      AuditLog.record('arf_created', { module: 'auditReportFinalization', clientName, recordRef: data.id, detail: { fiscalYear, returnType: type } });
+  // Save contract (Stage 3): busy button, drawer closes once the write (and
+  // any follow-on sync) lands, refresh in the background. The chain message
+  // becomes a toast — it names records that were auto-created or withdrawn,
+  // which must be seen regardless of scroll position.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (arfEditingId) {
+        const { error } = await window.sb.from('audit_report_finalization').update(payload).eq('id', arfEditingId);
+        if (error) throw error;
+        AuditLog.record('arf_updated', { module: 'auditReportFinalization', clientName, recordRef: arfEditingId, detail: { fiscalYear, returnType: type } });
+      } else {
+        payload.created_by = payload.updated_by;
+        const { data, error } = await window.sb.from('audit_report_finalization').insert(payload).select('id').single();
+        if (error) throw error;
+        AuditLog.record('arf_created', { module: 'auditReportFinalization', clientName, recordRef: data.id, detail: { fiscalYear, returnType: type } });
+      }
+
+      // The IT return's state decides what follow-on work is due — in both
+      // directions, so this runs whether it was verified or un-verified.
+      let sync = { created: [], removed: [], kept: [] };
+      if (type === 'it_return') sync = await arfSyncFollowOns(payload);
+
+      arfCloseEntry();
+      showToast(arfChainMessage(sync, clientName), 'success');
+      arfRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the record: ' + escHtml(e.message || 'unknown error'), 'error', 'arf-drawer-status');
     }
-
-    // The IT return's state decides what follow-on work is due — in both
-    // directions, so this runs whether it was verified or un-verified.
-    let sync = { created: [], removed: [], kept: [] };
-    if (type === 'it_return') sync = await arfSyncFollowOns(payload);
-
-    arfCloseEntry();
-    await arfRefresh();
-    arfStatusMsg(arfChainMessage(sync, clientName), 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'arf-drawer-status');
-  }
+  });
 }
 
 function arfReadTriState(selectId) {
@@ -749,11 +754,13 @@ async function arfSyncFollowOns(base) {
   const due = base.it_verified === true ? arfFollowOnTypes(base.it_return_type) : [];
   const created = [], removed = [], kept = [];
 
-  for (const type of ['estimate_return', 'tax_clearance']) {
+  // The two tracks are independent rows, so their writes run in parallel
+  // (Stage 3 — they were serial awaits in a loop, one extra round-trip each).
+  await Promise.all(['estimate_return', 'tax_clearance'].map(async (type) => {
     const existing = arfFindExisting(base.client_id, base.fiscal_year, type);
 
     if (due.includes(type)) {
-      if (existing) continue;                       // already open — idempotent
+      if (existing) return;                         // already open — idempotent
       const payload = {
         client_id: base.client_id,
         client_name: base.client_name,
@@ -772,7 +779,7 @@ async function arfSyncFollowOns(base) {
       const { data, error } = await window.sb.from('audit_report_finalization')
         .insert(payload).select('id').single();
       // 23505 = another staff member created it between our check and this insert.
-      if (error) { if (error.code === '23505') continue; throw error; }
+      if (error) { if (error.code === '23505') return; throw error; }
       created.push(arfTypeLabel(type));
       AuditLog.record('arf_created', {
         module: 'auditReportFinalization', clientName: base.client_name, recordRef: data.id,
@@ -780,7 +787,7 @@ async function arfSyncFollowOns(base) {
       });
 
     } else if (existing) {
-      if (!arfIsUntouchedFollowOn(existing)) { kept.push(arfTypeLabel(type)); continue; }
+      if (!arfIsUntouchedFollowOn(existing)) { kept.push(arfTypeLabel(type)); return; }
       const { error } = await window.sb.from('audit_report_finalization')
         .delete().eq('id', existing.id);
       if (error) throw error;
@@ -790,7 +797,7 @@ async function arfSyncFollowOns(base) {
         detail: { fiscalYear: base.fiscal_year, returnType: type, autoRemoved: true },
       });
     }
-  }
+  }));
   return { created, removed, kept };
 }
 

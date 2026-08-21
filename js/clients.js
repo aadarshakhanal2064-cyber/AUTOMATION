@@ -749,7 +749,7 @@ function clearClientForm() {
   document.getElementById('client-form-status').innerHTML = '';
 }
 
-async function saveClient() {
+async function saveClient(btn) {
   const name  = document.getElementById('ac-name').value.trim();
   const email = document.getElementById('ac-email').value.trim();
   if (!name) {
@@ -778,24 +778,34 @@ async function saveClient() {
     tax_registration_type: document.getElementById('ac-tax-registration-type').value.trim() || null,
   };
 
-  let error;
-  if (window.editingClientId) {
-    ({ error } = await window.sb.from('clients').update(payload).eq('id', window.editingClientId));
-  } else {
-    // A brand-new client has no VAT status yet; the column is NOT NULL with
-    // a default, but an explicit insert value keeps intent obvious here.
-    payload.vat_status = 'not_registered';
-    ({ error } = await window.sb.from('clients').insert(payload));
-  }
+  // Save contract (Stage 3): this save previously gave NO feedback at all —
+  // no disable, no spinner, nothing between the click and the reload. It also
+  // wrote no audit entry, making client create/edit the only major writes in
+  // the app without a trail (added below, user-approved plan decision 3).
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    let error;
+    if (window.editingClientId) {
+      ({ error } = await window.sb.from('clients').update(payload).eq('id', window.editingClientId));
+      if (!error) AuditLog.record('client_updated', { module: 'clients', clientName: name, recordRef: window.editingClientId });
+    } else {
+      // A brand-new client has no VAT status yet; the column is NOT NULL with
+      // a default, but an explicit insert value keeps intent obvious here.
+      payload.vat_status = 'not_registered';
+      let data;
+      ({ data, error } = await window.sb.from('clients').insert(payload).select('id').single());
+      if (!error) AuditLog.record('client_created', { module: 'clients', clientName: name, recordRef: data && data.id });
+    }
 
-  if (error) {
-    document.getElementById('client-form-status').innerHTML =
-      `<div class="status-box status-error" style="margin-top:0;">❌ ${escHtml(error.message)}</div>`;
-    return;
-  }
+    if (error) {
+      document.getElementById('client-form-status').innerHTML =
+        `<div class="status-box status-error" style="margin-top:0;">❌ Could not save the client: ${escHtml(error.message)}</div>`;
+      return;
+    }
 
-  cancelAddClient();
-  await loadClients();
+    cancelAddClient();
+    showToast(`✅ Client <strong>${escHtml(name)}</strong> saved.`, 'success');
+    loadClients().catch(e => showToast('❌ Saved, but the directory failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+  });
 }
 
 function editClient(id) {
@@ -824,7 +834,9 @@ async function deleteClient(id) {
   const name = c ? c.name : '';
   if (!confirm(`Delete client "${name}"? This cannot be undone.`)) return;
   const { error } = await window.sb.from('clients').delete().eq('id', id);
-  if (error) { alert('Failed to delete: ' + error.message); return; }
+  if (error) { showToast('❌ Could not delete ' + escHtml(name || 'the client') + ': ' + escHtml(error.message), 'error', 7000); return; }
+  AuditLog.record('client_deleted', { module: 'clients', clientName: name, recordRef: id });
+  showToast(`🗑️ Client <strong>${escHtml(name)}</strong> deleted.`, 'success');
   await loadClients();
 }
 

@@ -968,7 +968,7 @@ function wdOpenEntry(existing, preset) {
 
 function wdCloseEntry() { wdEl('wd-entry-drawer').classList.remove('open'); }
 
-async function wdSaveEntry() {
+async function wdSaveEntry(btn) {
   const drawerErr = msg => showStatus(escHtml(msg), 'info', 'wd-drawer-status');
   const clientName = wdEl('wd-client-search').value.trim();
   if (!clientName) { drawerErr('Enter or select a client.'); return; }
@@ -1012,26 +1012,29 @@ async function wdSaveEntry() {
     updated_by: wdUserEmail(),
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'wd-drawer-status');
-  try {
-    if (wdEditingId) {
-      // Explicit insert-or-update, not upsert — an upsert would silently
-      // overwrite created_by on every edit.
-      const { error } = await window.sb.from('work_done').update(payload).eq('id', wdEditingId);
-      if (error) throw error;
-      AuditLog.record('wd_updated', { module: 'workDone', clientName, recordRef: wdEditingId, detail: { fiscalYear } });
-    } else {
-      payload.created_by = wdUserEmail();
-      const { data, error } = await window.sb.from('work_done').insert(payload).select('id').single();
-      if (error) throw error;
-      AuditLog.record('wd_created', { module: 'workDone', clientName, recordRef: data.id, detail: { fiscalYear } });
+  // Save contract (Stage 3): busy button, drawer closes at write-complete,
+  // the 3-stage refresh runs in the background — see smSaveMemo.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (wdEditingId) {
+        // Explicit insert-or-update, not upsert — an upsert would silently
+        // overwrite created_by on every edit.
+        const { error } = await window.sb.from('work_done').update(payload).eq('id', wdEditingId);
+        if (error) throw error;
+        AuditLog.record('wd_updated', { module: 'workDone', clientName, recordRef: wdEditingId, detail: { fiscalYear } });
+      } else {
+        payload.created_by = wdUserEmail();
+        const { data, error } = await window.sb.from('work_done').insert(payload).select('id').single();
+        if (error) throw error;
+        AuditLog.record('wd_created', { module: 'workDone', clientName, recordRef: data.id, detail: { fiscalYear } });
+      }
+      wdCloseEntry();
+      showToast(`✅ Work record saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
+      wdRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the record: ' + escHtml(e.message || 'unknown error'), 'error', 'wd-drawer-status');
     }
-    wdCloseEntry();
-    await wdRefresh();
-    wdStatusMsg(`✅ Work record saved for ${escHtml(clientName)}.`, 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'wd-drawer-status');
-  }
+  });
 }
 
 async function wdDeleteEntry(row) {

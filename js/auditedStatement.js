@@ -1487,7 +1487,7 @@ function asCollectSaveState() {
   };
 }
 
-async function asSaveToDb() {
+async function asSaveToDb(btn) {
   if (!asPy) {
     asStatus('Nothing to save yet — upload the prior-year statement first.', 'error');
     return;
@@ -1508,42 +1508,47 @@ async function asSaveToDb() {
     basis: 'audited',
     inputs: asCollectSaveState(),
   };
-  try {
-    asStatus('Saving to the database…', 'searching');
-    // One row per (company, fiscal year): a save with no loaded row first
-    // adopts an existing match, so a re-open-and-save can never duplicate.
-    // Adopt by client_id when there is one — the table carries a unique index
-    // on (client_id, fiscal_year, basis), so an ilike miss on a respelt
-    // company name would otherwise make the insert collide with it.
-    if (!asSavedId) {
-      let q = window.sb.from('financial_statements')
-        .select('id').eq('fiscal_year', fy).eq('basis', 'audited').limit(1);
-      q = row.client_id != null ? q.eq('client_id', row.client_id) : q.ilike('company_name', company);
-      const { data, error } = await q;
-      if (error) throw error;
-      if (data && data.length) asSavedId = data[0].id;
+  // Busy-button contract (Stage 3) — kept byte-parallel with psSaveToDb,
+  // per the clone rule (§15: a fix in either clone belongs in both).
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      asStatus('Saving to the database…', 'searching');
+      // One row per (company, fiscal year): a save with no loaded row first
+      // adopts an existing match, so a re-open-and-save can never duplicate.
+      // Adopt by client_id when there is one — the table carries a unique index
+      // on (client_id, fiscal_year, basis), so an ilike miss on a respelt
+      // company name would otherwise make the insert collide with it.
+      if (!asSavedId) {
+        let q = window.sb.from('financial_statements')
+          .select('id').eq('fiscal_year', fy).eq('basis', 'audited').limit(1);
+        q = row.client_id != null ? q.eq('client_id', row.client_id) : q.ilike('company_name', company);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (data && data.length) asSavedId = data[0].id;
+      }
+      if (asSavedId) {
+        // An update deliberately does not resend created_by — the projection idiom.
+        const { error } = await window.sb.from('financial_statements')
+          .update(row).eq('id', asSavedId);
+        if (error) throw error;
+      } else {
+        row.created_by = (window.currentUser || {}).email || null;
+        const { data, error } = await window.sb.from('financial_statements')
+          .insert(row).select('id').single();
+        if (error) throw error;
+        asSavedId = data.id;
+      }
+      asStatus(`Saved audited statement #${asSavedId} for ${escHtml(company)} (${escHtml(fy)}). Saving again updates this record.`, 'success');
+      showToast(`✅ Audited statement saved for <strong>${escHtml(company)}</strong> (${escHtml(fy)}).`, 'success');
+      AuditLog.record('audited_saved', {
+        module: 'finStatement', clientName: company, status: 'success',
+        recordRef: asSavedId, detail: { fiscalYear: fy },
+      });
+    } catch (e) {
+      console.error(e);
+      asStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
     }
-    if (asSavedId) {
-      // An update deliberately does not resend created_by — the projection idiom.
-      const { error } = await window.sb.from('financial_statements')
-        .update(row).eq('id', asSavedId);
-      if (error) throw error;
-    } else {
-      row.created_by = (window.currentUser || {}).email || null;
-      const { data, error } = await window.sb.from('financial_statements')
-        .insert(row).select('id').single();
-      if (error) throw error;
-      asSavedId = data.id;
-    }
-    asStatus(`Saved audited statement #${asSavedId} for ${escHtml(company)} (${escHtml(fy)}). Saving again updates this record.`, 'success');
-    AuditLog.record('audited_saved', {
-      module: 'finStatement', clientName: company, status: 'success',
-      recordRef: asSavedId, detail: { fiscalYear: fy },
-    });
-  } catch (e) {
-    console.error(e);
-    asStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
-  }
+  });
 }
 
 // The shared saved-documents drawer (js/core/documentStore.js), the same

@@ -246,7 +246,7 @@ function bbOpenAccount(existing) {
 }
 function bbCloseAccount() { document.getElementById('bb-account-drawer').classList.remove('open'); }
 
-async function bbSaveAccount() {
+async function bbSaveAccount(btn) {
   const name = document.getElementById('bb-account-name').value.trim();
   const bank = document.getElementById('bb-account-bank').value.trim();
   const errEl = 'bb-account-drawer-status';
@@ -270,25 +270,28 @@ async function bbSaveAccount() {
     updated_by: bbUserEmail(),
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', errEl);
-  try {
-    if (bbEditingAccountId) {
-      const { error } = await window.sb.from('bank_accounts').update(payload).eq('id', bbEditingAccountId);
-      if (error) throw error;
-      AuditLog.record('bank_account_updated', { module: 'bankBook', clientName: name, recordRef: bbEditingAccountId });
-    } else {
-      payload.created_by = payload.updated_by;
-      payload.sort_order = bbAccounts.length;
-      const { data, error } = await window.sb.from('bank_accounts').insert(payload).select('id').single();
-      if (error) throw error;
-      AuditLog.record('bank_account_created', { module: 'bankBook', clientName: name, recordRef: data.id });
+  // Save contract (Stage 3): busy button, drawer closes at write-complete,
+  // reload in the background — see smSaveMemo.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (bbEditingAccountId) {
+        const { error } = await window.sb.from('bank_accounts').update(payload).eq('id', bbEditingAccountId);
+        if (error) throw error;
+        AuditLog.record('bank_account_updated', { module: 'bankBook', clientName: name, recordRef: bbEditingAccountId });
+      } else {
+        payload.created_by = payload.updated_by;
+        payload.sort_order = bbAccounts.length;
+        const { data, error } = await window.sb.from('bank_accounts').insert(payload).select('id').single();
+        if (error) throw error;
+        AuditLog.record('bank_account_created', { module: 'bankBook', clientName: name, recordRef: data.id });
+      }
+      bbCloseAccount();
+      showToast(`✅ Account <strong>${escHtml(name)}</strong> saved.`, 'success');
+      bbReload().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the account: ' + escHtml(e.message || 'unknown error'), 'error', errEl);
     }
-    bbCloseAccount();
-    await bbReload();
-    bbStatus('✅ Account saved.', 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', errEl);
-  }
+  });
 }
 
 async function bbDeleteAccount(row) {
@@ -478,7 +481,7 @@ function bbOnParticularChange() {
 
 function bbDrawerErr(msg) { showStatus(escHtml(msg), 'info', 'bb-txn-drawer-status'); }
 
-async function bbSaveTxn() {
+async function bbSaveTxn(btn) {
   const accountId = parseInt(document.getElementById('bb-txn-account').value, 10);
   if (!accountId) { bbDrawerErr('Select an account.'); return; }
   const date = document.getElementById('bb-txn-date').value.trim();
@@ -487,7 +490,7 @@ async function bbSaveTxn() {
   if (!(amount > 0)) { bbDrawerErr('Enter an amount greater than zero.'); return; }
   const particular = document.getElementById('bb-txn-particular').value;
 
-  if (particular === 'inter_bank_transfer') { bbSaveTransfer(accountId, date, amount); return; }
+  if (particular === 'inter_bank_transfer') { bbSaveTransfer(accountId, date, amount, btn); return; }
 
   // Counterparty: the client particulars (Fee Receipt / For Tax / Tax Payment)
   // link a directory client; others are free text.
@@ -515,33 +518,34 @@ async function bbSaveTxn() {
     updated_by: bbUserEmail(),
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'bb-txn-drawer-status');
-  try {
-    if (bbEditingTxn) {
-      // Editing a plain txn that used to be a transfer leg shouldn't happen (a
-      // transfer's particular can't change to non-transfer without both legs) —
-      // guard anyway by clearing any stray group id above.
-      const { error } = await window.sb.from('bank_transactions').update(payload).eq('id', bbEditingTxn.id);
-      if (error) throw error;
-      AuditLog.record('bank_txn_updated', { module: 'bankBook', clientName: counterpartyName || '', recordRef: bbEditingTxn.id });
-    } else {
-      payload.created_by = payload.updated_by;
-      const { data, error } = await window.sb.from('bank_transactions').insert(payload).select('id').single();
-      if (error) throw error;
-      AuditLog.record('bank_txn_created', { module: 'bankBook', clientName: counterpartyName || '', recordRef: data.id });
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (bbEditingTxn) {
+        // Editing a plain txn that used to be a transfer leg shouldn't happen (a
+        // transfer's particular can't change to non-transfer without both legs) —
+        // guard anyway by clearing any stray group id above.
+        const { error } = await window.sb.from('bank_transactions').update(payload).eq('id', bbEditingTxn.id);
+        if (error) throw error;
+        AuditLog.record('bank_txn_updated', { module: 'bankBook', clientName: counterpartyName || '', recordRef: bbEditingTxn.id });
+      } else {
+        payload.created_by = payload.updated_by;
+        const { data, error } = await window.sb.from('bank_transactions').insert(payload).select('id').single();
+        if (error) throw error;
+        AuditLog.record('bank_txn_created', { module: 'bankBook', clientName: counterpartyName || '', recordRef: data.id });
+      }
+      bbCloseTxn();
+      showToast('✅ Transaction saved.', 'success');
+      bbReload().catch(e => showToast('❌ Saved, but the ledger failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the transaction: ' + escHtml(e.message || 'unknown error'), 'error', 'bb-txn-drawer-status');
     }
-    bbCloseTxn();
-    await bbReload();
-    bbStatus('✅ Transaction saved.', 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'bb-txn-drawer-status');
-  }
+  });
 }
 
 // One transfer = two paired legs sharing transfer_group_id. `srcAccount` is the
 // account the drawer was opened on: the From account when entered from Payment,
 // the To account when entered from Receipt. The counterpart is the other one.
-async function bbSaveTransfer(srcAccount, date, amount) {
+async function bbSaveTransfer(srcAccount, date, amount, btn) {
   const counter = parseInt(document.getElementById('bb-txn-counter-account').value, 10);
   if (!counter) { bbDrawerErr('Select the other account for the transfer.'); return; }
   if (counter === srcAccount) { bbDrawerErr('The two accounts must be different.'); return; }
@@ -565,31 +569,32 @@ async function bbSaveTransfer(srcAccount, date, amount) {
     transfer_group_id: groupId, description, fiscal_year: fy, updated_by: who,
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving transfer…', 'searching', 'bb-txn-drawer-status');
-  try {
-    if (bbEditingTxn && bbEditingTxn.transfer_group_id) {
-      // Update BOTH existing legs so they can never desync.
-      const sibs = bbTransferSiblings(bbEditingTxn.transfer_group_id);
-      const pay = sibs.find(s => s.txn_type === 'payment');
-      const rec = sibs.find(s => s.txn_type === 'receipt');
-      if (pay) { const { error } = await window.sb.from('bank_transactions').update(payLeg).eq('id', pay.id); if (error) throw error; }
-      if (rec) { const { error } = await window.sb.from('bank_transactions').update(recLeg).eq('id', rec.id); if (error) throw error; }
-      // Safety: if somehow only one leg existed, create the missing one.
-      if (!pay) { payLeg.created_by = who; const { error } = await window.sb.from('bank_transactions').insert(payLeg); if (error) throw error; }
-      if (!rec) { recLeg.created_by = who; const { error } = await window.sb.from('bank_transactions').insert(recLeg); if (error) throw error; }
-      AuditLog.record('bank_transfer_updated', { module: 'bankBook', recordRef: pay ? pay.id : null, detail: { groupId } });
-    } else {
-      payLeg.created_by = who; recLeg.created_by = who;
-      const { error } = await window.sb.from('bank_transactions').insert([payLeg, recLeg]);
-      if (error) throw error;
-      AuditLog.record('bank_transfer_created', { module: 'bankBook', detail: { groupId, from: fromId, to: toId } });
+  await WorkflowEngine.withBusyButton(btn, 'Saving transfer…', async () => {
+    try {
+      if (bbEditingTxn && bbEditingTxn.transfer_group_id) {
+        // Update BOTH existing legs so they can never desync.
+        const sibs = bbTransferSiblings(bbEditingTxn.transfer_group_id);
+        const pay = sibs.find(s => s.txn_type === 'payment');
+        const rec = sibs.find(s => s.txn_type === 'receipt');
+        if (pay) { const { error } = await window.sb.from('bank_transactions').update(payLeg).eq('id', pay.id); if (error) throw error; }
+        if (rec) { const { error } = await window.sb.from('bank_transactions').update(recLeg).eq('id', rec.id); if (error) throw error; }
+        // Safety: if somehow only one leg existed, create the missing one.
+        if (!pay) { payLeg.created_by = who; const { error } = await window.sb.from('bank_transactions').insert(payLeg); if (error) throw error; }
+        if (!rec) { recLeg.created_by = who; const { error } = await window.sb.from('bank_transactions').insert(recLeg); if (error) throw error; }
+        AuditLog.record('bank_transfer_updated', { module: 'bankBook', recordRef: pay ? pay.id : null, detail: { groupId } });
+      } else {
+        payLeg.created_by = who; recLeg.created_by = who;
+        const { error } = await window.sb.from('bank_transactions').insert([payLeg, recLeg]);
+        if (error) throw error;
+        AuditLog.record('bank_transfer_created', { module: 'bankBook', detail: { groupId, from: fromId, to: toId } });
+      }
+      bbCloseTxn();
+      showToast('✅ Transfer saved (recorded on both accounts).', 'success');
+      bbReload().catch(e => showToast('❌ Saved, but the ledger failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the transfer: ' + escHtml(e.message || 'unknown error'), 'error', 'bb-txn-drawer-status');
     }
-    bbCloseTxn();
-    await bbReload();
-    bbStatus('✅ Transfer saved (recorded on both accounts).', 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'bb-txn-drawer-status');
-  }
+  });
 }
 
 async function bbDeleteTxn(row) {

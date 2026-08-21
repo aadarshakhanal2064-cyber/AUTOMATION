@@ -33,7 +33,11 @@ function showToast(msg, type, ms) {
   t.className = `status-box status-${type || 'success'} toast`;
   t.innerHTML = msg;
   stack.appendChild(t);
-  requestAnimationFrame(() => t.classList.add('toast-in'));
+  // A timeout, not requestAnimationFrame: rAF is paused whenever the page
+  // isn't compositing (hidden/background tab), which would leave a toast
+  // permanently at opacity 0. A 20 ms timer still lets the CSS transition
+  // run from the post-insert frame.
+  setTimeout(() => t.classList.add('toast-in'), 20);
   setTimeout(() => {
     t.classList.remove('toast-in');
     setTimeout(() => t.remove(), 250);

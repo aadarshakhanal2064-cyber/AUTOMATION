@@ -295,7 +295,7 @@ function cpRenderCompleteness() {
 // ════════════════════════════════════════════
 //  SAVE / DELETE
 // ════════════════════════════════════════════
-async function cpSave() {
+async function cpSave(btn) {
   const editing = window.cpEditing;
   if (!editing) return;
 
@@ -309,53 +309,65 @@ async function cpSave() {
 
   if (!payload.name) { cpStatus('Company Name is required.', 'error'); return; }
 
-  cpStatus('Saving…', 'searching');
-
-  let companyId = editing.id;
-  if (editing.__new) {
-    const { data, error } = await window.sb
-      .from('registrar_companies').insert(payload).select('id').single();
-    if (error) {
-      // Adding is admin-only at the database (mirrors `clients`), so name that
-      // rather than showing a raw policy violation.
-      cpStatus(error.code === '42501'
-        ? 'Only an admin can add a company to the register.'
-        : 'Failed to save: ' + error.message, 'error');
-      return;
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    let companyId = editing.id;
+    if (editing.__new) {
+      const { data, error } = await window.sb
+        .from('registrar_companies').insert(payload).select('id').single();
+      if (error) {
+        // Adding is admin-only at the database (mirrors `clients`), so name that
+        // rather than showing a raw policy violation.
+        cpStatus(error.code === '42501'
+          ? 'Only an admin can add a company to the register.'
+          : 'Failed to save: ' + error.message, 'error');
+        return;
+      }
+      companyId = data.id;
+    } else {
+      const { error } = await window.sb
+        .from('registrar_companies').update(payload).eq('id', companyId);
+      if (error) { cpStatus('Failed to save: ' + error.message, 'error'); return; }
     }
-    companyId = data.id;
-  } else {
-    const { error } = await window.sb
-      .from('registrar_companies').update(payload).eq('id', companyId);
-    if (error) { cpStatus('Failed to save: ' + error.message, 'error'); return; }
-  }
 
-  // Shareholders are replaced wholesale rather than diffed: the rows on screen
-  // ARE the company's shareholder list, a removed row means removed, and 3–4
-  // rows per company make a diff pure complexity. Delete-then-insert is safe
-  // here because both statements are scoped to this one company.
-  const names = cpShareholderNames();
-  const { error: delErr } = await window.sb
-    .from('registrar_shareholders').delete().eq('company_id', companyId);
-  if (delErr) { cpStatus('Saved the company, but its shareholder list did not update: ' + delErr.message, 'error'); return; }
+    // Shareholders are replaced wholesale rather than diffed: the rows on screen
+    // ARE the company's shareholder list, a removed row means removed, and 3–4
+    // rows per company make a diff pure complexity. Delete-then-insert is safe
+    // here because both statements are scoped to this one company.
+    //
+    // But only when the list actually CHANGED (Stage 3): the delete+insert
+    // used to run unconditionally, so editing a phone number burned two extra
+    // round-trips rewriting an identical shareholder list.
+    const names = cpShareholderNames();
+    const existingNames = (editing.shareholders || []).map(s => String(s.name || '').trim());
+    const unchanged = !editing.__new
+      && names.length === existingNames.length
+      && names.every((n, i) => n === existingNames[i]);
+    if (!unchanged) {
+      const { error: delErr } = await window.sb
+        .from('registrar_shareholders').delete().eq('company_id', companyId);
+      if (delErr) { cpStatus('Saved the company, but its shareholder list did not update: ' + delErr.message, 'error'); return; }
 
-  if (names.length) {
-    const rows = names.map((name, i) => ({ company_id: companyId, name, sort_order: i }));
-    const { error: insErr } = await window.sb.from('registrar_shareholders').insert(rows);
-    if (insErr) { cpStatus('Saved the company, but its shareholders did not save: ' + insErr.message, 'error'); return; }
-  }
+      if (names.length) {
+        const rows = names.map((name, i) => ({ company_id: companyId, name, sort_order: i }));
+        const { error: insErr } = await window.sb.from('registrar_shareholders').insert(rows);
+        if (insErr) { cpStatus('Saved the company, but its shareholders did not save: ' + insErr.message, 'error'); return; }
+      }
+    }
 
-  AuditLog.record(editing.__new ? 'registrar_company_added' : 'registrar_company_saved', {
-    module: 'companyProfile',
-    clientName: payload.name,
-    recordRef: companyId,
-    detail: { registrationNumber: payload.registration_number, shareholders: names.length },
+    AuditLog.record(editing.__new ? 'registrar_company_added' : 'registrar_company_saved', {
+      module: 'companyProfile',
+      clientName: payload.name,
+      recordRef: companyId,
+      detail: { registrationNumber: payload.registration_number, shareholders: names.length },
+    });
+
+    cpCloseEditor();
+    showToast(`✅ ${editing.__new ? 'Company added' : 'Company saved'}: <strong>${escHtml(payload.name)}</strong>.`, 'success');
+    // Background reload; the RegistrarDirectory.onChange listener re-renders
+    // the table and stats when it lands. The extra cpInit() that used to
+    // follow was a second render of the same data in the same tick.
+    RegistrarDirectory.reload().catch(e => showToast('❌ Saved, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
   });
-
-  await RegistrarDirectory.reload();
-  cpStatus(editing.__new ? 'Company added.' : 'Saved.', 'success');
-  cpCloseEditor();
-  cpInit();
 }
 
 async function cpDelete(id) {
@@ -377,10 +389,11 @@ async function cpDelete(id) {
     detail: { registrationNumber: c.registration_number },
   });
 
-  await RegistrarDirectory.reload();
   cpCloseEditor();
-  cpStatus(`Removed ${c.name}.`, 'success');
-  cpInit();
+  showToast(`🗑️ Removed <strong>${escHtml(c.name)}</strong> from the register.`, 'success');
+  // Background reload; the onChange listener re-renders — the trailing
+  // cpInit() was a second render of the same data (Stage 3).
+  RegistrarDirectory.reload().catch(e => showToast('❌ Removed, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
 }
 
 // ── Bulk import ──

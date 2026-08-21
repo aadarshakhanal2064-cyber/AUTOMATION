@@ -805,7 +805,7 @@ function fmOpenEntry(existing) {
 
 function fmCloseEntry() { document.getElementById('fm-entry-drawer').classList.remove('open'); }
 
-async function fmSaveEntry() {
+async function fmSaveEntry(btn) {
   const drawerErr = msg => showStatus(escHtml(msg), 'info', 'fm-drawer-status');
   const clientName = document.getElementById('fm-client-search').value.trim();
   if (!clientName) { drawerErr('Enter or select a client.'); return; }
@@ -886,26 +886,29 @@ async function fmSaveEntry() {
     updated_by: fmUserEmail(),
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'fm-drawer-status');
-  try {
-    if (fmEditingId) {
-      const { error } = await window.sb.from('document_register').update(payload).eq('id', fmEditingId);
-      if (error) throw error;
-      AuditLog.record('document_register_updated', { module: 'fileManagement', clientName, recordRef: fmEditingId });
-    } else {
-      payload.created_by = payload.updated_by;
-      const { data, error } = await window.sb.from('document_register').insert(payload).select('id').single();
-      if (error) throw error;
-      // register_no is filled by an AFTER INSERT trigger, so it isn't in this
-      // returned row — fmRefresh() below reloads it. (Same gotcha as invoices.)
-      AuditLog.record('document_register_created', { module: 'fileManagement', clientName, recordRef: data.id });
+  // Save contract (Stage 3): busy button, drawer closes at write-complete,
+  // table refresh in the background — see smSaveMemo for the reasoning.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (fmEditingId) {
+        const { error } = await window.sb.from('document_register').update(payload).eq('id', fmEditingId);
+        if (error) throw error;
+        AuditLog.record('document_register_updated', { module: 'fileManagement', clientName, recordRef: fmEditingId });
+      } else {
+        payload.created_by = payload.updated_by;
+        const { data, error } = await window.sb.from('document_register').insert(payload).select('id').single();
+        if (error) throw error;
+        // register_no is filled by an AFTER INSERT trigger, so it isn't in this
+        // returned row — the background fmRefresh() reloads it.
+        AuditLog.record('document_register_created', { module: 'fileManagement', clientName, recordRef: data.id });
+      }
+      fmCloseEntry();
+      showToast(`✅ Intake saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
+      fmRefresh().catch(e => showToast('❌ Saved, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the intake: ' + escHtml(e.message || 'unknown error'), 'error', 'fm-drawer-status');
     }
-    fmCloseEntry();
-    await fmRefresh();
-    fmStatusMsg('✅ Document intake saved.', 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'fm-drawer-status');
-  }
+  });
 }
 
 async function fmDeleteEntry(row) {
@@ -972,7 +975,7 @@ function fmOuttakeSetAll(mode) {
 
 function fmCloseOuttake() { document.getElementById('fm-outtake-modal').classList.remove('open'); }
 
-async function fmConfirmOuttake() {
+async function fmConfirmOuttake(btn) {
   if (!fmOuttakingRow) return;
   const items = [];
   document.querySelectorAll('#fm-outtake-items input[data-type]').forEach(el => {
@@ -1001,15 +1004,16 @@ async function fmConfirmOuttake() {
   const updatedOuttakes = [...(Array.isArray(fmOuttakingRow.outtakes) ? fmOuttakingRow.outtakes : []), event];
   const newStatus = fmDeriveStatus({ doc_types: fmOuttakingRow.doc_types, outtakes: updatedOuttakes });
 
-  showStatus('<span class="spinner spinner-navy"></span> Recording outtake…', 'searching', 'fm-outtake-status');
-  try {
-    await fmFlow.transition(fmOuttakingRow, newStatus, { patch: { outtakes: updatedOuttakes } });
-    fmCloseOuttake();
-    await fmRefresh();
-    fmStatusMsg(newStatus === 'returned' ? '✅ All documents returned to the client.' : '✅ Outtake recorded — some documents are still with us.', 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Failed to record the outtake'), 'error', 'fm-outtake-status');
-  }
+  await WorkflowEngine.withBusyButton(btn, 'Recording…', async () => {
+    try {
+      await fmFlow.transition(fmOuttakingRow, newStatus, { patch: { outtakes: updatedOuttakes } });
+      fmCloseOuttake();
+      showToast(newStatus === 'returned' ? '✅ All documents returned to the client.' : '✅ Outtake recorded — some documents are still with us.', 'success');
+      fmRefresh().catch(e => showToast('❌ Recorded, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not record the outtake: ' + escHtml(e.message || 'unknown error'), 'error', 'fm-outtake-status');
+    }
+  });
 }
 
 // Undo the most recent outtake only — not the whole history — since a

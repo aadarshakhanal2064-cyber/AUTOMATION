@@ -699,7 +699,7 @@ async function smDeleteFromDrawer() {
 
 function smDrawerErr(msg) { showStatus(escHtml(msg), 'info', 'sm-drawer-status'); }
 
-async function smSaveMemo() {
+async function smSaveMemo(btn) {
   const clientName = document.getElementById('sm-client-search').value.trim();
   if (!clientName) { smDrawerErr('Enter or select a client.'); return; }
   const firmKey = document.getElementById('sm-firm-key').value;
@@ -760,26 +760,33 @@ async function smSaveMemo() {
     updated_by: smUserEmail(),
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'sm-drawer-status');
-  try {
-    if (smEditingId) {
-      const { error } = await window.sb.from('service_memos').update(payload).eq('id', smEditingId);
-      if (error) throw error;
-      AuditLog.record('service_memo_updated', { module: 'serviceMemo', clientName, recordRef: smEditingId });
-    } else {
-      payload.created_by = payload.updated_by;
-      const { data, error } = await window.sb.from('service_memos').insert(payload).select('id').single();
-      if (error) throw error;
-      // memo_number is filled by an AFTER INSERT trigger, so it isn't in this
-      // returned row — smRefresh() below reloads it. (Same gotcha as invoices.)
-      AuditLog.record('service_memo_created', { module: 'serviceMemo', clientName, recordRef: data.id });
+  // Save contract (Stage 3): the button carries the in-flight state, the
+  // drawer closes the moment the WRITE lands, and the table refresh runs in
+  // the background — the user's save is done when the row is in Postgres,
+  // not when four follow-up reads have re-rendered a grid they may not even
+  // be looking at. A failed background refresh surfaces as a toast rather
+  // than dying silently.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (smEditingId) {
+        const { error } = await window.sb.from('service_memos').update(payload).eq('id', smEditingId);
+        if (error) throw error;
+        AuditLog.record('service_memo_updated', { module: 'serviceMemo', clientName, recordRef: smEditingId });
+      } else {
+        payload.created_by = payload.updated_by;
+        const { data, error } = await window.sb.from('service_memos').insert(payload).select('id').single();
+        if (error) throw error;
+        // memo_number is filled by an AFTER INSERT trigger, so it isn't in this
+        // returned row — the background smReload() reloads it.
+        AuditLog.record('service_memo_created', { module: 'serviceMemo', clientName, recordRef: data.id });
+      }
+      smCloseCreate();
+      showToast(`✅ Service memo saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
+      smReload().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the memo: ' + escHtml(e.message || 'unknown error'), 'error', 'sm-drawer-status');
     }
-    smCloseCreate();
-    await smReload();
-    smStatusMsg('✅ Service memo saved.', 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'sm-drawer-status');
-  }
+  });
 }
 
 async function smDeleteMemo(row) {

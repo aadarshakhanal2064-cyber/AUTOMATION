@@ -432,7 +432,7 @@ function achkOpenEntry(existing) {
 
 function achkCloseEntry() { achkEl('achk-entry-drawer').classList.remove('open'); }
 
-async function achkSaveEntry() {
+async function achkSaveEntry(btn) {
   const drawerErr = msg => showStatus(escHtml(msg), 'info', 'achk-drawer-status');
   const clientName = achkEl('achk-client-search').value.trim();
   if (!clientName) { drawerErr('Enter or select a client.'); return; }
@@ -465,26 +465,29 @@ async function achkSaveEntry() {
     remarks: achkEl('achk-remarks').value.trim() || null,
   };
 
-  showStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching', 'achk-drawer-status');
-  try {
-    if (achkEditingId) {
-      // Explicit insert-or-update, not upsert — an upsert would silently
-      // overwrite created_by on every edit.
-      const { error } = await window.sb.from('audit_checklists').update(payload).eq('id', achkEditingId);
-      if (error) throw error;
-      AuditLog.record('achk_updated', { module: 'auditChecklist', clientName, recordRef: achkEditingId, detail: { fiscalYear } });
-    } else {
-      payload.created_by = achkUserEmail();
-      const { data, error } = await window.sb.from('audit_checklists').insert(payload).select('id').single();
-      if (error) throw error;
-      AuditLog.record('achk_created', { module: 'auditChecklist', clientName, recordRef: data.id, detail: { fiscalYear } });
+  // Save contract (Stage 3): busy button, drawer closes at write-complete,
+  // refresh in the background — see smSaveMemo.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      if (achkEditingId) {
+        // Explicit insert-or-update, not upsert — an upsert would silently
+        // overwrite created_by on every edit.
+        const { error } = await window.sb.from('audit_checklists').update(payload).eq('id', achkEditingId);
+        if (error) throw error;
+        AuditLog.record('achk_updated', { module: 'auditChecklist', clientName, recordRef: achkEditingId, detail: { fiscalYear } });
+      } else {
+        payload.created_by = achkUserEmail();
+        const { data, error } = await window.sb.from('audit_checklists').insert(payload).select('id').single();
+        if (error) throw error;
+        AuditLog.record('achk_created', { module: 'auditChecklist', clientName, recordRef: data.id, detail: { fiscalYear } });
+      }
+      achkCloseEntry();
+      showToast(`✅ Checklist saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
+      achkRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    } catch (e) {
+      showStatus('❌ Could not save the checklist: ' + escHtml(e.message || 'unknown error'), 'error', 'achk-drawer-status');
     }
-    achkCloseEntry();
-    await achkRefresh();
-    achkStatusMsg(`✅ Checklist saved for ${escHtml(clientName)}.`, 'success');
-  } catch (e) {
-    showStatus('❌ ' + escHtml(e.message || 'Save failed'), 'error', 'achk-drawer-status');
-  }
+  });
 }
 
 async function achkDeleteEntry(row) {

@@ -1480,7 +1480,7 @@ function psCollectSaveState() {
   };
 }
 
-async function psSaveToDb() {
+async function psSaveToDb(btn) {
   if (!psPy) {
     psStatus('Nothing to save yet — upload the prior-year statement first.', 'error');
     return;
@@ -1498,37 +1498,42 @@ async function psSaveToDb() {
     fiscal_year: fy,
     inputs: psCollectSaveState(),
   };
-  try {
-    psStatus('Saving to the database…', 'searching');
-    // One row per (company, fiscal year): a save with no loaded row first
-    // adopts an existing match, so a re-open-and-save can never duplicate.
-    if (!psSavedId) {
-      const { data, error } = await window.sb.from('provisional_statements')
-        .select('id').ilike('company_name', company).eq('fiscal_year', fy).limit(1);
-      if (error) throw error;
-      if (data && data.length) psSavedId = data[0].id;
+  // Busy-button contract (Stage 3) — the Save button itself carries the
+  // in-flight state; the status line keeps the durable outcome message.
+  await WorkflowEngine.withBusyButton(btn, 'Saving…', async () => {
+    try {
+      psStatus('Saving to the database…', 'searching');
+      // One row per (company, fiscal year): a save with no loaded row first
+      // adopts an existing match, so a re-open-and-save can never duplicate.
+      if (!psSavedId) {
+        const { data, error } = await window.sb.from('provisional_statements')
+          .select('id').ilike('company_name', company).eq('fiscal_year', fy).limit(1);
+        if (error) throw error;
+        if (data && data.length) psSavedId = data[0].id;
+      }
+      if (psSavedId) {
+        // An update deliberately does not resend created_by — the projection idiom.
+        const { error } = await window.sb.from('provisional_statements')
+          .update(row).eq('id', psSavedId);
+        if (error) throw error;
+      } else {
+        row.created_by = (window.currentUser || {}).email || null;
+        const { data, error } = await window.sb.from('provisional_statements')
+          .insert(row).select('id').single();
+        if (error) throw error;
+        psSavedId = data.id;
+      }
+      psStatus(`Saved provisional statement #${psSavedId} for ${escHtml(company)} (${escHtml(fy)}). Saving again updates this record.`, 'success');
+      showToast(`✅ Provisional statement saved for <strong>${escHtml(company)}</strong> (${escHtml(fy)}).`, 'success');
+      AuditLog.record('provisional_saved', {
+        module: 'provisionalStatement', clientName: company, status: 'success',
+        recordRef: psSavedId, detail: { fiscalYear: fy },
+      });
+    } catch (e) {
+      console.error(e);
+      psStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
     }
-    if (psSavedId) {
-      // An update deliberately does not resend created_by — the projection idiom.
-      const { error } = await window.sb.from('provisional_statements')
-        .update(row).eq('id', psSavedId);
-      if (error) throw error;
-    } else {
-      row.created_by = (window.currentUser || {}).email || null;
-      const { data, error } = await window.sb.from('provisional_statements')
-        .insert(row).select('id').single();
-      if (error) throw error;
-      psSavedId = data.id;
-    }
-    psStatus(`Saved provisional statement #${psSavedId} for ${escHtml(company)} (${escHtml(fy)}). Saving again updates this record.`, 'success');
-    AuditLog.record('provisional_saved', {
-      module: 'provisionalStatement', clientName: company, status: 'success',
-      recordRef: psSavedId, detail: { fiscalYear: fy },
-    });
-  } catch (e) {
-    console.error(e);
-    psStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
-  }
+  });
 }
 
 // The shared saved-documents drawer (js/core/documentStore.js), the same

@@ -644,6 +644,8 @@ window.ACTIVITY_EVENT_LABELS = {
   bank_txn_created: 'Bank entry recorded', bank_txn_updated: 'Bank entry updated',
   bank_txn_deleted: 'Bank entry deleted',
   bm_agm_saved: 'BM/AGM minutes saved',
+  client_created: 'Client added', client_updated: 'Client updated',
+  client_deleted: 'Client deleted',
   company_secretary_saved: 'Secretary appointment saved',
   auditor_change_saved: 'Auditor change saved',
   company_registration_saved: 'Company registration saved',
