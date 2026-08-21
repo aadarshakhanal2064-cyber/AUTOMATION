@@ -174,10 +174,12 @@ function smRowActions() {
 
 // ── Pending Audit Fees — derived from Audit Report Finalization, never
 // stored twice ──
-// The firm's real workflow: the moment ANY of a client's three ARF tracks
-// (IT Return / Estimate Return / Tax Clearance) is verified for a fiscal
-// year, that year's statutory audit fee is due to be memoed — regardless of
-// which track got there first. This reads audit_report_finalization
+// The firm's real workflow: the moment a client's IT Return or Tax Clearance
+// track is verified for a fiscal year, that year's statutory audit fee is due
+// to be memoed — regardless of which of the two got there first. Estimate
+// Return is deliberately NOT a trigger and never appears here, verified or
+// not (user decision 2026-08-21) — it is interim work inside the same
+// engagement, not separately billable. This reads audit_report_finalization
 // directly, the same idiom Work Done uses for its own Pending List over
 // document_register, rather than caching a second copy of the same fact.
 // Once a Statutory Audit memo exists for that client+FY, the row drops off
@@ -274,6 +276,10 @@ function smIsFeeSkipped(g, fyStart) {
 function smFeeDueRows() {
   const groups = new Map();
   smArfRows.forEach(r => {
+    // Estimate Return never reaches this list — neither as a trigger nor as
+    // a Detail badge, whatever its verification status (see the header
+    // comment above).
+    if (r.return_type === 'estimate_return') return;
     // ARF's client_id is NOT NULL (directory clients only), but guard anyway
     // — a row this module can't attribute to a client can't be memoed either.
     if (r.client_id == null || !smArfTrackVerified(r)) return;
@@ -341,7 +347,7 @@ function smRenderPending() {
   if (!wrap) return;
   if (smPendingTable) { smPendingTable.destroy(); smPendingTable = null; }
   if (!rows.length) {
-    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return, Estimate Return, Tax Clearance or a saved Projection Report already has a matching fee memo.</div>';
+    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return, Tax Clearance or a saved Projection Report already has a matching fee memo.</div>';
     return;
   }
   wrap.innerHTML = '';
