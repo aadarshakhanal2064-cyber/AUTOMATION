@@ -152,7 +152,7 @@ async function spbRecoAdd(key) {
     if (data && data[0]) spbAdjustments.push(data[0]);
     spbRenderReco();
   } catch (err) {
-    spbRecoStatus('❌ Could not add a line: ' + escHtml(err.message || String(err)), 'error');
+    spbRecoStatus('❌ Could not add a line: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -167,7 +167,7 @@ async function spbRecoSetField(id, field, raw) {
     row[field] = value;
     spbRenderReco();
   } catch (err) {
-    spbRecoStatus('❌ Could not save that line: ' + escHtml(err.message || String(err)), 'error');
+    spbRecoStatus('❌ Could not save that line: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -183,7 +183,7 @@ async function spbRecoDelete(id) {
     spbAdjustments = spbAdjustments.filter(a => a.id !== id);
     spbRenderReco();
   } catch (err) {
-    spbRecoStatus('❌ Could not delete: ' + escHtml(err.message || String(err)), 'error');
+    spbRecoStatus('❌ Could not delete: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -253,7 +253,7 @@ async function spbRecoSuggest(key) {
     spbRenderReco();
     spbRecoStatus(`✅ Added ${rows.length} line${rows.length === 1 ? '' : 's'} from the monthly differences.`, 'success');
   } catch (err) {
-    spbRecoStatus('❌ Could not add the lines: ' + escHtml(err.message || String(err)), 'error');
+    spbRecoStatus('❌ Could not add the lines: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -449,7 +449,7 @@ async function spbExportReco(kind) {
     spbRecoStatus('✅ Exported.', 'success');
   } catch (err) {
     console.error('[Autobooks] reconciliation export failed', err);
-    spbRecoStatus('❌ Could not export: ' + escHtml(err.message || String(err)), 'error');
+    spbRecoStatus('❌ Could not export: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 

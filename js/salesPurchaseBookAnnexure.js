@@ -191,7 +191,7 @@ async function spbAnnSetKind(pan, section, value) {
     spbRenderAnn13Table();
   } catch (err) {
     console.error('[Autobooks] annexure category save failed', err);
-    spbAnnStatus('❌ Could not save that category: ' + escHtml(err.message || String(err)), 'error');
+    spbAnnStatus('❌ Could not save that category: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -223,7 +223,7 @@ function spbAnnImportOpenings(input) {
       await spbAnnApplyOpenings(rows, found);
     } catch (err) {
       console.error('[Autobooks] opening-balance import failed', err);
-      spbAnnStatus('❌ Could not read that file: ' + escHtml(err.message || String(err)), 'error');
+      spbAnnStatus('❌ Could not read that file: ' + escHtml(friendlyDbError(err)), 'error');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -496,7 +496,7 @@ async function spbExportAnn13(kind) {
     spbAnnStatus('✅ Exported.', 'success');
   } catch (err) {
     console.error('[Autobooks] annexure export failed', err);
-    spbAnnStatus('❌ Could not export: ' + escHtml(err.message || String(err)), 'error');
+    spbAnnStatus('❌ Could not export: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 

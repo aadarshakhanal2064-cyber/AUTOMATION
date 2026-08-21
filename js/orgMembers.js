@@ -70,7 +70,7 @@ async function omLoadMembers() {
     .select('id, email, role, status, invited_by, created_at')
     .order('role')
     .order('email');
-  if (error) { omStatus('❌ ' + escHtml(error.message), 'error'); omMembers = []; return; }
+  if (error) { omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); omMembers = []; return; }
   omMembers = data || [];
 }
 
@@ -175,7 +175,7 @@ async function omCreateInvite() {
   });
 
   btn.disabled = false;
-  if (error) return omStatus('❌ ' + escHtml(error.message), 'error');
+  if (error) return omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row || !row.token) return omStatus('❌ No invitation was returned.', 'error');
@@ -217,7 +217,7 @@ async function omRevokeInvite(id) {
     .from('org_invitations')
     .update({ revoked_at: new Date().toISOString() })
     .eq('id', id);
-  if (error) return omStatus('❌ ' + escHtml(error.message), 'error');
+  if (error) return omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
   omStatus('✅ Invitation revoked.', 'success');
   await omReload();
 }
@@ -234,7 +234,7 @@ async function omSetRole(sel) {
   if (error) {
     // Reload rather than leave the dropdown asserting a change the database
     // refused — the last-owner guard lives there, not here.
-    omStatus('❌ ' + escHtml(error.message), 'error');
+    omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
     await omReload();
     return;
   }
@@ -249,7 +249,7 @@ async function omToggleStatus(id) {
   if (next === 'inactive' && !confirm(`Deactivate ${m.email}? They lose access immediately.`)) return;
 
   const { error } = await window.sb.from('org_members').update({ status: next }).eq('id', id);
-  if (error) { omStatus('❌ ' + escHtml(error.message), 'error'); await omReload(); return; }
+  if (error) { omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); await omReload(); return; }
   omStatus(`✅ ${escHtml(m.email)} is now ${next}.`, 'success');
   await omReload();
 }
@@ -260,7 +260,7 @@ async function omRemoveMember(id) {
   if (!confirm(`Remove ${m.email} from this organisation?\n\nTheir name stays on work they already recorded. Deactivating instead keeps the account recoverable.`)) return;
 
   const { error } = await window.sb.from('org_members').delete().eq('id', id);
-  if (error) { omStatus('❌ ' + escHtml(error.message), 'error'); await omReload(); return; }
+  if (error) { omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); await omReload(); return; }
   omStatus(`✅ ${escHtml(m.email)} removed.`, 'success');
   await omReload();
 }

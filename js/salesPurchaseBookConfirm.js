@@ -191,7 +191,7 @@ async function spbCfSetField(idx, field, raw) {
   } catch (err) {
     console.error('[Autobooks] confirmation save failed', err);
     if (cell) cell.textContent = '!';
-    spbCfStatus('❌ Could not save that figure: ' + escHtml(err.message || String(err)), 'error');
+    spbCfStatus('❌ Could not save that figure: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -267,7 +267,7 @@ async function spbCarryForwardOpenings() {
       (noMatch ? ` ${noMatch} party(ies) weren't in last year's book.` : '') +
       (noClosing ? ` ${noClosing} had no closing balance recorded.` : ''), filled ? 'success' : 'info');
   } catch (err) {
-    spbCfStatus('❌ Could not carry forward: ' + escHtml(err.message || String(err)), 'error');
+    spbCfStatus('❌ Could not carry forward: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -604,7 +604,7 @@ async function spbExportConfirm(kind) {
     spbCfStatus('✅ Exported.', 'success');
   } catch (err) {
     console.error('[Autobooks] confirmation export failed', err);
-    spbCfStatus('❌ Could not export: ' + escHtml(err.message || String(err)), 'error');
+    spbCfStatus('❌ Could not export: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 

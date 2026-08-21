@@ -637,7 +637,12 @@ function renderClientsTable(list) {
   if (clientsTable) { clientsTable.destroy(); clientsTable = null; }
 
   if (!list.length) {
-    wrap.innerHTML = '<div class="log-empty">No clients match your search and filters.</div>';
+    // An empty DIRECTORY and an empty FILTER RESULT are different situations
+    // and used to show the same message — a brand-new organisation was told
+    // its search matched nothing when it had never added a client at all.
+    wrap.innerHTML = (window.clientsList || []).length
+      ? '<div class="log-empty">No clients match your search and filters.</div>'
+      : '<div class="log-empty">No clients yet. Click <strong>Add Client</strong> to enter one, or <strong>Import from Excel</strong> to load your whole directory at once.</div>';
     if (moreWrap) moreWrap.innerHTML = '';
     return;
   }
@@ -798,13 +803,13 @@ async function saveClient(btn) {
 
     if (error) {
       document.getElementById('client-form-status').innerHTML =
-        `<div class="status-box status-error" style="margin-top:0;">❌ Could not save the client: ${escHtml(error.message)}</div>`;
+        `<div class="status-box status-error" style="margin-top:0;">❌ Could not save the client: ${escHtml(friendlyDbError(error))}</div>`;
       return;
     }
 
     cancelAddClient();
     showToast(`✅ Client <strong>${escHtml(name)}</strong> saved.`, 'success');
-    loadClients().catch(e => showToast('❌ Saved, but the directory failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    loadClients().catch(e => showToast('❌ Saved, but the directory failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
   });
 }
 
@@ -834,7 +839,7 @@ async function deleteClient(id) {
   const name = c ? c.name : '';
   if (!confirm(`Delete client "${name}"? This cannot be undone.`)) return;
   const { error } = await window.sb.from('clients').delete().eq('id', id);
-  if (error) { showToast('❌ Could not delete ' + escHtml(name || 'the client') + ': ' + escHtml(error.message), 'error', 7000); return; }
+  if (error) { showToast('❌ Could not delete ' + escHtml(name || 'the client') + ': ' + escHtml(friendlyDbError(error)), 'error', 7000); return; }
   AuditLog.record('client_deleted', { module: 'clients', clientName: name, recordRef: id });
   showToast(`🗑️ Client <strong>${escHtml(name)}</strong> deleted.`, 'success');
   await loadClients();
@@ -1122,7 +1127,7 @@ async function confirmImport() {
     statusEl.innerHTML = `<div class="status-box status-searching"><span class="spinner spinner-navy"></span> Importing ${inserted}/${rowsToInsert.length}…</div>`;
     const { data, error } = await window.sb.from(profile.table).insert(chunk.map(c => c.payload)).select('id');
     if (error) {
-      statusEl.innerHTML = `<div class="status-box status-error">❌ Stopped after ${inserted} rows: ${escHtml(error.message)}</div>`;
+      statusEl.innerHTML = `<div class="status-box status-error">❌ Stopped after ${inserted} rows: ${escHtml(friendlyDbError(error))}</div>`;
       btn.disabled = false;
       await profile.reload();
       return;

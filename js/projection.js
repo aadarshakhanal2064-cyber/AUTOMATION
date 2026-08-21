@@ -429,7 +429,7 @@ async function pjLoadSaved(id) {
     pjStatus(`Loaded saved projection #${data.id} — change any figure and Save to update this record.`, 'success');
   } catch (e) {
     console.error(e);
-    pjStatus('Could not load that projection: ' + escHtml(e.message || String(e)), 'error');
+    pjStatus('Could not load that projection: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

@@ -227,7 +227,7 @@ async function wdRefresh() {
     wdRenderPending();
     wdEl('wd-status-area').innerHTML = '';
   } catch (e) {
-    wdStatusMsg('❌ Failed to load work records: ' + escHtml(e.message || String(e)), 'error');
+    wdStatusMsg('❌ Failed to load work records: ' + escHtml(friendlyDbError(e)), 'error');
   }
   // Registered views reload themselves. Outside the try/catch and awaited
   // separately so a To-Do List failure can't blank the work records, and a
@@ -1030,9 +1030,9 @@ async function wdSaveEntry(btn) {
       }
       wdCloseEntry();
       showToast(`✅ Work record saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
-      wdRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      wdRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the record: ' + escHtml(e.message || 'unknown error'), 'error', 'wd-drawer-status');
+      showStatus('❌ Could not save the record: ' + escHtml(friendlyDbError(e)), 'error', 'wd-drawer-status');
     }
   });
 }
@@ -1040,7 +1040,7 @@ async function wdSaveEntry(btn) {
 async function wdDeleteEntry(row) {
   if (!confirm(`Delete the work record for ${row.client_name || 'this client'} (${row.fiscal_year})? This cannot be undone.`)) return;
   const { error } = await window.sb.from('work_done').delete().eq('id', row.id);
-  if (error) { wdStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { wdStatusMsg('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('wd_deleted', { module: 'workDone', clientName: row.client_name, recordRef: row.id });
   await wdRefresh();
 }
@@ -1142,7 +1142,7 @@ async function wdExport(kind) {
       ...view.exportAs,
     });
   } catch (e) {
-    wdStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    wdStatusMsg('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -1328,7 +1328,7 @@ async function wdActivityLoad() {
     wdEl('wd-activity-status').innerHTML = '';
     wdActivityRenderTable();
   } catch (e) {
-    wdEl('wd-activity-status').innerHTML = `<div class="status-box status-error">❌ Failed to load the activity log: ${escHtml(e.message || String(e))}</div>`;
+    wdEl('wd-activity-status').innerHTML = `<div class="status-box status-error">❌ Failed to load the activity log: ${escHtml(friendlyDbError(e))}</div>`;
   }
 }
 
@@ -1541,6 +1541,6 @@ async function wdActivityExport(kind) {
       sheetName: 'Activity Log',
     });
   } catch (e) {
-    wdEl('wd-activity-status').innerHTML = `<div class="status-box status-error">❌ Failed to export: ${escHtml(e.message || String(e))}</div>`;
+    wdEl('wd-activity-status').innerHTML = `<div class="status-box status-error">❌ Failed to export: ${escHtml(friendlyDbError(e))}</div>`;
   }
 }

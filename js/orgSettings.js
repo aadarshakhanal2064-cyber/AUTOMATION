@@ -55,7 +55,7 @@ async function osInit() {
 async function osLoadFirms() {
   const { data, error } = await window.sb
     .from('org_firms').select('*').order('sort_order');
-  if (error) { osStatus('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { osStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   osFirms = data || [];
   osRenderFirms();
 }
@@ -137,7 +137,7 @@ async function osSaveFirm(id) {
 
   osStatus('<span class="spinner spinner-navy"></span> Saving…', 'searching');
   const { error } = await window.sb.from('org_firms').update(payload).eq('id', id);
-  if (error) return osStatus('❌ ' + escHtml(error.message), 'error');
+  if (error) return osStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
 
   // Reload the identity globals so the change reaches the document builders
   // immediately, rather than only after the next sign-in.
@@ -164,7 +164,7 @@ async function osAddFirm() {
     memo_prefix: 'SM-' + key.slice(0, 4).toUpperCase(),
     sort_order: osFirms.length + 1,
   });
-  if (error) return osStatus('❌ ' + escHtml(error.message), 'error');
+  if (error) return osStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
 
   await OrgIdentity.load();
   await osLoadFirms();
@@ -185,7 +185,7 @@ async function osSaveOrg() {
   const { error } = await window.sb.from('organizations')
     .update({ name, staff_names: staff })
     .eq('id', (window.currentOrg || {}).id);
-  if (error) return osStatus('❌ ' + escHtml(error.message), 'error');
+  if (error) return osStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
 
   await OrgIdentity.load();
   osApplyBranding();

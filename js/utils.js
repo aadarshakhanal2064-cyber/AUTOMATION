@@ -118,3 +118,30 @@ function attachFirmPicker(triggerEl, listEl, options) {
   });
   return { show, hide };
 }
+
+// ── Plain-language database errors (Stage 6, 2026-08-21) ──
+// Raw PostgREST/Postgres messages ("duplicate key value violates unique
+// constraint …", "permission denied for function current_org_id") read as
+// gibberish to accountants. This maps the handful of failure classes staff
+// actually hit to a sentence naming the fix; anything unrecognized passes
+// through untouched, because hiding a real message is worse than jargon.
+// Callers still escHtml() the result — this returns plain text.
+function friendlyDbError(e) {
+  const raw = (e && (e.message || String(e))) || 'unknown error';
+  const m = raw.toLowerCase();
+  if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed'))
+    return 'the connection dropped — check the internet and try again';
+  if (m.includes('duplicate key'))
+    return 'a record with these details already exists';
+  if (m.includes('permission denied') || m.includes('row-level security') || (e && e.code === '42501'))
+    return 'your account does not have permission for this — ask your admin';
+  if ((m.includes('jwt') && m.includes('expired')) || m.includes('invalid token'))
+    return 'your sign-in expired — sign out and back in';
+  if (m.includes('violates foreign key'))
+    return 'this record is still linked to other records and cannot change this way';
+  if (m.includes('value too long'))
+    return 'one of the fields is too long to save';
+  if (m.includes('timeout') || m.includes('timed out'))
+    return 'the server took too long — it may be waking up; try again in a moment';
+  return raw;
+}

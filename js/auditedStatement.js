@@ -1547,7 +1547,7 @@ async function asSaveToDb(btn) {
       });
     } catch (e) {
       console.error(e);
-      asStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
+      asStatus('Could not save: ' + escHtml(friendlyDbError(e)), 'error');
     }
   });
 }
@@ -1667,7 +1667,7 @@ async function asLoadSaved(id) {
       derived ? 'success' : 'error');
   } catch (e) {
     console.error(e);
-    asStatus('Could not load that statement: ' + escHtml(e.message || String(e)), 'error');
+    asStatus('Could not load that statement: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

@@ -308,7 +308,7 @@ async function spbSaveBook() {
       `${escHtml(ident.client_name)}, F.Y. ${escHtml(ident.fiscal_year)}.`, 'success');
   } catch (err) {
     console.error('[Autobooks] save failed', err);
-    spbLedgerStatus('❌ Could not save: ' + escHtml(err.message || String(err)), 'error');
+    spbLedgerStatus('❌ Could not save: ' + escHtml(friendlyDbError(err)), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -466,7 +466,7 @@ async function spbLoadBook(silent) {
     // first lookup, is the "choose a client" empty state. The Save button then
     // never appears no matter what the user does next.
     spbRenderBookCard();
-    spbLedgerStatus('❌ Could not open the saved book: ' + escHtml(err.message || String(err)), 'error');
+    spbLedgerStatus('❌ Could not open the saved book: ' + escHtml(friendlyDbError(err)), 'error');
     return false;
   }
 }
@@ -1051,7 +1051,7 @@ async function spbSaveOmitted() {
       `${escHtml(type.section === 'sales' ? 'Sales' : 'Purchase')} register and counts toward that party's total.`, 'success');
   } catch (err) {
     console.error('[Autobooks] omitted bill save failed', err);
-    spbOmStatus('❌ Could not save: ' + escHtml(err.message || String(err)), 'error');
+    spbOmStatus('❌ Could not save: ' + escHtml(friendlyDbError(err)), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1109,7 +1109,7 @@ async function spbDeleteOmitted(id) {
     await spbReloadOmitted();
     spbOmStatus('✅ Deleted.', 'success');
   } catch (err) {
-    spbOmStatus('❌ Could not delete: ' + escHtml(err.message || String(err)), 'error');
+    spbOmStatus('❌ Could not delete: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 

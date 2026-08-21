@@ -616,7 +616,7 @@ async function crAddToRegister() {
     AuditLog.record('registrar_company_added', { module: 'companyRegistration', clientName: name, recordRef: row.id });
     crStatus('✅ "' + escHtml(name) + '" added to the company register — set its registration number in Company Profile once the registrar assigns it.', 'success');
   } catch (err) {
-    crStatus('❌ Could not add to the register: ' + escHtml(err.message || String(err)) +
+    crStatus('❌ Could not add to the register: ' + escHtml(friendlyDbError(err)) +
       (String(err.message || '').includes('policy') ? ' (adding a company is admin-only)' : ''), 'error');
   }
 }

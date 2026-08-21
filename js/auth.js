@@ -165,7 +165,7 @@ async function signIn() {
   const { error } = await window.sb.auth.signInWithPassword({ email, password });
   if (error) {
     btn.disabled = false;
-    authStatus('❌ ' + escHtml(error.message), 'error');
+    authStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
   }
 }
 
@@ -194,7 +194,7 @@ async function sendPasswordReset() {
     redirectTo: location.origin + location.pathname,
   });
 
-  if (error) return authStatus('❌ ' + escHtml(error.message), 'error');
+  if (error) return authStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
 
   // Deliberately does NOT confirm whether the address exists — that would let
   // anyone test which of a firm's staff have accounts.
@@ -325,7 +325,7 @@ async function submitInvite() {
       }
     } else if (error) {
       btn.disabled = false;
-      return inviteStatus('❌ ' + escHtml(error.message), 'error');
+      return inviteStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
     }
 
     var { data: { session } } = await window.sb.auth.getSession();
@@ -389,7 +389,7 @@ async function submitNewPassword() {
   const { data, error } = await window.sb.auth.updateUser({ password: pw });
   if (error) {
     btn.disabled = false;
-    recoveryStatus('❌ ' + escHtml(error.message), 'error');
+    recoveryStatus('❌ ' + escHtml(friendlyDbError(error)), 'error');
     return;
   }
 

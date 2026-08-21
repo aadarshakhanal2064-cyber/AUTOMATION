@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608212400">
+<link rel="stylesheet" href="css/styles.css?v=202608212500">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -184,6 +184,11 @@ function cropLoginLogoIcon(img) {
          handler existed, nothing ever wrote to its badge, and the "3" was a
          hardcoded string — staff saw three phantom notifications forever.
          Removed Stage 3 (2026-08-21); rebuild it only WITH a real source. -->
+    <button type="button" class="tb-cmdk" onclick="CommandPalette.open()" title="Jump to any module, client or company (Ctrl+K)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <span>Jump to…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
     <div class="app-tag-dropdown">
       <div class="tb-user" id="topbar-user-trigger" onclick="toggleTopbarMenu(event, 'user')" role="button" tabindex="0">
         <div class="avatar" id="tb-user-avatar" style="width:32px;height:32px;font-size:12.5px;">?</div>
@@ -4446,13 +4451,15 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
 <script defer src="js/config.js?v=202608212200"></script>
-<script defer src="js/utils.js?v=202608182300"></script>
+<script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
 <script defer src="js/core/libLoader.js?v=202608212300"></script>
+<script defer src="js/core/keyboard.js?v=202608212500"></script>
+<script defer src="js/core/commandPalette.js?v=202608212500"></script>
 <script defer src="js/core/nepaliLocale.js?v=202608212200"></script>
 <script defer src="js/core/documentEngine.js?v=202608212300"></script>
-<script defer src="js/core/searchEngine.js?v=202608022300"></script>
+<script defer src="js/core/searchEngine.js?v=202608212500"></script>
 <script defer src="js/core/tableEngine.js?v=202608022300"></script>
 <script defer src="js/core/workflowEngine.js?v=202608212200"></script>
 <script defer src="js/core/auditLog.js?v=202608181500"></script>
@@ -4469,51 +4476,51 @@ function cropLoginLogoIcon(img) {
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
 <script defer src="js/registrarCompanies.js?v=202608201200"></script>
-<script defer src="js/clients.js?v=202608212300"></script>
-<script defer src="js/serviceMemo.js?v=202608212300"></script>
+<script defer src="js/clients.js?v=202608212500"></script>
+<script defer src="js/serviceMemo.js?v=202608212500"></script>
 <script defer src="js/report.js?v=202608212300"></script>
 <script defer src="js/notesToAccounts.js?v=202608212300"></script>
 <script defer src="js/depreciation.js?v=202608212300"></script>
 <script defer src="js/depreciationSlm.js?v=202608212300"></script>
 <script defer src="js/bmAgmMinutes.js?v=202608211500"></script>
 <script defer src="js/auditorChange.js?v=202608211900"></script>
-<script defer src="js/companyProfile.js?v=202608212200"></script>
+<script defer src="js/companyProfile.js?v=202608212500"></script>
 <script defer src="js/companySecretary.js?v=202608211900"></script>
-<script defer src="js/companyRegistration.js?v=202608211900"></script>
+<script defer src="js/companyRegistration.js?v=202608212500"></script>
 <script defer src="js/salesPurchaseBook.js?v=202608212300"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script defer src="js/salesPurchaseBookLedger.js?v=202608212200"></script>
+<script defer src="js/salesPurchaseBookLedger.js?v=202608212500"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
-<script defer src="js/salesPurchaseBookConfirm.js?v=202608170900"></script>
-<script defer src="js/salesPurchaseBookAnnexure.js?v=202608212300"></script>
-<script defer src="js/salesPurchaseBookReco.js?v=202608170900"></script>
-<script defer src="js/salesPurchaseBookVatReturn.js?v=202608212300"></script>
+<script defer src="js/salesPurchaseBookConfirm.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookAnnexure.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookReco.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookVatReturn.js?v=202608212500"></script>
 <script defer src="js/confirmationLetters.js?v=202608212300"></script>
-<script defer src="js/bankBook.js?v=202608212300"></script>
-<script defer src="js/partyLedger.js?v=202608022300"></script>
-<script defer src="js/finalAccount.js?v=202608212300"></script>
+<script defer src="js/bankBook.js?v=202608212500"></script>
+<script defer src="js/partyLedger.js?v=202608212500"></script>
+<script defer src="js/finalAccount.js?v=202608212500"></script>
 <script defer src="js/projectionEngine.js?v=202608180900"></script>
-<script defer src="js/projection.js?v=202608212300"></script>
+<script defer src="js/projection.js?v=202608212500"></script>
 <script defer src="js/projectionExport.js?v=202608212300"></script>
 <script defer src="js/finStatementEngine.js?v=202608190900"></script>
 <script defer src="js/finStatementExport.js?v=202608221900"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608221900"></script>
-<script defer src="js/provisionalStatement.js?v=202608212300"></script>
+<script defer src="js/provisionalStatement.js?v=202608212500"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608212300"></script>
-<script defer src="js/fileManagement.js?v=202608212200"></script>
-<script defer src="js/auditReportFinalization.js?v=202608212200"></script>
-<script defer src="js/auditChecklist.js?v=202608212200"></script>
-<script defer src="js/workDone.js?v=202608212200"></script>
+<script defer src="js/auditedStatement.js?v=202608212500"></script>
+<script defer src="js/fileManagement.js?v=202608212500"></script>
+<script defer src="js/auditReportFinalization.js?v=202608212500"></script>
+<script defer src="js/auditChecklist.js?v=202608212500"></script>
+<script defer src="js/workDone.js?v=202608212500"></script>
 <!-- AFTER workDone.js — registers the To-Do List onto that file's WD_VIEWS. -->
-<script defer src="js/workDoneTodo.js?v=202608212200"></script>
+<script defer src="js/workDoneTodo.js?v=202608212500"></script>
 <!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
      from the topbar user menu, so it needs no nav button. -->
-<script defer src="js/orgSettings.js?v=202608190300"></script>
-<script defer src="js/orgMembers.js?v=202608182200"></script>
-<script defer src="js/auth.js?v=202608212300"></script>
+<script defer src="js/orgSettings.js?v=202608212500"></script>
+<script defer src="js/orgMembers.js?v=202608212500"></script>
+<script defer src="js/auth.js?v=202608212500"></script>
 
 </body>
 </html>

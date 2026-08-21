@@ -31,7 +31,7 @@ This file is loaded into **every** session, so it holds only what protects work 
 6. **Don't "fix" the deliberate decisions in §15.**
 7. **This repo is PUBLIC** — real client names, PANs and addresses never get committed. See `.gitignore`.
 
-**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 14 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (29 tables, §6).
+**30-second map:** `index.html` is the whole UI shell (all panels, all script tags). `js/config.js` holds constants/state/Supabase init. `js/core/` holds 16 reusable engines — check there before writing anything new. Each feature is one file in `js/`. All styling is `css/styles.css`. Word/Excel templates live in `assets/templates/`. Database is Supabase (29 tables, §6).
 
 ---
 
@@ -50,7 +50,7 @@ The app itself runs **entirely client-side**, and **Supabase is now its only bac
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
-CDN libraries → config.js → utils.js → js/core/* (14 engines) → tabs.js
+CDN libraries → config.js → utils.js → js/core/* (16 engines) → tabs.js
 → feature modules (dashboard, registrarCompanies, clients, vatCompliance,
   report, notesToAccounts, depreciation,
   bmAgmMinutes, auditorChange, salesPurchaseBook, salesPurchaseBookLedger, bankBook,
@@ -98,7 +98,7 @@ AUTOMATION AI APP/
 │   ├── utils.js             # escHtml, sbFetchAll, attachFirmPicker, fmtAmount
 │   ├── tabs.js              # Tab switching via ModuleRegistry; topbar dropdowns
 │   ├── auth.js              # Boot sequence, email/password sign-in/out, app_users authorization
-│   ├── core/                # 14 reusable engines — §4
+│   ├── core/                # 16 reusable engines — §4
 │   ├── registrarCompanies.js # The registrar company directory (§5) — the ONE
 │   │                        # place window.registrarCompanies is loaded/read
 │   └── <feature>.js         # One file per feature module — §5
@@ -134,6 +134,8 @@ Feature code **never calls vendor libraries directly** (PizZip, Fuse, Tabulator,
 | ReportExport | `reportExport.js` | `toHtml`/`toPdf`/`toExcel`/`download` over one tabular model. Knows nothing about ledgers — callers hand it finished cells. **`pdfSafe()` inside it is load-bearing** (PDF-Lib standard fonts throw on non-WinAnsi characters). |
 | DataCache | `dataCache.js` | `get(key, loader)` / `invalidate(...keys)` / `invalidateAll()`. 60s TTL in front of the shared full-table ledger loads. Caches the **promise**, so concurrent opens share one round-trip; a rejected load is never cached. **Keys live in `config.js` as `window.LEDGER_KEYS` and encode the ORDER BY, not just the table** — Bank Entry and Party Ledger sort `bank_accounts` differently and Final Account renders that array in order. Write paths call a module's `xxReload()` (invalidate + refresh); `xxRefresh()` must never invalidate. |
 | LibLoader | `libLoader.js` | **On-demand loading for the five heavy vendor libraries** (xlsx, exceljs, pdf-lib, html-docx, docx-preview — ~890 KB gzip; Stage 4, 2026-08-21). They are no longer `<script>` tags: `ensure(name)` injects the same pinned URL with the same SRI hash on first use, and `prefetchAll()` (fired from auth.js at boot-idle) warms them all in the background, so the `await LibLoader.ensure(...)` guards at every import/export/preview entry point are normally already-resolved no-ops covering only the first-seconds race. A failed load is not cached — retry works after a network blip. **A new heavy vendor goes here, not into index.html**; when bumping a version, recompute the SRI hash exactly as for the remaining tags (§2). jszip/pizzip/docxtemplater stay eager tags (small, and docx-preview expects JSZip at parse time). |
+| Keyboard | `keyboard.js` | Global Esc + Ctrl/Cmd+S (Stage 6, 2026-08-21). **Esc closes the topmost open overlay by clicking its own × button**, so every module's close cleanup runs; autocompletes own their Escape first (searchEngine stops propagation while a list is open). **Ctrl/Cmd+S clicks the open overlay's `.action-row .btn-primary`** — the same Save the user sees, busy-button contract included — and otherwise only suppresses the browser save dialog. Enter-to-save was deliberately NOT added to drawer forms (Enter already means "choose" in the pickers; an accidental save mid-entry is worse than no shortcut). |
+| CommandPalette | `commandPalette.js` | Ctrl/Cmd+K jump-anywhere (Stage 6) + the topbar "Jump to…" button. Three groups, never merged: Modules (go() actions mirror the nav buttons' own onclick exactly, init calls included — keep them in step when a nav entry changes), Clients (`window.clientsList` → Clients tab, search prefilled), Registrar companies (via `RegistrarDirectory.list()`, the sanctioned accessor, always its own labeled group per §15 — the two directories never merge). Plain starts-with/substring ranking, deliberately not Fuse. DOM built on first open inside `.cmdk-overlay` (Stage 5 overlay convention). |
 | DocumentStore | `documentStore.js` | `save`/`list`/`get`/`remove`/`openPicker` over `saved_documents` — save, browse and re-open for Audit Report, Notes to Accounts and (since 2026-08-21) all four registrar document modules (BM/AGM Minutes, Company Secretary, Auditor Change, Company Registration). The two HTML builders store **both** the form state (re-editable) and the rendered HTML (reprintable exactly as issued); **the registrar Word modules store state only**, because each renders a Word file from a tokenised template that regenerates byte-identically, and their `client_id` stays NULL since a registrar company is not a `clients` row. One shared picker drawer (`ds-` ids); **never caches**. The picker also lists records from **other** tables — pass `{fetchRows, describe, onChoose, onDelete}` instead of `{module, onOpen}` (Projection Report browses `projection_reports`, Depreciation browses `depreciation_schedules`) so there is one drawer, not one per module. Its search tries a **plain substring first** and falls back to Fuse — fuzzy matching is right for a half-remembered name and wrong for a fiscal year (`2078` scored as a hit against `2082-83`, so a year returned the whole list). |
 
 **Adding a new tab/sub-module:** create `js/<module>.js`, call `ModuleRegistry.register()` from it, add the panel + nav button to `index.html`, add the `<script>` tag in load order, prefix all element IDs (§9). No edits to `tabs.js`.
@@ -367,7 +369,7 @@ Single stylesheet `css/styles.css`, Inter font, CSS custom properties on `:root`
 | `wd-` | Work Done | | `wt-` | Work Done → To-Do List (`js/workDoneTodo.js` — its own prefix so the two files can't collide) |
 
 ### Interaction patterns
-Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll). Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
+Autocomplete = `SearchEngine.attachAutocomplete` (never hand-roll) — **focusing an empty picker offers that field's session-scoped recent selections** (Stage 6; in-memory only, deliberately nothing client-related in localStorage). **Database errors shown to users go through `friendlyDbError(e)`** (`js/utils.js`) — plain sentences for the failure classes staff actually hit, raw message passthrough for anything unrecognized. Fixed-list pickers = `attachFirmPicker`. Status messages = module `xxStatus()` wrapper. Status badges = `createStatusFlow().badgeHtml()`. Edit/Preview split with on-demand render = the report.js pattern.
 
 **Client switching = `WorkflowEngine.createClientScope`** (§4). Two rules that hold everywhere, scope or not: **always assign** — `el.value = c.x || ''`, never `if (c.x) el.value = c.x`, which leaves the *previous* client's value standing whenever the new one's field is blank — and **a per-client loader must clear before it can return early**, or "nothing saved for this client" leaves the last client's grid on screen under the new name. Both shipped as real bugs across eleven modules (fixed 2026-07-28); see `docs/engines.md`.
 
@@ -611,7 +613,7 @@ The established pattern — **investigate with real evidence → implement only 
 | `docs/modules/*.md` | On demand | Per-module detail — **read before editing that module** (§5 index). |
 | `docs/database.md` | On demand | All 23 tables column by column, triggers, the full RLS matrix. |
 | `docs/architecture.md` | On demand | Runtime architecture, CDN rationale, auth lifecycle, doc-generation detail. |
-| `docs/engines.md` | On demand | The 14 engines in full. |
+| `docs/engines.md` | On demand | The 16 engines in full. |
 | `docs/nepali-docx-playbook.md` | **Before building any new Preeti/Word document module** | How to turn one of the firm's Nepali Word documents into a generated module without re-learning the whole minefield — the XML traps, the Word-vs-preview divergences, the harnesses to commit, and the client-data rule. Written after BM/AGM Minutes cost several rounds of exactly those. The prompt to start such a module is one line: *"Read `docs/nepali-docx-playbook.md` and follow it."* |
 | `tools/registrarDocx/` | Run, not read | The Preeti→Unicode template build pipeline, shared by every registrar Word document. `core.mjs` is the shared transform; `buildBmAgm.mjs`, `buildCsAppoint.mjs` and `buildCompanyReg.mjs` each add only what is specific to their document; `fidelityBmAgm.mjs`, `fidelityCompanyReg.mjs` and `sample*.mjs` are its harnesses; `wordPages.ps1` asserts real page counts in Word. (Renamed from `tools/bmAgmBuild/` 2026-08-21, when the second document made the old name wrong; the refactor was verified by rebuilding `bm-agm-minutes.docx` byte-identical.) |
 | `tools/spbVerify.mjs` | Run, not read | Autobooks verification harness — `node tools/spbVerify.mjs` (§12). |

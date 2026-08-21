@@ -132,7 +132,7 @@ async function achkRefresh() {
     achkRenderTable();
     achkEl('achk-status-area').innerHTML = '';
   } catch (e) {
-    achkStatusMsg('❌ Failed to load checklists: ' + escHtml(e.message || String(e)), 'error');
+    achkStatusMsg('❌ Failed to load checklists: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -483,9 +483,9 @@ async function achkSaveEntry(btn) {
       }
       achkCloseEntry();
       showToast(`✅ Checklist saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
-      achkRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      achkRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the checklist: ' + escHtml(e.message || 'unknown error'), 'error', 'achk-drawer-status');
+      showStatus('❌ Could not save the checklist: ' + escHtml(friendlyDbError(e)), 'error', 'achk-drawer-status');
     }
   });
 }
@@ -493,7 +493,7 @@ async function achkSaveEntry(btn) {
 async function achkDeleteEntry(row) {
   if (!confirm(`Delete the checklist for ${row.client_name || 'this client'} (${row.fiscal_year})? This cannot be undone.`)) return;
   const { error } = await window.sb.from('audit_checklists').delete().eq('id', row.id);
-  if (error) { achkStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { achkStatusMsg('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('achk_deleted', { module: 'auditChecklist', clientName: row.client_name, recordRef: row.id });
   await achkRefresh();
 }
@@ -545,7 +545,7 @@ async function achkExport(kind) {
       module: 'auditChecklist', clientName: 'Filtered Records', sheetName: 'Checklists',
     });
   } catch (e) {
-    achkStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    achkStatusMsg('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

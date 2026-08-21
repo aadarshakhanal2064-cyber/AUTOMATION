@@ -272,7 +272,7 @@ async function fmExport(kind) {
       module: 'fileManagement', clientName: 'Filtered Records', sheetName: 'File In Out',
     });
   } catch (e) {
-    fmStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    fmStatusMsg('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -332,7 +332,7 @@ async function fmRefresh() {
     fmRenderTable();
     document.getElementById('fm-status-area').innerHTML = '';
   } catch (e) {
-    fmStatusMsg('❌ Failed to load the document register: ' + escHtml(e.message || String(e)), 'error');
+    fmStatusMsg('❌ Failed to load the document register: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -604,7 +604,7 @@ async function fmRenderClientReport() {
     rows = await sbFetchAll(() => window.sb.from('document_register')
       .select('*').eq('client_id', fmClientReportClient.id).order('date_received', { ascending: false }));
   } catch (e) {
-    bodyEl.innerHTML = `<div class="status-box status-error">❌ ${escHtml(e.message || String(e))}</div>`;
+    bodyEl.innerHTML = `<div class="status-box status-error">❌ ${escHtml(friendlyDbError(e))}</div>`;
     return;
   }
   if (!rows.length) {
@@ -625,7 +625,7 @@ async function fmClientReportExport(kind) {
       module: 'fileManagement', clientName: fmClientReportClient.name, sheetName: 'File In Out',
     });
   } catch (e) {
-    document.getElementById('fm-cr-body').insertAdjacentHTML('afterbegin', `<div class="status-box status-error">❌ ${escHtml(e.message || String(e))}</div>`);
+    document.getElementById('fm-cr-body').insertAdjacentHTML('afterbegin', `<div class="status-box status-error">❌ ${escHtml(friendlyDbError(e))}</div>`);
   }
 }
 
@@ -904,9 +904,9 @@ async function fmSaveEntry(btn) {
       }
       fmCloseEntry();
       showToast(`✅ Intake saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
-      fmRefresh().catch(e => showToast('❌ Saved, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      fmRefresh().catch(e => showToast('❌ Saved, but the register failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the intake: ' + escHtml(e.message || 'unknown error'), 'error', 'fm-drawer-status');
+      showStatus('❌ Could not save the intake: ' + escHtml(friendlyDbError(e)), 'error', 'fm-drawer-status');
     }
   });
 }
@@ -914,7 +914,7 @@ async function fmSaveEntry(btn) {
 async function fmDeleteEntry(row) {
   if (!confirm(`Delete register entry ${row.register_no || ''} for ${row.client_name || 'this client'}? This cannot be undone.`)) return;
   const { error } = await window.sb.from('document_register').delete().eq('id', row.id);
-  if (error) { fmStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { fmStatusMsg('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('document_register_deleted', { module: 'fileManagement', clientName: row.client_name, recordRef: row.id });
   await fmRefresh();
 }
@@ -1009,9 +1009,9 @@ async function fmConfirmOuttake(btn) {
       await fmFlow.transition(fmOuttakingRow, newStatus, { patch: { outtakes: updatedOuttakes } });
       fmCloseOuttake();
       showToast(newStatus === 'returned' ? '✅ All documents returned to the client.' : '✅ Outtake recorded — some documents are still with us.', 'success');
-      fmRefresh().catch(e => showToast('❌ Recorded, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      fmRefresh().catch(e => showToast('❌ Recorded, but the register failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not record the outtake: ' + escHtml(e.message || 'unknown error'), 'error', 'fm-outtake-status');
+      showStatus('❌ Could not record the outtake: ' + escHtml(friendlyDbError(e)), 'error', 'fm-outtake-status');
     }
   });
 }

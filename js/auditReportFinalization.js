@@ -213,7 +213,7 @@ async function arfRefresh() {
     arfRenderTable();
     arfEl('arf-status-area').innerHTML = '';
   } catch (e) {
-    arfStatusMsg('❌ Failed to load records: ' + escHtml(e.message || String(e)), 'error');
+    arfStatusMsg('❌ Failed to load records: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -699,9 +699,9 @@ async function arfSaveEntry(btn) {
 
       arfCloseEntry();
       showToast(arfChainMessage(sync, clientName), 'success');
-      arfRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      arfRefresh().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the record: ' + escHtml(e.message || 'unknown error'), 'error', 'arf-drawer-status');
+      showStatus('❌ Could not save the record: ' + escHtml(friendlyDbError(e)), 'error', 'arf-drawer-status');
     }
   });
 }
@@ -817,7 +817,7 @@ function arfChainMessage(sync, clientName) {
 async function arfDeleteEntry(row) {
   if (!confirm(`Delete the ${arfTypeLabel(row.return_type)} record for ${row.client_name || 'this client'} (${row.fiscal_year})? This cannot be undone.`)) return;
   const { error } = await window.sb.from('audit_report_finalization').delete().eq('id', row.id);
-  if (error) { arfStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { arfStatusMsg('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('arf_deleted', { module: 'auditReportFinalization', clientName: row.client_name, recordRef: row.id });
   await arfRefresh();
 }
@@ -886,6 +886,6 @@ async function arfExport(kind) {
       module: 'auditReportFinalization', clientName: 'Filtered Records', sheetName: 'Finalization',
     });
   } catch (e) {
-    arfStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    arfStatusMsg('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }

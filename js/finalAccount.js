@@ -52,7 +52,7 @@ async function faInit() {
     document.getElementById('fa-status-area').innerHTML = '';
     faGenerate();
   } catch (e) {
-    faStatus('❌ Failed to load: ' + escHtml(e.message || String(e)), 'error');
+    faStatus('❌ Failed to load: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -285,7 +285,7 @@ async function faExport(kind) {
       module: 'finalAccount', clientName: faLastModel._filename, sheetName: faLastModel.title,
     });
   } catch (e) {
-    faStatus('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    faStatus('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

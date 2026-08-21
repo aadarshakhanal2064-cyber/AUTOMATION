@@ -1532,7 +1532,7 @@ async function psSaveToDb(btn) {
       });
     } catch (e) {
       console.error(e);
-      psStatus('Could not save: ' + escHtml(e.message || String(e)), 'error');
+      psStatus('Could not save: ' + escHtml(friendlyDbError(e)), 'error');
     }
   });
 }
@@ -1651,7 +1651,7 @@ async function psLoadSaved(id) {
       derived ? 'success' : 'error');
   } catch (e) {
     console.error(e);
-    psStatus('Could not load that statement: ' + escHtml(e.message || String(e)), 'error');
+    psStatus('Could not load that statement: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

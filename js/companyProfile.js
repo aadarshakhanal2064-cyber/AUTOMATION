@@ -366,7 +366,7 @@ async function cpSave(btn) {
     // Background reload; the RegistrarDirectory.onChange listener re-renders
     // the table and stats when it lands. The extra cpInit() that used to
     // follow was a second render of the same data in the same tick.
-    RegistrarDirectory.reload().catch(e => showToast('❌ Saved, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+    RegistrarDirectory.reload().catch(e => showToast('❌ Saved, but the register failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
   });
 }
 
@@ -393,7 +393,7 @@ async function cpDelete(id) {
   showToast(`🗑️ Removed <strong>${escHtml(c.name)}</strong> from the register.`, 'success');
   // Background reload; the onChange listener re-renders — the trailing
   // cpInit() was a second render of the same data (Stage 3).
-  RegistrarDirectory.reload().catch(e => showToast('❌ Removed, but the register failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+  RegistrarDirectory.reload().catch(e => showToast('❌ Removed, but the register failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
 }
 
 // ── Bulk import ──

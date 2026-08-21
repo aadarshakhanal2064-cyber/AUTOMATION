@@ -110,7 +110,7 @@ async function smRefresh() {
     smRenderPending();
     document.getElementById('sm-status-area').innerHTML = '';
   } catch (e) {
-    smStatusMsg('❌ Failed to load service memos: ' + escHtml(e.message || String(e)), 'error');
+    smStatusMsg('❌ Failed to load service memos: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -406,7 +406,7 @@ async function smDismissFeeDue(row) {
     kind: row.kind,
     dismissed_by: smUserEmail(),
   });
-  if (error) { smStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { smStatusMsg('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('service_memo_fee_skip_created', {
     module: 'serviceMemo', clientName: row.clientName,
     detail: { kind: row.kind, fiscalYear: row.fiscalYear },
@@ -551,7 +551,7 @@ async function smExport(kind) {
       sheetName: smView === 'pending' ? 'Pending Memos' : 'Service Memos',
     });
   } catch (e) {
-    smStatusMsg('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    smStatusMsg('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -782,9 +782,9 @@ async function smSaveMemo(btn) {
       }
       smCloseCreate();
       showToast(`✅ Service memo saved for <strong>${escHtml(clientName)}</strong>.`, 'success');
-      smReload().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      smReload().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the memo: ' + escHtml(e.message || 'unknown error'), 'error', 'sm-drawer-status');
+      showStatus('❌ Could not save the memo: ' + escHtml(friendlyDbError(e)), 'error', 'sm-drawer-status');
     }
   });
 }
@@ -792,7 +792,7 @@ async function smSaveMemo(btn) {
 async function smDeleteMemo(row) {
   if (!confirm(`Delete service memo ${row.memo_number || ''} for ${row.client_name || 'this client'}? This cannot be undone.`)) return;
   const { error } = await window.sb.from('service_memos').delete().eq('id', row.id);
-  if (error) { smStatusMsg('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { smStatusMsg('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('service_memo_deleted', { module: 'serviceMemo', clientName: row.client_name, recordRef: row.id });
   await smReload();
 }
@@ -911,6 +911,6 @@ async function smDownloadPdf(row) {
     const fname = `Service Memo ${row.memo_number || row.id} - ${row.client_name || 'Client'}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
     DocumentEngine.downloadBlob(blob, fname, { module: 'serviceMemo', clientName: row.client_name });
   } catch (e) {
-    smStatusMsg('❌ Failed to generate PDF: ' + escHtml(e.message || String(e)), 'error');
+    smStatusMsg('❌ Failed to generate PDF: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }

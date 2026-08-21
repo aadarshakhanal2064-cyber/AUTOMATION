@@ -235,7 +235,7 @@ function spbHandleVatReturnFile(input) {
       spbVriRenderSummary(file.name, best, parsed, stats, checks, cross);
     } catch (err) {
       console.error('[Autobooks] VAT return import failed', err);
-      spbVriStatus('❌ Could not read that file: ' + escHtml(err.message || String(err)), 'error');
+      spbVriStatus('❌ Could not read that file: ' + escHtml(friendlyDbError(err)), 'error');
     }
   };
   reader.readAsArrayBuffer(file);

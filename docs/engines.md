@@ -159,3 +159,44 @@ longer `<script>` tags in `index.html`.
   remaining tags (CLAUDE.md §2). jszip stays an eager tag — docx-preview
   expects JSZip to exist at parse time — as do pizzip/docxtemplater
   (DocumentEngine's Word templating, small and load-bearing).
+
+## Keyboard (`keyboard.js`) & CommandPalette (`commandPalette.js`) — Stage 6, 2026-08-21
+
+**Keyboard** — one document-level handler:
+- **Esc** closes the topmost open overlay (`.modal-overlay.open, .cd-modal.open`,
+  highest z-index, then DOM order) by clicking its own `.modal-close` /
+  `.cd-modal-close` — so each module's close function and cleanup run exactly
+  as if the mouse had done it. SearchEngine stops Escape's propagation while
+  an autocomplete list is open, so Esc there closes the list only.
+- **Ctrl/Cmd+S** clicks the topmost overlay's visible, enabled
+  `.action-row .btn-primary` (the real Save, busy-button contract included);
+  with no overlay open it only preventDefaults the browser save dialog.
+- Enter-to-save on drawer forms was deliberately not added — Enter already
+  means "choose" in the pickers, and an accidental save (plus its
+  duplicate-confirm dialog) mid-entry is worse than no shortcut.
+
+**CommandPalette** — Ctrl/Cmd+K, plus the topbar "Jump to…" button:
+- Three groups, never merged into one list: **Modules** (labels and go()
+  actions mirror the nav buttons' own onclick exactly, init calls included —
+  a nav change means updating the palette's MODULES list too), **Clients**
+  (opens the Clients tab with `client-search-bar` prefilled), **Registrar
+  companies** (via `RegistrarDirectory.list()` — the §15 two-directory
+  separation holds here as everywhere).
+- Ranking is plain lowercase starts-with > substring > all-words — a palette
+  query is a prefix; Fuse's typo tolerance is the wrong trade at these
+  lengths.
+- DOM is built once on first open, inside `.cmdk-overlay` following the
+  Stage 5 overlay convention (visibility+opacity, never display).
+- `open()` no-ops before sign-in; the global Ctrl+K handler defers to the
+  palette's own key handling while it is open (`isOpen()`).
+
+**SearchEngine recents (same stage):** `attachAutocomplete` records each
+selection per input (`config.recentsKey || inputEl.id`), session-scoped and
+in-memory only, and offers up to 5 on focus of an empty field under a
+"Recent" header — stale entries are re-resolved against the live list by
+identity-or-id so a recent can never select a deleted record.
+
+**friendlyDbError (`js/utils.js`, same stage):** every user-facing database
+error string goes through it — duplicate key, permission denied, dropped
+connection, expired session, FK violation, too-long value and timeouts map
+to plain sentences; anything unrecognized passes through untouched.

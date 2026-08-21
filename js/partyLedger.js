@@ -95,7 +95,7 @@ async function plRefresh() {
     document.getElementById('pl-status-area').innerHTML = '';
     plGenerate();
   } catch (e) {
-    plStatus('❌ Failed to load ledger data: ' + escHtml(e.message || String(e)), 'error');
+    plStatus('❌ Failed to load ledger data: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -523,7 +523,7 @@ async function plExport(kind) {
       module: 'partyLedger', clientName: plLastModel._filename, sheetName: PL_VIEWS[plView].title,
     });
   } catch (e) {
-    plStatus('❌ Failed to export: ' + escHtml(e.message || String(e)), 'error');
+    plStatus('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

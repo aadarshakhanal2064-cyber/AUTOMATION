@@ -124,7 +124,7 @@ async function bbRefresh() {
     bbRenderTxns();
     document.getElementById('bb-status-area').innerHTML = '';
   } catch (e) {
-    bbStatus('❌ Failed to load bank book: ' + escHtml(e.message || String(e)), 'error');
+    bbStatus('❌ Failed to load bank book: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -287,9 +287,9 @@ async function bbSaveAccount(btn) {
       }
       bbCloseAccount();
       showToast(`✅ Account <strong>${escHtml(name)}</strong> saved.`, 'success');
-      bbReload().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      bbReload().catch(e => showToast('❌ Saved, but the list failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the account: ' + escHtml(e.message || 'unknown error'), 'error', errEl);
+      showStatus('❌ Could not save the account: ' + escHtml(friendlyDbError(e)), 'error', errEl);
     }
   });
 }
@@ -301,7 +301,7 @@ async function bbDeleteAccount(row) {
   if (count > 0) {
     if (confirm(`"${bbAccountLabel(row)}" has ${count} transaction(s), so it can't be deleted (that would break history).\n\nDeactivate it instead? It stays in reports but is hidden from new-entry dropdowns.`)) {
       const { error } = await window.sb.from('bank_accounts').update({ is_active: false, updated_by: bbUserEmail() }).eq('id', row.id);
-      if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
+      if (error) { bbStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
       AuditLog.record('bank_account_deactivated', { module: 'bankBook', clientName: row.account_name, recordRef: row.id });
       bbCloseAccount();
       await bbReload();
@@ -311,7 +311,7 @@ async function bbDeleteAccount(row) {
   }
   if (!confirm(`Delete account "${bbAccountLabel(row)}"? This cannot be undone.`)) return;
   const { error } = await window.sb.from('bank_accounts').delete().eq('id', row.id);
-  if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
+  if (error) { bbStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
   AuditLog.record('bank_account_deleted', { module: 'bankBook', clientName: row.account_name, recordRef: row.id });
   bbCloseAccount();
   await bbReload();
@@ -535,9 +535,9 @@ async function bbSaveTxn(btn) {
       }
       bbCloseTxn();
       showToast('✅ Transaction saved.', 'success');
-      bbReload().catch(e => showToast('❌ Saved, but the ledger failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      bbReload().catch(e => showToast('❌ Saved, but the ledger failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the transaction: ' + escHtml(e.message || 'unknown error'), 'error', 'bb-txn-drawer-status');
+      showStatus('❌ Could not save the transaction: ' + escHtml(friendlyDbError(e)), 'error', 'bb-txn-drawer-status');
     }
   });
 }
@@ -590,9 +590,9 @@ async function bbSaveTransfer(srcAccount, date, amount, btn) {
       }
       bbCloseTxn();
       showToast('✅ Transfer saved (recorded on both accounts).', 'success');
-      bbReload().catch(e => showToast('❌ Saved, but the ledger failed to refresh: ' + escHtml(e.message || String(e)), 'error'));
+      bbReload().catch(e => showToast('❌ Saved, but the ledger failed to refresh: ' + escHtml(friendlyDbError(e)), 'error'));
     } catch (e) {
-      showStatus('❌ Could not save the transfer: ' + escHtml(e.message || 'unknown error'), 'error', 'bb-txn-drawer-status');
+      showStatus('❌ Could not save the transfer: ' + escHtml(friendlyDbError(e)), 'error', 'bb-txn-drawer-status');
     }
   });
 }
@@ -604,12 +604,12 @@ async function bbDeleteTxn(row) {
     if (!confirm(`Delete this inter-bank transfer? Both legs (payment and receipt) will be removed.`)) return;
     const ids = sibs.map(s => s.id);
     const { error } = await window.sb.from('bank_transactions').delete().in('id', ids);
-    if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
+    if (error) { bbStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
     AuditLog.record('bank_transfer_deleted', { module: 'bankBook', detail: { groupId: row.transfer_group_id } });
   } else {
     if (!confirm('Delete this transaction? This cannot be undone.')) return;
     const { error } = await window.sb.from('bank_transactions').delete().eq('id', row.id);
-    if (error) { bbStatus('❌ ' + escHtml(error.message), 'error'); return; }
+    if (error) { bbStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); return; }
     AuditLog.record('bank_txn_deleted', { module: 'bankBook', clientName: row.counterparty_name || '', recordRef: row.id });
   }
   await bbReload();
@@ -835,7 +835,7 @@ async function bbReportToPdf() {
     const fname = `${bbReportTitle(rep)} - ${rep.account.account_name} - ${rep.account.bank_name}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
     DocumentEngine.downloadBlob(blob, fname, { module: 'bankBook', clientName: rep.account.account_name });
   } catch (e) {
-    bbStatus('❌ Failed to generate PDF: ' + escHtml(e.message || String(e)), 'error');
+    bbStatus('❌ Failed to generate PDF: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -934,6 +934,6 @@ async function bbReportToExcel() {
     const fname = `${bbReportTitle(rep)} - ${rep.account.account_name} - ${rep.account.bank_name}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
     DocumentEngine.downloadBlob(blob, fname, { module: 'bankBook', clientName: rep.account.account_name });
   } catch (e) {
-    bbStatus('❌ Failed to generate Excel: ' + escHtml(e.message || String(e)), 'error');
+    bbStatus('❌ Failed to generate Excel: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }

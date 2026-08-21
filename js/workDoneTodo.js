@@ -187,7 +187,7 @@ async function wtLoad() {
     wtPopulateDatalists();
     wtRender();
   } catch (e) {
-    wtStatus('❌ Failed to load the to-do list: ' + escHtml(e.message || String(e)), 'error');
+    wtStatus('❌ Failed to load the to-do list: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -278,7 +278,7 @@ async function wtQuickAdd() {
     wtEl('wt-status-area').innerHTML = '';
     natureEl.focus();
   } catch (e) {
-    wtStatus('❌ Could not add the to-do: ' + escHtml(e.message || String(e)), 'error');
+    wtStatus('❌ Could not add the to-do: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 
@@ -312,7 +312,7 @@ async function wtPatch(id, patch, rerender) {
     if (error) throw error;
     wtFlash(id, 'saved');
   } catch (e) {
-    wtStatus('❌ Could not save that change: ' + escHtml(e.message || String(e)) + ' — reloading.', 'error');
+    wtStatus('❌ Could not save that change: ' + escHtml(friendlyDbError(e)) + ' — reloading.', 'error');
     await wtLoad();
   }
 }
@@ -410,7 +410,7 @@ async function wtDelete(id) {
     wtTodos = wtTodos.filter(x => x.id !== id);
     wtRender();
   } catch (e) {
-    wtStatus('❌ Could not delete that to-do: ' + escHtml(e.message || String(e)), 'error');
+    wtStatus('❌ Could not delete that to-do: ' + escHtml(friendlyDbError(e)), 'error');
   }
 }
 

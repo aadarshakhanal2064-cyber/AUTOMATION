@@ -7,6 +7,15 @@
 //  matching, so search is typo-tolerant as a side effect of deduplicating.
 // ════════════════════════════════════════════
 window.SearchEngine = (function () {
+  // Session-scoped recent picks, shared across every autocomplete and keyed
+  // per input element (Stage 6, 2026-08-21). Staff record an intake, a work
+  // record, an ARF row and a memo for the SAME client back to back — the
+  // recents list turns the 2nd-4th retype of that name into one click.
+  // Deliberately in-memory only: nothing about clients touches localStorage
+  // on a shared office machine.
+  const recentPicks = {};
+  const RECENTS_MAX = 5;
+
   function buildIndex(list, keys, fuseOptions) {
     return new Fuse(list, Object.assign({ keys, threshold: 0.3, ignoreLocation: true }, fuseOptions));
   }
@@ -54,16 +63,42 @@ window.SearchEngine = (function () {
 
     function select(item) {
       hide();
+      const key = config.recentsKey || inputEl.id || '';
+      if (key) {
+        const cur = (recentPicks[key] || []).filter(x => x !== item);
+        cur.unshift(item);
+        recentPicks[key] = cur.slice(0, RECENTS_MAX);
+      }
       config.onSelect(item);
     }
 
-    function render(matches) {
+    function render(matches, headerHtml) {
       currentMatches = matches;
-      listEl.innerHTML = matches.map(item => `<div class="autocomplete-item">${config.renderItem(item)}</div>`).join('');
-      Array.from(listEl.children).forEach((el, i) => {
+      listEl.innerHTML = (headerHtml || '') +
+        matches.map(item => `<div class="autocomplete-item">${config.renderItem(item)}</div>`).join('');
+      // Bind by .autocomplete-item, not children — a header row may sit first.
+      listEl.querySelectorAll('.autocomplete-item').forEach((el, i) => {
         el.addEventListener('mousedown', () => select(matches[i]));
       });
       listEl.style.display = 'block';
+    }
+
+    // Focusing an empty picker offers this field's recent selections. Stale
+    // records (deleted client, reloaded list) are filtered against the live
+    // list by identity-or-id so a recent can never select a ghost row.
+    function showRecents() {
+      if ((inputEl.value || '').trim()) return;
+      const key = config.recentsKey || inputEl.id || '';
+      const rec = recentPicks[key];
+      if (!rec || !rec.length) return;
+      const list = config.getList();
+      if (!Array.isArray(list) || !list.length) return;
+      const live = rec
+        .map(r => list.includes(r) ? r : list.find(x => r && x && x.id != null && x.id === r.id))
+        .filter(Boolean).slice(0, RECENTS_MAX);
+      if (!live.length) return;
+      selectedIdx = -1;
+      render(live, '<div class="autocomplete-recent-label">Recent</div>');
     }
 
     function search(rawVal) {
@@ -96,6 +131,10 @@ window.SearchEngine = (function () {
         select(currentMatches[selectedIdx]);
         return;
       } else if (e.key === 'Escape') {
+        // Contain the Escape: with the list open it means "close this list",
+        // and must not bubble to the global handler that closes the whole
+        // drawer (js/core/keyboard.js).
+        e.stopPropagation();
         hide();
         return;
       }
@@ -103,6 +142,7 @@ window.SearchEngine = (function () {
     }
 
     inputEl.addEventListener('input', () => search(inputEl.value));
+    inputEl.addEventListener('focus', showRecents);
     inputEl.addEventListener('keydown', handleKey);
     document.addEventListener('click', (e) => {
       if (!inputEl.contains(e.target) && !listEl.contains(e.target)) hide();
