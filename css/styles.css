@@ -128,14 +128,6 @@ body {
 .topbar-dropdown-item-danger:hover { background: var(--red-bg); color: var(--red); }
 
 .topbar-right { display: flex; align-items: center; gap: 18px; }
-.tb-bell { position: relative; color: var(--text-muted); cursor: pointer; display:flex; }
-.tb-bell:hover { color: var(--brand-navy); }
-.tb-bell .dot {
-  position: absolute; top: -3px; right: -3px; background: var(--red);
-  color: #fff; font-size: 10px; font-weight: 700; min-width: 15px; height: 15px;
-  border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  border: 2px solid var(--white);
-}
 .tb-user { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 4px 6px; border-radius: var(--radius); transition: background 0.15s; }
 .tb-user:hover { background: var(--bg-app); }
 .tb-user .tb-email { font-size: 13px; font-weight: 500; color: var(--text-main); }

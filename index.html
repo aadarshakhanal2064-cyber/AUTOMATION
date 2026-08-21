@@ -180,10 +180,10 @@ function cropLoginLogoIcon(img) {
     </div>
   </div>
   <div class="topbar-right">
-    <div class="tb-bell" title="Notifications">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-      <span class="dot" id="tb-notif-count">3</span>
-    </div>
+    <!-- The notification bell that used to sit here was decoration: no click
+         handler existed, nothing ever wrote to its badge, and the "3" was a
+         hardcoded string — staff saw three phantom notifications forever.
+         Removed Stage 3 (2026-08-21); rebuild it only WITH a real source. -->
     <div class="app-tag-dropdown">
       <div class="tb-user" id="topbar-user-trigger" onclick="toggleTopbarMenu(event, 'user')" role="button" tabindex="0">
         <div class="avatar" id="tb-user-avatar" style="width:32px;height:32px;font-size:12.5px;">?</div>
