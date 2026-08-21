@@ -522,7 +522,21 @@ function fsxBuildReport(out) {
   });
 
   // ── Sch-BS: balance-sheet notes 3.2–3.10 ──
-  const recvLines = bal.receivableLines || [];
+  // ── zero-line suppression, provisional sets only (user ask 2026-08-22) ──
+  // Every note stays visible, but DETAIL lines that are nil in BOTH years
+  // drop: 3.3's extra receivables (advance tax etc. — trade receivables and
+  // the impairment provision always print), 3.8's non-current facilities
+  // (the current OD/CC side always prints), 3.9's duties-and-taxes block,
+  // 3.12's direct-cost lines (opening, purchases and closing always print),
+  // and 3.15's expense heads. A line nil this year but real last year keeps
+  // its comparative. The audited set is untouched.
+  const nil = (v) => Math.abs(v || 0) < 0.005;
+  const skipNil = m.basis === 'provisional';
+
+  const recvAll = bal.receivableLines || [];
+  const recvLines = skipNil
+    ? recvAll.filter((l, i) => i === 0 || l.key === 'impairment' || /impair/i.test(l.name || '') || !nil(l.amount))
+    : recvAll;
   const payLines = bal.payableLines || [];
   const pyPayByName = {};
   for (const p of (py.payableItems || [])) pyPayByName[String(p.name).toLowerCase()] = p.amount;
@@ -558,17 +572,26 @@ function fsxBuildReport(out) {
     }
     return { rows, keys };
   };
-  const ncSpec = mkLoanRows(bal.loanNCLines, 'loanNC', [
-    { k: 'loanTerm', label: 'Term Loan', vals: [(out.rawFigures || {}).H || 0, pyLoan(/term/i)] },
-    { k: 'loanPwc', label: 'PWC Loan', vals: [(out.rawFigures || {}).I || 0, pyLoan(/pwc|permanent/i)] },
-    { k: 'loanHp', label: 'HP Loan', vals: [(out.rawFigures || {}).J || 0, pyLoan(/\bhp\b|hire/i)] },
-    { k: 'loanDir', label: T.person + ' Loan', vals: [(out.levers || {}).directorLoan || 0, pyLoan(/director|proprietor|partner/i)] },
-  ]);
+  // A nil non-current facility drops from 3.8 (provisional); when every one
+  // is nil the whole Non-Current block goes with them — but the current side
+  // (bank loan / OD) always prints, even at nil.
+  const ncLines = skipNil && bal.loanNCLines
+    ? bal.loanNCLines.filter(l => !nil(l.amount) || !nil(l.py))
+    : bal.loanNCLines;
+  const ncSpec = (ncLines && !ncLines.length)
+    ? { rows: [], keys: [] }
+    : mkLoanRows(ncLines, 'loanNC', [
+      { k: 'loanTerm', label: 'Term Loan', vals: [(out.rawFigures || {}).H || 0, pyLoan(/term/i)] },
+      { k: 'loanPwc', label: 'PWC Loan', vals: [(out.rawFigures || {}).I || 0, pyLoan(/pwc|permanent/i)] },
+      { k: 'loanHp', label: 'HP Loan', vals: [(out.rawFigures || {}).J || 0, pyLoan(/\bhp\b|hire/i)] },
+      { k: 'loanDir', label: T.person + ' Loan', vals: [(out.levers || {}).directorLoan || 0, pyLoan(/director|proprietor|partner/i)] },
+    ]);
   const cSpec = mkLoanRows(bal.loanCLines, 'loanC', [
     { k: 'loanOd', label: 'Bank Overdrafts', vals: [bal.loansCurrent, pySfp.loansC] },
   ]);
   const loanNCRows = ncSpec.rows, loanNCKeys = ncSpec.keys;
   const loanCRows = cSpec.rows, loanCKeys = cSpec.keys;
+  const showLoanNC = loanNCRows.length > 0;
 
   // ── note 3.4's rows: the stock schedule's groups, or the standard three ──
   const invLines = bal.inventoryLines;
@@ -702,24 +725,33 @@ function fsxBuildReport(out) {
     R('3.8 Loans Borrowings', [], 'head', { figNpr: true }),
     R('The details of value of loans and borrowings are as follows:', [], 'sub'),
     BAND(),
-    R('Non-Current :', [], 'sub'),
-    ...loanNCRows,
-    R('Total', [bal.loansNonCurrent, pySfp.loansNC], 'tot', { k: 'loanNCTotal', xsum: loanNCKeys }),
+    ...(showLoanNC ? [
+      R('Non-Current :', [], 'sub'),
+      ...loanNCRows,
+      R('Total', [bal.loansNonCurrent, pySfp.loansNC], 'tot', { k: 'loanNCTotal', xsum: loanNCKeys }),
+    ] : []),
     R('Current :', [], 'sub'),
     ...loanCRows,
     R('Total', [bal.loansCurrent, pySfp.loansC], 'tot', { k: 'loanCTotal', xsum: loanCKeys }),
     B(),
     R('Total loans and borrowings', [(bal.loansNonCurrent || 0) + (bal.loansCurrent || 0), (pySfp.loansNC || 0) + (pySfp.loansC || 0)], 'tot', {
-      k: 'loanAll', xsum: ['loanNCTotal', 'loanCTotal'],
+      k: 'loanAll', xsum: showLoanNC ? ['loanNCTotal', 'loanCTotal'] : ['loanCTotal'],
     }),
     B(), B(),
     R('3.9 Trade and Other Payables', [], 'head', { figNpr: true }),
     BAND(),
   );
   // The firm's 3.9 separates the two trading payables from the statutory
-  // withholdings with a blank and a "Duties and taxes:" sub-heading.
-  const payDutiesIdx = payLines.findIndex(l => /^tds/i.test(l.name || ''));
-  payLines.forEach((l, i) => {
+  // withholdings with a blank and a "Duties and taxes:" sub-heading. On a
+  // provisional set a nil duty drops; the trading payables above the split
+  // always print. Filter first, then find the split again — if no duty
+  // survives, the sub-heading goes with them.
+  const dutiesStart = payLines.findIndex(l => /^tds/i.test(l.name || ''));
+  const payKeep = (skipNil && dutiesStart > 0)
+    ? payLines.filter((l, i) => i < dutiesStart || !nil(l.amount) || !nil(pyPay(l.name)))
+    : payLines;
+  const payDutiesIdx = payKeep.findIndex(l => /^tds/i.test(l.name || ''));
+  payKeep.forEach((l, i) => {
     if (i === payDutiesIdx && payDutiesIdx > 0) {
       schBsRows.push(B());
       schBsRows.push(R('Duties and taxes:', [], 'sub', { italic: true }));
@@ -735,7 +767,7 @@ function fsxBuildReport(out) {
     schBsRows.push(R(l.name, [l.amount, pyPay(l.name)], 'item', extra));
   });
   schBsRows.push(
-    R('Total', [bal.totalPayables, pySfp.payables], 'tot', { k: 'payTotal', xsum: payLines.map((_, i) => 'pay' + i) }),
+    R('Total', [bal.totalPayables, pySfp.payables], 'tot', { k: 'payTotal', xsum: payKeep.map((_, i) => 'pay' + i) }),
     R('3.10 Provisions', [], 'head', { figNpr: true }),
     BAND(),
     R('Provision for Income Tax', [inc.tax, pySoi.tax], 'item', { k: 'provTax', xf: ({ X }) => X('SOI', 'tax') }),
@@ -782,9 +814,14 @@ function fsxBuildReport(out) {
     R('Add:  ', [], 'sub'),
     R('Purchases of goods', [mat.purchases, pyMat.purchases], 'item', { k: 'matPurchase', balancing: true }),
   ];
-  (mat.directItems || []).forEach((it, i) => {
-    schPlRows.push(R(it.name, [it.amount, ((pyMat.directItems || [])[i] || {}).amount || 0], 'item',
-      { k: 'matDirect' + i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
+  // 3.12's direct-cost lines (Labour, Clearing & Freight, extras) pair with
+  // their prior-year figure BY INDEX, so the nil test runs on the pair before
+  // anything renumbers. Opening, purchases and closing always print.
+  const directPairs = (mat.directItems || []).map((it, i) => ({ it, py: ((pyMat.directItems || [])[i] || {}).amount || 0 }));
+  const directKeep = skipNil ? directPairs.filter(p => !nil(p.it.amount) || !nil(p.py)) : directPairs;
+  directKeep.forEach((p, i) => {
+    schPlRows.push(R(p.it.name, [p.it.amount, p.py], 'item',
+      { k: 'matDirect' + i, xf: fsxDeriveXf(p.it.derive, ANCHORS) }));
   });
   schPlRows.push(
     R('Less:', [], 'sub'),
@@ -792,7 +829,7 @@ function fsxBuildReport(out) {
     R('Total', [mat.total, pySoi.materials], 'tot', {
       k: 'matTotal',
       xf: ({ R: r, c }) => {
-        const adds = ['matOpening', 'matPurchase', ...(mat.directItems || []).map((_, i) => 'matDirect' + i)]
+        const adds = ['matOpening', 'matPurchase', ...directKeep.map((_, i) => 'matDirect' + i)]
           .filter(k => r[k]).map(k => `${c}${r[k]}`).join('+');
         return adds ? `${adds}-${c}${r.matClosing}` : null;
       },
@@ -830,15 +867,21 @@ function fsxBuildReport(out) {
   );
   const pyOtherByName = {};
   for (const it of (py.otherItems || [])) pyOtherByName[String(it.name).toLowerCase().trim()] = it.amount;
-  (inc.otherItems || []).forEach((it, i) => {
+  // A 3.15 head nil in both years drops (provisional) — a client's note
+  // otherwise lists every head the firm has ever used at "–".
+  const pyOther = (it) => pyOtherByName[String(it.name).toLowerCase().trim()] || 0;
+  const otherKeep = skipNil
+    ? (inc.otherItems || []).filter(it => !nil(it.amount) || !nil(pyOther(it)))
+    : (inc.otherItems || []);
+  otherKeep.forEach((it, i) => {
     const key = /audit\s*fee/i.test(it.name) ? 'auditFee' : (/\brent\b/i.test(it.name) ? 'rent' : 'oth' + i);
-    schPlRows.push(R(it.name, [it.amount, pyOtherByName[String(it.name).toLowerCase().trim()] || 0], 'item',
+    schPlRows.push(R(it.name, [it.amount, pyOther(it)], 'item',
       { k: key, oi: i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
   });
   schPlRows.push(
     R('Total', [inc.otherTotal, pySoi.otherExpenses], 'tot', {
       k: 'othTotal',
-      xsum: (inc.otherItems || []).map((it, i) => /audit\s*fee/i.test(it.name) ? 'auditFee' : (/\brent\b/i.test(it.name) ? 'rent' : 'oth' + i)),
+      xsum: otherKeep.map((it, i) => /audit\s*fee/i.test(it.name) ? 'auditFee' : (/\brent\b/i.test(it.name) ? 'rent' : 'oth' + i)),
     }),
     B(),
     R('3.16 Tax Expenses ', [], 'head', { figNpr: true }),

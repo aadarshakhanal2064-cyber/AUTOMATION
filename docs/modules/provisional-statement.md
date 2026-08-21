@@ -492,6 +492,36 @@ Third round (same day, user feedback on the second):
 - Base font stepped down to 12px (headers scaled with it) and the fit
   pass's upscale cap lowered to 1.1.
 
+**Zero-line suppression, provisional sets only** (2026-08-22, user's
+per-note ruleset; gated on `meta.basis === 'provisional'` in
+`fsxBuildReport`, so preview, print and Excel agree and the audited set is
+untouched). Every note (3.2–3.16) stays visible even at nil — only DETAIL
+lines nil in BOTH years drop, so a line real last year keeps its
+comparative:
+
+- **3.3** — extra receivable lines (advance tax etc.) drop at nil; Trade
+  Receivables, the impairment provision and the portion rows always print.
+- **3.8** — a nil non-current facility drops, and when every one is nil the
+  whole Non-Current block (sub-heading + Total) goes with them, the grand
+  total then summing the current side alone. The current OD/CC side always
+  prints, even at nil.
+- **3.9** — nil lines at/after the first TDS line (the duties-and-taxes
+  block, VAT included) drop; if none survive, the "Duties and taxes:"
+  sub-heading goes too. Trading payables above the split always print.
+- **3.12** — nil direct-cost lines (Labour, Clearing & Freight, extras)
+  drop — they pair with their prior-year figure BY INDEX, so the nil test
+  runs on the pair before anything renumbers. Opening, purchases and
+  closing always print.
+- **3.15** — a head nil in both years drops (otherwise a client's note
+  lists every head the firm has ever used at "–").
+
+Dropped rows simply never register their key, and every X() lookup of a
+missing key already falls back to a written value — the same degradation
+path the quad removal proved. Proven by
+`scratchpad zeroLines` assertions (22 checks: nil facilities/duties/heads
+gone, structural rows and nil current OD present) plus the standing
+pagination suite.
+
 Fifth round (user, with the firm's own reference note): **3.6 Share Capital
 is ONE box, not three quad sub-tables.** An italic sub-heading (Authorized /
 Issued / Paid-Up Share Capital) and a single "{count} Equity Shares @ Rs.
