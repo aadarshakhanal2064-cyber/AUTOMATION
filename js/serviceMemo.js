@@ -491,7 +491,7 @@ function smClearFilters() {
 // Pending Memos), the ARF / Work Done idiom, so what prints or exports
 // always matches what's on screen. ──
 function smBuildMemosModel(rows) {
-  const subtitles = [`Generated ${new Date().toISOString().slice(0, 10)}`];
+  const subtitles = [`Generated ${NepaliLocale.todayISO()}`];
   if (smFilters.from || smFilters.to) subtitles.push(`${smFilters.from || 'the beginning'} to ${smFilters.to || 'today'}`);
   return {
     title: 'Service Memos',
@@ -513,7 +513,7 @@ function smBuildMemosModel(rows) {
 function smBuildPendingModel(rows) {
   return {
     title: 'Service Memo — Pending Memos',
-    subtitleLines: [`Generated ${new Date().toISOString().slice(0, 10)}`,
+    subtitleLines: [`Generated ${NepaliLocale.todayISO()}`,
       'Verified Audit Report Finalization tracks and saved Projection Reports without a matching fee memo yet.'],
     landscape: true,
     columns: [
@@ -656,7 +656,7 @@ function smOpenCreate(existing, prefill) {
   document.getElementById('sm-firm-key').value = existing ? existing.firm_key : 'shailesh';
   document.getElementById('sm-firm-other').value = existing ? (existing.firm_other || '') : '';
   smOnFirmChange();
-  document.getElementById('sm-memo-date').value = existing ? existing.memo_date : new Date().toISOString().slice(0, 10);
+  document.getElementById('sm-memo-date').value = existing ? existing.memo_date : NepaliLocale.todayISO();
   document.getElementById('sm-client-search').value = existing ? (existing.client_name || '') : (prefill ? (prefill.client.name || '') : '');
   document.getElementById('sm-client-pan').value = existing ? (existing.client_pan || '') : (prefill ? (prefill.client.pan || '') : '');
   document.getElementById('sm-client-address').value = existing ? (existing.client_address || '') : (prefill ? (prefill.client.address || '') : '');
@@ -738,7 +738,7 @@ async function smSaveMemo() {
     memo_prefix: firm.prefix,
     firm_key: firmKey,
     firm_other: firm.typed ? firmOther : null,
-    memo_date: document.getElementById('sm-memo-date').value || new Date().toISOString().slice(0, 10),
+    memo_date: document.getElementById('sm-memo-date').value || NepaliLocale.todayISO(),
     client_id: clientId,
     client_name: clientName,
     client_pan: document.getElementById('sm-client-pan').value.trim() || null,

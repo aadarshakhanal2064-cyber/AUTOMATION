@@ -350,7 +350,7 @@ function cdNfBuildModel() {
   ];
   return {
     title: 'Non-Filers List — IT Return',
-    subtitleLines: [`Fiscal Year ${CD_NF_FY}`, `Generated ${new Date().toISOString().slice(0, 10)}`],
+    subtitleLines: [`Fiscal Year ${CD_NF_FY}`, `Generated ${NepaliLocale.todayISO()}`],
     landscape: true,
     columns: [
       { label: 'Client Name', w: 1.8 }, { label: 'PAN', w: 1 }, { label: 'Entity Type', w: 1.4 },

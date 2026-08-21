@@ -66,7 +66,7 @@ let fmFilters = { ...FM_FILTERS_EMPTY };
 
 function fmUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
 function fmStatusMsg(html, type) { showStatus(html, type, 'fm-status-area'); }
-function fmToday() { return new Date().toISOString().slice(0, 10); }
+function fmToday() { return NepaliLocale.todayISO(); }
 
 // Reads window.FY_DEFAULT_START (config.js). Added 2026-08-15: a new intake
 // used to seed its Fiscal Year purely from Date Received (fmFyFromDate,

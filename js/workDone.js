@@ -91,7 +91,7 @@ let wdFilters = { ...WD_FILTERS_EMPTY };
 
 function wdUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
 function wdStatusMsg(html, type) { showStatus(html, type, 'wd-status-area'); }
-function wdToday() { return new Date().toISOString().slice(0, 10); }
+function wdToday() { return NepaliLocale.todayISO(); }
 function wdEl(id) { return document.getElementById(id); }
 
 function wdFyLabel(startYear) { return startYear + '/' + String((startYear + 1) % 100).padStart(2, '0'); }

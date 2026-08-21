@@ -168,6 +168,16 @@ window.NepaliLocale = (function () {
   // Today as 'YYYY.MM.DD', or '' once the calendar table runs out.
   function todayBsStr() { return bsToStr(todayBs()); }
 
+  // Today's GREGORIAN date as 'YYYY-MM-DD' with the day boundary at Nepal
+  // midnight. Ten call sites used new Date().toISOString().slice(0,10),
+  // which flips to the new day 5 h 45 m late from Nepal's perspective — so
+  // between 00:00 and 05:45 local, every date field seeded that way
+  // defaulted to YESTERDAY (fixed Stage 3, 2026-08-21). Same shift todayBs()
+  // has always applied for B.S. dates, now available for Gregorian ones.
+  function todayISO() {
+    return new Date(Date.now() + NEPAL_UTC_OFFSET_MS).toISOString().slice(0, 10);
+  }
+
   // ── Nepali number words (Company Registration MOA/AOA, §5.11d) ──
   // The registrar documents write every figure twice — "रु ५०,००,०००।– (पचास
   // लाख रुपैंया मात्र)" — and the words in the firm's sources are typed by
@@ -237,6 +247,6 @@ window.NepaliLocale = (function () {
 
   return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
            bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy,
-           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, adToBs, bsToStr, fyStartYear,
+           bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, todayISO, adToBs, bsToStr, fyStartYear,
            amountToWords, bsWeekday };
 })();

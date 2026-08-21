@@ -82,7 +82,7 @@ let arfFilters = { ...ARF_FILTERS_EMPTY };
 
 function arfUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
 function arfStatusMsg(html, type) { showStatus(html, type, 'arf-status-area'); }
-function arfToday() { return new Date().toISOString().slice(0, 10); }
+function arfToday() { return NepaliLocale.todayISO(); }
 function arfEl(id) { return document.getElementById(id); }
 
 function arfFyLabel(startYear) { return startYear + '/' + String((startYear + 1) % 100).padStart(2, '0'); }

@@ -69,7 +69,7 @@ let achkFilters = { ...ACHK_FILTERS_EMPTY };
 
 function achkUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
 function achkStatusMsg(html, type) { showStatus(html, type, 'achk-status-area'); }
-function achkToday() { return new Date().toISOString().slice(0, 10); }
+function achkToday() { return NepaliLocale.todayISO(); }
 function achkEl(id) { return document.getElementById(id); }
 
 function achkFyLabel(startYear) { return startYear + '/' + String((startYear + 1) % 100).padStart(2, '0'); }

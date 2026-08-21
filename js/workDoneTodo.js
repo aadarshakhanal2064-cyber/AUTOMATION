@@ -96,7 +96,7 @@ let wtCollapsed = new Set();
 
 function wtEl(id) { return document.getElementById(id); }
 function wtUserEmail() { return (window.currentUser && window.currentUser.email) || null; }
-function wtToday() { return new Date().toISOString().slice(0, 10); }
+function wtToday() { return NepaliLocale.todayISO(); }
 function wtStatus(html, type) { showStatus(html, type, 'wt-status-area'); }
 function wtFind(id) { return wtTodos.find(t => t.id === id); }
 
