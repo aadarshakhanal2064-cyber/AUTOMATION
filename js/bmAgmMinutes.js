@@ -606,6 +606,70 @@ document.addEventListener('DOMContentLoaded', function () {
 //  BM/AGM MINUTES — export
 // ════════════════════════════════════════════
 
+// ── Save to database / Saved minutes ──
+//
+// The same pair Generate Report and Notes to Accounts have, over the shared
+// saved_documents table and the one shared picker drawer (CLAUDE.md §15:
+// saved documents are ONE table with a `module` discriminator, so this is a
+// CHECK value — db/2026-08-21_saved_documents_bmagm.sql — not a new table).
+//
+// Re-saving in the same session amends the same row, matching the other two.
+let bmSavedId = null;
+
+async function bmSaveToDb() {
+  const companyName = (document.getElementById('bm-companyName').value || '').trim();
+  if (!companyName) {
+    bmStatus('कम्पनीको नाम भर्नुहोस् (enter the company name before saving).', 'error');
+    return;
+  }
+  const fy = document.getElementById('bm-fiscalYear').value;
+  try {
+    bmStatus('<span class="spinner spinner-navy"></span> सुरक्षित गर्दै (saving)…', 'searching');
+    bmSavedId = await DocumentStore.save(bmSavedId, {
+      module: 'bmAgmMinutes',
+      // client_id stays NULL on purpose: it is FK'd to clients(id), and a
+      // BM/AGM company is a registrar_companies row. The two directories are
+      // separate by design (CLAUDE.md §15), and an id from one would either
+      // break the FK or point at an unrelated client in the other.
+      client_id: null,
+      client_name: companyName,
+      pan: (document.getElementById('bm-regNo').value || '').trim() || null,
+      fiscal_year: fy,
+      doc_type: document.getElementById('bm-boardChanged').checked
+        ? 'BM/AGM + Change of Board' : 'BM/AGM',
+      title: bmOutputName(bmBuildData().data) || ('BM-AGM — ' + companyName),
+      state: bmFormState(),
+      // no doc_html: unlike Report/Notes there is no hand-edited preview to
+      // preserve — the Word file regenerates from `state` byte for byte
+    });
+    bmStatus(`✅ सुरक्षित भयो (saved as record #${bmSavedId}) — <strong>Saved minutes</strong> बाट पुन: खोल्न सकिन्छ.`, 'success');
+    AuditLog.record('bm_agm_saved', {
+      module: 'bmAgmMinutes', clientName: companyName, status: 'success', recordRef: bmSavedId,
+    });
+  } catch (e) {
+    console.error(e);
+    bmStatus('❌ सुरक्षित हुन सकेन (save failed): ' + escHtml(e.message), 'error');
+  }
+}
+
+function bmOpenSaved() {
+  DocumentStore.openPicker({
+    module: 'bmAgmMinutes',
+    label: 'Saved BM/AGM minutes',
+    searchPlaceholder: 'Search by company, fiscal year…',
+    onOpen: row => {
+      if (!bmApplyState(row.state)) {
+        bmStatus('यो रेकर्डमा फारम विवरण छैन (this record has no form state saved).', 'error');
+        return;
+      }
+      bmSavedId = row.id;
+      bmUpdateCompletionIndicator();
+      if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
+      bmStatus(`📂 सुरक्षित माइन्युट #${row.id} खोलियो — Save to database फेरि थिच्दा यही रेकर्ड अद्यावधिक हुन्छ (opened; saving again updates this same record).`, 'info');
+    },
+  });
+}
+
 // The one place the output name is built. BOTH the .docx download and the
 // print window use it — the print window's <title> is what the browser
 // offers as the filename under "Save as PDF", so naming them separately is
@@ -662,6 +726,9 @@ function bmPrintDocument() {
 function bmResetForm() {
   const panel = document.getElementById('regd-bmAgmMinutes-panel');
   if (!panel) return;
+  // drop the link to any opened record, or the next Save silently overwrites
+  // the document that was just cleared off the screen
+  bmSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
   document.getElementById('bm-termYears').value = '4';
   document.getElementById('bm-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
@@ -723,25 +790,40 @@ function bmValidateDateField(fieldId) {
 }
 
 // ── Autosave (session-local draft, never sent to Supabase) ──
+// ONE serialisation of the form, shared by the localStorage autosave and the
+// Save-to-database record. Keeping them separate is how a field added to the
+// form ends up captured by one and silently missed by the other.
+function bmFormState() {
+  const panel = document.getElementById('regd-bmAgmMinutes-panel');
+  const values = {};
+  panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => {
+    values[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
+  return { values, extraShareholders };
+}
+
+// Clears BEFORE it can return early, and clears the shareholder rows before
+// re-adding them — otherwise opening a second saved record stacks its
+// directors underneath the previous one's (CLAUDE.md §9).
+function bmApplyState(state) {
+  if (!state || !state.values) return false;
+  bmClearExtraShareholders();
+  Object.entries(state.values).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
+  });
+  (state.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
+  bmToggleBoardChangedFields();
+  return true;
+}
+
 const bmAutosave = WorkflowEngine.createAutosave('bmAgmDraft', {
-  collect: () => {
-    const panel = document.getElementById('regd-bmAgmMinutes-panel');
-    const values = {};
-    panel.querySelectorAll('input[id^="bm-"], select[id^="bm-"]').forEach(el => {
-      values[el.id] = el.type === 'checkbox' ? el.checked : el.value;
-    });
-    const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
-    return { values, extraShareholders };
-  },
+  collect: bmFormState,
   restore: (draft) => {
     if (!draft.values || !Object.values(draft.values).some(v => v)) return;
-    Object.entries(draft.values).forEach(([id, val]) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
-    });
-    (draft.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
-    bmToggleBoardChangedFields();
+    bmApplyState(draft);
     if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
     bmStatus('📝 अघिल्लो अपूर्ण फारम पुन: लोड गरियो (restored your unsaved draft from last time).', 'info');
   },
