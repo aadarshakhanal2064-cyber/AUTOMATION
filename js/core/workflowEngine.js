@@ -112,7 +112,14 @@ window.WorkflowEngine = (function () {
     }
     async function transition(record, toStatus, ctx) {
       const from = record.status;
-      if (from === toStatus) return record;
+      // Same-status is only a no-op when there is nothing else to persist.
+      // With a patch it MUST still run: File In Out's second partial outtake
+      // (partial → partial) and an undo of one-of-several partials both keep
+      // the status while changing `outtakes` — the old unconditional early
+      // return silently dropped that patch, then reported success and
+      // repainted the row from the server without it (found in Stage 3's
+      // Phase 0 trace; shipped as real data loss).
+      if (from === toStatus && !(ctx && ctx.patch)) return record;
       return onTransition(record, from, toStatus, ctx || {});
     }
     return { meta, badgeHtml, transition, statusKeys: Object.keys(statuses) };
