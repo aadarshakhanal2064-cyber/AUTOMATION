@@ -606,8 +606,9 @@ function depSlmImport(input) {
   const file = input.files && input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
+      await LibLoader.ensure('xlsx');
       const wb = XLSX.read(e.target.result, { type: 'array' });
       // Prefer a sheet named like "dep as books"; else the first.
       const name = wb.SheetNames.find(n => /dep.*book|book.*dep|as book/i.test(n)) || wb.SheetNames[0];
@@ -796,6 +797,7 @@ function depSlmPrint() {
 }
 
 async function depSlmGenerateExcel() {
+  await LibLoader.ensure('exceljs');
   if (!window.ExcelJS) { depStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
   if (!depSlmRows.length) { depStatus('⚠️ Add at least one asset before generating.', 'info'); return; }
   depSlmRecalc();

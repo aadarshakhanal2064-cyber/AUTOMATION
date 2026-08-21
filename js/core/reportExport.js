@@ -85,6 +85,7 @@ window.ReportExport = (function () {
 
   // ── PDF (PDF-Lib) ──
   async function toPdf(model) {
+    await LibLoader.ensure('pdflib');
     const doc = await PDFLib.PDFDocument.create();
     const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     const bold = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
@@ -169,6 +170,7 @@ window.ReportExport = (function () {
 
   // ── Excel (ExcelJS — same styling idiom as bankBook / depreciation) ──
   async function toExcel(model, sheetName) {
+    await LibLoader.ensure('exceljs');
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet((sheetName || model.title || 'Report').slice(0, 31));
     const cols = model.columns;

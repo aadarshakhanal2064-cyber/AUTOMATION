@@ -4417,7 +4417,13 @@ function cropLoginLogoIcon(img) {
      unpinnable ones; both went with Google auth on 2026-08-01. api.js had in
      fact been dead for a long time — nothing ever referenced `gapi`.
 
-     ALL 70 tags carry `defer` (Stage 2, 2026-08-21): the parser no longer
+     Five heavy libraries are NOT tags any more (Stage 4, 2026-08-21): xlsx,
+     exceljs, pdf-lib, html-docx and docx-preview (~890 KB gzip between them)
+     load on demand through js/core/libLoader.js — same pinned URLs, same SRI
+     hashes — and are prefetched in the background right after boot. Add a
+     new heavy vendor there, not here.
+
+     EVERY script tag carries `defer` (Stage 2, 2026-08-21): the parser no longer
      blocks on ~6 MB of script, so the loading screen paints at first parse
      instead of after the last download (measured 6.4 s on a warm production
      visit before this). defer is SAFE for the load-bearing order in
@@ -4426,29 +4432,25 @@ function cropLoginLogoIcon(img) {
      mix in `async` (order becomes arbitrary) and do NOT give any of these
      type="module" (that changes scoping — window.* globals would break). -->
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7/dist/umd/supabase.js" integrity="sha384-hazsLVND17GNLVdtV19te6qbFT2YuLgl8SamcF+QR5eIOC+W4dGKrUNMxU1jH1zD" crossorigin="anonymous"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js" integrity="sha384-3mvYicTS7UKJFuQYjm4TLHd0AEsGqivIvpOz05D1WC6EY0wjrdMXxlwRAdckMW73" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js" integrity="sha384-iE2CLpzI//WSW27IS4DPW3L3BJaOxn0tcasTXUDBWsyWw35ruWTPz6ERH7FP14Zg" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js" integrity="sha384-Fw+ZM2MtvxCe867uRzZY5GtGP+gs0NLvrlJS768RZWuKhOHMN4Fln3i3gMt1NSyQ" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" integrity="sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js" integrity="sha384-PCSoOZTpbkikBEtd/+uV3WNdc676i9KUf01KOA8CnJotvlx8rRrETbDuwdjqTYvt" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
 
 <script defer src="js/config.js?v=202608212200"></script>
 <script defer src="js/utils.js?v=202608182300"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
+<script defer src="js/core/libLoader.js?v=202608212300"></script>
 <script defer src="js/core/nepaliLocale.js?v=202608212200"></script>
-<script defer src="js/core/documentEngine.js?v=202608211200"></script>
+<script defer src="js/core/documentEngine.js?v=202608212300"></script>
 <script defer src="js/core/searchEngine.js?v=202608022300"></script>
 <script defer src="js/core/tableEngine.js?v=202608022300"></script>
 <script defer src="js/core/workflowEngine.js?v=202608212200"></script>
 <script defer src="js/core/auditLog.js?v=202608181500"></script>
-<script defer src="js/core/reportExport.js?v=202608022300"></script>
+<script defer src="js/core/reportExport.js?v=202608212300"></script>
 <script defer src="js/core/workbookReader.js?v=202608022300"></script>
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
@@ -4461,40 +4463,40 @@ function cropLoginLogoIcon(img) {
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
 <script defer src="js/registrarCompanies.js?v=202608201200"></script>
-<script defer src="js/clients.js?v=202608212200"></script>
-<script defer src="js/serviceMemo.js?v=202608212200"></script>
-<script defer src="js/report.js?v=202608101800"></script>
-<script defer src="js/notesToAccounts.js?v=202608171000"></script>
-<script defer src="js/depreciation.js?v=202608171700"></script>
-<script defer src="js/depreciationSlm.js?v=202608171400"></script>
+<script defer src="js/clients.js?v=202608212300"></script>
+<script defer src="js/serviceMemo.js?v=202608212300"></script>
+<script defer src="js/report.js?v=202608212300"></script>
+<script defer src="js/notesToAccounts.js?v=202608212300"></script>
+<script defer src="js/depreciation.js?v=202608212300"></script>
+<script defer src="js/depreciationSlm.js?v=202608212300"></script>
 <script defer src="js/bmAgmMinutes.js?v=202608211500"></script>
 <script defer src="js/auditorChange.js?v=202608211900"></script>
 <script defer src="js/companyProfile.js?v=202608212200"></script>
 <script defer src="js/companySecretary.js?v=202608211900"></script>
 <script defer src="js/companyRegistration.js?v=202608211900"></script>
-<script defer src="js/salesPurchaseBook.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBook.js?v=202608212300"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
 <script defer src="js/salesPurchaseBookLedger.js?v=202608212200"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
 <script defer src="js/salesPurchaseBookConfirm.js?v=202608170900"></script>
-<script defer src="js/salesPurchaseBookAnnexure.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBookAnnexure.js?v=202608212300"></script>
 <script defer src="js/salesPurchaseBookReco.js?v=202608170900"></script>
-<script defer src="js/salesPurchaseBookVatReturn.js?v=202608170900"></script>
-<script defer src="js/confirmationLetters.js?v=202608151800"></script>
-<script defer src="js/bankBook.js?v=202608212200"></script>
+<script defer src="js/salesPurchaseBookVatReturn.js?v=202608212300"></script>
+<script defer src="js/confirmationLetters.js?v=202608212300"></script>
+<script defer src="js/bankBook.js?v=202608212300"></script>
 <script defer src="js/partyLedger.js?v=202608022300"></script>
-<script defer src="js/finalAccount.js?v=202608022300"></script>
+<script defer src="js/finalAccount.js?v=202608212300"></script>
 <script defer src="js/projectionEngine.js?v=202608180900"></script>
-<script defer src="js/projection.js?v=202608180900"></script>
-<script defer src="js/projectionExport.js?v=202608111600"></script>
+<script defer src="js/projection.js?v=202608212300"></script>
+<script defer src="js/projectionExport.js?v=202608212300"></script>
 <script defer src="js/finStatementEngine.js?v=202608190900"></script>
 <script defer src="js/finStatementExport.js?v=202608221900"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608221900"></script>
-<script defer src="js/provisionalStatement.js?v=202608212200"></script>
+<script defer src="js/provisionalStatement.js?v=202608212300"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608212200"></script>
+<script defer src="js/auditedStatement.js?v=202608212300"></script>
 <script defer src="js/fileManagement.js?v=202608212200"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212200"></script>
 <script defer src="js/auditChecklist.js?v=202608212200"></script>
@@ -4505,7 +4507,7 @@ function cropLoginLogoIcon(img) {
      from the topbar user menu, so it needs no nav button. -->
 <script defer src="js/orgSettings.js?v=202608190300"></script>
 <script defer src="js/orgMembers.js?v=202608182200"></script>
-<script defer src="js/auth.js?v=202608212100"></script>
+<script defer src="js/auth.js?v=202608212300"></script>
 
 </body>
 </html>

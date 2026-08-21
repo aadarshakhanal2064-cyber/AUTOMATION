@@ -491,6 +491,7 @@ async function pjHandleFile(input) {
   if (!file) return;
   pjStatus('Reading workbook…', 'searching');
   try {
+    await LibLoader.ensure('xlsx');
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
     // Auto-detect Audited vs Provisional from the uploaded filename so the

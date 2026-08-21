@@ -300,6 +300,7 @@ async function asHandlePyFile(input) {
   if (!file) return;
   asStatus('Reading the prior-year statement…', 'searching');
   try {
+    await LibLoader.ensure('xlsx');
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
     const { py, issues } = FinStatementEngine.parsePriorYear(wb, XLSX);
@@ -1762,6 +1763,7 @@ function asRenderPreview() {
 async function asDownloadExcel() {
   if (!asReport) { asStatus('Nothing to export yet.', 'error'); return; }
   try {
+    await LibLoader.ensure('exceljs');
     const wb = fsxWriteWorkbook(asReport, ExcelJS);
     const buf = await wb.xlsx.writeBuffer();
     const name = `${(asEl('as-company').value || 'Statement').replace(/[\\/:*?"<>|]/g, '')} ${(asEl('as-fy').value || '')} Audited.xlsx`;

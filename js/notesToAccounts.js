@@ -626,8 +626,9 @@ function ntaSetViewRestored(){
 // report.js. Changing either means the next save creates a new record.
 function ntaForgetSavedId(){ ntaSavedId = null; }
 
-function saveNtaAsWord(){
+async function saveNtaAsWord(){
   ntaEnsureRendered();
+  try { await LibLoader.ensure('htmldocx'); } catch (e) { /* fallback .doc below */ }
   const html = buildNtaWordHtml();
   const clientName = $nta('nta-entityName').value.trim() || 'Notes to Accounts';
   const base = ('Notes to Accounts - ' + clientName).replace(/[\\/:*?"<>|]/g, '_');

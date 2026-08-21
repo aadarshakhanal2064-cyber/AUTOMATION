@@ -760,8 +760,9 @@ function buildRepWordHtml(){
 // document HTML the preview and PDF use so formatting stays consistent. If the
 // library failed to load, falls back to a Word-openable .doc (HTML) so the
 // button never silently breaks.
-function saveRepAsWord(){
+async function saveRepAsWord(){
   repEnsureRendered();
+  try { await LibLoader.ensure('htmldocx'); } catch (e) { /* fallback .doc below */ }
   const html = buildRepWordHtml();
   const clientName = $rep('rep-entityName').value.trim() || 'Report';
   const base = ('Audit Report - ' + clientName).replace(/[\\/:*?"<>|]/g, '_');

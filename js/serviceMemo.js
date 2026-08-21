@@ -830,6 +830,7 @@ function smWrapText(font, size, text, maxWidth) {
 }
 
 async function smBuildMemoPdf(memo) {
+  await LibLoader.ensure('pdflib');
   const firm = smFirmIdentity(memo);
   const doc = await PDFLib.PDFDocument.create();
   let page = doc.addPage([595, 842]);

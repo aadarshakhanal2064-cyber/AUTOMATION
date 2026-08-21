@@ -1019,6 +1019,7 @@ async function pjBuildPdfBytes() {
 }
 
 async function pjDownloadPdf() {
+  await LibLoader.ensure('pdflib');
   if (!pjResult || !pjModel) return;
   try {
     pjStatus('Building PDF…', 'searching');
@@ -1099,6 +1100,7 @@ function pjClosePreview() {
 //  corrected in Excel.
 
 async function pjDownloadExcel() {
+  await LibLoader.ensure('exceljs');
   if (!pjResult || !pjModel) return;
   try {
     pjStatus('Building Excel workbook…', 'searching');

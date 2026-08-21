@@ -147,8 +147,9 @@ function clHandleUpload(fileInput) {
   clStatus('<span class="spinner spinner-navy"></span> Reading workbook…', 'searching');
 
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
+      await LibLoader.ensure('xlsx');
       const wb = XLSX.read(e.target.result, { type: 'binary' });
       const salesSheet = wb.Sheets['Sales Details'];
       const purchaseSheet = wb.Sheets['Purchase Details'];

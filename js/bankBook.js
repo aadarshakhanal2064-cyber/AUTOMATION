@@ -747,6 +747,7 @@ function bbReportHtml(rep) {
 
 // ── PDF export (PDF-Lib, with page breaks) ──
 async function bbReportToPdf() {
+  await LibLoader.ensure('pdflib');
   if (!bbLastReport) return;
   const rep = bbLastReport;
   try {
@@ -843,6 +844,7 @@ async function bbReportToExcel() {
   if (!bbLastReport) return;
   const rep = bbLastReport;
   try {
+    await LibLoader.ensure('exceljs');
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(bbReportTitle(rep).slice(0, 31));
     const MONEY = '#,##0.00;(#,##0.00);"–"';

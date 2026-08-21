@@ -599,8 +599,9 @@ function depImportExcel(input) {
   const file = input.files && input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
+      await LibLoader.ensure('xlsx');
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
@@ -835,6 +836,7 @@ async function depDelete() {
 //  explicit action so testing/generating a throwaway copy is safe.
 // ════════════════════════════════════════════
 async function depGenerateExcel() {
+  await LibLoader.ensure('exceljs');
   if (depMethod === 'slm') return depSlmGenerateExcel();
   if (!window.ExcelJS) { depStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
   depRecalc();

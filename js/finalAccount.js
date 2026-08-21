@@ -276,6 +276,8 @@ function faSetExports(on) {
 }
 
 async function faExport(kind) {
+  // The report model itself bakes PDFLib.rgb colours in, whichever kind runs.
+  await LibLoader.ensure('pdflib');
   if (!faLastModel) return;
   try {
     const ext = kind === 'pdf' ? 'pdf' : 'xlsx';

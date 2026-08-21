@@ -618,8 +618,9 @@ function spbHandleFiles(input) {
   let pending = files.length;
   files.forEach(file => {
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async e => {
       try {
+        await LibLoader.ensure('xlsx');
         const wb = XLSX.read(e.target.result, { type: 'array' });
         let claimed = false;
         wb.SheetNames.forEach(sn => {
@@ -2267,8 +2268,8 @@ function spbTemplateNotesSheet(wb) {
 }
 
 async function spbDownloadTemplate() {
-  if (!window.ExcelJS) { spbStatus('❌ Excel engine not loaded — reload the page and try again.', 'error'); return; }
   try {
+    await LibLoader.ensure('exceljs');
     const wb = new ExcelJS.Workbook();
     wb.calcProperties.fullCalcOnLoad = true;
     spbTemplateSheet(wb, 'sales');
@@ -2299,6 +2300,7 @@ async function spbGenerateExcel() {
   const missing = SPB_SECTIONS.filter(s => spbData[s.key] &&
     SPB_BS_MONTHS.some((_, fi) => !spbMonthVerdict(s.key, fi).entered)).map(s => s.label);
   try {
+    await LibLoader.ensure('exceljs');
     const wb = spbBuildWorkbook();
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

@@ -293,6 +293,7 @@ async function psHandlePyFile(input) {
   if (!file) return;
   psStatus('Reading the prior-year statement…', 'searching');
   try {
+    await LibLoader.ensure('xlsx');
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
     const { py, issues } = FinStatementEngine.parsePriorYear(wb, XLSX);
@@ -1746,6 +1747,7 @@ function psRenderPreview() {
 async function psDownloadExcel() {
   if (!psReport) { psStatus('Nothing to export yet.', 'error'); return; }
   try {
+    await LibLoader.ensure('exceljs');
     const wb = fsxWriteWorkbook(psReport, ExcelJS);
     const buf = await wb.xlsx.writeBuffer();
     const name = `${(psEl('ps-company').value || 'Statement').replace(/[\\/:*?"<>|]/g, '')} ${(psEl('ps-fy').value || '')} Provisional.xlsx`;

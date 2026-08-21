@@ -54,6 +54,7 @@ window.DocumentEngine = (function () {
   // the document that could drift from the real Word file; it IS the Word
   // file, just displayed as HTML.
   async function previewWordAsHtml(blob, container, styleEl, options) {
+    await LibLoader.ensure('docxpreview');
     const buffer = await blob.arrayBuffer();
     container.innerHTML = '';
     await window.docx.renderAsync(buffer, container, styleEl, options);

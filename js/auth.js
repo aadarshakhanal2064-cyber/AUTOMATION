@@ -117,6 +117,12 @@ const _boot = () => {
   setTimeout(() => {
     if (document.getElementById('loading-screen').style.display !== 'none') showSignInScreen();
   }, 5000);
+
+  // Warm the heavy vendor libraries (Stage 4 — they are no longer blocking
+  // <script> tags) once the page is idle: they download while the user types
+  // their password or the session restores, so the ensure() guards at the
+  // import/export entry points are normally already-resolved no-ops.
+  (window.requestIdleCallback || (f => setTimeout(f, 1500)))(() => LibLoader.prefetchAll());
 };
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _boot);
 else _boot();

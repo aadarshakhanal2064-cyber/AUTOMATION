@@ -200,8 +200,9 @@ function spbHandleVatReturnFile(input) {
   spbVriStatus('⏳ Reading ' + escHtml(file.name) + '…', 'searching');
   const reader = new FileReader();
   reader.onerror = () => spbVriStatus('❌ The browser could not read that file.', 'error');
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
+      await LibLoader.ensure('xlsx');
       const wb = XLSX.read(e.target.result, { type: 'array' });
       let best = null;
       wb.SheetNames.forEach(sn => {

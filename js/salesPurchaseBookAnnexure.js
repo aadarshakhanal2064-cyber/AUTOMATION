@@ -211,6 +211,7 @@ function spbAnnImportOpenings(input) {
   reader.onerror = () => spbAnnStatus('❌ The browser could not read that file.', 'error');
   reader.onload = async e => {
     try {
+      await LibLoader.ensure('xlsx');
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
       const found = spbAnnFindOpeningCols(rows);
