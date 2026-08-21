@@ -1,7 +1,11 @@
 // ════════════════════════════════════════════
 //  BOOT
 // ════════════════════════════════════════════
-window.addEventListener('load', () => {
+// Runs as soon as this (deferred, last) script executes — the DOM is fully
+// parsed by then, so there is nothing to wait for. It used to wait for
+// window 'load', which also waits for every image: on a slow connection that
+// held the auth decision behind ~380 KB of logo files (Stage 2, 2026-08-21).
+const _boot = () => {
   const showSignInScreen = () => {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('recovery-wrap').style.display = 'none';
@@ -82,6 +86,14 @@ window.addEventListener('load', () => {
     if (event === 'INITIAL_SESSION') {
       session ? afterSupabaseSignIn(session) : showSignInScreen();
     } else if (event === 'SIGNED_IN') {
+      // supabase-js re-emits SIGNED_IN on tab focus / session recovery, not
+      // only on a real sign-in — the edge logs showed ~310 full boot chains a
+      // day for ≤8 staff (Stage 2 measurement). Re-running the boot re-fetches
+      // every directory and repaints the shell mid-work, so skip it when this
+      // exact user is already booted. A genuinely different user (sign-out →
+      // sign-in) passes, because signOut() nulls window.currentUser.
+      if (window.currentUser && window.currentUser.email &&
+          (session?.user?.email || '').toLowerCase() === window.currentUser.email.toLowerCase()) return;
       afterSupabaseSignIn(session);
     } else if (event === 'PASSWORD_RECOVERY') {
       showRecoveryScreen();
@@ -105,7 +117,9 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     if (document.getElementById('loading-screen').style.display !== 'none') showSignInScreen();
   }, 5000);
-});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _boot);
+else _boot();
 
 // ════════════════════════════════════════════
 //  AUTHENTICATION — Supabase Auth, email + password
@@ -552,12 +566,43 @@ async function afterSupabaseSignIn(session) {
   // Dashboard is the landing tab, so its data has to be pulled here — the
   // nav button's onclick (which is what loads it for every later visit)
   // never fires on boot.
-  // The two directories are independent — the audit-client list and the
-  // registrar company register (js/registrarCompanies.js). Loaded in parallel
-  // because neither reads the other.
-  await Promise.all([loadClients(), loadRegistrarCompanies()]);
-  await loadDashboard();
-  await loadSidebarStorageUsage();
+  //
+  // All three loads run in ONE parallel wave (Stage 2, 2026-08-21 — they were
+  // three serial awaits, ~1 s of extra boot each measured over ~200 ms RTTs):
+  // the two directories are independent of each other, and the dashboard's
+  // queries (audit_log) don't read either. The one thing the dashboard DOES
+  // take from a directory — the client-count stat — is patched in below once
+  // clients has resolved, because loadDashboard() may render before it.
+  const directories = Promise.all([loadClients(), loadRegistrarCompanies()]);
+  const dash = loadDashboard();
+  await directories;
+  const clientStat = document.getElementById('dash-stat-clients');
+  if (clientStat) clientStat.textContent = String((window.clientsList || []).length);
+  await dash;
+
+  // The storage bar is cosmetic — nothing a user does depends on it, yet it
+  // used to be the LAST serial await of the boot (161 ms × ~300 boots/day
+  // measured at the edge). Off the boot promise entirely; runs when idle.
+  const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 2000));
+  whenIdle(() => { loadSidebarStorageUsage(); });
+
+  startKeepAlive();
+}
+
+// ── Cold-start keep-alive ──
+// The 10–15 s stalls staff reported are the free-tier database waking from
+// idle: the edge logs show 3.5–12.7 s on whatever request comes first after a
+// quiet gap. One HEAD ping every 4 minutes while the tab is visible keeps the
+// path warm, so the stall doesn't land on someone's save or sign-in. Raw
+// fetch, not the supabase client — a slow PING absorbing a cold start is the
+// system working, and must not raise the slow-network banner.
+let _keepAliveTimer = null;
+function startKeepAlive() {
+  if (_keepAliveTimer) return;
+  _keepAliveTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible' || !window.currentUser) return;
+    fetch(SUPABASE_URL + '/rest/v1/', { method: 'HEAD', headers: { apikey: SUPABASE_KEY } }).catch(() => {});
+  }, 4 * 60 * 1000);
 }
 
 // Free tier cap is hardcoded rather than queried — Supabase doesn't expose

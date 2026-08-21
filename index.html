@@ -38,9 +38,21 @@
      from leaking to any third party the browser is sent to. -->
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Shailesh &amp; Associates - Audit Doc Sender</title>
-<link rel="icon" href="assets/logo.jpeg" type="image/jpeg">
+<link rel="icon" href="assets/favicon.png?v=202608212100" type="image/png">
+<!-- Every origin the page will talk to, warmed before the first request needs
+     it — DNS + TCP + TLS on each is 100-300 ms from Nepal that otherwise sits
+     in series in front of the first script/font/API call (Stage 2, 2026-08-21). -->
+<link rel="preconnect" href="https://rennqzmwyhkdsizvlqwd.supabase.co" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Inter, from <head> instead of an @import on styles.css line 1 — the import
+     made the font chain strictly serial (HTML → CSS → Google CSS → woff2).
+     Weight 300 dropped: nothing in the app uses it. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608201200">
+<link rel="stylesheet" href="css/styles.css?v=202608212100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -76,21 +88,17 @@ function cropLoginLogoIcon(img) {
 <body>
 <script>
 // ── CLICKJACKING GUARD ──────────────────────────────────────────────────────
-// The project previously believed vercel.json's X-Frame-Options was protecting
-// this app. It is not: GitHub Pages never reads that file, and a live check of
-// the response confirms the only security header served is GitHub's own HSTS.
-// Unprotected, another site can load this app in an invisible iframe over its
-// own buttons and harvest clicks from a signed-in user.
+// Defence in depth beside vercel.json's X-Frame-Options: DENY, which the live
+// Vercel host (the only deployment since the GitHub Pages mirror was retired
+// 2026-08-21) really does send. Kept because it costs nothing and covers any
+// future host that doesn't read vercel.json.
 //
-// The obvious fix does NOT work. `frame-ancestors` is REMOVED from any policy
-// delivered through a <meta> tag — the CSP spec has user agents strip
-// frame-ancestors, report-uri and sandbox there — so putting it in the CSP
-// above would read as a fix and protect nothing. X-Frame-Options is an HTTP
-// header, which a static host cannot send either.
+// Note the obvious in-page fix does NOT work: `frame-ancestors` is REMOVED
+// from any policy delivered through a <meta> tag — the CSP spec has user
+// agents strip frame-ancestors, report-uri and sandbox there — so putting it
+// in the CSP above would read as a fix and protect nothing.
 //
-// So on this host, script is the only lever. Runs first thing in <body>, before
-// any UI exists to be clicked. The real fix is a host that can send headers
-// (Stage 5); vercel.json is kept ready for that move, not because it is active.
+// Runs first thing in <body>, before any UI exists to be clicked.
 (function () {
   if (window.top === window.self) return;
   try {
@@ -4407,88 +4415,97 @@ function cropLoginLogoIcon(img) {
      so a tampered or swapped CDN file simply won't execute. The two Google
      loaders that used to sit here (api.js, gsi/client) were the only
      unpinnable ones; both went with Google auth on 2026-08-01. api.js had in
-     fact been dead for a long time — nothing ever referenced `gapi`. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7/dist/umd/supabase.js" integrity="sha384-hazsLVND17GNLVdtV19te6qbFT2YuLgl8SamcF+QR5eIOC+W4dGKrUNMxU1jH1zD" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js" integrity="sha384-3mvYicTS7UKJFuQYjm4TLHd0AEsGqivIvpOz05D1WC6EY0wjrdMXxlwRAdckMW73" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js" integrity="sha384-iE2CLpzI//WSW27IS4DPW3L3BJaOxn0tcasTXUDBWsyWw35ruWTPz6ERH7FP14Zg" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js" integrity="sha384-Fw+ZM2MtvxCe867uRzZY5GtGP+gs0NLvrlJS768RZWuKhOHMN4Fln3i3gMt1NSyQ" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" integrity="sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js" integrity="sha384-PCSoOZTpbkikBEtd/+uV3WNdc676i9KUf01KOA8CnJotvlx8rRrETbDuwdjqTYvt" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
+     fact been dead for a long time — nothing ever referenced `gapi`.
 
-<script src="js/config.js?v=202608211900"></script>
-<script src="js/utils.js?v=202608182300"></script>
-<script src="js/core/moduleRegistry.js?v=202608110900"></script>
-<script src="js/core/statusBox.js?v=202608022300"></script>
-<script src="js/core/nepaliLocale.js?v=202608202300"></script>
-<script src="js/core/documentEngine.js?v=202608211200"></script>
-<script src="js/core/searchEngine.js?v=202608022300"></script>
-<script src="js/core/tableEngine.js?v=202608022300"></script>
-<script src="js/core/workflowEngine.js?v=202608181600"></script>
-<script src="js/core/auditLog.js?v=202608181500"></script>
-<script src="js/core/reportExport.js?v=202608022300"></script>
-<script src="js/core/workbookReader.js?v=202608022300"></script>
-<script src="js/core/engineMath.js?v=202608022300"></script>
-<script src="js/core/dataCache.js?v=202608182300"></script>
-<script src="js/core/documentStore.js?v=202608171700"></script>
+     ALL 70 tags carry `defer` (Stage 2, 2026-08-21): the parser no longer
+     blocks on ~6 MB of script, so the loading screen paints at first parse
+     instead of after the last download (measured 6.4 s on a warm production
+     visit before this). defer is SAFE for the load-bearing order in
+     CLAUDE.md §2 because deferred scripts execute in exact document order —
+     same order, same globals, just off the parser's critical path. Do NOT
+     mix in `async` (order becomes arbitrary) and do NOT give any of these
+     type="module" (that changes scoping — window.* globals would break). -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.7/dist/umd/supabase.js" integrity="sha384-hazsLVND17GNLVdtV19te6qbFT2YuLgl8SamcF+QR5eIOC+W4dGKrUNMxU1jH1zD" crossorigin="anonymous"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js" integrity="sha384-3mvYicTS7UKJFuQYjm4TLHd0AEsGqivIvpOz05D1WC6EY0wjrdMXxlwRAdckMW73" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/docxtemplater@3.50.0/build/docxtemplater.js" integrity="sha384-iE2CLpzI//WSW27IS4DPW3L3BJaOxn0tcasTXUDBWsyWw35ruWTPz6ERH7FP14Zg" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js" integrity="sha384-Fw+ZM2MtvxCe867uRzZY5GtGP+gs0NLvrlJS768RZWuKhOHMN4Fln3i3gMt1NSyQ" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" integrity="sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js" integrity="sha384-PCSoOZTpbkikBEtd/+uV3WNdc676i9KUf01KOA8CnJotvlx8rRrETbDuwdjqTYvt" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js" integrity="sha384-TtrQp5nveof/QP1+f/OLiEHL3GuOIRyl3IfsGxu5X45VO2vHeT4HRNmQuTR3Ea3w" crossorigin="anonymous"></script>
+
+<script defer src="js/config.js?v=202608212100"></script>
+<script defer src="js/utils.js?v=202608182300"></script>
+<script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
+<script defer src="js/core/statusBox.js?v=202608022300"></script>
+<script defer src="js/core/nepaliLocale.js?v=202608202300"></script>
+<script defer src="js/core/documentEngine.js?v=202608211200"></script>
+<script defer src="js/core/searchEngine.js?v=202608022300"></script>
+<script defer src="js/core/tableEngine.js?v=202608022300"></script>
+<script defer src="js/core/workflowEngine.js?v=202608181600"></script>
+<script defer src="js/core/auditLog.js?v=202608181500"></script>
+<script defer src="js/core/reportExport.js?v=202608022300"></script>
+<script defer src="js/core/workbookReader.js?v=202608022300"></script>
+<script defer src="js/core/engineMath.js?v=202608022300"></script>
+<script defer src="js/core/dataCache.js?v=202608182300"></script>
+<script defer src="js/core/documentStore.js?v=202608171700"></script>
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
-<script src="js/core/orgIdentity.js?v=202608201030"></script>
-<script src="js/tabs.js?v=202608221930"></script>
-<script src="js/dashboard.js?v=202608181500"></script>
+<script defer src="js/core/orgIdentity.js?v=202608201030"></script>
+<script defer src="js/tabs.js?v=202608221930"></script>
+<script defer src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
-<script src="js/registrarCompanies.js?v=202608201200"></script>
-<script src="js/clients.js?v=202608201200"></script>
-<script src="js/serviceMemo.js?v=202608211200"></script>
-<script src="js/report.js?v=202608101800"></script>
-<script src="js/notesToAccounts.js?v=202608171000"></script>
-<script src="js/depreciation.js?v=202608171700"></script>
-<script src="js/depreciationSlm.js?v=202608171400"></script>
-<script src="js/bmAgmMinutes.js?v=202608211500"></script>
-<script src="js/auditorChange.js?v=202608211900"></script>
-<script src="js/companyProfile.js?v=202608201200"></script>
-<script src="js/companySecretary.js?v=202608211900"></script>
-<script src="js/companyRegistration.js?v=202608211900"></script>
-<script src="js/salesPurchaseBook.js?v=202608170900"></script>
+<script defer src="js/registrarCompanies.js?v=202608201200"></script>
+<script defer src="js/clients.js?v=202608201200"></script>
+<script defer src="js/serviceMemo.js?v=202608211200"></script>
+<script defer src="js/report.js?v=202608101800"></script>
+<script defer src="js/notesToAccounts.js?v=202608171000"></script>
+<script defer src="js/depreciation.js?v=202608171700"></script>
+<script defer src="js/depreciationSlm.js?v=202608171400"></script>
+<script defer src="js/bmAgmMinutes.js?v=202608211500"></script>
+<script defer src="js/auditorChange.js?v=202608211900"></script>
+<script defer src="js/companyProfile.js?v=202608201200"></script>
+<script defer src="js/companySecretary.js?v=202608211900"></script>
+<script defer src="js/companyRegistration.js?v=202608211900"></script>
+<script defer src="js/salesPurchaseBook.js?v=202608170900"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script src="js/salesPurchaseBookLedger.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBookLedger.js?v=202608170900"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
-<script src="js/salesPurchaseBookConfirm.js?v=202608170900"></script>
-<script src="js/salesPurchaseBookAnnexure.js?v=202608170900"></script>
-<script src="js/salesPurchaseBookReco.js?v=202608170900"></script>
-<script src="js/salesPurchaseBookVatReturn.js?v=202608170900"></script>
-<script src="js/confirmationLetters.js?v=202608151800"></script>
-<script src="js/bankBook.js?v=202608181600"></script>
-<script src="js/partyLedger.js?v=202608022300"></script>
-<script src="js/finalAccount.js?v=202608022300"></script>
-<script src="js/projectionEngine.js?v=202608180900"></script>
-<script src="js/projection.js?v=202608180900"></script>
-<script src="js/projectionExport.js?v=202608111600"></script>
-<script src="js/finStatementEngine.js?v=202608190900"></script>
-<script src="js/finStatementExport.js?v=202608221900"></script>
-<script src="js/provisionalSources.js?v=202608201100"></script>
-<script src="js/provisionalStatementEngine.js?v=202608221900"></script>
-<script src="js/provisionalStatement.js?v=202608221900"></script>
-<script src="js/provisionalReconcile.js?v=202608201100"></script>
-<script src="js/auditedStatement.js?v=202608221930"></script>
-<script src="js/fileManagement.js?v=202608211200"></script>
-<script src="js/auditReportFinalization.js?v=202608151800"></script>
-<script src="js/auditChecklist.js?v=202608151800"></script>
-<script src="js/workDone.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBookConfirm.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBookAnnexure.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBookReco.js?v=202608170900"></script>
+<script defer src="js/salesPurchaseBookVatReturn.js?v=202608170900"></script>
+<script defer src="js/confirmationLetters.js?v=202608151800"></script>
+<script defer src="js/bankBook.js?v=202608181600"></script>
+<script defer src="js/partyLedger.js?v=202608022300"></script>
+<script defer src="js/finalAccount.js?v=202608022300"></script>
+<script defer src="js/projectionEngine.js?v=202608180900"></script>
+<script defer src="js/projection.js?v=202608180900"></script>
+<script defer src="js/projectionExport.js?v=202608111600"></script>
+<script defer src="js/finStatementEngine.js?v=202608190900"></script>
+<script defer src="js/finStatementExport.js?v=202608221900"></script>
+<script defer src="js/provisionalSources.js?v=202608201100"></script>
+<script defer src="js/provisionalStatementEngine.js?v=202608221900"></script>
+<script defer src="js/provisionalStatement.js?v=202608221900"></script>
+<script defer src="js/provisionalReconcile.js?v=202608201100"></script>
+<script defer src="js/auditedStatement.js?v=202608221930"></script>
+<script defer src="js/fileManagement.js?v=202608211200"></script>
+<script defer src="js/auditReportFinalization.js?v=202608151800"></script>
+<script defer src="js/auditChecklist.js?v=202608151800"></script>
+<script defer src="js/workDone.js?v=202608170900"></script>
 <!-- AFTER workDone.js — registers the To-Do List onto that file's WD_VIEWS. -->
-<script src="js/workDoneTodo.js?v=202608170900"></script>
+<script defer src="js/workDoneTodo.js?v=202608170900"></script>
 <!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
      from the topbar user menu, so it needs no nav button. -->
-<script src="js/orgSettings.js?v=202608190300"></script>
-<script src="js/orgMembers.js?v=202608182200"></script>
-<script src="js/auth.js?v=202608201200"></script>
+<script defer src="js/orgSettings.js?v=202608190300"></script>
+<script defer src="js/orgMembers.js?v=202608182200"></script>
+<script defer src="js/auth.js?v=202608212100"></script>
 
 </body>
 </html>

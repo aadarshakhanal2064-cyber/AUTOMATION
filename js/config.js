@@ -60,9 +60,44 @@ window.currentUser      = null;   // { email, role }
 window.clientsList      = [];     // loaded from Supabase
 window.editingClientId  = null;
 
+// ── Slow-request notice ──
+// The production edge logs show isolated 3.5–12.7 s stalls — the free-tier
+// database waking from idle, always hitting the first request after a quiet
+// gap (a sign-in, a save). Nothing can make that request fast from here, but
+// it must never read as a frozen app: any Supabase request in flight for more
+// than 3 s raises a fixed banner (#net-slow-banner, styled in styles.css),
+// which drops the moment the last slow request settles. A counter, not a
+// boolean — several requests can be in flight during boot.
+let _slowNetCount = 0;
+let _slowBannerEl = null;
+function _setSlowBanner(show) {
+  if (!_slowBannerEl) {
+    _slowBannerEl = document.createElement('div');
+    _slowBannerEl.id = 'net-slow-banner';
+    _slowBannerEl.innerHTML = '<span class="spinner spinner-navy" style="width:13px;height:13px;"></span> The server is waking up — still working, please wait…';
+    document.body.appendChild(_slowBannerEl);
+  }
+  _slowBannerEl.classList.toggle('visible', show);
+}
+function _slowAwareFetch(input, init) {
+  let flagged = false;
+  const timer = setTimeout(() => { flagged = true; _slowNetCount++; _setSlowBanner(true); }, 3000);
+  const settle = () => {
+    clearTimeout(timer);
+    if (flagged) {
+      _slowNetCount = Math.max(0, _slowNetCount - 1);
+      if (_slowNetCount === 0) _setSlowBanner(false);
+    }
+  };
+  return fetch(input, init).then(
+    (res) => { settle(); return res; },
+    (err) => { settle(); throw err; }
+  );
+}
+
 // ── Supabase client ──
 const { createClient } = supabase;
-window.sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+window.sb = createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: _slowAwareFetch } });
 
 // ── Import state ──
 //

@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Inter is loaded from a <link> in index.html's <head>, not an @import here —
+   an @import on line 1 of the stylesheet is the slowest possible font chain
+   (HTML → CSS → Google CSS → woff2, strictly serial). Moved 2026-08-21
+   (Stage 2); weight 300 was dropped at the same time — nothing uses it. */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -872,6 +875,17 @@ textarea { resize: vertical; min-height: 100px; }
 .spinner-navy { border-color: rgba(11,31,61,0.15); border-top-color: var(--brand-navy); }
 @keyframes spin { to { transform: rotate(360deg); } }
 #loading-screen { position: fixed; inset: 0; background: var(--white); display: flex; align-items: center; justify-content: center; z-index: 200; flex-direction: column; gap: 22px; }
+
+/* ── SLOW-NETWORK NOTICE ─────────────────────────────────────────────────
+   Shown by config.js's fetch wrapper when any Supabase request has been
+   in flight for over 3 s. The measured cause is the free-tier database
+   waking from idle (3.5–12.7 s stalls in the edge logs) — the point is
+   that a stalled save or sign-in reads as "still working", never as a
+   frozen app. Fixed-position so it is visible regardless of scroll or
+   which screen (login, app, drawer) is up; pointer-events none so it can
+   never block a click. */
+#net-slow-banner { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 400; background: var(--yellow-bg); border: 1px solid var(--yellow-border); color: var(--yellow-dk); font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 20px; box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 9px; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+#net-slow-banner.visible { opacity: 1; }
 #loading-screen img { max-width: 560px; width: 80vw; }
 #loading-screen p { color: var(--text-muted); font-size: 14px; font-weight:500; }
 #loading-screen .loading-reg { color: var(--text-muted); font-size: 13px; font-weight: 500; margin: -14px 0 0; letter-spacing: 0.2px; }

@@ -45,6 +45,8 @@ The app itself runs **entirely client-side**, and **Supabase is now its only bac
 
 ### Script load order (load-bearing)
 
+**All 70 script tags carry `defer` since 2026-08-21** (Stage 2 of the overhaul) — deferred scripts execute in exact document order, so every dependency below is preserved while the parser stops blocking on ~6 MB of script (the login screen now paints at first parse). Never mix in `async` (order becomes arbitrary) or `type="module"` (scoping change would break the `window.*` globals); a new script tag gets `defer` like the rest. `js/auth.js` boots at DOM-ready, not window `load`, and guards `SIGNED_IN` re-emissions (focus/refresh) against re-running the whole boot chain.
+
 Later files depend on globals set up by earlier ones. Order in `index.html`:
 
 ```
