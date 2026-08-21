@@ -469,9 +469,17 @@ if (mismatches.length) {
     //   * <w:cantSplit/> on every row — a row is never cut mid-way, so a row
     //     that doesn't fit moves whole to the next sheet. A many-founder
     //     table may still break BETWEEN rows, which is correct.
-    //   * <w:keepNext/> on every paragraph of the HEADER row — binds the
-    //     header to the first data row, so it can never strand alone.
-    rows = rows.map((r, i) => {
+    //   * <w:keepNext/> on every paragraph of EVERY row — the header binds
+    //     to the first founder row, each founder row binds to the next
+    //     (the loop copies the data row's properties), and the last row
+    //     binds onward into the मस्यौदाकार block below, so the whole
+    //     signature unit — declaration, table, drafter, date — travels as
+    //     one (user-reported 2026-08-21: with two founders the table broke
+    //     between the founder rows, and the declaration got separated from
+    //     its own table). When the unit outgrows a page — a many-founder
+    //     board — Word breaks the chain between rows, which is the same
+    //     "genuinely too long" exception the numbered points follow.
+    rows = rows.map(r => {
       // The single source's rows already carry cantSplit (in a trPr after
       // tblPrEx); only the multi source's need it added. In the OOXML
       // schema trPr follows tblPrEx inside <w:tr>, so a fresh trPr goes
@@ -484,22 +492,20 @@ if (mismatches.length) {
             ? r.replace(/(<\/w:tblPrEx>)/, '$1<w:trPr><w:cantSplit/></w:trPr>')
             : r.replace(/^(<w:tr\b[^>]*>)/, '$1<w:trPr><w:cantSplit/></w:trPr>');
       }
-      if (i === 0) {
-        // Skip self-closing empty paragraphs, and keep keepNext after any
-        // pStyle (schema order: pStyle comes first in pPr).
-        withSplit = withSplit
-          .replace(/<w:p(?:\s[^>]*[^/])?>(?:<w:pPr>)?/g, m =>
-            m.endsWith('<w:pPr>')
-              ? m.replace(/<w:pPr>$/, '<w:pPr><w:keepNext/>')
-              : m + '<w:pPr><w:keepNext/></w:pPr>')
-          .replace(/<w:pPr><w:keepNext\/>(<w:pStyle[^>]*\/>)/g, '<w:pPr>$1<w:keepNext/>');
-      }
-      return withSplit;
+      // Skip self-closing empty paragraphs, and keep keepNext after any
+      // pStyle (schema order: pStyle comes first in pPr).
+      return withSplit
+        .replace(/<w:keepNext\/>/g, '')
+        .replace(/<w:p(?:\s[^>]*[^/])?>(?:<w:pPr>)?/g, m =>
+          m.endsWith('<w:pPr>')
+            ? m.replace(/<w:pPr>$/, '<w:pPr><w:keepNext/>')
+            : m + '<w:pPr><w:keepNext/></w:pPr>')
+        .replace(/<w:pPr><w:keepNext\/>(<w:pStyle[^>]*\/>)/g, '<w:pPr>$1<w:keepNext/>');
     });
     if (!rows.every(r => r.includes('<w:cantSplit/>'))) {
       throw new Error('cantSplit did not reach every founders-table row');
     }
-    if (!rows[0].includes('<w:keepNext/>')) throw new Error('the header row got no keepNext');
+    if (!rows.every(r => r.includes('<w:keepNext/>'))) throw new Error('a founders-table row got no keepNext');
 
     // reassemble: everything before the first row + rows + everything after the last
     const headEnd = tbl.indexOf('<w:tr');
@@ -583,8 +589,13 @@ function keepPointsTogether(xml) {
 
   const chunks = xml.split(/(<w:tbl>[\s\S]*?<\/w:tbl>)/);
   let topCounter = 0;
-  const processed = chunks.map(chunk => {
+  const processed = chunks.map((chunk, ci) => {
     if (chunk.startsWith('<w:tbl>')) return chunk;
+    // A founders table follows this chunk: its declaration paragraph (the
+    // chunk's last content paragraph — दफा १६/५३/&c.) binds INTO the table,
+    // so the declaration, the table and the drafter block behind it travel
+    // as one signature unit (user-reported 2026-08-21).
+    const tableFollows = !!(chunks[ci + 1] && chunks[ci + 1].startsWith('<w:tbl>') && chunks[ci + 1].includes('संस्थापकको नाम'));
 
     const paras = [];
     const RE = new RegExp(PARA_RE.source, 'g');
@@ -610,7 +621,9 @@ function keepPointsTogether(xml) {
       cursor = p.end;
       if (kinds[i] === 'blank' || kinds[i] === 'marker') { outChunk += p.xml; return; }
       const next = kinds[i + 1];
-      const bindNext = next === 'body' && !paras[i + 1].xml.includes('CrPageStart');
+      const isLastContent = kinds.slice(i + 1).every(k => k === 'blank' || k === 'marker');
+      const bindNext = (next === 'body' && !paras[i + 1].xml.includes('CrPageStart')) ||
+        (tableFollows && isLastContent);
       let props = '<w:keepLines/>';
       keepLines++;
       if (bindNext) { props = '<w:keepNext/>' + props; keepNexts++; }
@@ -858,17 +871,20 @@ console.log('written:', OUT_PATH);
 // ── WORD PAGINATION ──
 // Measured, never assumed (CLAUDE.md §2/§12). After building BOTH variants:
 //   node sampleCompanyReg.mjs
-//   powershell -File wordPages.ps1 sample-cr-single.docx=9 sample-cr-multi-2.docx=18 sample-cr-multi-5.docx=20
+//   powershell -File wordPages.ps1 sample-cr-single.docx=9 sample-cr-multi-2.docx=18 sample-cr-multi-5.docx=22
 //
 // The line-height grid, measured 2026-08-20 (single / multi-2 / multi-5):
 //   336 (1.40)   9 / 17 / 19
 //   312 (1.30)   9 / 17 / 17   <- chosen
 //   288 (1.20)   9 / 15 / 17
-// keepPointsTogether (2026-08-21) then moved the multi counts to 18 / 20 —
-// whole दफा now step to a fresh sheet instead of splitting, which is the
-// user's explicit trade. Verified the same day: ZERO paragraphs span a page
-// boundary in either sample, and every multi content page begins with a
-// numbered point heading.
+// keepPointsTogether (2026-08-21) then moved the multi counts to 18 / 22 —
+// whole दफा now step to a fresh sheet instead of splitting, and the whole
+// signature unit (declaration + founders table + drafter block) travels as
+// one, which is the user's explicit trade. Verified the same day: ZERO
+// paragraphs span a page boundary, every multi content page begins with a
+// numbered point heading, and the signature units sit on ONE page in the
+// single and 2-founder samples (a 5-founder unit legitimately spans — the
+// same "genuinely too long" exception the numbered points follow).
 // Unlike BM/AGM there is no one-sheet-per-section constraint here — the MOA
 // and AOA are genuinely multi-page — so the counts above are a regression
 // baseline, not a design target. The sources' own Preeti pages were denser
