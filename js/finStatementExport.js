@@ -1440,7 +1440,8 @@ function fsxSheetCol(geom, i, matrix) {
 // band — every rule in black, white and hairline grey only.
 const FSX_PRINT_CSS = `
   .fsp-root { font-family: 'Book Antiqua', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
-              color: #000; background: #fff; margin: 0; font-size: 12px; }
+              color: #000; background: #fff; margin: 0; font-size: 13px;
+              -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .fsp-root * { box-sizing: border-box; }
   .fsp-root .fsp-sheet { page-break-after: always; break-after: page; }
   .fsp-root .fsp-sheet:last-child { page-break-after: auto; break-after: auto; }
@@ -1460,25 +1461,33 @@ const FSX_PRINT_CSS = `
   /* A schedule is a RUN of short 3.x notes, each rendered as its own table
      inside a keep-together block — a note either fits where it is or moves
      WHOLE to the next page, never half-and-half (user ask 2026-08-21). */
-  .fsp-root .fsp-note-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
-  .fsp-root thead th { font-size: 12px; font-weight: 700; padding: 5px 7px; text-align: right;
+  .fsp-root .fsp-note-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; }
+  .fsp-root thead th { font-size: 1em; font-weight: 700; padding: 5px 7px; text-align: right;
                        vertical-align: bottom; border-bottom: 1.5px solid #000; }
   .fsp-root thead th.fsp-lab { text-align: left; vertical-align: middle; }
   .fsp-root thead th.fsp-note { text-align: center; vertical-align: middle; width: 46px; }
   .fsp-root .fsp-hdr-date { display: block; white-space: nowrap; font-weight: 400; font-size: .92em; }
-  .fsp-root td { padding: 2.5px 7px; border-bottom: 1px solid #ddd; vertical-align: baseline; }
+  .fsp-root td { padding: 3px 7px; border-bottom: 1px solid #cfcfcf; vertical-align: baseline; }
   .fsp-root td.fsp-lab { text-align: left; word-break: normal; overflow-wrap: break-word; }
   .fsp-root td.fsp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .fsp-root td.fsp-note { text-align: center; width: 46px; }
+  /* The straight vertical rules between the year columns (user ask
+     2026-08-21) — on every value and note cell, never the label. Blank
+     spacer rows render per-column cells so the rules run unbroken from the
+     band to the foot of the table. */
+  .fsp-root th:not(.fsp-lab), .fsp-root td.fsp-num, .fsp-root td.fsp-note { border-left: 1px solid #c0c0c0; }
+  .fsp-root tr.fsp-note-row td, .fsp-root tr.fsp-fignpr td { border-left: none; }
   /* Value-column widths are computed per sheet in fsxSheetHtml and emitted
      inline on the <col>s — a flat width here cannot know how many columns a
      matrix sheet carries, and 142px × SOCE's five columns is wider than an
      A4 page. Only the note column keeps a fixed width. */
   .fsp-root col.fsp-c-note { width: 46px; }
-  /* Sheets whose budgeted column width falls under 100px (a PPE with many
-     asset classes) drop the font a step so figures still fit unclipped. */
+  /* Sheets whose budgeted column width runs narrow (SOCE's five columns, a
+     PPE with many asset classes, the quad share-capital note) drop the font
+     a step or two so figures never collide across the column rules. */
+  .fsp-root table.fsp-mid { font-size: 12px; }
   .fsp-root table.fsp-tight { font-size: 11px; }
-  .fsp-root table.fsp-tight thead th, .fsp-root table.fsp-tight tr.fsp-band th { font-size: 11px; }
+  .fsp-root table.fsp-mid td, .fsp-root table.fsp-tight td { padding-left: 5px; padding-right: 5px; }
   .fsp-root tr.fsp-head td, .fsp-root tr.fsp-sub td { font-weight: 700; padding-top: 8px; border-bottom: none; }
   .fsp-root tr.fsp-head td.fsp-fignpr-cell { text-align: right; font-size: 9pt; vertical-align: bottom; }
   .fsp-root tr.fsp-tot td, .fsp-root tr.fsp-grand td { font-weight: 700; border-bottom: none; }
@@ -1486,10 +1495,10 @@ const FSX_PRINT_CSS = `
   .fsp-root tr.fsp-grand td.fsp-num { border-top: 1px solid #000; border-bottom: 3px double #000; }
   .fsp-root tr.fsp-grand.fsp-notop td.fsp-num { border-top: none; }
   .fsp-root tr.fsp-tot.fsp-notop td.fsp-num { border-top: none; }
-  .fsp-root tr.fsp-note-row td { font-weight: 700; font-size: 11px; padding-top: 8px; border-bottom: none; }
-  .fsp-root tr.fsp-blank td { height: 5px; padding: 0; border-bottom: none; }
+  .fsp-root tr.fsp-note-row td { font-weight: 700; font-size: .9em; padding-top: 8px; border-bottom: none; }
+  .fsp-root tr.fsp-blank td { height: 6px; padding: 0; border-bottom: none; }
   /* A note's own band, repeated per 3.x note on a schedule. */
-  .fsp-root tr.fsp-band th { font-size: 12.5px; font-weight: 700; padding: 6px 7px 4px;
+  .fsp-root tr.fsp-band th { font-size: 1em; font-weight: 700; padding: 6px 7px 4px;
                              text-align: right; vertical-align: bottom; border-bottom: 1.5px solid #000; }
   .fsp-root tr.fsp-band th.fsp-lab { text-align: left; vertical-align: middle; }
   .fsp-root tr.fsp-band th.fsp-note { text-align: center; }
@@ -1565,7 +1574,10 @@ function fsxSheetHtml(sh, meta) {
   // writer skips the sheet band for exactly these sheets (layout.selfBanded).
   const selfBanded = !!(FSX_SCHEDULE_KEYS[sh.key] && sh.firstRow);
   const out = [];
-  out.push(`<div class="fsp-sheet${FSX_SCHEDULE_KEYS[sh.key] ? ' fsp-sched' : ''}">`);
+  // data-matrix lets the print window's fit pass know this sheet's columns
+  // are already at their width budget — it may shrink such a sheet to fit
+  // but must never scale it up into its own column rules.
+  out.push(`<div class="fsp-sheet${FSX_SCHEDULE_KEYS[sh.key] ? ' fsp-sched' : ''}"${sh.matrix || hasQuad ? ' data-matrix="1"' : ''}>`);
   if (!sh.noHeaderBand) {
     if (!FSX_SCHEDULE_KEYS[sh.key]) {
       // Statement sheets carry the company header; schedule sheets never
@@ -1599,14 +1611,23 @@ function fsxSheetHtml(sh, meta) {
   // the budget is computed per header-level column, then split.
   const A4_CONTENT = 700;
   const LABEL_MIN = 170;
-  const headerCols = hasQuad ? 2 : valueCells;
-  const grpW = Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - LABEL_MIN) / headerCols));
-  const colW = hasQuad ? Math.floor(grpW / 2) : grpW;
+  // A quad sheet's four half-columns each carry a full "1,00,00,000.00", so
+  // 71px halves collided across the rules — they get the width the label can
+  // spare (a 240px label floor) rather than half of the ordinary 142px pair.
+  const colW = hasQuad
+    ? Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - 240) / 4)
+    : Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - LABEL_MIN) / valueCells));
+  const sizeCls = colW < 100 ? ' class="fsp-tight"' : colW < 125 ? ' class="fsp-mid"' : '';
   const span = 1 + (hasNote ? 1 : 0) + valueCells;
 
   const rowHtml = (r) => {
     const o = [];
-    if (r.kind === 'blank') return `<tr class="fsp-blank"><td colspan="${span}"></td></tr>`;
+    // Blank spacers render one cell per column, not one wide colspan — the
+    // vertical year rules must run unbroken through them.
+    if (r.kind === 'blank') {
+      return `<tr class="fsp-blank"><td class="fsp-lab"></td>${hasNote ? '<td class="fsp-note"></td>' : ''}`
+        + Array.from({ length: valueCells }, () => '<td class="fsp-num"></td>').join('') + '</tr>';
+    }
     if (r.kind === 'note') {
       return r.label ? `<tr class="fsp-note-row"><td colspan="${span}">${fsxEsc(r.label)}</td></tr>` : '';
     }
@@ -1675,7 +1696,7 @@ function fsxSheetHtml(sh, meta) {
   };
 
   const tableHtml = (rows, withThead) => {
-    const t = [`<table${grpW < 100 ? ' class="fsp-tight"' : ''}>`, '<colgroup><col>'];
+    const t = [`<table${sizeCls}>`, '<colgroup><col>'];
     if (hasNote) t.push('<col class="fsp-c-note">');
     for (let i = 0; i < valueCells; i++) t.push(`<col style="width:${colW}px">`);
     t.push('</colgroup>');
@@ -1741,16 +1762,67 @@ function fsxSheetHtml(sh, meta) {
   return out.join('');
 }
 
+// The page-fit pass, run inside the standalone print window (the same idea as
+// DocumentEngine.fitPagesToSheet, standalone because this document loads no
+// app code): each STATEMENT sheet is measured against the printable A4 height
+// and its real font sizes are scaled — down when the statement would spill its
+// signature onto the next page, up when it would leave half the page empty —
+// so every statement fills exactly one page (user ask 2026-08-21). Schedule
+// sheets are excluded (they legitimately flow over pages, note by note), and
+// a matrix/quad sheet may shrink but never grows into its own column rules.
+// Scaling sets computed font sizes element by element, never CSS zoom or
+// transform — both of those break printing (the fitPagesToSheet rule).
+const FSX_FIT_JS = `<script>
+(function () {
+  function mmToPx(mm) {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:absolute;visibility:hidden;height:' + mm + 'mm;width:1mm;';
+    document.body.appendChild(d);
+    var h = d.getBoundingClientRect().height;
+    d.remove();
+    return h;
+  }
+  function contentHeight(s) {
+    var oldMin = s.style.minHeight;
+    s.style.minHeight = '0';
+    var cs = getComputedStyle(s);
+    var h = s.scrollHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    s.style.minHeight = oldMin;
+    return h;
+  }
+  function applyScale(s, k) {
+    var els = [s].concat([].slice.call(s.querySelectorAll('*')));
+    var sizes = els.map(function (el) { return parseFloat(getComputedStyle(el).fontSize) || 0; });
+    els.forEach(function (el, i) { if (sizes[i]) el.style.fontSize = (sizes[i] * k).toFixed(2) + 'px'; });
+  }
+  function fit() {
+    var target = mmToPx(268); // A4 inside 12mm margins, less a safety band
+    var sheets = document.querySelectorAll('.fsp-root .fsp-sheet:not(.fsp-sched)');
+    for (var i = 0; i < sheets.length; i++) {
+      var s = sheets[i];
+      var h = contentHeight(s);
+      if (!h) continue;
+      var maxUp = s.hasAttribute('data-matrix') ? 1 : 1.22;
+      var k = Math.max(0.72, Math.min(maxUp, target / h));
+      if (Math.abs(k - 1) > 0.02) applyScale(s, k);
+      var h2 = contentHeight(s);
+      if (h2 > target) applyScale(s, Math.max(0.72, target / h2));
+    }
+  }
+  window.addEventListener('load', fit);
+})();
+<\/script>`;
+
 // The full statement set as a standalone document.
 function fsxReportHtmlDoc(report, opts) {
   const o = opts || {};
   const body = report.sheets.map(sh => fsxSheetHtml(sh, report.meta)).join('\n');
   const auto = o.autoPrint
-    ? '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});<\/script>'
+    ? '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},350);});<\/script>'
     : '';
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>${fsxEsc(((report.meta.company || {}).name || 'Financial Statement') + ' — ' + (report.meta.fy || ''))}</title>
-<style>${FSX_PAGE_CSS}${FSX_PRINT_CSS}</style></head><body><div class="fsp-root">${body}</div>${auto}</body></html>`;
+<style>${FSX_PAGE_CSS}${FSX_PRINT_CSS}</style></head><body><div class="fsp-root">${body}</div>${FSX_FIT_JS}${auto}</body></html>`;
 }
 
 // The preview pane renders the SAME markup and the SAME stylesheet as the

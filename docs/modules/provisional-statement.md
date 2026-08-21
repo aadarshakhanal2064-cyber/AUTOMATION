@@ -450,6 +450,22 @@ structural rules came with it, each fixing a reported defect:
 - **A self-banded schedule gets NO sheet-level thead** — the "Particulars +
   years" header the HTML used to print above Sch-BS was furniture the Excel
   (and the firm's own workbook) never had; each note's own band carries it.
+- **Every statement is fitted to its page by a scale pass inside the print
+  window** (`FSX_FIT_JS`, second round of the same ask: signatures were still
+  landing alone on a following page whenever a real SFP ran taller than the
+  reference one). Each non-schedule sheet is measured against the printable
+  A4 height and its real font sizes are scaled — down (floor 0.72) when the
+  sheet would spill, up (cap 1.22) when it would leave half the page empty —
+  the `DocumentEngine.fitPagesToSheet` idea, standalone because the print
+  document loads no app code, and like it scaling real font sizes, never CSS
+  zoom/transform. Matrix and quad sheets (`data-matrix`) may shrink but never
+  grow into their own column rules.
+- **Vertical rules run between the year columns** on every value cell, and
+  blank spacer rows render per-column cells so the rules run unbroken.
+  Quad half-columns get the width the label can spare (a 240px label floor,
+  ~115px halves) instead of half an ordinary pair — 71px halves made 3.6's
+  figures collide across the rules. Narrow columns step the table font down
+  (`fsp-mid` under 125px, `fsp-tight` under 100px).
 
 **Column widths are budgeted against the A4 page, never a flat 142px**
 (2026-08-21). The print document is `@page A4` with 12mm side margins — about
