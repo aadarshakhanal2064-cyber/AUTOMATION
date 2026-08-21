@@ -1458,12 +1458,23 @@ function cropLoginLogoIcon(img) {
               </div>
               <div class="form-group">
                 <label>Nepal Fiscal Year</label>
+                <!-- Values stay YYYY-YY: bmFiscalDanda() parses them as
+                     /(\d{4})\D+(\d{2})/, so a four-digit end ("2074-2075")
+                     would read the "20" of 2075 and print २०७४।२०. The
+                     selected option tracks window.FY_DEFAULT_START, which
+                     bmResetForm() also applies. -->
                 <select id="bm-fiscalYear">
+                  <option value="2074-75">2074/75</option>
+                  <option value="2075-76">2075/76</option>
+                  <option value="2076-77">2076/77</option>
+                  <option value="2077-78">2077/78</option>
                   <option value="2078-79">2078/79</option>
                   <option value="2079-80">2079/80</option>
                   <option value="2080-81">2080/81</option>
                   <option value="2081-82">2081/82</option>
                   <option value="2082-83" selected>2082/83</option>
+                  <option value="2083-84">2083/84</option>
+                  <option value="2084-85">2084/85</option>
                 </select>
               </div>
 
