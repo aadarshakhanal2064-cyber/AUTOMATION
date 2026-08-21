@@ -161,9 +161,18 @@ const PARA_TOKENS = {
   // comma stranded at the end of the line.
   168: [[', ' + S.auditorAddress, '']],
   64:  [[S.attendeeNamesJoined, '{{attendeeNamesJoined}}'], [S.directorTermYears + ' वर्षका', '{{directorTermYears}} वर्षका']],
-  91:  [[S.capitalFigure, '{{authorizedCapital}}']],
-  96:  [[S.capitalFigure, '{{issuedCapital}}']],
-  101: [[S.capitalFigure, '{{paidUpCapital}}']],
+  // §51 rows (क)(ख)(ग) each state a capital AND the number of shares it
+  // represents. Only the capital was tokenised at first, leaving the share
+  // count frozen at the source client's २५,००० — so a company with a
+  // रु १,००,००,००० authorised capital still printed 25,000 shares. The count
+  // is capital ÷ 100 (row (घ) of this same table fixes the face value at
+  // रु १००।– per share), derived in bmShareCount(); these tokens carry it.
+  // Order matters only in that the capital is replaced first — the two
+  // literals are not substrings of one another ("२५,००,०००" does not
+  // contain "२५,०००"), but keeping the longer first is the safer habit.
+  91:  [[S.capitalFigure, '{{authorizedCapital}}'], [S.shareCountFigure, '{{authorizedShares}}']],
+  96:  [[S.capitalFigure, '{{issuedCapital}}'],     [S.shareCountFigure, '{{issuedShares}}']],
+  101: [[S.capitalFigure, '{{paidUpCapital}}'],     [S.shareCountFigure, '{{paidUpShares}}']],
   111: [[S.capitalFigure, '{{paidUpCapital}}']],
   // the board-change minutes: source misspells the second name (घिमिर, no े)
   233: [[S.attendeeNamesJoinedTypo, '{{attendeeNamesJoined}}']],

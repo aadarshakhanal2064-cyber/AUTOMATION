@@ -119,6 +119,9 @@ function renderedLines(tplPath) {
     letterDate: S.letterDate, boardChangeDate: S.boardChangeDate,
     fiscalYear: S.fiscalYear, nextFiscalYear: S.nextFiscalYear,
     authorizedCapital: S.capitalFigure, issuedCapital: S.capitalFigure, paidUpCapital: S.capitalFigure,
+    // the source's own frozen count, so the diff against the source stays clean;
+    // the APP derives these as capital ÷ 100 (bmShareCount)
+    authorizedShares: S.shareCountFigure, issuedShares: S.shareCountFigure, paidUpShares: S.shareCountFigure,
     directorTermYears: S.directorTermYears,
     bmExtraProposalTitle:'(Additional Proposal)',
     bmExtraProposalDecision:'Additional Proposal Decision Fill Space',

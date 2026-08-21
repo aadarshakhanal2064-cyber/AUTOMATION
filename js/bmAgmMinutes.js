@@ -203,6 +203,27 @@ function bmFormatAmount(raw) {
   return NepaliLocale.formatAmount(raw);
 }
 
+// The §51 capital report states, beside each capital figure, how many shares
+// it represents — and row (घ) of that same table fixes the face value at
+// रु १००।– per share. So the share count is not an input: it is
+// capital ÷ 100, and it must move when the capital does.
+//
+// It didn't. The count was left as the source client's literal २५,००० on all
+// three rows, which is only right because THAT company's capital happened to
+// be २५,००,०००. Every other client printed 25,000 shares regardless — a
+// रु १,००,००,००० authorised capital reported 25,000 shares instead of
+// १,००,०००, on a filing that goes to the Company Registrar.
+const BM_FACE_VALUE = 100;   // रु per share, exactly as §51 row (घ) prints it
+
+// "1,00,00,000" -> "१,००,०००"   (whatever the capital, ÷ face value)
+function bmShareCount(capitalRaw) {
+  const digits = String(capitalRaw || '').split('.')[0].replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  // floor, not round: a share count is a whole number of shares, and a
+  // capital that isn't a multiple of the face value cannot buy a part share
+  return bmFormatAmount(String(Math.floor(Number(digits) / BM_FACE_VALUE)));
+}
+
 // "2079/09/15" -> { year:२०७९, monthName:पौष, day:१५, full:२०७९/०९/१५ }
 function bmParseBsDate(str) {
   return NepaliLocale.parseBsDate(str);
@@ -302,6 +323,10 @@ function bmBuildData() {
     authorizedCapital:  bmFormatAmount($('bm-authCapital')),
     issuedCapital:      bmFormatAmount($('bm-issuedCapital')),
     paidUpCapital:      bmFormatAmount($('bm-paidUpCapital')),
+    // derived from the capitals above at रु १०० face value — never typed
+    authorizedShares:   bmShareCount($('bm-authCapital')),
+    issuedShares:       bmShareCount($('bm-issuedCapital')),
+    paidUpShares:       bmShareCount($('bm-paidUpCapital')),
     fiscalYear:         fy.fy,
     nextFiscalYear:     fy.next,
     bmDate:             bmDandaDate(bm),
