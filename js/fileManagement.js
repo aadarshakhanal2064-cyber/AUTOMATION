@@ -846,11 +846,36 @@ async function fmSaveEntry() {
   // hand-edited name becomes a typed-only (nullable) client.
   const clientId = (fmSelectedClient && fmSelectedClient.name === clientName) ? fmSelectedClient.id : null;
 
+  const fiscalYearRaw = document.getElementById('fm-fiscal-year').value.trim();
+
+  // Duplicate guard (2026-08-21, user ask): a NEW intake for a client who
+  // already has an entry for the same fiscal year is usually the same visit
+  // being typed twice. A confirm rather than a hard block — a client
+  // genuinely bringing MORE documents later in the year is this module's
+  // documented one-row-per-visit model, and forcing that into the old row
+  // would corrupt the custody trail. Edits are exempt; a blank fiscal year
+  // has nothing to compare against.
+  if (!fmEditingId) {
+    const fyStart = NepaliLocale.fyStartYear(fiscalYearRaw);
+    const nameLower = clientName.toLowerCase();
+    const dups = fyStart == null ? [] : fmEntries.filter(r => {
+      if (NepaliLocale.fyStartYear(r.fiscal_year) !== fyStart) return false;
+      return clientId != null ? r.client_id === clientId
+        : String(r.client_name || '').trim().toLowerCase() === nameLower;
+    });
+    if (dups.length) {
+      const first = dups[0];
+      const others = dups.length > 1 ? ` (and ${dups.length - 1} more)` : '';
+      const ok = confirm(`⚠ ${clientName} already has intake ${first.register_no || '(unnumbered)'} for F.Y. ${fiscalYearRaw}${others} — ${fmDocSummary(first)}, received ${first.date_received || '—'}.\n\nRecording another entry may duplicate data. Is this a genuinely NEW visit with new documents?`);
+      if (!ok) { drawerErr(`Not saved — open ${first.register_no || 'the existing entry'} and edit it instead.`); return; }
+    }
+  }
+
   const payload = {
     client_id: clientId,
     client_name: clientName,
     client_pan: document.getElementById('fm-client-pan').value.trim() || null,
-    fiscal_year: document.getElementById('fm-fiscal-year').value.trim() || null,
+    fiscal_year: fiscalYearRaw || null,
     date_received: document.getElementById('fm-date-received').value || fmToday(),
     doc_types: docTypes,
     mode_received: modeReceived,

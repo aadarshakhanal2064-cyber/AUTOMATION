@@ -161,6 +161,24 @@ no longer runs on **open**, since the field is no longer blank at that point.
 A loaded record still shows its own stored year (blank if it predates the
 field), never `FM_FY_DEFAULT`.
 
+## Duplicate guard on a new intake (2026-08-21)
+
+Part of the app-wide "one client + one fiscal year must not be entered twice"
+pass (user ask). `fmSaveEntry()` on a **new** intake checks `fmEntries` for an
+existing row with the same client (by `client_id` when picked, else the
+trimmed lower-cased typed name) and the same fiscal year (via
+`NepaliLocale.fyStartYear()`, format-tolerant), and raises a `confirm()`
+naming the first match — register number, documents, received date — before
+saving. Cancelling aborts with a status pointing at the existing entry.
+
+**A confirm, not a hard block, deliberately**: this module's one-row-per-visit
+model means a client genuinely bringing MORE documents later in the same year
+is a real second row, and blocking it would force that visit into the old
+row and corrupt the custody trail (dates, brought-by, outtake history). The
+guard exists to stop the same visit being typed twice, not to forbid second
+visits. Edits are exempt, and a blank fiscal year skips the check (nothing to
+compare — legacy rows are all null-FY, so warning there would be pure noise).
+
 ## Delivery mode — Online vs Physical on intake
 
 `mode_received` ('physical'/'online') plus the field it unlocks: physical →

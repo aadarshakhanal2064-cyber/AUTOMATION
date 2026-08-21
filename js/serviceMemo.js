@@ -711,6 +711,29 @@ async function smSaveMemo() {
   // hand-edited name becomes a typed-only (nullable) client.
   const clientId = (smSelectedClient && smSelectedClient.name === clientName) ? smSelectedClient.id : null;
 
+  // Duplicate guard (2026-08-21, user ask): a NEW memo for the same client +
+  // fiscal year + same nature of task almost always means the fee is being
+  // recorded twice. A confirm rather than a hard block, because a second memo
+  // for the same nature can be genuine (e.g. two phases of the same work) —
+  // but it must never happen silently. Edits of an existing memo are exempt.
+  if (!smEditingId) {
+    const fyRaw = document.getElementById('sm-fiscal-year').value.trim();
+    const fyStart = NepaliLocale.fyStartYear(fyRaw);
+    const subcat = document.getElementById('sm-nature-subcategory').value || null;
+    const nameLower = clientName.toLowerCase();
+    const dup = fyStart != null && smMemos.find(m => {
+      if (m.nature_category !== category || (m.nature_subcategory || null) !== subcat) return false;
+      if (NepaliLocale.fyStartYear(m.fiscal_year) !== fyStart) return false;
+      return clientId != null ? m.client_id === clientId
+        : String(m.client_name || '').trim().toLowerCase() === nameLower;
+    });
+    if (dup) {
+      const natureLabel = subcat ? `${category} / ${subcat}` : category;
+      const ok = confirm(`⚠ ${clientName} already has memo ${dup.memo_number || '(unnumbered)'} for F.Y. ${fyRaw} — ${natureLabel}, Rs ${dup.total_amount || dup.professional_fee || 0}.\n\nSaving this would record the same work twice. Create a second memo anyway?`);
+      if (!ok) { smDrawerErr(`Not saved — edit memo ${dup.memo_number || ''} from the Memos list instead.`); return; }
+    }
+  }
+
   const payload = {
     memo_prefix: firm.prefix,
     firm_key: firmKey,
