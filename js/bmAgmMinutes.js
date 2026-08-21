@@ -382,7 +382,7 @@ async function generateBmAgmMinutes() {
   try {
     bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
     const blob = await bmRenderDocx(data);
-    const fname = ('BM-AGM ' + data.companyName + ' ' + document.getElementById('bm-fiscalYear').value + '.docx').replace(/[\\/:*?"<>|]/g, '_');
+    const fname = bmOutputName(data) + '.docx';
     DocumentEngine.downloadBlob(blob, fname, { module: 'bmAgmMinutes', clientName: data.companyName });
     bmStatus('✅ कागजात तयार भयो — डाउनलोड भयो (generated & downloaded).', 'success');
     bmClearDraft();
@@ -606,6 +606,25 @@ document.addEventListener('DOMContentLoaded', function () {
 //  BM/AGM MINUTES — export
 // ════════════════════════════════════════════
 
+// The one place the output name is built. BOTH the .docx download and the
+// print window use it — the print window's <title> is what the browser
+// offers as the filename under "Save as PDF", so naming them separately is
+// how the two silently drift apart.
+//
+// Fiscal year first (user request, 2026-08-21): a client's documents then
+// sort by year in a folder listing instead of by the constant "BM-AGM".
+// The label is BM-AGM, not BM/AGM, because "/" is illegal in a filename on
+// every platform — the browser would substitute something anyway, so choose
+// the substitution rather than inherit it.
+function bmOutputName(data) {
+  const fy = (document.getElementById('bm-fiscalYear') || {}).value || '';
+  return [fy, 'BM-AGM', (data && data.companyName) || '']
+    .filter(Boolean).join(' ')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Builds print HTML from a FRESH offscreen render (not the preview pane's
 // DOM): one section.bm-docx per document, each fitted onto its own printed
 // sheet by bmFitPagesToSheet and forced onto its own page via
@@ -616,7 +635,8 @@ async function bmBuildPrintableDoc() {
   const { bm, agm, data } = bmBuildData();
   if (!bm || !agm) return null;
   const blob = await bmRenderDocx(data);
-  return DocumentEngine.buildPrintableHtml(blob, { className: 'bm-docx', title: 'BM/AGM Minutes' });
+  // the title is the filename the browser proposes for "Save as PDF"
+  return DocumentEngine.buildPrintableHtml(blob, { className: 'bm-docx', title: bmOutputName(data) });
 }
 
 async function bmOpenPrintWindow(successMessage) {
