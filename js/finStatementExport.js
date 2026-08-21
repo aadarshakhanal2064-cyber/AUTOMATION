@@ -1447,18 +1447,18 @@ function fsxSheetCol(geom, i, matrix) {
 // band — every rule in black, white and hairline grey only.
 const FSX_PRINT_CSS = `
   .fsp-root { font-family: 'Book Antiqua', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
-              color: #000; background: #fff; margin: 0; font-size: 12px;
+              color: #000; background: #fff; margin: 0; font-size: 11.5px;
               -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .fsp-root * { box-sizing: border-box; }
   .fsp-root .fsp-sheet { page-break-after: always; break-after: page; }
   .fsp-root .fsp-sheet:last-child { page-break-after: auto; break-after: auto; }
   /* The statement header must never sit alone at the foot of a page. */
-  .fsp-root .fsp-head { text-align: center; margin-bottom: 10px; break-inside: avoid; page-break-inside: avoid; }
-  .fsp-root .fsp-co { font-size: 15pt; font-weight: 700; letter-spacing: .2px; }
-  .fsp-root .fsp-addr { font-size: 10pt; margin-top: 3px; }
-  .fsp-root .fsp-title { font-size: 11.5pt; font-weight: 700; margin-top: 6px; }
-  .fsp-root .fsp-sub { font-size: 10pt; font-weight: 700; margin-top: 2px; }
-  .fsp-root .fsp-fig { text-align: right; font-size: 8.5pt; font-weight: 700; margin-top: 4px; }
+  .fsp-root .fsp-head { text-align: center; margin-bottom: 8px; break-inside: avoid; page-break-inside: avoid; }
+  .fsp-root .fsp-co { font-size: 14pt; font-weight: 700; letter-spacing: .2px; }
+  .fsp-root .fsp-addr { font-size: 9.5pt; margin-top: 2px; }
+  .fsp-root .fsp-title { font-size: 11pt; font-weight: 700; margin-top: 5px; }
+  .fsp-root .fsp-sub { font-size: 9.5pt; font-weight: 700; margin-top: 2px; }
+  .fsp-root .fsp-fig { text-align: right; font-size: 8pt; font-weight: 700; margin-top: 3px; }
   .fsp-root .fsp-restated { text-align: right; font-size: 9.5pt; font-weight: 700; font-style: italic; margin: 6px 0 0; }
   .fsp-root .fsp-heading { text-align: left; font-size: 13pt; font-weight: 700; margin-bottom: 4px; }
   .fsp-root .fsp-sched-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; }
@@ -1468,16 +1468,16 @@ const FSX_PRINT_CSS = `
   /* A schedule is a RUN of short 3.x notes, each rendered as its own table
      inside a keep-together block — a note either fits where it is or moves
      WHOLE to the next page, never half-and-half (user ask 2026-08-21). */
-  .fsp-root .fsp-note-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; }
-  .fsp-root thead th { font-size: 1em; font-weight: 700; padding: 5px 7px; text-align: right;
+  .fsp-root .fsp-note-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
+  .fsp-root thead th { font-size: 1em; font-weight: 700; padding: 4px 6px; text-align: right;
                        vertical-align: bottom; border-bottom: 1.5px solid #000; }
   .fsp-root thead th.fsp-lab { text-align: left; vertical-align: middle; }
-  .fsp-root thead th.fsp-note { text-align: center; vertical-align: middle; width: 46px; }
+  .fsp-root thead th.fsp-note { text-align: center; vertical-align: middle; width: 40px; }
   .fsp-root .fsp-hdr-date { display: block; white-space: nowrap; font-weight: 400; font-size: .92em; }
-  .fsp-root td { padding: 3px 7px; border-bottom: 1px solid #cfcfcf; vertical-align: baseline; }
+  .fsp-root td { padding: 2.5px 6px; border-bottom: 1px solid #cfcfcf; vertical-align: baseline; }
   .fsp-root td.fsp-lab { text-align: left; word-break: normal; overflow-wrap: break-word; }
   .fsp-root td.fsp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .fsp-root td.fsp-note { text-align: center; width: 46px; }
+  .fsp-root td.fsp-note { text-align: center; width: 40px; }
   /* The straight vertical rules between the year columns (user ask
      2026-08-21) — on every value and note cell, never the label. Blank
      spacer rows render per-column cells so the rules run unbroken from the
@@ -1488,7 +1488,7 @@ const FSX_PRINT_CSS = `
      inline on the <col>s — a flat width here cannot know how many columns a
      matrix sheet carries, and 142px × SOCE's five columns is wider than an
      A4 page. Only the note column keeps a fixed width. */
-  .fsp-root col.fsp-c-note { width: 46px; }
+  .fsp-root col.fsp-c-note { width: 40px; }
   /* Sheets whose budgeted column width runs narrow (SOCE's five columns, a
      PPE with many asset classes, the quad share-capital note) drop the font
      a step or two so figures never collide across the column rules. */
@@ -1536,7 +1536,7 @@ const FSX_PRINT_CSS = `
      the print document (margin-top:auto), directly under the table in the
      in-app preview, and never split from its Date/Place lines. */
   .fsp-root .fsp-sig { display: flex; justify-content: space-between; margin-top: auto;
-                       padding-top: 10mm; font-size: 10pt;
+                       padding-top: 8mm; font-size: 9.5pt;
                        break-inside: avoid; page-break-inside: avoid; }
   .fsp-root .fsp-sig-line { border-top: 1px dotted #000; width: 150px; margin-bottom: 5px; }
   .fsp-root .fsp-sig-r { text-align: right; }
@@ -1635,12 +1635,14 @@ function fsxSheetHtml(sh, meta) {
   // 71px halves collided across the rules — they get the width the label can
   // spare (a 240px label floor) rather than half of the ordinary 142px pair.
   const colW = hasQuad
-    ? Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - 240) / 4)
-    : Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 46 : 0) - LABEL_MIN) / valueCells));
-  // A noted statement (SFP/SOI) fixes the label column instead, so the note
-  // number sits right beside the account head rather than across a gulf of
-  // empty label space — the year columns absorb what the label gives up.
-  const labelW = hasNote && !FSX_SCHEDULE_KEYS[sh.key] ? 300 : 0;
+    ? Math.floor((A4_CONTENT - (hasNote ? 40 : 0) - 240) / 4)
+    : Math.min(142, Math.floor((A4_CONTENT - (hasNote ? 40 : 0) - LABEL_MIN) / valueCells));
+  // A noted statement (SFP/SOI) fixes every column and lets the table hug
+  // its content instead of stretching to the page width — the note number
+  // sits right beside the account head and the year columns carry no dead
+  // space (user ask 2026-08-21, fourth round: "consume less of the page").
+  const labelW = hasNote && !FSX_SCHEDULE_KEYS[sh.key] ? 270 : 0;
+  const fixedColW = 150;
   const tblCls = [colW < 100 ? 'fsp-tight' : colW < 125 ? 'fsp-mid' : '', sh.key === 'PPE' ? 'fsp-novlines' : '']
     .filter(Boolean).join(' ');
   const sizeCls = tblCls ? ` class="${tblCls}"` : '';
@@ -1722,11 +1724,13 @@ function fsxSheetHtml(sh, meta) {
   };
 
   const tableHtml = (rows, withThead) => {
-    const t = [`<table${sizeCls}>`, `<colgroup>${labelW ? `<col style="width:${labelW}px">` : '<col>'}`];
+    // Fully-fixed statements get an explicit table width (the sum of their
+    // columns), centred — width:100% would hand the slack back to a column
+    // and reopen the gap this exists to close.
+    const tw = labelW ? ` style="width:${labelW + (hasNote ? 40 : 0) + valueCells * fixedColW}px; margin:0 auto;"` : '';
+    const t = [`<table${sizeCls}${tw}>`, `<colgroup>${labelW ? `<col style="width:${labelW}px">` : '<col>'}`];
     if (hasNote) t.push('<col class="fsp-c-note">');
-    // With a fixed label the year columns are left unsized and share the
-    // remaining width equally; otherwise they are sized and the label absorbs.
-    for (let i = 0; i < valueCells; i++) t.push(labelW ? '<col>' : `<col style="width:${colW}px">`);
+    for (let i = 0; i < valueCells; i++) t.push(`<col style="width:${labelW ? fixedColW : colW}px">`);
     t.push('</colgroup>');
     if (withThead) {
       t.push('<thead><tr>');
@@ -1831,11 +1835,17 @@ function fsxSheetHtml(sh, meta) {
   } else {
     // Statements: the closing note lines ("The notes are an integral part…")
     // sit under the table, outside the box — so the outer border and the
-    // year rules stop exactly at the last total row.
+    // year rules stop exactly at the last total row. A hugging table takes
+    // its footnotes into its centred wrapper so they stay flush with it.
     const rows = sh.rows.slice();
     const foot = popFootnotes(rows);
-    out.push(tableHtml(rows, !sh.noHeaderBand));
-    out.push(...foot);
+    const totalW = labelW ? labelW + (hasNote ? 40 : 0) + valueCells * fixedColW : 0;
+    if (totalW) {
+      out.push(`<div style="width:${totalW}px; margin:0 auto;">${tableHtml(rows, !sh.noHeaderBand)}${foot.join('')}</div>`);
+    } else {
+      out.push(tableHtml(rows, !sh.noHeaderBand));
+      out.push(...foot);
+    }
   }
 
   if (sh.sig) {
@@ -1896,7 +1906,9 @@ const FSX_FIT_JS = `<script>
       var s = sheets[i];
       var h = contentHeight(s);
       if (!h) continue;
-      var maxUp = s.hasAttribute('data-matrix') ? 1 : 1.1;
+      // Never scale UP — the compact natural size is the look (fourth-round
+      // user ask); the pass now only shrinks a statement that would spill.
+      var maxUp = 1;
       var k = Math.max(0.72, Math.min(maxUp, target / h));
       if (Math.abs(k - 1) > 0.02) applyScale(s, k);
       var h2 = contentHeight(s);

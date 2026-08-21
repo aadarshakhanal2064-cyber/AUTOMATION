@@ -490,6 +490,15 @@ Third round (same day, user feedback on the second):
 - Base font stepped down to 12px (headers scaled with it) and the fit
   pass's upscale cap lowered to 1.1.
 
+Fourth round (user: "consume less of the page, no format change"): base font
+11.5px, tighter cell padding and header spacing, the Notes column 40px, and
+**SFP/SOI now fix every column (270px label + 40 + 2 × 150) and the table
+hugs that width, centred** — width:100% would hand the slack back to a
+column and reopen the gap. Footnotes ride inside the centred wrapper so they
+stay flush with the box. **The fit pass no longer scales anything UP**
+(maxUp 1) — the compact natural size is the look; it only shrinks a
+statement that would spill.
+
 **Column widths are budgeted against the A4 page, never a flat 142px**
 (2026-08-21). The print document is `@page A4` with 12mm side margins — about
 703 CSS px — and the tables are `table-layout: fixed`, so the unclassed label
