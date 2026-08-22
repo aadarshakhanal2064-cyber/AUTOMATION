@@ -168,6 +168,48 @@ uniqueness that matters lives in a generated column, which an upsert would have
 to name as its conflict target while not sending it in the payload. Two round
 trips, no ambiguity.
 
+### Saved books — the browse drawer (2026-08-22)
+
+`spbLoadBook()` answers *"is there a book for the client and fiscal year on
+screen"*, which is the right question mid-work and the wrong one when the
+question is *"which books do we have?"* — reopening last month's work meant
+remembering the exact client and year first, and the name typed on a walk-in
+book is precisely what nobody remembers a week later. Until this shipped there
+was no route to a saved book at all until a client and year were already
+selected.
+
+`spbOpenSavedBooks()` is therefore the **same shared drawer** the Audit Report
+Builder browses its saved reports through — `DocumentStore.openPicker()` in its
+`{fetchRows, describe, onChoose, onDelete}` form, fed from `autobooks_books`
+instead of `saved_documents`, exactly as Projection Report and Depreciation
+already do it. One list, one search box, one empty state, one delete confirm for
+the whole app. Reached from the page header (**Saved books**), from the
+saved-book card, and from the empty state on the four gated screens.
+
+- **Search matches what a row RENDERS as** (`DocumentStore.filterRows`), so the
+  fiscal year, the PAN and the registers held are in `describe()` precisely to
+  make them searchable — the client name alone is not how staff look for a book.
+  Substring first, Fuse only as a fallback, which is what stops `2077` scoring
+  as a fuzzy hit against every other year.
+- **Opening sets the two things that IDENTIFY a book and lets the ordinary
+  context path fetch it** (`spbOpenSavedBook()`, the `depLoadSaved()` idiom) —
+  there is one rehydration, not two that can drift. It goes through
+  `spbScope.select()`, which clears the previous client's import *and* ledger
+  state before anything loads; verified by opening a walk-in book and then a
+  directory client's, with no bill line surviving the switch.
+- **`spbSetFyOption()` adds a year the selector doesn't carry.** The dropdown
+  spans a fixed window, so an older book's year has no option and `sel.value =
+  fy` would silently leave the year alone — quietly opening a *different* book
+  than the one clicked. The same bug `depSetFyOption()` was written for;
+  verified against a 2077-78 book with the selector opening at 2078-79.
+- **Deleting cascades**, so `spbDeleteSavedBook()` names what went in a toast
+  rather than leaving "record deleted" to understate a year of typed
+  confirmations. If the deleted book is the one open on screen, `spbBookId` is
+  cleared (`spbLedgerReset()`) — left alone it would point at a row that no
+  longer exists, the gated screens would keep rendering, and the next Save would
+  insert a second book instead of updating. The figures on screen stay; only the
+  stored identity drops.
+
 ### The Register view
 
 The register as the firm reads it on paper: bills in fiscal-month order, a

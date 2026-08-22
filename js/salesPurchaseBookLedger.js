@@ -120,6 +120,7 @@ function spbSaveGateHtml(what) {
     <div style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">
       ${why ? escHtml(why) : 'Save it once and this screen opens — and it stays available whenever you come back to this client.'}
     </div>
+    <button class="btn btn-outline btn-sm" onclick="spbOpenSavedBooks()">Browse saved books</button>
     <button class="btn btn-primary btn-sm" onclick="spbSaveBook()"${why ? ' disabled' : ''}>Save book to database</button>
   </div>`;
 }
@@ -484,6 +485,152 @@ async function spbLedgerOnContext() {
   await spbLoadBook(true);
 }
 
+// ════════════════════════════════════════════
+//  SAVED BOOKS — browse every stored book, not just this client's
+//
+//  spbLoadBook() answers "is there a book for the client and fiscal year
+//  currently on screen", which is the right question mid-work and the wrong
+//  one when the question is "which books do we have?" — reopening last
+//  month's work meant remembering the exact client and year first, and the
+//  name typed on a walk-in book is precisely what nobody remembers a week
+//  later.
+//
+//  So this is the SAME shared drawer the Audit Report Builder browses its
+//  saved reports through (DocumentStore.openPicker), fed from
+//  `autobooks_books` instead of `saved_documents` via the {fetchRows,
+//  describe, onChoose, onDelete} form — one list, one search box, one empty
+//  state and one delete confirm for the whole app, exactly as Projection
+//  Report and Depreciation already do it.
+// ════════════════════════════════════════════
+
+// Only what the list draws. The jsonb payloads (merge_map, overrides,
+// correction_log, vat_return, import_notes) are the bulk of a book row and
+// are fetched on open, not on list — `sections` is the one kept, because it
+// is what says which registers the book actually holds.
+const SPB_BOOK_LIST_COLS = 'id, client_id, client_name, pan, fiscal_year, reg_type, sections, created_by, updated_by, created_at, updated_at';
+
+// The last fetched list, kept so a delete can name what it removed. The
+// drawer holds its own copy for rendering; this one exists only so the toast
+// says which client's book went rather than "the record".
+let spbSavedBookRows = [];
+
+function spbBookRegisters(row) {
+  const keys = Object.keys(row.sections || {});
+  const labels = SPB_SECTIONS.filter(s => keys.includes(s.key)).map(s => s.label);
+  return labels.length ? labels.join(' + ') : 'No register stored';
+}
+
+function spbSavedBookWhen(row) {
+  const when = row.updated_at || row.created_at;
+  const d = when ? new Date(when) : null;
+  return d && !isNaN(d)
+    ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+}
+
+function spbOpenSavedBooks() {
+  DocumentStore.openPicker({
+    label: 'Saved books',
+    searchPlaceholder: 'Search by client, fiscal year or PAN…',
+    empty: 'No books saved yet. Import a Sales or Purchase file on the Import tab and use ' +
+           '<strong>Save book to database</strong> — every saved book is listed here afterwards.',
+    fetchRows: async () => {
+      const { data, error } = await window.sb.from('autobooks_books')
+        .select(SPB_BOOK_LIST_COLS).order('updated_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      spbSavedBookRows = data || [];
+      return spbSavedBookRows;
+    },
+    // Search matches whatever a row RENDERS as (DocumentStore.filterRows), so
+    // putting the fiscal year and the PAN in here is also what makes them
+    // searchable — the client name alone is not how staff look for a book.
+    describe: r => ({
+      title: `${r.client_name || '—'} — F.Y. ${r.fiscal_year || '—'}`,
+      meta: (r.pan ? 'PAN ' + r.pan : 'No PAN on the book')
+          + (r.reg_type === 'pan' ? ' · PAN only' : '')
+          + ` · ${spbBookRegisters(r)}`
+          + (spbSavedBookWhen(r) ? ` · saved ${spbSavedBookWhen(r)}` : '')
+          + ` · ${r.updated_by || r.created_by || 'not recorded'}`,
+    }),
+    onChoose: id => spbOpenSavedBook(id),
+    onDelete: id => spbDeleteSavedBook(id),
+  });
+}
+
+// Put a saved book on screen from its id. Deliberately does not re-implement
+// the load: it sets the two things that IDENTIFY a book — client and fiscal
+// year — and lets the ordinary context path fetch it exactly as picking that
+// client and year by hand would, so there is one rehydration, not two that
+// can drift (the depLoadSaved() idiom). Going through spbScope is what makes
+// it safe: the scope clears the previous client's import AND ledger state
+// before anything loads, so one client's bills can never sit under another's
+// name (CLAUDE.md §9).
+async function spbOpenSavedBook(id) {
+  try {
+    const { data, error } = await window.sb.from('autobooks_books')
+      .select('id, client_id, client_name, pan, fiscal_year, reg_type').eq('id', id).single();
+    if (error) throw error;
+    // The fiscal year first: spbScope's clear() does not touch the selector,
+    // and load() reads it the moment it fires.
+    spbSetFyOption(data.fiscal_year);
+    spbScope.select({
+      id: data.client_id,
+      name: data.client_name,
+      pan: data.pan || '',
+      // The scope's load() sets spb-regtype from a client's
+      // tax_registration_type; the book stores the same fact in its own
+      // vocabulary, and spbLoadBook() re-asserts it from the row anyway.
+      tax_registration_type: data.reg_type === 'pan' ? 'PAN' : 'VAT',
+    });
+  } catch (err) {
+    console.error('[Autobooks] open saved book failed', err);
+    spbLedgerStatus('❌ Could not open that saved book: ' + escHtml(friendlyDbError(err)), 'error');
+  }
+}
+
+// The F.Y. selector spans a fixed window of years, so a book saved for an
+// older year has no option to select and `sel.value = fy` would silently
+// leave the year alone — quietly opening a DIFFERENT book than the one
+// clicked. Add the year rather than refuse it (depSetFyOption's reasoning,
+// and the same bug it was written for).
+function spbSetFyOption(fy) {
+  const sel = document.getElementById('spb-fy');
+  if (!sel || !fy) return;
+  if (!Array.from(sel.options).some(o => o.value === fy)) {
+    const opt = document.createElement('option');
+    opt.value = fy; opt.textContent = fy;
+    sel.appendChild(opt);
+    Array.from(sel.options)
+      .sort((a, b) => a.value.localeCompare(b.value))
+      .forEach(o => sel.appendChild(o));   // appendChild MOVES an existing node
+  }
+  sel.value = fy;
+}
+
+// Deleting a book takes its bill lines, its confirmation ledger and its
+// reconciliation adjustments with it (all three cascade on the FK). The
+// drawer has already confirmed; this names what actually went, because
+// "record deleted" understates a year of typed confirmations.
+async function spbDeleteSavedBook(id) {
+  const row = spbSavedBookRows.find(r => r.id === id);
+  const { error } = await window.sb.from('autobooks_books').delete().eq('id', id);
+  if (error) throw error;
+  // The deleted book may be the one open on screen. Left alone, spbBookId
+  // would point at a row that no longer exists: the gated screens would keep
+  // rendering and the next Save would insert a second book rather than
+  // update it. The figures on screen stay — only the stored identity drops.
+  if (spbBookId === id) spbLedgerReset();
+  AuditLog.record('spb_book_deleted', {
+    module: 'salesPurchaseBook', clientName: (row && row.client_name) || null, recordRef: id,
+    detail: { fiscalYear: (row && row.fiscal_year) || null },
+  });
+  if (typeof showToast === 'function') {
+    showToast(row
+      ? `Deleted the saved book for ${row.client_name} — F.Y. ${row.fiscal_year}, with its bill lines, party confirmations and adjustments.`
+      : 'Saved book deleted.', 'success');
+  }
+}
+
 // ── The saved-book card ──
 function spbRenderBookCard() {
   const el = document.getElementById('spb-book-body');
@@ -499,6 +646,7 @@ function spbRenderBookCard() {
         &nbsp;${escHtml(why || 'Choose a client and fiscal year above.')}
       </div>
       <div class="action-row" style="margin-top:0;">
+        <button class="btn btn-outline btn-sm" onclick="spbOpenSavedBooks()">Browse saved books</button>
         <button class="btn btn-primary btn-sm" id="spb-save-btn" onclick="spbSaveBook()" disabled>Save book to database</button>
       </div>
       <div id="spb-ledger-status"></div>`;
@@ -525,10 +673,11 @@ function spbRenderBookCard() {
     </div>`;
   }
   el.innerHTML = meta + `<div class="action-row" style="margin-top:0;">
+      <button class="btn btn-outline btn-sm" onclick="spbLoadBook(false)">Open this client's book</button>
+      <button class="btn btn-outline btn-sm" onclick="spbOpenSavedBooks()">Browse saved books</button>
       <button class="btn btn-primary btn-sm" id="spb-save-btn" onclick="spbSaveBook()"${canSave ? '' : ' disabled'}>
         ${spbBookId ? 'Save changes' : 'Save book to database'}
       </button>
-      <button class="btn btn-outline btn-sm" onclick="spbLoadBook(false)">Open saved book</button>
     </div>
     <div id="spb-ledger-status"></div>`;
 }

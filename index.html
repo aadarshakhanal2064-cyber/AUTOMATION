@@ -1947,6 +1947,10 @@ function cropLoginLogoIcon(img) {
         </div>
         <div class="page-header-actions">
           <input type="file" id="spb-file" accept=".xlsx,.xls,.ods,.csv" multiple style="display:none;" onchange="spbHandleFiles(this)" />
+          <button class="btn btn-outline" onclick="spbOpenSavedBooks()" title="Browse and reopen every book saved to the database">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Saved books
+          </button>
           <button class="btn btn-outline" onclick="spbDownloadTemplate()" title="A blank workbook in the exact format this page reads, with every column explained">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             Download data-entry format
@@ -2007,7 +2011,7 @@ function cropLoginLogoIcon(img) {
         <div class="card-header">
           <div>
             <div class="card-title" style="font-size:14px;">Saved book</div>
-            <div class="card-desc">Saving stores every bill line, the party list and the import decisions for this client and fiscal year, so you can come back to the confirmations days later without re-uploading anything. A saved book reopens automatically when you pick the client and year again.</div>
+            <div class="card-desc">Saving stores every bill line, the party list and the import decisions for this client and fiscal year, so you can come back to the confirmations days later without re-uploading anything. A saved book reopens automatically when you pick the client and year again — or use <strong>Saved books</strong> above to search every book the firm has stored.</div>
           </div>
         </div>
         <div id="spb-book-body"></div>
@@ -4676,7 +4680,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608222100"></script>
+<script defer src="js/config.js?v=202608222200"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
@@ -4717,7 +4721,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/salesPurchaseBook.js?v=202608212300"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script defer src="js/salesPurchaseBookLedger.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookLedger.js?v=202608222200"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
 <script defer src="js/salesPurchaseBookConfirm.js?v=202608212500"></script>
 <script defer src="js/salesPurchaseBookAnnexure.js?v=202608212500"></script>
