@@ -80,6 +80,23 @@ function vrAmt(v) { return fmtAmount(vrNum(v)); }
 function vrVal(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
 function vrFirmKey() { return vrVal('vr-firm'); }
 function vrFirmName(key) { const f = window.SERVICE_MEMO_FIRMS[key]; return (f && f.name) || key || '—'; }
+// Short per-firm code for the VAT serial display ('SA', 'DC', …) — derived
+// from the memo_prefix org_firms already carries (e.g. 'SM-SA'), so a new
+// firm needs no separate config; adding one is still just a data change.
+function vrFirmCode(firmKey) {
+  const f = window.SERVICE_MEMO_FIRMS[firmKey];
+  const prefix = (f && f.prefix) || '';
+  const code = prefix.replace(/^SM-/, '');
+  return code || (firmKey || '').slice(0, 2).toUpperCase();
+}
+// 'VAT-SA-0001' — the firm's own running VAT count, separate from the memo's
+// own memo_number (SM-SA-00007 etc.). Assigned once per memo by the
+// set_vat_serial() trigger the moment Apply VAT is first ticked; see
+// db/2026-08-22_vat_serial.sql.
+function vrVatSerialLabel(m) {
+  if (!m || m.vat_serial == null) return '—';
+  return 'VAT-' + vrFirmCode(m.firm_key) + '-' + String(m.vat_serial).padStart(4, '0');
+}
 function vrFy() { return vrVal('vr-fy') || VR_FY_DEFAULT; }
 function vrFyStart() { return NepaliLocale.fyStartYear(vrFy()); }
 function vrPeriodKeySelected() { return vrVal('vr-period') || 'T1'; }
@@ -341,6 +358,7 @@ function vrAppendEditColumn(container, rows) {
 
 function vrSalesModel(rows) {
   const cells = rows.map(m => [
+    vrVatSerialLabel(m),
     m.memo_date || '—',
     vrBsStr(m.memo_date),
     m.memo_number || '—',
@@ -352,12 +370,13 @@ function vrSalesModel(rows) {
     typeof smNatureText === 'function' ? smNatureText(m) : (m.nature_category || '—'),
     m.fiscal_year || '—',
   ]);
-  const sum = i => rows.reduce((t, m) => t + vrNum([null, null, null, null, null, m.professional_fee, m.vat_amount, m.total_amount][i]), 0);
+  const sum = i => rows.reduce((t, m) => t + vrNum([null, null, null, null, null, null, m.professional_fee, m.vat_amount, m.total_amount][i]), 0);
   return {
     title: 'VAT Sales Register',
     subtitleLines: [vrFirmName(vrFirmKey()), `F.Y. ${vrFy()}`, `${rows.length} bill${rows.length === 1 ? '' : 's'}`],
     landscape: true,
     columns: [
+      { label: 'VAT Serial No.', align: 'l', w: 13 },
       { label: 'Date (English)', align: 'l', w: 12 },
       { label: 'Date (Nepali)', align: 'l', w: 12 },
       { label: 'Bill No.', align: 'l', w: 13 },
@@ -371,9 +390,9 @@ function vrSalesModel(rows) {
     ],
     rows: cells.map(c => ({ cells: c })).concat([{
       style: 'grand',
-      cells: ['Total', '', '', '', '', sum(5), sum(6), sum(7), '', ''],
+      cells: ['Total', '', '', '', '', '', sum(6), sum(7), sum(8), '', ''],
     }]),
-    note: 'Derived from Service Memo — every memo with VAT applied. Edit a bill in Service Memo; nothing is entered on this page.',
+    note: "Derived from Service Memo — every memo with VAT applied. Edit a bill in Service Memo; nothing is entered on this page. VAT Serial No. is this firm's own running VAT count, separate from the memo number.",
   };
 }
 
@@ -892,6 +911,13 @@ async function vrSaveReturn(btn) {
 // Two halves. "Outstanding" is DERIVED — every VAT memo with no collection
 // row against it — so it can no more go stale than the sales register can.
 // "Collected" is the stored rows.
+// Looked up against the full unfiltered load (vrMemos), not vrSalesMemos()'s
+// firm+F.Y.-scoped view — a collection row must always resolve its memo's
+// serial regardless of which firm/year is currently selected on screen.
+function vrMemoById(id) {
+  return id == null ? null : (vrMemos || []).find(m => m.id === id) || null;
+}
+
 function vrCollectedMemoIds() {
   return new Set((vrCollections || []).map(c => c.service_memo_id).filter(v => v != null));
 }
@@ -913,9 +939,10 @@ function vrRenderCollections() {
       oEl.innerHTML = `<div class="log-empty">Nothing outstanding — every VAT memo for ${escHtml(vrFirmName(vrFirmKey()))} in F.Y. ${escHtml(vrFy())} has been collected.</div>`;
       oEl.onclick = null;
     } else {
-      const head = `<tr><th>Date</th><th>Bill No.</th><th>Name of Client</th><th>PAN</th>
+      const head = `<tr><th>VAT Serial No.</th><th>Date</th><th>Bill No.</th><th>Name of Client</th><th>PAN</th>
         <th style="text-align:right;">VAT Amount</th><th>Nature of Work</th><th></th></tr>`;
       const body = outstanding.map((m, i) => `<tr>
+        <td>${escHtml(vrVatSerialLabel(m))}</td>
         <td>${escHtml(m.memo_date || '—')}</td>
         <td>${escHtml(m.memo_number || '—')}</td>
         <td>${escHtml(m.client_name || '—')}</td>
@@ -927,7 +954,7 @@ function vrRenderCollections() {
       const total = outstanding.reduce((t, m) => t + vrNum(m.vat_amount), 0);
       oEl.innerHTML = `<table class="client-table"><thead>${head}</thead><tbody>${body}
         <tr style="font-weight:700; background:var(--bg-page-alt); color:var(--brand-navy);">
-          <td colspan="4">Total outstanding (${outstanding.length})</td>
+          <td colspan="5">Total outstanding (${outstanding.length})</td>
           <td style="text-align:right; font-variant-numeric:tabular-nums;">${vrAmt(total)}</td><td></td><td></td>
         </tr></tbody></table>`;
       oEl.onclick = (e) => {
@@ -944,9 +971,10 @@ function vrRenderCollections() {
       cEl.innerHTML = '<div class="log-empty">No collections recorded yet for this firm and year.</div>';
       cEl.onclick = null;
     } else {
-      const head = `<tr><th>Date of Payment</th><th>Name of Client</th><th>PAN</th>
+      const head = `<tr><th>VAT Serial No.</th><th>Date of Payment</th><th>Name of Client</th><th>PAN</th>
         <th style="text-align:right;">Amount</th><th>Voucher Name</th><th>Name of Bank</th><th>Nature of Work</th><th></th></tr>`;
       const body = vrCollections.map((c, i) => `<tr>
+        <td>${escHtml(vrVatSerialLabel(vrMemoById(c.service_memo_id)))}</td>
         <td>${escHtml(c.payment_date || '—')}</td>
         <td>${escHtml(c.client_name || '—')}</td>
         <td>${escHtml(c.client_pan || '—')}</td>
@@ -962,7 +990,7 @@ function vrRenderCollections() {
       const total = vrCollections.reduce((t, c) => t + vrNum(c.amount), 0);
       cEl.innerHTML = `<table class="client-table"><thead>${head}</thead><tbody>${body}
         <tr style="font-weight:700; background:var(--bg-page-alt); color:var(--brand-navy);">
-          <td colspan="3">Total collected (${vrCollections.length})</td>
+          <td colspan="4">Total collected (${vrCollections.length})</td>
           <td style="text-align:right; font-variant-numeric:tabular-nums;">${vrAmt(total)}</td>
           <td></td><td></td><td></td><td></td>
         </tr></tbody></table>`;
@@ -985,6 +1013,7 @@ function vrCollectionsModel() {
       `${rows.length} collection${rows.length === 1 ? '' : 's'} · ${vrOutstandingMemos().length} outstanding`],
     landscape: true,
     columns: [
+      { label: 'VAT Serial No.', align: 'l', w: 13 },
       { label: 'Date of Payment', align: 'l', w: 14 },
       { label: 'Name of Client', align: 'l', w: 26 },
       { label: 'PAN', align: 'l', w: 12 },
@@ -993,10 +1022,14 @@ function vrCollectionsModel() {
       { label: 'Name of Bank', align: 'l', w: 18 },
       { label: 'Nature of Work', align: 'l', w: 22 },
     ],
+    // Same lookup the on-screen Collected table uses — the export must match
+    // what's on screen (the Service Memo idiom: one shared source, never a
+    // second copy that can drift).
     rows: rows.map(c => ({ cells: [
+      vrVatSerialLabel(vrMemoById(c.service_memo_id)),
       c.payment_date || '—', c.client_name || '—', c.client_pan || '—',
       vrNum(c.amount), c.voucher_name || '—', c.bank_name || '—', c.nature_of_work || '—',
-    ] })).concat([{ style: 'grand', cells: ['Total', '', '', total, '', '', ''] }]),
+    ] })).concat([{ style: 'grand', cells: ['Total', '', '', '', total, '', '', ''] }]),
   };
 }
 
