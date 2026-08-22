@@ -780,12 +780,23 @@ window.ACTIVITY_EVENT_LABELS = {
   wd_todo_deleted: 'To-do deleted',
 };
 
+// Audit Report Builder's fiscal-year list. Every key here must have a matching
+// <option> in #rep-fy (index.html) — the report prints the bs/ad pair on its
+// face ("Financial position as at ..."), so a missing key renders undefined.
+// Each pair is the LAST day of Ashadh of the closing year, not Shrawan 1 of the
+// next; the day number is 31 or 32 depending on the B.S. year and is typed here
+// rather than computed, because NepaliLocale's calendar table only starts at
+// 2080 and its 2081/2082 Ashadh lengths disagree with the firm's own reports.
 window.REP_FY_DATES = {
+  "2075-76": { bs: "31st Ashadh, 2076", ad: "16th July, 2019" },
+  "2076-77": { bs: "31st Ashadh, 2077", ad: "15th July, 2020" },
+  "2077-78": { bs: "31st Ashadh, 2078", ad: "15th July, 2021" },
   "2078-79": { bs: "32nd Ashadh, 2079", ad: "16th July, 2022" },
   "2079-80": { bs: "31st Ashadh, 2080", ad: "16th July, 2023" },
   "2080-81": { bs: "31st Ashadh, 2081", ad: "15th July, 2024" },
   "2081-82": { bs: "32nd Ashadh, 2082", ad: "16th July, 2025" },
-  "2082-83": { bs: "32nd Ashadh, 2083", ad: "16th July, 2026" }
+  "2082-83": { bs: "32nd Ashadh, 2083", ad: "16th July, 2026" },
+  "2083-84": { bs: "32nd Ashadh, 2084", ad: "16th July, 2027" }
 };
 
 window.REP_ENTITY_PROFILES = {
