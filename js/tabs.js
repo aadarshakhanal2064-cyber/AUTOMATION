@@ -73,6 +73,7 @@ function openRegdModule(sub, label) {
 //  need an init/refresh call on open; a tab that's absent simply switches. ──
 const MODULE_INITS = {
   serviceMemo:         () => loadServiceMemo(),
+  vatRegister:         () => vrInit(),
   bankBook:            () => bbInit(),
   partyLedger:         () => plInit(),
   finalAccount:        () => faInit(),

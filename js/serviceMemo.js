@@ -97,6 +97,12 @@ async function loadServiceMemo() {
 async function smReload() {
   DataCache.invalidate(window.LEDGER_KEYS.memosSm, window.LEDGER_KEYS.memosPl);
   await smRefresh();
+  // VAT Register's sales register IS these rows (js/vatRegister.js) — it
+  // stores nothing of its own, so a memo write has to reach it or a figure
+  // the user just corrected (possibly from that very screen's Edit button)
+  // would stay stale until the tab is reopened. Guarded, like the other
+  // "a later module hooks an earlier one" call sites in this app.
+  if (typeof vrOnMemosChanged === 'function') vrOnMemosChanged();
 }
 
 async function smRefresh() {

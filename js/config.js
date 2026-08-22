@@ -349,6 +349,58 @@ window.BANK_PAYMENT_TYPES = [
 // fee_receipt/for_tax reduce what the client owes, tax_payment increases it.
 window.BANK_CLIENT_PARTICULARS = ['fee_receipt', 'for_tax', 'tax_payment'];
 
+// ── VAT Register module data (js/vatRegister.js, vr-) ──
+// The firm's OWN VAT book — both audit practices are VAT-registered. A
+// CLIENT's VAT book is Autobooks; nothing here reads or writes client VAT.
+//
+// The three filing periods. Nepal's trimester VAT return runs 4 B.S. months
+// at a time from Shrawan, and the firm files trimesterly only (user decision
+// 2026-08-22 — no monthly option).
+//
+// `months` is what BUCKETS a bill, and that is the whole point: the spec
+// sheet wrote its periods as literal date spans ending 07.30 / 11.30 / 03.31,
+// and those days are wrong for any year whose Kartik, Falgun or Ashadh runs
+// longer — an Ashadh 32 bill would fall outside every period and silently
+// vanish from the return. A month number cannot be wrong. The printed span
+// is rebuilt from the calendar table via NepaliLocale.bsMonthEnd().
+//
+// T3 wraps into the NEXT B.S. year (Chaitra is month 12 of startYear, then
+// Baishakh–Ashadh of startYear+1). Nothing flags that: a month < 4 belongs to
+// startYear+1 is the general fiscal rule, applied wherever a month meets a
+// year here and in vatRegister.js.
+window.VR_PERIODS = [
+  { key: 'T1', label: 'T1 — Shrawan to Kartik', months: [4, 5, 6, 7] },
+  { key: 'T2', label: 'T2 — Mangsir to Falgun', months: [8, 9, 10, 11] },
+  { key: 'T3', label: 'T3 — Chaitra to Ashadh', months: [12, 1, 2, 3] },
+];
+
+// Seed vocabulary for the purchase register's "Head of Expenses" box, taken
+// verbatim from the spec sheet. NOT a closed list — the sheet asks for an
+// "Option to add expenses", so the UI renders this through a datalist that
+// also carries every head already typed into vat_purchases AND every expense
+// name already used in Bank Entry (user decision 2026-08-22: the two modules
+// share the VOCABULARY, deliberately not the figures — no VAT Register
+// purchase ever reaches Final Account). That is the bbPopulateExpenseNames
+// idiom: a field that accepts anything, seeded so it can't fragment on
+// near-duplicate spellings.
+//
+// The ASSETS side has no list here on purpose — it reads
+// window.DEP_SLM_CLASSES (depreciable classes only), so an asset bought here
+// and the depreciation schedule that writes it off name it identically, and
+// a class added to that list reaches this picker for free.
+window.VR_EXPENSE_HEADS = [
+  'Printing & Stationery',
+  'Traveling Expenses',
+  'Lunch Expenses',
+  'Fuel Expenses',
+  'Repair & Maintenance — Building',
+  'Repair & Maintenance — Machine & Other Assets',
+  'Repair & Maintenance — Office Equipment',
+  'Repair & Maintenance — Furniture',
+  'Repair & Maintenance — Vehicles',
+  'Office Expenses',
+];
+
 // ── File In Out (Document Register — display renamed 2026-08-09, code kept
 // as-is: js/fileManagement.js, fm-, document_register. Same label-only
 // precedent as Autobooks/Bank Entry, CLAUDE.md §5) module data ──
@@ -708,6 +760,16 @@ window.ACTIVITY_EVENT_LABELS = {
   // 2026-08-10; its audit_log rows remain.
   vat_client_change: 'VAT client change', vat_filing_update: 'VAT filing updated',
   vat_status_change: 'VAT status change',
+  // VAT Register (2026-08-22) — the firm's own VAT book. Unrelated to the
+  // three removed VAT Compliance events above, which were about CLIENTS'
+  // filings. Nothing is logged for the sales register: it stores nothing, so
+  // every change to it is already a service_memo_* event.
+  vat_purchase_created: 'VAT purchase bill added', vat_purchase_updated: 'VAT purchase bill updated',
+  vat_purchase_deleted: 'VAT purchase bill deleted',
+  vat_return_saved: 'VAT return figures saved',
+  vat_collection_created: 'VAT collection recorded', vat_collection_updated: 'VAT collection updated',
+  vat_collection_deleted: 'VAT collection deleted',
+  vat_register_printed: 'VAT register printed',
   wd_created: 'Work record created', wd_updated: 'Work record updated',
   wd_deleted: 'Work record deleted', wd_printed: 'Work record printed',
   // To-Do List. Only these three are logged — a to-do autosaves on every

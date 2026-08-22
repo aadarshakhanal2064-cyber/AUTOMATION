@@ -75,6 +75,13 @@ export const TABLE_ORDER = [
   'saved_documents',
   'service_memos',
   'service_memo_fee_skips',
+  // The firm's own VAT book (2026-08-22). vat_collections FKs BOTH
+  // service_memos and clients, so it replays after them — same parent-first
+  // rule as registrar_shareholders above. vat_purchases / vat_returns
+  // reference only organizations.
+  'vat_purchases',
+  'vat_returns',
+  'vat_collections',
   'work_done',
   'work_todos',
   'audit_log',

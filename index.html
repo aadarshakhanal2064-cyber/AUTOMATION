@@ -156,6 +156,7 @@ function cropLoginLogoIcon(img) {
       </button>
       <div class="topbar-dropdown-menu" id="topbar-fin-menu">
         <button class="topbar-dropdown-item" onclick="openModule('serviceMemo')">Service Memo</button>
+        <button class="topbar-dropdown-item" onclick="openModule('vatRegister')">VAT Register</button>
         <button class="topbar-dropdown-item" onclick="openModule('partyLedger')">Party Ledger</button>
         <button class="topbar-dropdown-item" onclick="openModule('bankBook')">Bank Entry</button>
         <button class="topbar-dropdown-item" onclick="openModule('finalAccount')">Final Account</button>
@@ -2286,6 +2287,97 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: VAT REGISTER ── -->
+    <div id="tab-vatRegister-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Financial Management</span><span>›</span><span class="current">VAT Register</span></div>
+          <h2 class="page-title">VAT Register</h2>
+          <p class="page-subtitle">The firm's own VAT book — sales derived from Service Memo, purchases recorded here, and the trimester return computed from both.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle" id="vr-view-toggle"></div>
+        </div>
+      </div>
+
+      <div id="vr-status-area"></div>
+
+      <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+        <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+          <div class="form-group" style="margin:0;"><label>Firm</label><select id="vr-firm" onchange="vrOnContextChange()"></select></div>
+          <div class="form-group" style="margin:0;"><label>Fiscal Year</label><select id="vr-fy" onchange="vrOnContextChange()"></select></div>
+          <div class="form-group" style="margin:0; display:none;" id="vr-period-wrap"><label>Period of VAT Filing</label><select id="vr-period" onchange="vrOnContextChange()"></select></div>
+        </div>
+        <div class="action-row" style="justify-content:flex-end;">
+          <button class="btn btn-outline" id="vr-print-btn" onclick="vrPrint()" disabled>Print / Preview</button>
+          <button class="btn btn-outline" id="vr-pdf-btn" onclick="vrExport('pdf')" disabled>Save as PDF</button>
+          <button class="btn btn-outline" id="vr-excel-btn" onclick="vrExport('excel')" disabled>Save as Excel</button>
+        </div>
+      </div>
+
+      <!-- Sales Register — derived from Service Memo, nothing entered here -->
+      <div id="vr-pane-sales">
+        <div class="table-wrap" style="padding:24px;">
+          <div id="vr-sales-output"><div class="loading-skeleton"><i></i><i></i><i></i></div></div>
+        </div>
+      </div>
+
+      <!-- Purchase Register -->
+      <div id="vr-pane-purchase" style="display:none;">
+        <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;">
+            <div id="vr-purchase-summary"></div>
+            <button class="btn btn-primary" onclick="vrOpenPurchase(null)">Add Purchase Bill</button>
+          </div>
+        </div>
+        <div class="table-wrap" style="padding:24px;">
+          <div id="vr-purchase-table"></div>
+        </div>
+      </div>
+
+      <!-- Masebari — the trimester return -->
+      <div id="vr-pane-masebari" style="display:none;">
+        <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+          <div style="margin-bottom:16px;">
+            <div style="font-weight:700; color:var(--brand-navy);" id="vr-m-span"></div>
+            <div style="font-size:var(--fs-xs); color:var(--text-muted);" id="vr-m-counts"></div>
+          </div>
+          <div id="vr-m-status"></div>
+          <div class="form-grid" style="grid-template-columns:repeat(3, 1fr); gap:14px;">
+            <div class="form-group" style="margin:0;"><label>Sales Adjustment — Amount</label><input type="number" id="vr-m-sadj-amt" step="0.01" placeholder="0.00" /></div>
+            <div class="form-group" style="margin:0;"><label>Sales Adjustment — VAT</label><input type="number" id="vr-m-sadj-vat" step="0.01" placeholder="0.00" /></div>
+            <div class="form-group" style="margin:0;"><label>Reason</label><input type="text" id="vr-m-sadj-note" placeholder="e.g. credit note issued to a client" /></div>
+            <div class="form-group" style="margin:0;"><label>Purchase Adjustment — Amount</label><input type="number" id="vr-m-padj-amt" step="0.01" placeholder="0.00" /></div>
+            <div class="form-group" style="margin:0;"><label>Purchase Adjustment — VAT</label><input type="number" id="vr-m-padj-vat" step="0.01" placeholder="0.00" /></div>
+            <div class="form-group" style="margin:0;"><label>Reason</label><input type="text" id="vr-m-padj-note" placeholder="e.g. supplier debit note" /></div>
+            <div class="form-group" style="margin:0;"><label>Opening Credit carried forward</label><input type="number" id="vr-m-opening" step="0.01" placeholder="0.00" /></div>
+            <div class="form-group" style="margin:0; grid-column:span 2;"><label>Remarks</label><input type="text" id="vr-m-remarks" placeholder="Optional note printed under the return heading" /></div>
+          </div>
+          <div class="action-row" style="justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="vrSaveReturn(this)">Save Return Figures</button>
+          </div>
+        </div>
+        <div class="table-wrap" style="padding:24px;">
+          <div id="vr-masebari-output"></div>
+        </div>
+      </div>
+
+      <!-- VAT Collected -->
+      <div id="vr-pane-collections" style="display:none;">
+        <div class="table-wrap" style="padding:24px; margin-bottom:24px;">
+          <h3 class="card-header" style="margin-top:0;">Outstanding — VAT charged but not yet collected</h3>
+          <div id="vr-out-output"></div>
+        </div>
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap; margin-bottom:14px;">
+            <h3 class="card-header" style="margin:0;">Collected</h3>
+            <button class="btn btn-outline" onclick="vrOpenCollection(null, null)">Add Collection</button>
+          </div>
+          <div id="vr-coll-output"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── TAB: PARTY LEDGER ── -->
     <div id="tab-partyLedger-panel" class="tab-panel">
       <div class="page-header">
@@ -3620,6 +3712,136 @@ function cropLoginLogoIcon(img) {
 
 <!-- IMPORT MODAL -->
 <!-- SERVICE MEMO — CREATE / EDIT DRAWER -->
+<!-- ── VAT REGISTER: purchase bill drawer ── -->
+<div class="modal-overlay drawer-right" id="vr-p-drawer">
+  <div class="modal drawer-panel" style="width:560px;">
+    <div class="modal-header">
+      <h3 id="vr-p-drawer-title">Add Purchase Bill</h3>
+      <button class="modal-close" onclick="vrClosePurchase()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="vr-p-drawer-status"></div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group">
+          <label>Bill Date (English)</label>
+          <input type="date" id="vr-p-date" onchange="vrRenderBillPeriodHint()" />
+        </div>
+        <div class="form-group">
+          <label>Bill No.</label>
+          <input type="text" id="vr-p-billno" placeholder="e.g. 1042" />
+        </div>
+        <div class="form-group full" style="margin-top:-6px;">
+          <div id="vr-p-period-hint" style="font-size:var(--fs-xs);"></div>
+        </div>
+        <div class="form-group">
+          <label>Party Name</label>
+          <input type="text" id="vr-p-party" list="vr-p-parties" placeholder="Supplier name" autocomplete="off" />
+          <datalist id="vr-p-parties"></datalist>
+        </div>
+        <div class="form-group">
+          <label>PAN</label>
+          <input type="text" id="vr-p-pan" placeholder="9-digit PAN" />
+        </div>
+        <div class="form-group">
+          <label>Tax Free</label>
+          <input type="number" id="vr-p-taxfree" step="0.01" placeholder="0.00" oninput="vrRenderPurchaseTotal()" />
+        </div>
+        <div class="form-group">
+          <label>Taxable Amount</label>
+          <input type="number" id="vr-p-taxable" step="0.01" placeholder="0.00" oninput="vrOnTaxableInput()" />
+        </div>
+        <div class="form-group">
+          <label>VAT</label>
+          <input type="number" id="vr-p-vat" step="0.01" placeholder="0.00" oninput="vrOnVatInput()" />
+        </div>
+        <div class="form-group">
+          <label>Total Amount</label>
+          <div id="vr-p-total" style="font-weight:700; font-size:var(--fs-lg); color:var(--brand-navy); font-variant-numeric:tabular-nums; padding-top:8px;">0.00</div>
+        </div>
+        <div class="form-group">
+          <label>Nature of Purchase</label>
+          <select id="vr-p-nature" onchange="vrOnNatureChange()">
+            <option value="expenses">Expenses</option>
+            <option value="assets">Assets</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label id="vr-p-head-label">Head of Expenses</label>
+          <input type="text" id="vr-p-head" list="vr-p-heads" placeholder="Pick one or type a new head" autocomplete="off" />
+          <datalist id="vr-p-heads"></datalist>
+          <select id="vr-p-head-select" style="display:none;"></select>
+        </div>
+        <div class="form-group full">
+          <label>Remarks</label>
+          <input type="text" id="vr-p-remarks" placeholder="Optional" />
+        </div>
+      </div>
+      <div class="action-row" style="justify-content:space-between;">
+        <button class="btn btn-danger" id="vr-p-delete-btn" style="display:none;" onclick="vrDeletePurchase(vrPurchases.find(p => p.id === vrEditingPurchaseId))">Delete</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline" onclick="vrClosePurchase()">Cancel</button>
+          <button class="btn btn-primary" onclick="vrSavePurchase(this)">Save Bill</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── VAT REGISTER: VAT collection drawer ── -->
+<div class="modal-overlay drawer-right" id="vr-c-drawer">
+  <div class="modal drawer-panel" style="width:520px;">
+    <div class="modal-header">
+      <h3 id="vr-c-drawer-title">Record VAT Collection</h3>
+      <button class="modal-close" onclick="vrCloseCollection()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="vr-c-drawer-status"></div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group full">
+          <label>Name of Client</label>
+          <input type="text" id="vr-c-client" placeholder="Client name" />
+        </div>
+        <div class="form-group">
+          <label>PAN</label>
+          <input type="text" id="vr-c-pan" placeholder="Client PAN" />
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" id="vr-c-amount" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label>Date of Payment</label>
+          <input type="date" id="vr-c-date" />
+        </div>
+        <div class="form-group">
+          <label>Voucher Name</label>
+          <input type="text" id="vr-c-voucher" placeholder="e.g. VCH-2083-114" />
+        </div>
+        <div class="form-group">
+          <label>Name of Bank</label>
+          <input type="text" id="vr-c-bank" list="vr-c-banks" placeholder="Pick one or type a new bank" autocomplete="off" />
+          <datalist id="vr-c-banks"></datalist>
+        </div>
+        <div class="form-group">
+          <label>Nature of Work</label>
+          <input type="text" id="vr-c-nature" placeholder="From the memo" />
+        </div>
+        <div class="form-group full">
+          <label>Remarks</label>
+          <input type="text" id="vr-c-remarks" placeholder="Optional" />
+        </div>
+      </div>
+      <div class="action-row" style="justify-content:space-between;">
+        <button class="btn btn-danger" id="vr-c-delete-btn" style="display:none;" onclick="vrDeleteCollection(vrCollections.find(c => c.id === vrEditingCollectionId))">Delete</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline" onclick="vrCloseCollection()">Cancel</button>
+          <button class="btn btn-primary" onclick="vrSaveCollection(this)">Save Collection</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay drawer-right" id="sm-memo-drawer">
   <div class="modal drawer-panel" style="width:640px;">
     <div class="modal-header">
@@ -4450,14 +4672,14 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608212200"></script>
+<script defer src="js/config.js?v=202608222000"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
 <script defer src="js/core/libLoader.js?v=202608212300"></script>
 <script defer src="js/core/keyboard.js?v=202608212500"></script>
 <script defer src="js/core/commandPalette.js?v=202608212500"></script>
-<script defer src="js/core/nepaliLocale.js?v=202608212200"></script>
+<script defer src="js/core/nepaliLocale.js?v=202608222000"></script>
 <script defer src="js/core/documentEngine.js?v=202608212300"></script>
 <script defer src="js/core/searchEngine.js?v=202608212500"></script>
 <script defer src="js/core/tableEngine.js?v=202608022300"></script>
@@ -4471,13 +4693,14 @@ function cropLoginLogoIcon(img) {
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
 <script defer src="js/core/orgIdentity.js?v=202608201030"></script>
-<script defer src="js/tabs.js?v=202608221930"></script>
+<script defer src="js/tabs.js?v=202608222000"></script>
 <script defer src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
 <script defer src="js/registrarCompanies.js?v=202608201200"></script>
 <script defer src="js/clients.js?v=202608212500"></script>
-<script defer src="js/serviceMemo.js?v=202608212500"></script>
+<script defer src="js/serviceMemo.js?v=202608222000"></script>
+<script defer src="js/vatRegister.js?v=202608222000"></script>
 <script defer src="js/report.js?v=202608212300"></script>
 <script defer src="js/notesToAccounts.js?v=202608212300"></script>
 <script defer src="js/depreciation.js?v=202608212300"></script>

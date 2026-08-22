@@ -245,8 +245,22 @@ window.NepaliLocale = (function () {
     return m ? parseInt(m[1], 10) : null;
   }
 
+  // Last day of a B.S. month — 29, 30, 31 or 32 depending on the year.
+  // The calendar table is the only thing that knows, which is why this lives
+  // here rather than in the module that wanted it: VAT Register prints its
+  // trimester periods as date spans ("2083.04.01 – 2083.07.30") and a
+  // hardcoded 30 is wrong for exactly the months that make a VAT period
+  // misstate itself. Note it is used for LABELS only there — a bill is
+  // bucketed into a period by its month number, never by day arithmetic, so
+  // a year outside the table degrades to a missing label, not a lost bill.
+  // Returns null outside 2080–2090 (extend BS_MONTH_LENGTHS before 2090).
+  function bsMonthEnd(year, month) {
+    const t = BS_MONTH_LENGTHS[year];
+    return (t && month >= 1 && month <= 12) ? t[month - 1] : null;
+  }
+
   return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
-           bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy,
+           bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy, bsMonthEnd,
            bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, todayISO, adToBs, bsToStr, fyStartYear,
            amountToWords, bsWeekday };
 })();
