@@ -110,7 +110,7 @@ async function smRefresh() {
   try {
     smMemos = await DataCache.get(window.LEDGER_KEYS.memosSm, () => sbFetchAll(() => window.sb.from('service_memos')
       .select('*, clients(name, email, pan, address)').order('created_at', { ascending: false })));
-    await Promise.all([smLoadArfVerified(), smLoadFeeSkips()]);
+    await Promise.all([smLoadArfVerified(), smLoadProjections(), smLoadFeeSkips()]);
     smRenderRecent();
     smRenderTable();
     smRenderPending();
@@ -227,13 +227,47 @@ async function smLoadFeeSkips() {
   }
 }
 
+// Saved Projection Reports are the second source for the Pending Memos list
+// (2026-08-15, restored 2026-08-23 after a same-day removal turned out to be
+// a mistake — see CLAUDE.md §15) — a saved report is by itself "billable
+// work done", the same idea as a verified ARF track. Updating an existing
+// report (Projection's own Updation mode) writes to the SAME
+// projection_reports row, so deriving this list straight from the table —
+// rather than storing anything about save events — is what keeps a re-run
+// from ever appearing twice.
+let smProjectionRows = [];
+
+async function smLoadProjections() {
+  try {
+    smProjectionRows = await sbFetchAll(() => window.sb.from('projection_reports')
+      .select('id, client_id, company_name, pan, fiscal_year_base, years, performed_by')
+      .order('fiscal_year_base', { ascending: false }));
+  } catch (e) {
+    smProjectionRows = [];
+  }
+}
+
 // ARF's slash short-year format ('2082/83') -> Service Memo's own dash
 // format ('2082-83'). Same digits, different separator only.
 function smFyFromArf(slash) { return String(slash || '').replace('/', '-'); }
 
+// PROJECTION_MEMO_CAT/SUB — which SERVICE_MEMO_TASKS slot a projection-report
+// fee lands in. User decision 2026-08-15: Bank Loan Related / Provisional/
+// Projected already exists in the picklist and matches what this work is for.
+const PROJECTION_MEMO_CAT = 'Bank Loan Related';
+const PROJECTION_MEMO_SUB = 'Provisional/Projected';
+
 function smHasAuditMemo(clientId, fyStart) {
   return smMemos.some(m => m.nature_category === 'Audit' && m.nature_subcategory === 'Statutory Audit' &&
     m.client_id === clientId && NepaliLocale.fyStartYear(m.fiscal_year) === fyStart);
+}
+
+function smHasProjectionMemo(clientId, clientNameLower, fyStart) {
+  return smMemos.some(m => {
+    if (m.nature_category !== PROJECTION_MEMO_CAT || m.nature_subcategory !== PROJECTION_MEMO_SUB) return false;
+    if (NepaliLocale.fyStartYear(m.fiscal_year) !== fyStart) return false;
+    return clientId != null ? m.client_id === clientId : String(m.client_name || '').trim().toLowerCase() === clientNameLower;
+  });
 }
 
 // A dismissed reminder (§ smFeeSkips above) never comes back on its own —
@@ -245,12 +279,11 @@ function smIsFeeSkipped(g, fyStart) {
     (g.clientId != null ? s.client_id === g.clientId : String(s.client_name || '').trim().toLowerCase() === nameLower));
 }
 
-// The Pending Memos list has exactly ONE source: verified Audit Report
-// Finalization tracks (2026-08-22, user decision reversing the 2026-08-15
-// addition of Projection Reports as a second source — see CLAUDE.md §15).
-// The firm/auditor on a pending row is therefore also single-sourced: it is
-// ARF's own `auditor` column, never re-typed here — see smFirmKeyForAuditor()
-// and smOpenCreateFromPending() below.
+// Both fee sources — verified ARF tracks and saved Projection Reports — feed
+// one list, tagged by `kind` so the table and the prefill can tell them apart.
+// Only the 'audit' (ARF) side carries a firm/auditor concept — see
+// smFirmKeyForAuditor() and smOpenCreateFromPending() below — a projection
+// row has no auditor field and its memo's firm stays freely editable.
 function smFeeDueRows() {
   const groups = new Map();
   smArfRows.forEach(r => {
@@ -272,11 +305,28 @@ function smFeeDueRows() {
     if (!g.auditor && r.auditor) g.auditor = r.auditor;
   });
 
+  smProjectionRows.forEach(r => {
+    const fy = r.fiscal_year_base;
+    if (!fy) return;
+    // A typed-only projection (no directory client) is grouped by its trimmed,
+    // lower-cased company name instead — the same fallback smOpenCreateFromPending
+    // already uses for the ARF side's missing-from-directory case.
+    const nameLower = String(r.company_name || '').trim().toLowerCase();
+    const key = 'projection::' + (r.client_id != null ? r.client_id : 'name:' + nameLower) + '::' + fy;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        kind: 'projection', clientId: r.client_id, clientName: r.company_name, clientPan: r.pan || '',
+        fiscalYear: fy, years: r.years, performedBy: r.performed_by || '',
+      });
+    }
+  });
+
   return Array.from(groups.values())
     .filter(g => {
       const fyStart = NepaliLocale.fyStartYear(g.fiscalYear);
       if (smIsFeeSkipped(g, fyStart)) return false;
-      return !smHasAuditMemo(g.clientId, fyStart);
+      if (g.kind === 'audit') return !smHasAuditMemo(g.clientId, fyStart);
+      return !smHasProjectionMemo(g.clientId, String(g.clientName || '').trim().toLowerCase(), fyStart);
     })
     .sort((a, b) => (NepaliLocale.fyStartYear(b.fiscalYear) || 0) - (NepaliLocale.fyStartYear(a.fiscalYear) || 0)
       || String(a.clientName || '').localeCompare(String(b.clientName || '')));
@@ -286,8 +336,8 @@ function smFeeDueRows() {
 // window.SERVICE_MEMO_FIRMS (by name, case/whitespace-insensitive — ARF
 // stores a name string, not a firm_key). Returns null for anything that
 // isn't one of the two real audit firms (a staff name, 'Non-Sign', 'Other',
-// or blank) — smOpenCreateFromPending() blocks memo creation in that case
-// rather than guessing which firm the fee belongs to.
+// or blank) — smOpenCreateFromPending() blocks memo creation in that case,
+// for 'audit' rows only, rather than guessing which firm the fee belongs to.
 function smFirmKeyForAuditor(auditorName) {
   const target = String(auditorName || '').trim().toLowerCase();
   if (!target) return null;
@@ -312,7 +362,7 @@ function smSetView(view) {
   if (view === 'pending' && smPendingTable) setTimeout(() => smPendingTable.redraw(true), 0);
 }
 
-const SM_KIND_LABELS = { audit: 'Statutory Audit' };
+const SM_KIND_LABELS = { audit: 'Statutory Audit', projection: 'Projection Report' };
 
 function smRenderPending() {
   const rows = smFeeDueRows();
@@ -323,7 +373,7 @@ function smRenderPending() {
   if (!wrap) return;
   if (smPendingTable) { smPendingTable.destroy(); smPendingTable = null; }
   if (!rows.length) {
-    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return or Tax Clearance already has a matching fee memo.</div>';
+    wrap.innerHTML = '<div class="log-empty">Nothing pending — every client with a verified IT Return, Tax Clearance or a saved Projection Report already has a matching fee memo.</div>';
     return;
   }
   wrap.innerHTML = '';
@@ -338,11 +388,19 @@ function smRenderPending() {
           return `${escHtml(r.clientName || '—')}<div class="log-sub">PAN ${escHtml(r.clientPan || '—')}</div>`;
         } },
       { title: 'F.Y.', field: 'fiscalYear', width: 90, formatter: c => escHtml(smFyFromArf(c.getValue())) },
+      { title: 'Work', field: 'kind', width: 130, formatter: c => escHtml(SM_KIND_LABELS[c.getValue()] || c.getValue()) },
       { title: 'Detail', field: 'tracks', minWidth: 260, headerSort: false, formatter: c => {
           const r = c.getRow().getData();
-          return (r.tracks || []).map(t => `<span class="log-badge ${SM_ARF_TRACK_BADGES[t] || 'badge-neutral'}">${escHtml(SM_ARF_TRACK_LABELS[t] || t)}</span>`).join(' ');
+          if (r.kind === 'audit') {
+            return (r.tracks || []).map(t => `<span class="log-badge ${SM_ARF_TRACK_BADGES[t] || 'badge-neutral'}">${escHtml(SM_ARF_TRACK_LABELS[t] || t)}</span>`).join(' ');
+          }
+          const fy = smFyFromArf(r.fiscalYear);
+          return escHtml(`${r.years || '?'}-year Projected Financial Statements, based on F.Y. ${fy}`);
         } },
-      { title: 'Auditor (ARF)', field: 'auditor', width: 180, formatter: c => escHtml(c.getValue() || '—') },
+      { title: 'Done By', field: 'auditor', width: 160, formatter: c => {
+          const r = c.getRow().getData();
+          return escHtml((r.kind === 'audit' ? r.auditor : r.performedBy) || '—');
+        } },
       { title: '', field: 'clientId', headerSort: false, width: 180,
         formatter: () => '<div class="client-actions">'
           + '<button class="btn btn-outline btn-sm" data-action="add-fee">Add Fee</button>'
@@ -385,22 +443,32 @@ async function smDismissFeeDue(row) {
 
 // One click from "billable work done, no fee memo yet" to a prefilled memo —
 // client, Nature of Task, fiscal year and a description are already set; the
-// user only has to type the Professional Fee. The firm is resolved from
-// ARF's own `auditor` value and LOCKED on the drawer (2026-08-22, user
-// decision) — it can only be changed by editing the Auditor field back in
-// Audit Report Finalization. If the auditor isn't one of the two real firms
-// (a staff name, 'Non-Sign', 'Other' or blank), there is no firm to lock the
-// memo to, so creation is blocked here rather than guessed at.
+// user only has to type the Professional Fee. Handles both fee sources. On
+// the ARF ('audit') side only, the firm is resolved from ARF's own
+// `auditor` value and LOCKED on the drawer (2026-08-22, user decision) — it
+// can only be changed by editing the Auditor field back in Audit Report
+// Finalization. If the auditor isn't one of the two real firms (a staff
+// name, 'Non-Sign', 'Other' or blank), there is no firm to lock the memo
+// to, so creation is blocked here rather than guessed at. A projection row
+// has no auditor concept at all, so it opens exactly as before — firm
+// fully editable.
 function smOpenCreateFromPending(p) {
+  const client = (window.clientsList || []).find(c => c.id === p.clientId)
+    || { id: p.clientId, name: p.clientName, pan: p.clientPan };
+  const fy = smFyFromArf(p.fiscalYear);
+  if (p.kind === 'projection') {
+    smOpenCreate(null, {
+      client, category: PROJECTION_MEMO_CAT, subcategory: PROJECTION_MEMO_SUB, fiscalYear: fy,
+      description: `Preparation of Projected Financial Statements${p.years ? ` for ${p.years} years` : ''}, based on F.Y. ${fy}.`,
+    });
+    return;
+  }
   const firmKey = smFirmKeyForAuditor(p.auditor);
   if (!firmKey) {
     showStatus(escHtml(`Set the Auditor on this record in Audit Report Finalization to "Shailesh & Associates" or "Dallakoti & Company" before adding the fee — it's currently "${p.auditor || '(not set)'}".`),
       'info', 'sm-pending-status-area');
     return;
   }
-  const client = (window.clientsList || []).find(c => c.id === p.clientId)
-    || { id: p.clientId, name: p.clientName, pan: p.clientPan };
-  const fy = smFyFromArf(p.fiscalYear);
   smOpenCreate(null, {
     client, category: 'Audit', subcategory: 'Statutory Audit', fiscalYear: fy,
     description: `Statutory Audit of the Financial Statements for F.Y. ${fy}.`,
@@ -487,16 +555,18 @@ function smBuildPendingModel(rows) {
   return {
     title: 'Service Memo — Pending Memos',
     subtitleLines: [`Generated ${NepaliLocale.todayISO()}`,
-      'Verified Audit Report Finalization tracks without a matching fee memo yet.'],
+      'Verified Audit Report Finalization tracks and saved Projection Reports without a matching fee memo yet.'],
     landscape: true,
     columns: [
       { label: 'Client', w: 1.8 }, { label: 'PAN', w: 1.0 }, { label: 'F.Y.', w: 0.7 },
-      { label: 'Detail', w: 2.6 }, { label: 'Auditor (ARF)', w: 1.4 },
+      { label: 'Work', w: 1.1 }, { label: 'Detail', w: 2.2 }, { label: 'Done By', w: 1.2 },
     ],
     rows: rows.map(r => ({ cells: [
-      r.clientName, r.clientPan, smFyFromArf(r.fiscalYear),
-      (r.tracks || []).map(t => SM_ARF_TRACK_LABELS[t] || t).join(', '),
-      r.auditor || '—',
+      r.clientName, r.clientPan, smFyFromArf(r.fiscalYear), SM_KIND_LABELS[r.kind] || r.kind,
+      r.kind === 'audit'
+        ? (r.tracks || []).map(t => SM_ARF_TRACK_LABELS[t] || t).join(', ')
+        : `${r.years || '?'}-year Projected Financial Statements, based on F.Y. ${smFyFromArf(r.fiscalYear)}`,
+      (r.kind === 'audit' ? r.auditor : r.performedBy) || '—',
     ] })),
     _filename: 'Service Memo - Pending Memos',
   };
