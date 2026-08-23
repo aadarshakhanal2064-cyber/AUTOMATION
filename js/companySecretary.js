@@ -234,14 +234,13 @@ async function csRenderDocx(data) {
   return DocumentEngine.renderWord(buffer, data);
 }
 
+// Deliberately no required-field gate (2026-08-23, user ask) — generates
+// from whatever is on the form, blank fields printing blank in the template,
+// so staff can pull a document to see its shape before the client file is
+// fully typed up. csBuildData() already falls back every field to '' and
+// every date to null -> '' (csDandaDate), so nothing here can throw.
 async function generateCompanySecretaryDocs() {
-  const val = id => document.getElementById(id).value.trim();
-  if (!val('cs-companyName')) { csStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return; }
-  if (!val('cs-secretaryName')) { csStatus('कम्पनी सचिवको नाम भर्नुहोस् (enter the secretary\'s name).', 'info'); return; }
-  if (!val('cs-meetingDate')) { csStatus('बैठकको मिति भर्नुहोस् (enter the B.S. meeting date).', 'info'); return; }
-
-  const { meeting, data } = csBuildData();
-  if (!meeting) { csStatus('मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
+  const { data } = csBuildData();
 
   try {
     csStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
@@ -318,9 +317,11 @@ function csOpenSaved() {
 // ════════════════════════════════════════════
 //  LIVE PREVIEW
 // ════════════════════════════════════════════
+// Deliberately unconditional (2026-08-23, user ask) — same reasoning as
+// generateCompanySecretaryDocs above. csRefreshPreview's own `!window.docx`
+// guard is what covers "not ready yet".
 function csPreviewReady() {
-  const val = id => document.getElementById(id).value.trim();
-  return !!(val('cs-companyName') && val('cs-secretaryName') && val('cs-meetingDate'));
+  return true;
 }
 
 function csShowPreviewPlaceholder() {
@@ -338,10 +339,7 @@ async function csRefreshPreview(isCurrent) {
   const root = document.getElementById('cs-preview-root');
   if (!placeholder || !root || !window.docx) return;
 
-  if (!csPreviewReady()) { csShowPreviewPlaceholder(); return; }
-
-  const { meeting, data } = csBuildData();
-  if (!meeting) { csShowPreviewPlaceholder(); return; }
+  const { data } = csBuildData();
 
   try {
     const blob = await csRenderDocx(data);
@@ -399,9 +397,7 @@ function csSetView(mode) {
 //  PRINT / SAVE AS PDF
 // ════════════════════════════════════════════
 async function csBuildPrintableDoc() {
-  if (!csPreviewReady()) return null;
-  const { meeting, data } = csBuildData();
-  if (!meeting) return null;
+  const { data } = csBuildData();
   const blob = await csRenderDocx(data);
   return DocumentEngine.buildPrintableHtml(blob, { className: CS_DOCX_CLASS, title: 'Company Secretary Appointment' });
 }

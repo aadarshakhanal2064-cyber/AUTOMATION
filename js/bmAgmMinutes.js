@@ -370,14 +370,13 @@ async function bmRenderDocx(data) {
   return DocumentEngine.renderWord(buffer, data);
 }
 
+// Deliberately generates from whatever is on the form — an incomplete
+// company/dates just prints blank in the template rather than blocking the
+// download, so staff can pull a document to see its shape before the client
+// file is fully typed up. bmBuildData() already falls back every field to
+// '' and every date to null -> '' (bmDandaDate), so nothing here can throw.
 async function generateBmAgmMinutes() {
-  const val = id => document.getElementById(id).value.trim();
-  if (!val('bm-companyName')) { bmStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return; }
-  if (!val('bm-bmDate') || !val('bm-agmDate')) { bmStatus('बैठक र सभाको मिति भर्नुहोस् (enter the B.S. meeting dates).', 'info'); return; }
-
-  const { bm, agm, boardChanged, boardChangeParsed, data } = bmBuildData();
-  if (!bm || !agm) { bmStatus('मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
-  if (boardChanged && !boardChangeParsed) { bmStatus('संचालक परिवर्तन भएको बैठकको मिति भर्नुहोस् (enter the board-change meeting date, or uncheck the box).', 'info'); return; }
+  const { data } = bmBuildData();
 
   try {
     bmStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
@@ -398,9 +397,12 @@ async function generateBmAgmMinutes() {
 //  maintained representation of the document that could drift from the real
 //  Word file — it IS the Word file, just displayed as HTML.
 // ════════════════════════════════════════════
+// Deliberately unconditional (2026-08-23, user ask) — preview and print/
+// download must work from a blank or partial form, not just a complete one,
+// so staff can see the template's shape before every field is typed up.
+// bmRefreshPreview's own `!window.docx` guard is what covers "not ready yet".
 function bmPreviewReady() {
-  const val = id => document.getElementById(id).value.trim();
-  return !!(val('bm-companyName') && val('bm-bmDate') && val('bm-agmDate'));
+  return true;
 }
 
 function bmShowPreviewPlaceholder() {
@@ -426,10 +428,7 @@ async function bmRefreshPreview(isCurrent) {
   const root = document.getElementById('bm-preview-root');
   if (!placeholder || !root || !window.docx) return;
 
-  if (!bmPreviewReady()) { bmShowPreviewPlaceholder(); return; }
-
-  const { bm, agm, data } = bmBuildData();
-  if (!bm || !agm) { bmShowPreviewPlaceholder(); return; }
+  const { data } = bmBuildData();
 
   try {
     const blob = await bmRenderDocx(data);
@@ -695,9 +694,7 @@ function bmOutputName(data) {
 // page-break-after with @page margins at 0 (the docx page margins are
 // already inside each section as padding).
 async function bmBuildPrintableDoc() {
-  if (!bmPreviewReady()) return null;
-  const { bm, agm, data } = bmBuildData();
-  if (!bm || !agm) return null;
+  const { data } = bmBuildData();
   const blob = await bmRenderDocx(data);
   // the title is the filename the browser proposes for "Save as PDF"
   return DocumentEngine.buildPrintableHtml(blob, { className: 'bm-docx', title: bmOutputName(data) });

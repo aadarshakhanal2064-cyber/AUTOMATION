@@ -189,18 +189,14 @@ function acOpenSaved() {
   });
 }
 
-function acValidateBeforeGenerate() {
-  const val = id => document.getElementById(id).value.trim();
-  if (!val('ac-companyName')) { acStatus('कृपया पहिले कम्पनी छान्नुहोस् (select a company first).', 'info'); return null; }
-  if (!val('ac-meetingDate')) { acStatus('बैठकको मिति भर्नुहोस् (enter the meeting date).', 'info'); return null; }
-  const built = acBuildData();
-  if (!built.meeting) { acStatus('बैठकको मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return null; }
-  return built;
-}
-
+// Deliberately no required-field gate (2026-08-23, user ask) — both
+// documents generate from whatever is on the form, blank fields printing
+// blank in the template, so staff can pull a document to see its shape
+// before the client file is fully typed up. acBuildData() already falls
+// back every field to '' and every date to null -> '' (`meeting ? meeting.full
+// : ''`), so nothing here can throw.
 async function generateAuditorChangeResolution() {
-  const built = acValidateBeforeGenerate();
-  if (!built) return;
+  const built = acBuildData();
   try {
     acStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
     const blob = await acRenderResolutionDocx(built.data);
@@ -213,10 +209,7 @@ async function generateAuditorChangeResolution() {
 }
 
 async function generateAuditorChangeLetter() {
-  const built = acValidateBeforeGenerate();
-  if (!built) return;
-  if (!document.getElementById('ac-letterDate').value.trim()) { acStatus('पत्रको मिति भर्नुहोस् (enter the letter date).', 'info'); return; }
-  if (!built.letter) { acStatus('पत्रको मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
+  const built = acBuildData();
   try {
     acStatus('<span class="spinner spinner-navy"></span> कागजात तयार गर्दै (generating)…', 'searching');
     const blob = await acRenderLetterDocx(built.data);
@@ -242,10 +235,10 @@ function acSetPreviewDoc(which) {
   if (acIsPreviewOpen()) acSchedulePreviewRefresh();
 }
 
+// Deliberately unconditional (2026-08-23, user ask) — same reasoning as
+// generateAuditorChangeResolution/Letter above. acRefreshPreview's own
+// `!window.docx` guard is what covers "not ready yet".
 function acPreviewReady() {
-  const val = id => document.getElementById(id).value.trim();
-  if (!val('ac-companyName') || !val('ac-meetingDate')) return false;
-  if (acCurrentPreviewDoc === 'letter' && !val('ac-letterDate')) return false;
   return true;
 }
 
@@ -261,10 +254,7 @@ async function acRefreshPreview(isCurrent) {
   const root = document.getElementById('ac-preview-root');
   if (!placeholder || !root || !window.docx) return;
 
-  if (!acPreviewReady()) { acShowPreviewPlaceholder(); return; }
-
   const built = acBuildData();
-  if (!built.meeting || (acCurrentPreviewDoc === 'letter' && !built.letter)) { acShowPreviewPlaceholder(); return; }
 
   try {
     const blob = acCurrentPreviewDoc === 'letter'
@@ -365,10 +355,7 @@ function acBuildPrintPage(doc) {
 // Letter as page 2 — always exactly two pages, regardless of which document
 // the preview toggle is showing.
 async function acPrintDocument() {
-  const built = acValidateBeforeGenerate();
-  if (!built) return;
-  if (!document.getElementById('ac-letterDate').value.trim()) { acStatus('पत्रको मिति भर्नुहोस् (enter the letter date).', 'info'); return; }
-  if (!built.letter) { acStatus('पत्रको मिति ढाँचा मिलेन — YYYY/MM/DD प्रयोग गर्नुहोस्।', 'error'); return; }
+  const built = acBuildData();
 
   try {
     acStatus('<span class="spinner spinner-navy"></span> प्रिन्टका लागि तयार गर्दै (preparing print)…', 'searching');
