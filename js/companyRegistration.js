@@ -35,8 +35,14 @@ const CR_TEMPLATE_URLS = {
 // CS_DOCX_CLASS in js/companySecretary.js.
 const CR_DOCX_CLASS = 'bm-docx';
 
-// The manually-typed list letters the sources number their objectives with.
-const CR_LETTERS = ['क', 'ख', 'ग', 'घ', 'ङ', 'च', 'छ', 'ज', 'झ', 'ञ', 'ट', 'ठ', 'ड', 'ढ', 'ण', 'त', 'थ', 'द', 'ध', 'न'];
+// The manually-typed list letters the sources number their objectives with —
+// the full Devanagari consonant वर्णमाला (velar/palatal/retroflex/dental/
+// labial/semivowel/sibilant classes, 33 letters), not just the first 20
+// (क..न). A company whose objectives clause ran to 21+ items used to fall
+// off the end of a 20-letter array straight into the '?' fallback below —
+// found live 2026-08-24 when a real filing's list reached द)/ध)/न) and then
+// printed '?)' for what should have been प)/फ)/ब).
+const CR_LETTERS = ['क', 'ख', 'ग', 'घ', 'ङ', 'च', 'छ', 'ज', 'झ', 'ञ', 'ट', 'ठ', 'ड', 'ढ', 'ण', 'त', 'थ', 'द', 'ध', 'न', 'प', 'फ', 'ब', 'भ', 'म', 'य', 'र', 'ल', 'व', 'श', 'ष', 'स', 'ह'];
 
 // Each source states the company's nature of business in its own words;
 // these seed the field per variant and stop the moment the user types.
@@ -244,9 +250,16 @@ function crAddObjectiveRow(text) {
 }
 
 function crRenumberObjectives() {
-  document.querySelectorAll('#cr-objectives .cr-objective-letter').forEach((el, i) => {
+  const rows = document.querySelectorAll('#cr-objectives .cr-objective-letter');
+  rows.forEach((el, i) => {
     el.textContent = (CR_LETTERS[i] || '?') + ')';
   });
+  const warning = document.getElementById('cr-objectives-warning');
+  if (warning) {
+    warning.style.display = rows.length > CR_LETTERS.length
+      ? (warning.textContent = `⚠️ ${rows.length} objectives typed, but only ${CR_LETTERS.length} letters (क..ह) are defined — items after ह) will print as "?)" in the document. Remove this warning by splitting the list.`, 'block')
+      : 'none';
+  }
 }
 
 function crGetObjectives() {
