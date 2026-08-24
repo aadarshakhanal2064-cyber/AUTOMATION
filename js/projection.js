@@ -729,9 +729,6 @@ function pjRenderRatioStrip() {
 // empty box falls back to the base figure in the Share Capital box above.
 const PJ_OVERRIDE_FIELDS = [
   { field: 'sales',             label: 'Income from Sales/Service' },
-  // Goods Purchase typed (0 included) stops it being the balancing figure:
-  // profit falls out instead; typed together with PBT, closing stock balances.
-  { field: 'purchases',         label: 'Goods Purchase' },
   { field: 'pbt',               label: 'Net Profit before tax' },
   { field: 'shareCapital',      label: 'Share Capital' },
   { field: 'cash',              label: 'Cash at Hand & Bank' },
@@ -744,7 +741,7 @@ const PJ_OVERRIDE_FIELDS = [
 function pjRenderOverrides() {
   const ov = (pjResult.asm && pjResult.asm.overrides) || {};
   const auto = (yr, f) => ({
-    sales: yr.pl.sales, purchases: yr.pl.purchases, pbt: yr.pl.pbt, shareCapital: yr.bs.shareCapital,
+    sales: yr.pl.sales, pbt: yr.pl.pbt, shareCapital: yr.bs.shareCapital,
     cash: yr.bs.cash, creditors: yr.bs.creditors, closingStock: yr.pl.closingStock,
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
   })[f];

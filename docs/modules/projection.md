@@ -380,33 +380,19 @@ print/PDF document and the Excel alike.
   them); `suggestReclass`'s synthetic term loan is unnamed on purpose, so it
   lands on the default row.
 
-### Goods Purchase is a per-year override too, and 0 is a valid figure (2026-08-24, user ask)
+### A Goods Purchase override was built and REMOVED the same day (2026-08-24, user decision)
 
-`purchases` joined `PJ_OVERRIDE_FIELDS` (Balancing Figures table). It is
-normally THE balancing figure plugging COGS to the Gross-Profit target, so a
-typed figure inverts the relationship the same way the PBT override does:
+A per-year Goods Purchase override shipped alongside the named-loan rows
+(typed figure held, 0 allowed, profit falling out; typed with PBT, closing
+stock balanced) and was removed hours later at the user's ask. **Purchases
+stays the balancing figure, never typed** — the derive-vs-type question is
+settled the other way here than in the Provisional Statement's see-saw.
+Recoverable from git history (feature commit 41dfca34); don't re-add it
+without a fresh explicit ask.
 
-- **Purchases typed alone → profit falls out** (COGS follows from the typed
-  figure, GP = Sales − COGS, PBT downstream). The ≥5% growth rules, rule-1
-  debt service and the bank tests then *validate* the result and warn —
-  deliberately not relaxed, same as the PBT override.
-- **Purchases AND PBT typed in the same year → Closing Stock balances** (the
-  3.12 identity read backwards once more — the provisional module's third
-  see-saw end). A typed closing stock is superseded in that case, and an
-  impossible pair drives closing stock negative, which is a validation
-  **error** (`stock`), never silently clamped.
-- **The stock levers are frozen in a purchases-pinned year** — the solver's
-  stock-shift and debtor-floor step (a) work by letting purchases re-plug,
-  which a typed figure forbids; shortfalls surface as warnings instead.
-- The Excel purchases row still carries no formula (it is an input row); the
-  derived-GP year simply stops matching the growth formulas, so those cells
-  fall back to plain figures via the existing exact-match rule.
-- An override carries forward the same way Sales does: next year's opening
-  stock is this year's (possibly derived) closing stock.
-
-Verified 2026-08-24: 93-assertion Node run on the engine (ties, exact
-override reproduction incl. 0, see-saw inversion, frozen levers, negative-
-stock error, reproducibility) + a full in-browser pass on the real
-`Avi Agro 2082.083 Provisional.xlsx` — named loans through the real form,
-Excel read back cell-by-cell (split rows, renumbering, every cross-sheet
-formula), overrides typed through the real inputs with all ties exact.
+Verified 2026-08-24 (named-loan rows): 93-assertion Node run on the engine
+(ties, per-loan detail summing to group totals, EMI amortization, name
+round-trip, reproducibility) + a full in-browser pass on the real
+Avi Agro workbook — named loans through the real form, the Excel read back
+cell-by-cell (split rows, renumbering, every cross-sheet formula), all
+ties exact. The removal was re-verified the same way.

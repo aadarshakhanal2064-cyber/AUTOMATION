@@ -376,10 +376,8 @@ function pjxBuildReport() {
       // Opening stock is last year's closing stock (stored negative there).
       { k: 'opening', label: PJX_PL_L.opening, vals: withAud(m.materials.opening, v(x => x.pl.openingStock)), kind: 'item', zeroable: true,
         xf: ({ R, p, yi }) => (yi > 0 && p && R.closing) ? `-${p}${R.closing}` : null },
-      // Purchases is normally the BALANCING figure — it plugs Cost of Sales to land on
-      // the Gross-Profit target. A per-year override in the review panel
-      // can hold it instead (profit then falls out) - either way the row
-      // carries no formula, being the figure the projection is built from.
+      // Purchases is the BALANCING figure — it plugs Cost of Sales to land on
+      // the Gross-Profit target, so the sheet shows it derived, never typed.
       { k: 'purchase', label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), kind: 'item', zeroable: true },
       { k: 'direct', label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), kind: 'item', zeroable: true },
       // Closing stock normally grows 5% on the opening figure; when a rule
