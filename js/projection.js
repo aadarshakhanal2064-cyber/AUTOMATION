@@ -472,7 +472,7 @@ function pjSetLoans(kind, list) {
     pjAddLoanRow(kind);
     const row = wrap.lastElementChild;
     const put = (f, v) => { const el = row.querySelector(`[data-f="${f}"]`); if (el && v) el.value = v; };
-    put('amount', l.amount); put('rate', l.ratePct); put('years', l.years);
+    put('amount', l.amount); put('rate', l.ratePct); put('years', l.years); put('name', l.name);
   });
 }
 
@@ -575,12 +575,18 @@ function pjRenderAdditionsRows() {
     </tr>`).join('');
 }
 
+// Default row labels per loan group — also the name-box placeholder, so a
+// blank name reads as "this row IS the group" (it merges into the group's
+// default balance-sheet line, the pre-naming behaviour).
+const PJ_LOAN_LABELS = { st: 'Short Term Loan /OD/CC', lt: 'Long Term Loan', pwc: 'Permanent Working Capital Loan', hp: 'Hire Purchase (HP) Loan' };
+
 function pjAddLoanRow(kind) {
   const wrap = pjEl('pj-loans-' + kind);
   const row = document.createElement('div');
   row.className = 'pj-loan-row';
   row.style.cssText = 'display:flex; gap:10px; align-items:flex-end; margin-bottom:8px; flex-wrap:wrap;';
   row.innerHTML = `
+    <div class="form-group" style="margin:0;"><label>Loan Name</label><input type="text" data-f="name" placeholder="${PJ_LOAN_LABELS[kind]}" style="width:190px;" /></div>
     <div class="form-group" style="margin:0;"><label>Amount (Rs)</label><input type="number" data-f="amount" min="0" step="10000" style="width:150px;" /></div>
     <div class="form-group" style="margin:0;"><label>Interest Rate %</label><input type="number" data-f="rate" min="0" step="0.25" style="width:110px;" /></div>
     ${kind === 'st' ? '' : '<div class="form-group" style="margin:0;"><label>Remaining Years</label><input type="number" data-f="years" min="1" max="30" step="1" style="width:110px;" /></div>'}
@@ -591,7 +597,8 @@ function pjAddLoanRow(kind) {
 function pjCollectLoans(kind) {
   return Array.from(pjEl('pj-loans-' + kind).querySelectorAll('.pj-loan-row')).map(row => {
     const g = f => parseFloat((row.querySelector(`[data-f="${f}"]`) || {}).value) || 0;
-    return { amount: g('amount'), ratePct: g('rate'), years: g('years') };
+    const name = String((row.querySelector('[data-f="name"]') || {}).value || '').trim();
+    return { name, amount: g('amount'), ratePct: g('rate'), years: g('years') };
   }).filter(l => l.amount > 0);
 }
 
@@ -722,6 +729,9 @@ function pjRenderRatioStrip() {
 // empty box falls back to the base figure in the Share Capital box above.
 const PJ_OVERRIDE_FIELDS = [
   { field: 'sales',             label: 'Income from Sales/Service' },
+  // Goods Purchase typed (0 included) stops it being the balancing figure:
+  // profit falls out instead; typed together with PBT, closing stock balances.
+  { field: 'purchases',         label: 'Goods Purchase' },
   { field: 'pbt',               label: 'Net Profit before tax' },
   { field: 'shareCapital',      label: 'Share Capital' },
   { field: 'cash',              label: 'Cash at Hand & Bank' },
@@ -734,7 +744,7 @@ const PJ_OVERRIDE_FIELDS = [
 function pjRenderOverrides() {
   const ov = (pjResult.asm && pjResult.asm.overrides) || {};
   const auto = (yr, f) => ({
-    sales: yr.pl.sales, pbt: yr.pl.pbt, shareCapital: yr.bs.shareCapital,
+    sales: yr.pl.sales, purchases: yr.pl.purchases, pbt: yr.pl.pbt, shareCapital: yr.bs.shareCapital,
     cash: yr.bs.cash, creditors: yr.bs.creditors, closingStock: yr.pl.closingStock,
     additionalCapital: yr.bs.additionalCapital, dividend: yr.pl.dividend,
   })[f];
@@ -892,8 +902,12 @@ function pjRenderStatement() {
     html += pjRow('Share Capital', v(y => y.bs.shareCapital), { indent: true });
     html += pjRow('Additional Capital', v(y => y.bs.additionalCapital), { indent: true });
     html += pjRow('Reserve & Surplus', v(y => y.bs.reserves), { indent: true });
-    html += pjRow('Long Term Loan', v(y => y.bs.longTermLoan), { indent: true });
-    html += pjRow('Permanent Working Capital', v(y => y.bs.permanentWC), { indent: true });
+    const loanRows = (group, label) => pjxLoanEntries(Y, group, label)
+      .filter(e => e.vals.some(a => Math.round(a) !== 0))
+      .map(e => pjRow(e.label, e.vals, { indent: true })).join('');
+    html += loanRows('lt', 'Long Term Loan');
+    html += loanRows('pwc', 'Permanent Working Capital');
+    html += loanRows('hp', 'Hire Purchase (HP) Loan');
     html += pjRow('Director/Proprietor Lending', v(y => y.bs.directorLending), { indent: true });
     html += pjRow('Total Sources of Funds', v(y => y.bs.totalSources), { bold: true });
     html += pjRow('Uses of Funds:', Y.map(() => ''), { bold: true });
@@ -906,7 +920,7 @@ function pjRenderStatement() {
     html += pjRow('Provision for Tax', v(y => y.bs.provisionTax), { indent: true });
     html += pjRow('Expenses Payable', v(y => y.bs.expPayable), { indent: true });
     html += pjRow('TDS Payable', v(y => y.bs.tdsPayable), { indent: true });
-    html += pjRow('Short Term Loan / OD / CC', v(y => y.bs.shortTermLoan), { indent: true });
+    html += loanRows('st', 'Short Term Loan / OD / CC');
     html += pjRow('Total Current Liabilities', v(y => y.bs.totalCurrentLiabilities), { bold: true });
     html += pjRow('Net Current Assets', v(y => y.bs.netCurrentAssets), { bold: true });
     html += pjRow('Total Uses of Funds', v(y => y.bs.totalUses), { bold: true });

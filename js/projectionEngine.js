@@ -674,16 +674,17 @@ const ProjectionEngine = (() => {
   //   years        1–10
   //   growthY1Pct  sales growth % in year 1 (E)
   //   growthRestPct  sales growth % in later years (F)
-  //   stLoans      [{ amount, ratePct }]           — constant balance (G,H)
-  //   ltLoans      [{ amount, ratePct, years }]    — EMI amortized (I,J,M)
-  //   pwcLoans     [{ amount, ratePct, years }]    — EMI amortized (K,L,M1)
+  //   stLoans      [{ name?, amount, ratePct }]        — constant balance (G,H)
+  //   ltLoans      [{ name?, amount, ratePct, years }] — EMI amortized (I,J,M)
+  //   pwcLoans     [{ name?, amount, ratePct, years }] — EMI amortized (K,L,M1)
   //   additions    { poolKey: amount }  (year 1)   — (N,O)
   //   disposals    { poolKey: amount }  (year 1)   — (N,P)
   //   taxProfile   'corporate' | 'progressive'     — rule 9
   //   seedKey      string for the deterministic figure generator
   //   autoSolve    apply rules 2–5 levers automatically (default true)
-  //   overrides    { [year]: { cash, creditors, closingStock,
-  //                            additionalCapital, dividend } } — review panel
+  //   overrides    { [year]: { sales, purchases, pbt, shareCapital, cash,
+  //                            creditors, closingStock, additionalCapital,
+  //                            dividend } } — review panel
   //
   // Per the master: Sundry Debtors is ALWAYS the balancing figure (rule 8 /
   // rule 10 — Sources must equal Uses), so it is never directly overridable;
@@ -845,13 +846,35 @@ const ProjectionEngine = (() => {
       // deliberately NOT relaxed to accommodate a typed figure — a PBT that
       // breaks the ≥5% growth rule or fails debt service still fails
       // validation, which is the point of showing it.
+      // Goods Purchase is per-year overridable (2026-08-24, user ask). It is
+      // normally THE balancing figure plugging COGS to the GP target, so a
+      // typed figure (0 included) inverts the relationship the way the PBT
+      // override does: purchases typed alone → COGS follows from it and
+      // PROFIT falls out (the ≥5% growth and debt-service rules then validate
+      // the result instead of being solved — deliberately not relaxed);
+      // purchases AND pbt typed → both ends held and CLOSING STOCK becomes
+      // the balance, the provisional module's third see-saw end. Either way
+      // the stock levers are frozen for the year (flags below) — they work by
+      // letting purchases re-plug, which a typed figure forbids.
+      const purchOv = ov.purchases != null ? num(ov.purchases) : null;
+      const directCostY = Math.round(directRatio * sales);
       const gpTarget = ov.pbt != null
         ? Math.round(num(ov.pbt)) + deductions
-        : Math.round(Math.max(
+        : purchOv != null
+          ? sales - (openingStock + purchOv + directCostY
+                     - (ov.closingStock != null ? num(ov.closingStock) : baseClosingStock))
+          : Math.round(Math.max(
             prevGP * LIMITS.profitGrowth,
             gpForTargetNp(prevNP * LIMITS.profitGrowth, deductions, asm.taxProfile),
             debtService > 0 ? gpForTargetNp(debtService * LIMITS.profitGrowth, deductions, asm.taxProfile) : 0,
           ));
+      // With purchases AND PBT both typed the P&L is fully determined, so the
+      // 3.12 identity is read backwards once more and closing stock absorbs
+      // the balance (a typed closing stock would over-determine the sheet and
+      // is superseded; a negative result is a validation error, not clamped).
+      const stockFromPurchase = (purchOv != null && ov.pbt != null)
+        ? openingStock + purchOv + directCostY - (sales - gpTarget)
+        : null;
       const pbt = gpTarget - deductions;
       const tax = Math.round(taxFor(pbt, asm.taxProfile));
       const pat = pbt - tax;
@@ -882,8 +905,8 @@ const ProjectionEngine = (() => {
       let dividend = ov.dividend != null ? num(ov.dividend) : 0;
       let stockShift = 0;
       let cashCut = 0;                               // cash released to raise NCA
-      let dividendApplied = ov.dividend != null, stockApplied = ov.closingStock != null;
-      let stockFloorHit = ov.closingStock != null;   // <30-day step (a) exhausted?
+      let dividendApplied = ov.dividend != null, stockApplied = ov.closingStock != null || purchOv != null;
+      let stockFloorHit = ov.closingStock != null || purchOv != null;   // <30-day step (a) exhausted?
       let cashFloorHit = ov.cash != null;            // cash lever exhausted?
       let capExhausted = false;                      // current assets used up?
       const levers = [];
@@ -892,10 +915,11 @@ const ProjectionEngine = (() => {
 
       let state = null;
       for (let iter = 0; iter < 15; iter++) {
-        const closingStock = ov.closingStock != null ? num(ov.closingStock) : baseClosingStock + stockShift;
+        const closingStock = stockFromPurchase != null ? stockFromPurchase
+          : ov.closingStock != null ? num(ov.closingStock) : baseClosingStock + stockShift;
         const gp = gpTarget;              // bottom-up target; purchases plugs COGS to it
         const cogs = sales - gp;
-        const directCost = Math.round(directRatio * sales);
+        const directCost = directCostY;
         const purchases = cogs - openingStock - directCost + closingStock;
         const retainedClosing = retainedOpening + pat - dividend;
         const provTax = tax;
@@ -1087,6 +1111,16 @@ const ProjectionEngine = (() => {
         totalCurrentLiabilities: state.cl,
         netCurrentAssets: state.ca - state.cl,
         totalUses: state.faNet + state.ca - state.cl,
+        // Per-facility detail (2026-08-24, user ask): each loan keeps the name
+        // typed on its row so the report can print every facility on its own
+        // line. The group totals above are unchanged — these sum back to them
+        // by construction.
+        loanRows: {
+          st:  stLoans.map(l => ({ name: String(l.name || '').trim(), amount: num(l.amount) })),
+          lt:  ltLoans.map((l, i) => ({ name: String(l.name || '').trim(), amount: ltScheds[i][y - 1].closing })),
+          pwc: pwcLoans.map((l, i) => ({ name: String(l.name || '').trim(), amount: pwcScheds[i][y - 1].closing })),
+          hp:  hpLoans.map((l, i) => ({ name: String(l.name || '').trim(), amount: hpScheds[i][y - 1].closing })),
+        },
       };
       const ratios = {
         debtorDays: state.days, currentRatio: state.currentRatio, debtEquity: state.debtEquity,
@@ -1339,6 +1373,7 @@ const ProjectionEngine = (() => {
       if (yr.bs.debtors < 0) push('error', y, 'debtors', `Year ${y}: Sundry Debtors is negative (${fmt(yr.bs.debtors)}) — sources exceed uses; reduce capital/loans or raise stock.`);
       if (yr.pl.purchases < 0) push('error', y, 'purchases', `Year ${y}: Purchases is negative (${fmt(yr.pl.purchases)}) — the profit target is not achievable with these growth assumptions.`);
       if (yr.pl.grossProfit < 0) push('error', y, 'grossprofit', `Year ${y}: Gross profit is negative.`);
+      if (yr.pl.closingStock < -0.5) push('error', y, 'stock', `Year ${y}: Closing stock is negative (${fmt(yr.pl.closingStock)}) — the typed Goods Purchase and Net Profit cannot both hold at this year's sales.`);
       if (yr.ratios.debtorDays > LIMITS.maxDebtorDays + 0.5) {
         push('warn', y, 'days', `Year ${y}: Debtor turnover ${yr.ratios.debtorDays.toFixed(0)} days exceeds ${LIMITS.maxDebtorDays} (rule 5).`);
       }

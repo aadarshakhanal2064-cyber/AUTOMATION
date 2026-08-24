@@ -93,6 +93,31 @@ function pjxTerms(orgType) {
   };
 }
 
+// Groups the engine's per-loan balance-sheet rows for display (2026-08-24):
+// loans sharing a typed name merge into one line, and every unnamed loan
+// merges into a single entry carrying the group's default label - exactly
+// the pre-naming behaviour, so an old saved projection renders unchanged.
+// An empty group yields one zero default entry (pruned downstream unless
+// the audited comparison column puts a figure on it). Also used by the
+// review panel's on-screen Balance Sheet (projection.js), so the preview
+// and the report split the facilities identically.
+function pjxLoanEntries(Y, group, defaultLabel) {
+  const rows0 = (Y[0].bs.loanRows || {})[group] || [];
+  const entries = [], byKey = {};
+  rows0.forEach((r, i) => {
+    const key = (r.name || '').toLowerCase();
+    let e = byKey[key];
+    if (!e) { e = { name: r.name || '', idxs: [] }; byKey[key] = e; entries.push(e); }
+    e.idxs.push(i);
+  });
+  if (!entries.length) entries.push({ name: '', idxs: [] });
+  return entries.map(e => ({
+    name: e.name,
+    label: e.name || defaultLabel,
+    vals: Y.map(yr => e.idxs.reduce((t, i) => t + ((((yr.bs.loanRows || {})[group] || [])[i] || {}).amount || 0), 0)),
+  }));
+}
+
 function pjxCol(i) {           // 1 → A, 2 → B …
   let s = '';
   while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - 1 - m) / 26; }
@@ -216,6 +241,37 @@ function pjxBuildReport() {
   const audCL = m.currentLiabilitiesTotal - m.loans.currentReclassified;
   const audNCA = m.currentAssetsTotal - audCL;
 
+  // One row per named facility (2026-08-24, user ask) - a loan typed with a
+  // name prints on its own balance-sheet line; unnamed loans keep the group's
+  // default row. The audited comparison figure cannot be split across typed
+  // names, so it sits on the group's default row - added as an audited-only
+  // line when every loan in the group is named. loanKeys records each
+  // group's row keys so the total's xsum and every cross-sheet reference
+  // (IRD bank loan, NCA working, debt-equity) can sum the split rows.
+  const loanKeys = {};
+  const loanRowsFor = (group, defaultLabel, kind, audVal) => {
+    const pref = (defaultLabel.match(/^(?:\d+|[a-z])\.\s*/) || [''])[0];
+    const entries = pjxLoanEntries(Y, group, defaultLabel);
+    const rows = entries.map((e, i) => ({
+      k: group + 'Ln' + i,
+      label: e.name ? pref + e.name : defaultLabel,
+      vals: withAud(e.name ? null : audVal, e.vals),
+      kind, zeroable: true,
+    }));
+    if (incAud && audVal && !entries.some(e => !e.name)) {
+      rows.push({ k: group + 'LnAud', label: defaultLabel,
+                  vals: withAud(audVal, Y.map(() => null)), kind, zeroable: true });
+    }
+    loanKeys[group] = rows.map(r => r.k);
+    return rows;
+  };
+  // Sum of a group's Balance-Sheet cells - a group may now span several
+  // rows; pruned rows drop out of the reference and the value together.
+  const XLoan = (X, group) => {
+    const refs = (loanKeys[group] || []).map(k => X('BS', k)).filter(Boolean);
+    return refs.length ? refs.join('+') : null;
+  };
+
   const sections = [];
 
   // ── Balance Sheet ──
@@ -233,14 +289,14 @@ function pjxBuildReport() {
       // firm's bank needs to see term, permanent WC, hire purchase and the
       // short-term facility separately. (Only their INTEREST is combined, on
       // the P&L, where term/PWC/HP share one row.)
-      { k: 'lt', label: PJX_BS_L.lt, vals: withAud(audLT, v(x => x.bs.longTermLoan)), kind: 'plain', zeroable: true },
-      { k: 'pwc', label: PJX_BS_L.pwc, vals: withAud(m.loans.permanentWC, v(x => x.bs.permanentWC)), kind: 'plain', zeroable: true },
-      { k: 'hp', label: PJX_BS_L.hp, vals: withAud(m.loans.hirePurchase, v(x => x.bs.hirePurchase)), kind: 'plain', zeroable: true },
+      ...loanRowsFor('lt', PJX_BS_L.lt, 'plain', audLT),
+      ...loanRowsFor('pwc', PJX_BS_L.pwc, 'plain', m.loans.permanentWC),
+      ...loanRowsFor('hp', PJX_BS_L.hp, 'plain', m.loans.hirePurchase),
       { k: 'lend', label: T.lendRow, vals: withAud(m.loans.directorLoan, v(x => x.bs.directorLending)), kind: 'plain', zeroable: true },
       { k: 'totalSrc', label: PJX_BS_L.totalSrc, kind: 'grand',
         vals: withAud(m.shareCapital + m.reserves + audLT + m.loans.permanentWC + m.loans.hirePurchase + m.loans.directorLoan,
                       v(x => x.bs.totalSources)),
-        xsum: ['cap', 'addl', 'reserve', 'lt', 'pwc', 'hp', 'lend'] },
+        xsum: ['cap', 'addl', 'reserve', ...loanKeys.lt, ...loanKeys.pwc, ...loanKeys.hp, 'lend'] },
       { k: 'usesLabel', label: PJX_BS_L.usesLabel, vals: [], kind: 'sec' },
       { k: 'faLabel', label: PJX_BS_L.faLabel, vals: [], kind: 'sec' },
       // Both fetched from the Depreciation schedule's total row for that year.
@@ -296,9 +352,9 @@ function pjxBuildReport() {
       // `overdraft`, not `currentTotal` — the latter still carries the Permanent
       // WC and hire purchase that have moved up into Sources, so using it would
       // show that money twice and stop this block footing to its own total.
-      { k: 'stl', label: PJX_BS_L.stl, vals: withAud(m.loans.overdraft, v(x => x.bs.shortTermLoan)), kind: 'item', zeroable: true },
+      ...loanRowsFor('st', PJX_BS_L.stl, 'item', m.loans.overdraft),
       { k: 'clTotal', label: PJX_BS_L.clTotal, vals: withAud(audCL, v(x => x.bs.totalCurrentLiabilities)), kind: 'tot',
-        xsum: ['creditors', 'provTax', 'expPay', 'tds', 'stl'] },
+        xsum: ['creditors', 'provTax', 'expPay', 'tds', ...loanKeys.st] },
       { k: 'nca', label: PJX_BS_L.nca, vals: withAud(audNCA, v(x => x.bs.netCurrentAssets)), kind: 'tot',
         xexpr: (R, c) => `${c}${R.caTotal}-${c}${R.clTotal}` },
       { k: 'totalUses', label: PJX_BS_L.totalUses, vals: withAud(m.ppeTotal + audNCA, v(x => x.bs.totalUses)), kind: 'grand',
@@ -320,8 +376,10 @@ function pjxBuildReport() {
       // Opening stock is last year's closing stock (stored negative there).
       { k: 'opening', label: PJX_PL_L.opening, vals: withAud(m.materials.opening, v(x => x.pl.openingStock)), kind: 'item', zeroable: true,
         xf: ({ R, p, yi }) => (yi > 0 && p && R.closing) ? `-${p}${R.closing}` : null },
-      // Purchases is the BALANCING figure — it plugs Cost of Sales to land on
-      // the Gross-Profit target, so the sheet shows it derived, never typed.
+      // Purchases is normally the BALANCING figure — it plugs Cost of Sales to land on
+      // the Gross-Profit target. A per-year override in the review panel
+      // can hold it instead (profit then falls out) - either way the row
+      // carries no formula, being the figure the projection is built from.
       { k: 'purchase', label: PJX_PL_L.purchase, vals: withAud(m.materials.purchases, v(x => x.pl.purchases)), kind: 'item', zeroable: true },
       { k: 'direct', label: PJX_PL_L.direct, vals: withAud(m.materials.directCost, v(x => x.pl.directCost)), kind: 'item', zeroable: true },
       // Closing stock normally grows 5% on the opening figure; when a rule
@@ -356,9 +414,9 @@ function pjxBuildReport() {
           const st = asm.stLoans || [];
           if (yi < 0 || st.length !== 1) return null;
           const rate = num0(st[0].ratePct) / 100, bal = num0(st[0].amount);
-          const t = X('BS', 'stl');
+          const t = XLoan(X, 'st');
           if (!t || !(rate > 0) || Math.abs(bal * rate - Y[yi].pl.interestST) > 0.5) return null;
-          return `${t}*${Math.round(rate * 1e6) / 1e6}`;
+          return `(${t})*${Math.round(rate * 1e6) / 1e6}`;
         } },
       { k: 'intLT', label: PJX_PL_L.intLT, vals: withAud(m.financeCostLT, v(x => x.pl.interestLT)), kind: 'plain', zeroable: true },
       // Depreciation is fetched from the Depreciation schedule's total row.
@@ -536,8 +594,7 @@ function pjxBuildReport() {
             // Every facility the company owes a bank: term, permanent working
             // capital, hire purchase and the short-term OD/CC. Director lending
             // is deliberately absent — related-party money, not a bank.
-            bankLoan: () => { const l = X('BS', 'lt'), p = X('BS', 'pwc'), h = X('BS', 'hp'), s = X('BS', 'stl');
-              return [l, p, h, s].filter(Boolean).join('+') || null; },
+            bankLoan: () => ['lt', 'pwc', 'hp', 'st'].map(g => XLoan(X, g)).filter(Boolean).join('+') || null,
             currentLiabilities: () => X('BS', 'clTotal'),
             provision: () => X('PL', 'tax'),
             currentAssets: () => X('BS', 'caTotal'),
@@ -565,15 +622,15 @@ function pjxBuildReport() {
         xexpr: (R, c, X) => X('BS', 'debtors') },
       { k: 'nTot', label: 'C = A+B   Total', vals: v(x => x.bs.closingStock + x.bs.debtors), kind: 'tot', xsum: ['nStock', 'nDebt'] },
       { k: 'nCL', label: 'D.  Current Liabilities except Short Term Loan', vals: v(x => x.bs.totalCurrentLiabilities - x.bs.shortTermLoan), kind: 'item',
-        xexpr: (R, c, X) => { const t = X('BS', 'clTotal'), s = X('BS', 'stl'); return t ? (s ? `${t}-${s}` : t) : null; } },
+        xexpr: (R, c, X) => { const t = X('BS', 'clTotal'), s = XLoan(X, 'st'); return t ? (s ? `${t}-(${s})` : t) : null; } },
       { k: 'nNCA', label: 'E = C-D   Net Current Assets', vals: v(x => x.ratios.nca), kind: 'tot',
         xexpr: (R, c) => `${c}${R.nTot}-${c}${R.nCL}` },
       { k: 'n70', label: `F = ${ncaPctLabel}% × E`, vals: v(x => x.ratios.nca70), kind: 'item',
         xexpr: (R, c) => `${c}${R.nNCA}*${ncaFactorX}` },
       { k: 'nSTL', label: 'Short Term Loan /OD/CC', vals: v(x => x.bs.shortTermLoan), kind: 'item',
-        xexpr: (R, c, X) => X('BS', 'stl') },
+        xexpr: (R, c, X) => XLoan(X, 'st') },
       { k: 'nPWC', label: 'Permanent WC', vals: v(x => x.bs.permanentWC), kind: 'item',
-        xexpr: (R, c, X) => X('BS', 'pwc') },
+        xexpr: (R, c, X) => XLoan(X, 'pwc') },
       { k: 'nLoan', label: 'G.  Total Loan', vals: v(x => x.bs.shortTermLoan + x.bs.permanentWC), kind: 'tot', xsum: ['nSTL', 'nPWC'] },
       { k: 'nDiff', label: `H = F-G   Difference (always positive, minimum ${pjxAmt(L.minNcaHeadroom)})`, kind: 'grand',
         vals: v(x => ({ t: null, n: x.ratios.ncaHeadroom, tone: tone(x.ratios.ncaHeadroom >= L.minNcaHeadroom) })),
@@ -591,7 +648,7 @@ function pjxBuildReport() {
       { k: 'rDE', label: `Debt-Equity Ratio — always less than ${L.maxDebtEquity}`, kind: 'plain',
         vals: v(x => ({ t: x.ratios.debtEquity.toFixed(2), n: x.ratios.debtEquity, fmt: '0.00', tone: tone(x.ratios.debtEquity <= L.maxDebtEquity) })),
         xf: ({ X, yi }) => { if (yi < 0) return null;
-          const debt = ['lt', 'pwc', 'stl'].map(k => X('BS', k)).filter(Boolean);
+          const debt = ['lt', 'pwc', 'hp', 'st'].map(g => XLoan(X, g)).filter(Boolean);
           const eq = ['cap', 'addl', 'reserve'].map(k => X('BS', k)).filter(Boolean);
           return (debt.length && eq.length) ? `(${debt.join('+')})/(${eq.join('+')})` : null; } },
       // Interest Coverage Ratio — the CA's own projected files carry it

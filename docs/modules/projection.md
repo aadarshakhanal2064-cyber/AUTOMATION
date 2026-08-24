@@ -344,3 +344,69 @@ than a defaulted one (jsonb — no migration).
 
 ---
 
+
+### Named loan rows — every facility prints on its own line (2026-08-24, user ask)
+
+Each loan row in Step 2 (all four groups: Short Term /OD/CC, Long Term,
+Permanent WC, Hire Purchase) now carries an optional **Loan Name** box.
+"Inside Long Term Loan there may be a different loan" — two 1,00,000 term
+loans used to print as one combined 1,70,682 line; a named loan now gets its
+own balance-sheet row with its own declining EMI balance, in the preview, the
+print/PDF document and the Excel alike.
+
+- **Blank names keep the old behaviour exactly**: unnamed loans merge into one
+  row carrying the group's default label, so an old saved projection renders
+  unchanged. Loans typed with the *same* name also merge (case-insensitive).
+- The engine emits `bs.loanRows` — per-loan `{name, amount}` detail per year,
+  summing to the group totals by construction. Group totals
+  (`bs.longTermLoan` etc.), the ratios, NCA working, IRD and cash flow are
+  all untouched: this is presentation detail, not new arithmetic.
+- `pjxLoanEntries()` (projectionExport.js) is the ONE grouping implementation,
+  used by the export model AND the review panel's on-screen Balance Sheet, so
+  the two can't split differently. `loanRowsFor()` builds the report rows
+  (`ltLn0…`, `stLn0…`); ordinal prefixes come from the group default's own
+  prefix and `renumber` re-letters after pruning, exactly like every other row.
+- **Excel formulas follow the split**: `loanKeys` records each group's row
+  keys, `XLoan()` sums their cells, and Total Sources / Total CL xsum, the IRD
+  bank-loan link, the NCA working rows and the debt-equity formula all
+  reference the split cells. The debt-equity numerator also gained the HP
+  cell it had been silently missing (the cached value always included it).
+- **The audited comparison figure sits on the group's default row** — a filed
+  statement can't be matched to typed names; when every loan in a group is
+  named, the audited figure gets an audited-only default-labelled row.
+- **Interest is still combined** (term/PWC/HP one row, ST/OD/CC its own) —
+  the 2026-08-11 decision stands; naming loans changes nothing on the P&L.
+- Loan names round-trip through saved assumptions (`pjSetLoans` restores
+  them); `suggestReclass`'s synthetic term loan is unnamed on purpose, so it
+  lands on the default row.
+
+### Goods Purchase is a per-year override too, and 0 is a valid figure (2026-08-24, user ask)
+
+`purchases` joined `PJ_OVERRIDE_FIELDS` (Balancing Figures table). It is
+normally THE balancing figure plugging COGS to the Gross-Profit target, so a
+typed figure inverts the relationship the same way the PBT override does:
+
+- **Purchases typed alone → profit falls out** (COGS follows from the typed
+  figure, GP = Sales − COGS, PBT downstream). The ≥5% growth rules, rule-1
+  debt service and the bank tests then *validate* the result and warn —
+  deliberately not relaxed, same as the PBT override.
+- **Purchases AND PBT typed in the same year → Closing Stock balances** (the
+  3.12 identity read backwards once more — the provisional module's third
+  see-saw end). A typed closing stock is superseded in that case, and an
+  impossible pair drives closing stock negative, which is a validation
+  **error** (`stock`), never silently clamped.
+- **The stock levers are frozen in a purchases-pinned year** — the solver's
+  stock-shift and debtor-floor step (a) work by letting purchases re-plug,
+  which a typed figure forbids; shortfalls surface as warnings instead.
+- The Excel purchases row still carries no formula (it is an input row); the
+  derived-GP year simply stops matching the growth formulas, so those cells
+  fall back to plain figures via the existing exact-match rule.
+- An override carries forward the same way Sales does: next year's opening
+  stock is this year's (possibly derived) closing stock.
+
+Verified 2026-08-24: 93-assertion Node run on the engine (ties, exact
+override reproduction incl. 0, see-saw inversion, frozen levers, negative-
+stock error, reproducibility) + a full in-browser pass on the real
+`Avi Agro 2082.083 Provisional.xlsx` — named loans through the real form,
+Excel read back cell-by-cell (split rows, renumbering, every cross-sheet
+formula), overrides typed through the real inputs with all ties exact.
