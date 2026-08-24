@@ -114,6 +114,19 @@ const GLOBAL_TOKENS = variant === 'multi' ? [
 // runs between the columns become ONE tab against a real stop (installed
 // post-walk), so the right column starts at the same x whatever the left
 // name's length.
+//
+// EVERY row of the block opens with a TAB, never a leading space run or a
+// firstLine indent (2026-08-24, user-reported "both are in same place").
+// Measured in Word, the four rows' right columns were landing at four
+// DIFFERENT x positions — 306.2 / 288.0 / 251.7 / 251.7pt — from two causes
+// that only a measurement separates:
+//   · the sign/thumb rows carried <w:ind w:firstLine="720"/>, and Word
+//     resolves a tab stop on a first-line-indented line at (pos − firstLine),
+//     so their shared 4680 stop fired at 3960 → 251.7pt;
+//   · the heading's own left label ENDS at 4686 twips, a hair past the 4680
+//     stop, so its second tab overshot to the next default stop → 306.2pt.
+// Indenting with a real tab against a shared stop instead makes all four
+// rows one geometry, and PAIR_TABS below leaves the label room to finish.
 const PAIR_ROW = {
   heads: [
     '१.\tसंस्थापकको नाम, थरः–' + TABS(5) + '२.\tसंस्थापकको नाम, थरः–',
@@ -121,11 +134,11 @@ const PAIR_ROW = {
   ],
   signs: [
     ' हस्ताक्षरः' + TABS(8) + 'हस्ताक्षरः',
-    ' हस्ताक्षरः\t{{#hasRight}}हस्ताक्षरः{{/hasRight}}',
+    '\tहस्ताक्षरः\t{{#hasRight}}हस्ताक्षरः{{/hasRight}}',
   ],
   thumbs: [
     'दा.' + SP(10) + 'बा.' + TABS(7) + 'दा.' + SP(10) + 'बा.',
-    'दा.' + SP(10) + 'बा.\t{{#hasRight}}दा.' + SP(10) + 'बा.{{/hasRight}}',
+    '\tदा.' + SP(10) + 'बा.\t{{#hasRight}}दा.' + SP(10) + 'बा.{{/hasRight}}',
   ],
 };
 
@@ -209,12 +222,12 @@ const PARA_TOKENS = variant === 'multi' ? {
   469: [['थान २', 'थान {{founderCount}}']],
 
   474: [PAIR_ROW.heads],
-  475: [[S.pairNamesLine, SP(7) + 'नामः {{nameLeft}}\t{{#hasRight}}नामः {{nameRight}}{{/hasRight}}']],
+  475: [[S.pairNamesLine, '\tनामः {{nameLeft}}\t{{#hasRight}}नामः {{nameRight}}{{/hasRight}}']],
   477: [PAIR_ROW.signs],
   478: [PAIR_ROW.thumbs],
 
   490: [PAIR_ROW.heads],
-  491: [[S.pairNamesLine, SP(7) + 'नामः {{nameLeft}}\t{{#hasRight}}नामः {{nameRight}}{{/hasRight}}']],
+  491: [[S.pairNamesLine, '\tनामः {{nameLeft}}\t{{#hasRight}}नामः {{nameRight}}{{/hasRight}}']],
   493: [PAIR_ROW.signs],
   494: [PAIR_ROW.thumbs],
 
@@ -557,10 +570,38 @@ function injectPPr(s, needle, inject, expect, label) {
 // The letter's date sits against the right margin whatever the date's width.
 out = injectPPr(out, 'मितिः {{letterDateNum}}', '<w:jc w:val="right"/>', 1, 'letter date right-align');
 
+// Removes w:firstLine from the <w:ind> of every paragraph containing
+// `needle`, keeping every other indent attribute (w:right="-810" widens the
+// founder block's column and must survive). Throws unless exactly `expect`
+// paragraphs carried one — see PAIR_ROW: a firstLine indent silently moves
+// the row's tab stops, so a re-typed source that stops carrying it should
+// fail the build rather than ship a block that only LOOKS aligned.
+function stripFirstLine(s, needle, expect, label) {
+  let n = 0;
+  const RE = new RegExp(PARA_RE.source, 'g');
+  const result = s.replace(RE, p => {
+    if (!p.includes(needle) || !/<w:ind [^>]*w:firstLine="[^"]*"/.test(p)) return p;
+    n++;
+    return p.replace(/(<w:ind [^>]*?)\s*w:firstLine="[^"]*"/, '$1');
+  });
+  if (n !== expect) throw new Error(`${label}: matched ${n} paragraph(s), expected ${expect}`);
+  return result;
+}
+
 if (variant === 'multi') {
-  // The founder-pair rows: first stop indents the "१." label, second starts
-  // the right-hand column at mid-page.
-  const PAIR_TABS = '<w:tabs><w:tab w:val="left" w:pos="720"/><w:tab w:val="left" w:pos="4680"/></w:tabs>';
+  // The founder-pair rows, all four sharing ONE geometry (see PAIR_ROW):
+  // stop 1 indents every row's left column, stop 2 opens the right-hand
+  // column, stop 3 carries the right column's own "संस्थापकको नाम" label
+  // past its number. 5040 (3.5") clears the left label's own end at 4686 —
+  // at the old 4680 the heading overshot its stop by six twips and fell to
+  // the next default one, which is half of what made the block ragged.
+  const PAIR_TABS = '<w:tabs><w:tab w:val="left" w:pos="720"/>'
+    + '<w:tab w:val="left" w:pos="5040"/><w:tab w:val="left" w:pos="5760"/></w:tabs>';
+  // The other half: firstLine shifts a stop by its own width, so these two
+  // rows resolved the shared stop 720 twips left of everybody else. Their
+  // indent is now the same leading tab the other two rows use.
+  out = stripFirstLine(out, '{{#hasRight}}हस्ताक्षरः', 2, 'pair sign firstLine');
+  out = stripFirstLine(out, '{{#hasRight}}दा.', 2, 'pair thumb firstLine');
   out = injectPPr(out, '{{numLeft}}', PAIR_TABS, 2, 'pair heading tab stops');
   out = injectPPr(out, 'नामः {{nameLeft}}', PAIR_TABS, 2, 'pair name tab stops');
   out = injectPPr(out, '{{#hasRight}}हस्ताक्षरः', PAIR_TABS, 2, 'pair sign tab stops');
