@@ -109,6 +109,28 @@ window.NepaliLocale = (function () {
   }
   // Inclusive day count from a→b (both {year,month,day}); null if out of range.
   function daysBetweenBs(a, b) { const oa = bsOrdinal(a), ob = bsOrdinal(b); return (oa == null || ob == null) ? null : (ob - oa + 1); }
+
+  // `str` (any accepted B.S. format) plus `days`, as {year,month,day} — null
+  // if either end falls outside the tabulated years. A B.S. month is 29–32
+  // days and the pattern differs per year, so "+1 day" cannot be done with
+  // arithmetic on the parts: five of the eleven tabulated years have a
+  // 32-day Ashadh, and adding one to 2081.03.32 by incrementing `day` would
+  // invent a date the calendar does not have. Walks the real table instead.
+  function bsAddDays(str, days) {
+    const bs = bsPartsNum(str);
+    const ord = bsOrdinal(bs);
+    if (ord == null) return null;
+    let remaining = ord + days;
+    if (remaining < 0) return null;
+    for (let year = 2080; BS_MONTH_LENGTHS[year]; year++) {
+      for (let month = 1; month <= 12; month++) {
+        const len = BS_MONTH_LENGTHS[year][month - 1];
+        if (remaining < len) return { year, month, day: remaining + 1 };
+        remaining -= len;
+      }
+    }
+    return null;   // past the table — callers degrade, never guess
+  }
   // Fiscal year runs 1 Shrawan (month 4) startYear → last day Ashadh (month 3) startYear+1.
   function fyStartBs(startYear) { return { year: startYear, month: 4, day: 1 }; }
   function fyEndBs(startYear) { const t = BS_MONTH_LENGTHS[startYear + 1]; return t ? { year: startYear + 1, month: 3, day: t[2] } : null; }
@@ -260,7 +282,7 @@ window.NepaliLocale = (function () {
   }
 
   return { toEnglishDigits, toDevanagari, formatAmount, parseBsDate, fiscalParts, todayBs, bsFiscal, NEPALI_MONTHS,
-           bsPartsNum, bsOrdinal, daysBetweenBs, fyStartBs, fyEndBs, daysInServiceThisFy, bsMonthEnd,
+           bsPartsNum, bsOrdinal, daysBetweenBs, bsAddDays, fyStartBs, fyEndBs, daysInServiceThisFy, bsMonthEnd,
            bsDateOrd, isValidBsDate, bsFyDash, todayBsStr, todayISO, adToBs, bsToStr, fyStartYear,
            amountToWords, bsWeekday };
 })();

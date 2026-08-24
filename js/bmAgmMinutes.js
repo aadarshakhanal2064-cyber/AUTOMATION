@@ -727,6 +727,11 @@ function bmResetForm() {
   // the document that was just cleared off the screen
   bmSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
+  // A cleared form derives again from the next board-meeting date typed.
+  Object.keys(BM_DERIVED_DATE_OFFSETS).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.dataset.auto = '1';
+  });
   document.getElementById('bm-termYears').value = '4';
   document.getElementById('bm-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
   document.getElementById('bm-auditorFirm').value = '';
@@ -757,7 +762,21 @@ function bmResetForm() {
 // wired up separately at every call site. Preview only re-renders while it's
 // the visible view — e.g. a click-to-edit token commit — never while the
 // (hidden) edit form is being typed into.
-function bmOnFormChanged() {
+function bmOnFormChanged(e) {
+  // Date derivation runs BEFORE the side effects below, so the preview,
+  // draft and completion indicator all see the filled dates in the same
+  // pass rather than one keystroke behind.
+  const id = e && e.target && e.target.id;
+  if (id === 'bm-bmDate') bmApplyDerivedDates();
+  // Editing a derived field hands it to the user for good. Any event landing
+  // here IS a user edit: the two places that write these fields
+  // (bmApplyDerivedDates, bmApplyState) assign .value directly, which fires
+  // nothing — so a field only un-owns itself when somebody types in it. A
+  // future programmatic writer must keep to that rule or set data-auto itself.
+  else if (id in BM_DERIVED_DATE_OFFSETS) {
+    const el = document.getElementById(id);
+    if (el) el.dataset.auto = '0';
+  }
   bmSyncBoardChangedAvailability();
   if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
   bmScheduleAutosave();
@@ -769,6 +788,59 @@ const bmZoom = WorkflowEngine.createZoomControl(document.getElementById('bm-prev
 function bmSetZoom(level) { bmZoom.set(level); }
 function bmZoomIn() { bmZoom.zoomIn(); }
 function bmZoomOut() { bmZoom.zoomOut(); }
+
+// ── Dates derived from the board-meeting date (user ask, 2026-08-24) ──
+//
+// The Date of Board Meeting is the ONE date typed by hand; the AGM, the
+// registrar letters and the board-change meeting follow from it at a fixed
+// offset the firm always uses. Each stays a normal editable field — this
+// fills a default, it does not own the value.
+//
+// Offsets in days from the board-meeting date. Kept as one table rather than
+// three literals so the convention is stated in a single place and changing
+// it is a one-line edit rather than a hunt through the fill logic.
+const BM_DERIVED_DATE_OFFSETS = {
+  'bm-agmDate': 1,
+  'bm-letterDate': 1,
+  'bm-boardChangeDate': 0,
+};
+
+// A derived field carries data-auto="1" while it still holds a generated
+// value, and drops to "0" the moment the user edits it themselves — the
+// `data-auto` idiom Company Registration's founder-share split already uses.
+// Without it, re-dating the board meeting would silently overwrite a date
+// somebody had deliberately typed, which on a registrar filing is the same
+// class of bug as the client-switch "always assign" rule (CLAUDE.md §9).
+function bmMarkDerivedDatesManual() {
+  Object.keys(BM_DERIVED_DATE_OFFSETS).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.dataset.auto = '0';
+  });
+}
+
+// Called when the board-meeting date changes. Fills every derived date that
+// is still auto-owned, in the SAME separator the user typed (the field
+// accepts / - and . alike, and echoing their own style back is less
+// surprising than normalising it under them).
+function bmApplyDerivedDates() {
+  const src = document.getElementById('bm-bmDate');
+  if (!src) return;
+  const raw = src.value.trim();
+  const sep = (raw.match(/[\/\-.]/) || ['/'])[0];
+  Object.entries(BM_DERIVED_DATE_OFFSETS).forEach(([id, offset]) => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.auto === '0') return;
+    // An unparseable or out-of-calendar board date clears the derived
+    // fields rather than leaving a stale date from the previous entry
+    // standing under a new one.
+    const parts = raw ? NepaliLocale.bsAddDays(raw, offset) : null;
+    el.value = parts
+      ? [parts.year, String(parts.month).padStart(2, '0'), String(parts.day).padStart(2, '0')].join(sep)
+      : '';
+    el.dataset.auto = '1';
+    bmValidateDateField(id);
+  });
+}
 
 // ── Inline date validation ──
 function bmValidateDateField(fieldId) {
@@ -797,7 +869,17 @@ function bmFormState() {
     values[el.id] = el.type === 'checkbox' ? el.checked : el.value;
   });
   const extraShareholders = Array.from(document.querySelectorAll('#bm-extra-shareholders .bm-extra-shareholder-input')).map(i => i.value);
-  return { values, extraShareholders };
+  // Which derived dates are still auto-owned travels WITH the record. A date
+  // this form generated is not the same fact as one somebody typed, and
+  // without carrying the distinction every restore would have to assume the
+  // cautious answer ("all typed") — which quietly stops the board-meeting
+  // date from driving the others again for the rest of that record's life.
+  const derivedAuto = {};
+  Object.keys(BM_DERIVED_DATE_OFFSETS).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) derivedAuto[id] = el.dataset.auto === '0' ? '0' : '1';
+  });
+  return { values, extraShareholders, derivedAuto };
 }
 
 // Clears BEFORE it can return early, and clears the shareholder rows before
@@ -812,6 +894,18 @@ function bmApplyState(state) {
     if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
   });
   (state.extraShareholders || []).forEach(name => { if (name) bmAddShareholderRow(name); });
+  // Restore which derived dates the user had claimed. A record saved before
+  // this existed carries no flags, and those load as MANUAL on purpose: its
+  // dates were all typed by hand, so re-dating the board meeting must not
+  // rewrite the dates a filing already went out with.
+  if (state.derivedAuto) {
+    Object.entries(state.derivedAuto).forEach(([id, flag]) => {
+      const el = document.getElementById(id);
+      if (el) el.dataset.auto = flag === '0' ? '0' : '1';
+    });
+  } else {
+    bmMarkDerivedDatesManual();
+  }
   bmToggleBoardChangedFields();
   return true;
 }
