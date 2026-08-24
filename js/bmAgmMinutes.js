@@ -802,7 +802,8 @@ function bmZoomOut() { bmZoom.zoomOut(); }
 const BM_DERIVED_DATE_OFFSETS = {
   'bm-agmDate': 1,
   'bm-letterDate': 1,
-  'bm-boardChangeDate': 0,
+  // one day after the AGM/registrar date, i.e. two after the board meeting
+  'bm-boardChangeDate': 2,
 };
 
 // A derived field carries data-auto="1" while it still holds a generated
