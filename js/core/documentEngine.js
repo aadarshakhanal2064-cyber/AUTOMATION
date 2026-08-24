@@ -305,6 +305,29 @@ window.DocumentEngine = (function () {
     return pageCount;
   }
 
+  // Waits for docx-preview's deferred tab-stop pass to write its inline
+  // word-spacing onto every tab span, so a serialized copy of `container`
+  // carries real tab widths instead of bare spaces. See the call site.
+  //
+  // Polls rather than sleeping a fixed 500ms+: the pass is one timer for the
+  // whole document, so the first sized span means every span is sized, and a
+  // document with no tabs at all returns immediately. The timeout is a
+  // backstop — a print that loses its tab widths is far better than one that
+  // never opens, so this resolves rather than throwing.
+  function settleTabStops(container, className, timeoutMs = 2000) {
+    const spans = container.querySelectorAll(`span.${className}-tab-stop`);
+    if (!spans.length) return Promise.resolve();
+    const sized = () => [...spans].some(s => s.style.wordSpacing);
+    if (sized()) return Promise.resolve();
+    return new Promise(resolve => {
+      const started = Date.now();
+      (function poll() {
+        if (sized() || Date.now() - started > timeoutMs) return resolve();
+        setTimeout(poll, 50);
+      })();
+    });
+  }
+
   // Renders `blob` offscreen, fits it to sheets, and returns a standalone
   // HTML document string that prints one template page per sheet — the same
   // pagination the on-screen preview shows, because it is the same code.
@@ -327,6 +350,24 @@ window.DocumentEngine = (function () {
       if (!fit) return null;
       const { pageW, pageH } = fit;
       if (flow) await paginateFlowSections(content, className, blob);
+
+      // Freeze docx-preview's tab stops before serializing (2026-08-24,
+      // user-reported: the founder-pair columns printed bunched together
+      // while the on-screen preview had them right).
+      //
+      // In experimental mode docx-preview emits each real tab as a bare
+      // <span class="…-tab-stop"> </span> and sizes it LATER — renderAsync
+      // ends with refreshTabStops(), a setTimeout(500) that measures each
+      // span's live getBoundingClientRect() and writes the width back as an
+      // inline word-spacing. Serializing at render time therefore captured
+      // every tab as a single space, which is why print/Save-as-PDF bunched
+      // columns the preview (a live DOM, still there when the pass ran)
+      // showed correctly.
+      //
+      // The wait goes AFTER fitting and pagination on purpose: non-flow
+      // documents are scaled here, and the pass has to measure the final
+      // geometry or it freezes widths for the pre-scale layout.
+      await settleTabStops(content, className);
 
       // textContent, not innerHTML — docx-preview injects its CSS as a real
       // nested <style> element, and innerHTML would serialize that tag
