@@ -1,8 +1,8 @@
 // ════════════════════════════════════════════
 //  DOCUMENT STORE
 //  Save / browse / re-open for the HTML document builders — the Audit Report
-//  Builder and Notes to Accounts today, any future builder for the cost of one
-//  value in the `saved_documents.module` CHECK.
+//  Builder, Notes to Accounts and the Audit Engagement Letter today, any future
+//  builder for the cost of one value in the `saved_documents.module` CHECK.
 //
 //  Every builder stores the same two things, which is why this is one engine
 //  and one table rather than a per-module pair of each:

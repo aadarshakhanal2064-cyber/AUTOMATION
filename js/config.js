@@ -689,6 +689,7 @@ window.ACTIVITY_EVENT_LABELS = {
   arf_created: 'Finalization record created', arf_updated: 'Finalization record updated',
   arf_deleted: 'Finalization record deleted', arf_printed: 'Finalization printed',
   audit_report_saved: 'Audit report saved',
+  audit_engagement_saved: 'Engagement letter saved',
   bank_account_created: 'Bank account created', bank_account_updated: 'Bank account updated',
   bank_account_deactivated: 'Bank account deactivated', bank_account_deleted: 'Bank account deleted',
   bank_transfer_created: 'Bank transfer recorded', bank_transfer_updated: 'Bank transfer updated',
@@ -813,6 +814,46 @@ window.REP_ENTITY_PROFILES = {
   npo:             { label:"NPO / Association", salutationTo:"the Board of Members of", governingBodyShort:"board of member", entityNoun:"organization", entityNounCap:"Organization", act:"Association Registration Act, 2034", statusLine:"is a Non-Profit Organization registered in Nepal" },
   cooperative:     { label:"Cooperative", salutationTo:"the Members of the", governingBodyShort:"board of directors", entityNoun:"cooperative", entityNounCap:"Cooperative", act:"Cooperatives Act, 2074", statusLine:"is a Cooperative registered in Nepal" }
 };
+
+// ── Audit Engagement Letter data (js/auditEngagement.js, `ae-` prefix) ──
+//
+// The letter's engagement types. `label` is what the picker shows and what
+// the Subject line prints ("Audit Engagement Letter for the <label> of
+// Financial Statements"); `auditorRole` is how the appointment paragraph and
+// the acknowledgement name the appointment ("as the <auditorRole> of ..."),
+// because "statutory auditor" is wrong on a tax or internal engagement and
+// the source letter only ever had the statutory wording typed in.
+window.AE_ENGAGEMENT_TYPES = {
+  statutory: { label: "Statutory Audit",     auditorRole: "statutory auditor" },
+  tax:       { label: "Tax Audit",           auditorRole: "tax auditor" },
+  internal:  { label: "Internal Audit",      auditorRole: "internal auditor" },
+  special:   { label: "Special Audit",       auditorRole: "special auditor" },
+  interim:   { label: "Interim Audit",       auditorRole: "interim auditor" },
+};
+
+// Who the letter is addressed to, per REP_ENTITY_PROFILES key. The source
+// document types "The Board of Directors", which is right for a company and
+// wrong for every other entity type the firm audits — and the existing
+// profiles can't answer it: `salutationTo` is shaped for the audit report's
+// "To the Shareholders of the <Company>", not for a letter's block address.
+// Keys must stay in step with REP_ENTITY_PROFILES; an unmapped key falls back
+// to "The Management" in aeAddressee() rather than printing undefined.
+window.AE_ENTITY_ADDRESSEE = {
+  private_company: "The Board of Directors",
+  public_company:  "The Board of Directors",
+  proprietorship:  "The Proprietor",
+  partnership:     "The Partners",
+  ngo:             "The Executive Committee",
+  npo:             "The Executive Committee",
+  cooperative:     "The Board of Directors",
+};
+
+// Who signs the client's copy back. Free choice, but the four the firm
+// actually sees; the field is a datalist so an unusual designation can still
+// be typed (the bbPopulateExpenseNames idiom — CLAUDE.md §15).
+window.AE_ACK_SIGNATORIES = [
+  "Authorized Director", "Managing Director", "Chairman", "Proprietor", "Partner",
+];
 
 // ── Notes to Accounts data ──
 // Accounting-standard wording that fills the "Statement of Compliance" (2.1.1)

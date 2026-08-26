@@ -42,6 +42,7 @@ window.CommandPalette = (function () {
     { label: 'Confirmation Letters',       hint: 'Automation Hub',        go: () => openModule('confirmationLetters') },
     { label: 'Generate Report',            hint: 'Automation Hub',        go: () => openModule('report') },
     { label: 'Notes to Accounts',          hint: 'Automation Hub',        go: () => openModule('notesToAccounts') },
+    { label: 'Engagement Letter',          hint: 'Automation Hub',        go: () => openModule('auditEngagement') },
     { label: 'Autobooks',                  hint: 'Automation Hub',        go: () => openModule('salesPurchaseBook') },
     { label: 'Company Profile',            hint: 'Company Registrar',     go: () => { openModule('regd'); switchRegdSub('companyProfile'); } },
     { label: 'Company Registration',       hint: 'Company Registrar',     go: () => { openModule('regd'); switchRegdSub('companyRegistration'); } },

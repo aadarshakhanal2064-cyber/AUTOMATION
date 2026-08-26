@@ -1,7 +1,8 @@
 # Document Builders
 
 > Loaded on demand, not in every session. The always-loaded index is **CLAUDE.md §5**;
-> this file holds the detail for the Audit Report Builder, Notes to Accounts and Confirmation Letters.
+> this file holds the detail for the Audit Report Builder, Notes to Accounts,
+> the Audit Engagement Letter and Confirmation Letters.
 > Moved verbatim out of CLAUDE.md on 2026-07-27 — see `docs/README.md`.
 
 ---
@@ -58,6 +59,76 @@ Bulk-generates "Confirmation of Account Balance & Transaction" letters — one p
 - **Firm identity** (letterhead Name/Address/PAN/Phone + Date — the audit client's own, not S&A/Dallakoti's) auto-fills from the matched `clients` row when the company search resolves to one, editable either way. Firm block + date live in the Word header (constant per run, repeats every page natively).
 - **Template** (`assets/templates/confirmation-letter.docx`) is tokenized from a real firm letter: the per-party body (To/Subject/table/signature) is wrapped in a docxtemplater loop `{{#letters}}...{{/letters}}` with a `{{^last}}`-guarded page break, so **one render function (`clRenderLetters`) serves both outputs** — a combined multi-page `.docx` (all selected letters) and a ZIP of individual `.docx` files (JSZip), one call per party with a single-item array.
 - **Fixed a wording bug present in every real sample** (including the firm's own blank master): the Subject line and the paragraph below it referenced fiscal years one year apart. The template uses one `{{fyLabel}}` token in both places. Also corrected the firm's baked-in "Conformation" → "Confirmation" typo.
+
+### 5.20 Audit Engagement Letter (`js/auditEngagement.js`, `ae-` prefix)
+
+The NSA 210 engagement letter and its client acknowledgement. Automation Hub tab, labelled
+**Engagement Letter** in the menu. Built 2026-08-26 from the firm's own `Audit Engagements.docx`;
+mirrors the Audit Report Builder 1:1 (§5.5) — same Edit/Preview toggle, same
+Saved / Save to database / Save as Word / Save as PDF header row, same `saved_documents`
+persistence through DocumentStore, same two export paths. Its `.rep-sheet` / `.rep-title` /
+`.rep-sec` / `.rname` presentation and `renderRepFirmHeader()` are **shared with report.js, not
+copied** — the letterhead is one implementation (hence the load-order convention: this file
+comes after `js/report.js`).
+
+**What varies is exactly what the source document highlighted in yellow**, and that list is the
+form: client, engagement type, fiscal years, firm + signatory, governing act, fee per year,
+payment window, acknowledgement signatory. Everything else is fixed boilerplate reproduced
+verbatim.
+
+- **The engagement years are a ROW EDITOR, and that one list drives four sections.** The source's
+  fee table is one row per year (five drawn, one filled), §5 lists the years, the Subject line
+  names them and the acknowledgement repeats them — four places a multi-year engagement would
+  otherwise be typed into and could disagree between. One row carries the year *and* its fee;
+  `aeGetYearRows()` is read by the Subject line, §5 Audit Period, the §6 fee table and the
+  acknowledgement. `aeJoinList()` produces the "A, B and C" form so the years read as prose.
+  **The last row is blanked rather than removed** — every year-driven section renders an empty
+  list without one, so the form can never reach that state.
+- **Section numbers run off a counter, not literal text** — the same lesson
+  `ntaRenderNotesSection()` records (§5.6). The optional clause is inserted **before Acceptance**,
+  which stays last because it is the clause the client signs against, and everything below it
+  renumbers itself.
+- **The addressee and the governing act follow the ENTITY TYPE, not the source document.**
+  The source is typed for a private company ("The Board of Directors", "Companies Act, 2063");
+  on a proprietorship both are wrong. The act comes from `REP_ENTITY_PROFILES[].act` — note this
+  is **not** the audit report's `citeSpecificAct` binary (§5.5), which prints "the applicable law"
+  for everything but a private company: an engagement letter's §11 *Applicable Law* is a list of
+  named statutes, so a generic phrase there would say nothing. The addressee comes from
+  `window.AE_ENTITY_ADDRESSEE`, a new map keyed the same way — the existing `salutationTo` is
+  shaped for the report's "To the Shareholders of the <Company>", not a letter's block address.
+  An unmapped key falls back to "The Management" rather than printing `undefined`.
+- **`AE_ENGAGEMENT_TYPES` carries an `auditorRole` beside its `label`** — the Subject line prints
+  the label ("Statutory Audit") while the appointment paragraph and the acknowledgement print the
+  role ("as the statutory auditor of…"). The source only ever had the statutory wording typed, and
+  "appointing us as the statutory auditor" is wrong on a tax or internal engagement.
+- **A fee is TEXT** (§15 — the firm's own comma grouping is worth preserving, and "As mutually
+  agreed" is a real answer), but a bare number is formatted: typing `25000` and printing
+  `NPR 25000` on a fee schedule reads as a draft. **The Total row prints only when every row
+  carries a real figure** — a total that silently skipped an "As mutually agreed" line would
+  understate what the client is signing for — and only when there is more than one year.
+- **`doc_html` is STORED, and it matters more here than in the other two builders.** An engagement
+  letter is countersigned and returned, so "reprint exactly what they signed" has to be literally
+  true, not approximately. The preview is contenteditable, so the form state alone cannot
+  reproduce a hand-edited letter.
+- **`fiscal_year` holds the FIRST engagement year**, in the dash form every other module's column
+  uses. The full list lives in `state`; this column is the picker's sort/search handle, so a
+  joined string no other module's column would match belongs nowhere near it. The **title** does
+  carry the full list.
+- **Two optional blocks and a letterhead switch**: *Print the firm letterhead* (off for
+  pre-printed paper), *Include the client acknowledgement*, and *Include an additional clause*
+  (a free heading + body, rendered through the same `.rep-blank-fill` mechanism the report's
+  Emphasis of Matter uses — `aeExportHtml()` drops it when unfilled, because html-docx-js honours
+  neither `:empty` nor `@media print`).
+- **The acknowledgement and the fee table are `page-break-inside: avoid`** — the acknowledgement is
+  the page the client signs and returns, and a fee schedule split across a page break invites a
+  dispute about which figures were on the page.
+- **Adding the module was one value on the `saved_documents.module` CHECK**
+  (`db/2026-08-26_saved_documents_audit_engagement.sql`), not a table — the standing decision that
+  saved documents are one table with a discriminator (CLAUDE.md §15).
+- **`OrgIdentity.fillReportFirmSelect()` now rewrites BOTH `#rep-firm` and `#ae-firm`** via a
+  `FIRM_SELECT_IDS` list. index.html hardcodes this firm's two names as `<option>`s on each; left
+  unfilled, a second organisation would pick from this firm's names. A new screen with a
+  `REP_FIRMS` picker belongs in that list.
 
 ### 5.19 OCR Extract — REMOVED 2026-08-18
 

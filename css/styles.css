@@ -1297,6 +1297,53 @@ table.nta-table th{ background:#e9eef6; font-weight:700; }
    a heading rather than as another note. */
 .nta-note-title{ font-weight:700; margin-top: var(--rep-space-md); }
 
+/* ── Audit Engagement Letter (js/auditEngagement.js) ──────────────────────
+   The letter reuses the report's .rep-sheet / .rep-title / .rep-sec / .rname
+   presentation wholesale — only the pieces the report has no counterpart for
+   live here: the address block, the fee schedule and the acknowledgement.
+   Colours are literal rather than var() because getAeExportCss() resolves
+   custom properties for the Word path and these must survive it unchanged. */
+.ae-editor-block{ grid-column: 1 / -1; }
+.ae-editor-note{ font-size:12px; color:var(--text-muted); margin:-4px 0 10px; }
+.ae-row{ display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+.ae-row select.ae-y-fy{ flex:0 0 150px; }
+.ae-row input.ae-y-fee{ flex:1; }
+.ae-row .ae-row-rm{ flex:0 0 auto; }
+
+/* The letter's block address — left-aligned and tight, against the sheet's
+   justified body text. */
+.ae-sheet .ae-to{ margin-bottom: var(--rep-space-lg); }
+.ae-sheet .ae-to p{ text-align:left; margin:0 0 2px; }
+.ae-sheet .ae-subject{ text-align:left; margin-bottom: var(--rep-space-lg); }
+
+/* Fee schedule — the source document's two-column table. Same bordered look
+   as .nta-table, with the amount column right-aligned as a money column. */
+table.ae-fee-table{ width:100%; border-collapse:collapse; margin:8px 0 var(--rep-space-md); font-size:12px; }
+table.ae-fee-table th, table.ae-fee-table td{ border:1px solid #000; padding:6px 8px; vertical-align:top; text-align:left; color:#111; }
+table.ae-fee-table th{ background:#e9eef6; font-weight:700; }
+table.ae-fee-table td.ae-fee-amt{ text-align:right; font-variant-numeric: tabular-nums; }
+table.ae-fee-table tr.ae-fee-total td{ font-weight:700; }
+.ae-fee-blank{ color:#555; }
+
+/* Sign-off + acknowledgement. .rname already carries the 44px gap for a wet
+   signature (shared with the report's signature block). */
+.ae-sheet .ae-signoff{ margin-top: var(--rep-space-xl); }
+.ae-sheet .ae-signoff p{ text-align:left; margin:0 0 2px; }
+.ae-ack{ margin-top: var(--rep-space-xl); padding-top: var(--rep-space-lg); border-top:1px solid #000; }
+.ae-ack-title{ margin-bottom: var(--rep-space-md); }
+.ae-ack-sign{ margin-top: var(--rep-space-xl); }
+.ae-ack-sign p{ text-align:left; margin:0 0 6px; }
+/* Space above the client's designation for their wet signature, mirroring
+   .rname on the firm's side. */
+.ae-ack-sign .ae-ack-rule{ margin-top: 44px; font-weight:700; }
+
+/* The acknowledgement is what the client signs and returns — it must not be
+   split across a page break in the PDF or the Word file. */
+@media print{
+  .ae-ack{ page-break-inside: avoid; }
+  table.ae-fee-table{ page-break-inside: avoid; }
+}
+
 @media (max-width: 1100px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .quick-actions-grid { grid-template-columns: repeat(2, 1fr); }

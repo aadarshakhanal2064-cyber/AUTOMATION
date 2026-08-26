@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608212500">
+<link rel="stylesheet" href="css/styles.css?v=202608261400">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -176,6 +176,7 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openModule('confirmationLetters')">Confirmation</button>
         <button class="topbar-dropdown-item" onclick="openModule('report')">Generate Report</button>
         <button class="topbar-dropdown-item" onclick="openModule('notesToAccounts')">Notes to Accounts</button>
+        <button class="topbar-dropdown-item" onclick="openModule('auditEngagement')">Engagement Letter</button>
         <button class="topbar-dropdown-item" onclick="openModule('salesPurchaseBook')">Autobooks</button>
       </div>
     </div>
@@ -971,6 +972,148 @@ function cropLoginLogoIcon(img) {
         <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
         <div id="nta-preview-view" hidden style="background:#e2e8f0; padding:32px; overflow-y:auto; max-height:1000px;">
           <div id="nta-previewRoot"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: AUDIT ENGAGEMENT LETTER ──
+         The fourth HTML document builder, mirroring the Audit Report Builder
+         (tab-report-panel) and Notes to Accounts: the same Edit/Preview
+         toggle, the same Saved / Save to database / Save as Word / Save as
+         PDF header row, and one flat rep-form-grid edit view. Driven by
+         js/auditEngagement.js (ae-* namespace). The fiscal-year + fee rows
+         are a row editor because a letter routinely covers several years —
+         that one list drives the Subject line, §5 Audit Period, the §6 fee
+         table and the acknowledgement. -->
+    <div id="tab-auditEngagement-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Automation Hub</span><span>&rsaquo;</span><span>Engagement Letter</span><span>&rsaquo;</span><span class="current">Audit Engagement Letter</span></div>
+          <h2 class="page-title">Audit Engagement Letter</h2>
+          <p class="page-subtitle">Generate the NSA 210 engagement letter and its client acknowledgement.</p>
+        </div>
+        <div class="page-header-actions">
+          <div class="rep-view-toggle">
+            <button id="ae-tab-edit" class="rep-view-btn active" onclick="aeSetView('edit')">Edit</button>
+            <button id="ae-tab-preview" class="rep-view-btn" onclick="aeSetView('preview')">Preview</button>
+          </div>
+          <button class="btn btn-outline" onclick="aeOpenSaved()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Saved letters
+          </button>
+          <button class="btn btn-outline" onclick="aeSaveToDb()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save to database
+          </button>
+          <button class="btn btn-outline" onclick="saveAeAsWord()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            Save as Word
+          </button>
+          <button class="btn btn-primary" onclick="printAeLetter()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Save as PDF / Print
+          </button>
+        </div>
+      </div>
+      <div id="ae-status"></div>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <!-- EDIT VIEW: full-width form (default) -->
+        <div id="ae-edit-view" style="padding:32px;">
+          <div class="rep-form-grid">
+            <div class="form-group">
+              <label>Auditing Firm</label>
+              <!-- Rewritten at sign-in by OrgIdentity.fillReportFirmSelect() —
+                   these two are this organisation's firms, not every one's. -->
+              <select id="ae-firm">
+                <option value="shailesh">Shailesh &amp; Associates</option>
+                <option value="dallakoti">Dallakoti &amp; Company</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Type of Engagement</label>
+              <select id="ae-engagementType">
+                <option value="statutory">Statutory Audit</option>
+                <option value="tax">Tax Audit</option>
+                <option value="internal">Internal Audit</option>
+                <option value="special">Special Audit</option>
+                <option value="interim">Interim Audit</option>
+              </select>
+            </div>
+            <div class="form-group" style="position:relative;">
+              <label>Client Name</label>
+              <input type="text" id="ae-entityName" placeholder="Start typing to search clients&hellip;" autocomplete="off" />
+              <div class="autocomplete-list" id="ae-autocomplete-list" style="display:none;"></div>
+            </div>
+            <div class="form-group">
+              <label>Entity Type</label>
+              <select id="ae-entityType">
+                <option value="private_company">Private Company</option>
+                <option value="public_company">Public Company</option>
+                <option value="proprietorship">Proprietorship</option>
+                <option value="partnership">Partnership Firm</option>
+                <option value="ngo">NGO</option>
+                <option value="npo">NPO / Association</option>
+                <option value="cooperative">Cooperative</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Address</label>
+              <input type="text" id="ae-entityAddress" placeholder="e.g. Ratnanagar-10, Chitwan, Nepal" />
+            </div>
+            <div class="form-group" style="position:relative;">
+              <label>PAN</label>
+              <input type="text" id="ae-entityPan" placeholder="e.g. 610304639" autocomplete="off" />
+              <div class="autocomplete-list" id="ae-pan-autocomplete-list" style="display:none;"></div>
+            </div>
+            <div class="form-group">
+              <label>Letter Date (B.S.)</label>
+              <input type="text" id="ae-letterDate" placeholder="e.g. 2082/06/04" />
+            </div>
+            <div class="form-group">
+              <label>Fee payable within (days)</label>
+              <input type="number" id="ae-payDays" value="2" min="0" />
+            </div>
+
+            <!-- Fiscal years + fees: one row per engagement year. -->
+            <div class="nta-editor-block ae-editor-block">
+              <div class="nta-editor-head">
+                <h4>Engagement Years &amp; Professional Fees</h4>
+                <button type="button" class="btn btn-outline btn-sm" onclick="aeAddYearRow(); aeForgetSavedId(); aeRefresh();">+ Add year</button>
+              </div>
+              <p class="ae-editor-note">Each row prints in the Audit Period list and the fee schedule. A fee left blank prints as &ldquo;&mdash;&rdquo;; type any wording (e.g. &ldquo;As mutually agreed&rdquo;) and it prints as typed.</p>
+              <div id="ae-year-rows"></div>
+            </div>
+
+            <div class="rep-checkboxes">
+              <label class="checkbox-label">
+                <input type="checkbox" id="ae-toggleLetterhead" checked /> Print the firm letterhead
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="ae-toggleAck" checked /> Include the client acknowledgement
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="ae-toggleExtra" /> Include an additional clause
+              </label>
+            </div>
+
+            <div class="form-group rep-inline-input" id="ae-ack-signatory-wrap">
+              <label>Acknowledgement signed by</label>
+              <input type="text" id="ae-ackSignatory" list="ae-ackSignatory-list" value="Authorized Director" placeholder="e.g. Authorized Director" autocomplete="off" />
+              <datalist id="ae-ackSignatory-list"></datalist>
+            </div>
+
+            <!-- Optional numbered clause — inserted before "Acceptance",
+                 which stays last because it is what the client signs. -->
+            <div class="form-group rep-inline-input" id="ae-extra-input-wrap" hidden>
+              <label>Additional clause</label>
+              <input type="text" id="ae-extraHeading" placeholder="Clause heading, e.g. Timeline of the Audit" />
+              <textarea id="ae-extraText" placeholder="Type the additional terms here&hellip;"></textarea>
+            </div>
+          </div>
+        </div>
+        <!-- PREVIEW VIEW: rendered on demand via the Preview toggle -->
+        <div id="ae-preview-view" hidden style="background:#e2e8f0; padding:32px; overflow-y:auto; max-height:1000px;">
+          <div id="ae-previewRoot"></div>
         </div>
       </div>
     </div>
@@ -4683,13 +4826,13 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608222200"></script>
+<script defer src="js/config.js?v=202608261400"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
 <script defer src="js/core/libLoader.js?v=202608212300"></script>
 <script defer src="js/core/keyboard.js?v=202608212500"></script>
-<script defer src="js/core/commandPalette.js?v=202608212500"></script>
+<script defer src="js/core/commandPalette.js?v=202608261400"></script>
 <script defer src="js/core/nepaliLocale.js?v=202608241700"></script>
 <script defer src="js/core/documentEngine.js?v=202608241600"></script>
 <script defer src="js/core/searchEngine.js?v=202608212500"></script>
@@ -4700,10 +4843,10 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/workbookReader.js?v=202608022300"></script>
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
-<script defer src="js/core/documentStore.js?v=202608171700"></script>
+<script defer src="js/core/documentStore.js?v=202608261400"></script>
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
-<script defer src="js/core/orgIdentity.js?v=202608201030"></script>
+<script defer src="js/core/orgIdentity.js?v=202608261400"></script>
 <script defer src="js/tabs.js?v=202608222000"></script>
 <script defer src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
@@ -4714,6 +4857,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/vatRegister.js?v=202608222300"></script>
 <script defer src="js/report.js?v=202608212300"></script>
 <script defer src="js/notesToAccounts.js?v=202608212300"></script>
+<script defer src="js/auditEngagement.js?v=202608261400"></script>
 <script defer src="js/depreciation.js?v=202608212300"></script>
 <script defer src="js/depreciationSlm.js?v=202608212300"></script>
 <script defer src="js/bmAgmMinutes.js?v=202608241800"></script>

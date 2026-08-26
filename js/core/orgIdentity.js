@@ -125,18 +125,26 @@ const OrgIdentity = (function () {
   }
 
   // index.html hardcodes the two firm names as <option>s on the report
-  // builder's picker. Service Memo's picker is already rebuilt at runtime by
-  // smRenderFirmOptions(), but this one was only ever read, never written, so
-  // it has to be refreshed here or a second organisation would pick from this
-  // firm's names.
+  // builder's picker and on the Audit Engagement Letter's. Service Memo's
+  // picker is already rebuilt at runtime by smRenderFirmOptions(), but these
+  // were only ever read, never written, so they have to be refreshed here or
+  // a second organisation would pick from this firm's names.
+  //
+  // A new screen with a REP_FIRMS picker belongs in this list — that is the
+  // whole difference between a hardcoded pair of options and a live one.
+  const FIRM_SELECT_IDS = ['rep-firm', 'ae-firm'];
+
   function fillReportFirmSelect() {
-    const sel = document.getElementById('rep-firm');
-    if (!sel) return;
-    const keep = sel.value;
-    sel.innerHTML = Object.entries(window.REP_FIRMS)
+    const html = Object.entries(window.REP_FIRMS)
       .map(([k, f]) => `<option value="${escHtml(k)}">${escHtml(f.name)}</option>`)
       .join('');
-    if (keep && window.REP_FIRMS[keep]) sel.value = keep;
+    FIRM_SELECT_IDS.forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const keep = sel.value;
+      sel.innerHTML = html;
+      if (keep && window.REP_FIRMS[keep]) sel.value = keep;
+    });
   }
 
   // Reads the caller's own organisation and its firms. Both tables are
