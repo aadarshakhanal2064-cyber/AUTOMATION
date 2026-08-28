@@ -1156,10 +1156,12 @@ function psSeedLoans() {
     if (/hire|\bhp\b|vehicle|auto/i.test(n)) bucket = 'hp';
     else if (/permanent|pwc/i.test(n)) bucket = 'pwc';
     else if (/current|overdraft|od|cc|hypo/i.test(n) && !/non.?current/i.test(n)) bucket = 'st';
-    psLoans[bucket].push({ name: n || 'Loan', amount: psNum(l.amount) });
+    // `py` is what note 3.8's comparative column prints for the facility; the
+    // amount box starts at the same figure and is edited to this year's.
+    psLoans[bucket].push({ name: n || 'Loan', amount: psNum(l.amount), py: psNum(l.amount) });
   });
   if (!PS_LOAN_KINDS.some(([k]) => psLoans[k].length)) {
-    psLoans.st.push({ name: 'Bank Overdrafts/Hypothecation', amount: 0 });
+    psLoans.st.push({ name: 'Bank Overdrafts/Hypothecation', amount: 0, py: psNum(psPy && psPy.sfp && psPy.sfp.loansC) });
   }
   psRenderLoans();
 }
@@ -1445,10 +1447,16 @@ function psToOut(r) {
       bfLoss: r.coi.bfLoss, taxableProfit: r.coi.taxableProfit,
       tax: r.tax.total, rule: r.tax.rule,
     },
-    priorYear: {
+    // The WHOLE parsePriorYear output travels to the export layer, not just
+    // the two statement summaries: fsxBuildReport fills the comparative
+    // detail of notes 3.3/3.9/3.12–3.15 (and the audited clone's cash flow)
+    // from payableItems / receivableItems / materials / financeItems / socf.
+    // Passing only { sfp, soi } is what left every prior-year note line
+    // printing "–" under a filled total (user report 2026-08-28).
+    priorYear: Object.assign({}, p, {
       sfp: (p.sfp || {}),
       soi: Object.assign({}, p.soi || {}, { incentive: psPyIncentive() }),
-    },
+    }),
     issues: (r.issues || []).concat(psPyIssues),
   };
 }

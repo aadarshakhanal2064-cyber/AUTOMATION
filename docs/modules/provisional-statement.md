@@ -317,6 +317,37 @@ off the gap is stated on the review panel.
 **Prior year:** uploaded from last year's statement workbook (the same reader
 Projection already uses), or carried from a saved Audited Statement.
 
+**The WHOLE `parsePriorYear` output travels to the export layer** (2026-08-28,
+fixing a user-reported defect: every prior-year note line printed "–" under a
+filled total). `psToOut()`/`asToOut()` pass the full parsed object as
+`priorYear`, not just `{ sfp, soi }` — `fsxBuildReport` fills the comparative
+detail of notes 3.3/3.9/3.12–3.15 from `payableItems` / `receivableItems` /
+`materials` / `employeeItems` / `financeItems` (and the audited clone's cash
+flow from `socf`). Three matching rules in `fsxBuildReport`, each earned
+against the reference file:
+
+- **3.9 matches by NORMALISED name, exact before inclusion** — the firm spells
+  the same head differently across years ("TDS on Wages" vs
+  "TDS Payable-Wages"; "payable"/"on" are filler), and raw substring matching
+  silently dropped real figures. Exact-first is what stops
+  "TDS Payable-Audit fee" swallowing "Audit Fee Payable"'s figure. Each
+  prior-year line is claimed ONCE (the engine's spare nil "TDS Payable-Wages"
+  row must not double-count the real one), and a line the current year no
+  longer carries is appended with a nil CY — dropped, the comparative column
+  stops footing to its own total. 3.3 works the same way; its trade line's
+  comparative is the SFP total less the parsed other-receivable lines, which
+  is exactly the figure the prior-year note itself printed.
+- **3.14 matches by KEYWORD, never index** — the prior year's note orders its
+  lines per client, so index pairing put a commission figure on the Term row.
+- **3.12/3.13/3.15 prefer the engine's own per-line `py`** (keyword-matched /
+  alias-merged when the lines were built) over blind index or name pairing.
+
+Two related seeds: `psSeedLoans()`/`asSeedLoans()` carry `py` on each facility
+(what note 3.8's comparative prints), and `parsePriorYear`'s 3.8 fence ends at
+"Total loans and borrowings" rather than the first bare "Total" — the note
+holds a Total after EACH block, so the default fence dropped the whole current
+side (Bank Overdrafts) from `loanItems`.
+
 ---
 
 ## 6. Output

@@ -537,18 +537,64 @@ function fsxBuildReport(out) {
   const nil = (v) => Math.abs(v || 0) < 0.005;
   const skipNil = m.basis === 'provisional';
 
-  const recvAll = bal.receivableLines || [];
+  // ── 3.3's comparative column: the prior-year note's own split ──
+  // The parser keeps only the lines beneath the trade block (advance tax,
+  // VAT, deposits…), so the trade line's comparative is the SFP total less
+  // those — exactly the figure the prior-year note itself printed. A line the
+  // current year no longer carries is appended with a nil CY rather than
+  // dropped, or the comparative column stops footing to its own total.
+  const recvNorm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const pyRecvPool = (py.receivableItems || []).map(p => ({ norm: recvNorm(p.name), name: p.name, amount: p.amount, used: false }));
+  const pyRecvOthers = pyRecvPool.reduce((s, p) => s + (p.amount || 0), 0);
+  const recvAll = (bal.receivableLines || []).map((l, i) => {
+    if (i === 0) return { ...l, pyAmount: (pySfp.receivables || 0) - pyRecvOthers };
+    if (l.key === 'impairment' || /impair/i.test(l.name || '')) return { ...l, pyAmount: 0 };
+    const n = recvNorm(l.name);
+    let hit = pyRecvPool.find(p => !p.used && p.norm && p.norm === n);
+    if (!hit) hit = pyRecvPool.find(p => !p.used && p.norm && n && (p.norm.includes(n) || n.includes(p.norm)));
+    if (!hit) return { ...l, pyAmount: 0 };
+    hit.used = true;
+    return { ...l, pyAmount: hit.amount };
+  });
+  recvAll.push(...pyRecvPool.filter(p => !p.used && !nil(p.amount))
+    .map(p => ({ name: p.name, amount: 0, pyAmount: p.amount })));
   const recvLines = skipNil
-    ? recvAll.filter((l, i) => i === 0 || l.key === 'impairment' || /impair/i.test(l.name || '') || !nil(l.amount))
+    ? recvAll.filter((l, i) => i === 0 || l.key === 'impairment' || /impair/i.test(l.name || '') || !nil(l.amount) || !nil(l.pyAmount))
     : recvAll;
-  const payLines = bal.payableLines || [];
-  const pyPayByName = {};
-  for (const p of (py.payableItems || [])) pyPayByName[String(p.name).toLowerCase()] = p.amount;
-  const pyPay = (name) => {
-    const n = String(name).toLowerCase();
-    for (const k of Object.keys(pyPayByName)) if (k.includes(n) || n.includes(k)) return pyPayByName[k];
-    return 0;
+  // ── 3.9's comparative column, matched by NORMALISED name ──
+  // The firm spells the same head differently across years ("TDS on Wages" vs
+  // "TDS Payable-Wages"), so raw substring matching silently dropped real
+  // figures; "payable"/"on" are filler, not meaning. Exact match wins before
+  // inclusion is tried, or "TDS Payable-Audit fee" would swallow "Audit Fee
+  // Payable"'s figure. Each prior-year line is claimed once — the engine
+  // carries a spare nil "TDS Payable-Wages" row that must not double-count
+  // the real one — and unclaimed prior-year lines are appended with a nil CY:
+  // trading ones with the trading payables, TDS/VAT ones in the duties block.
+  const payNorm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(payables?|on)\b/g, '').replace(/\s+/g, '');
+  const pyPayPool = (py.payableItems || []).map(p => ({ norm: payNorm(p.name), name: p.name, amount: p.amount, used: false }));
+  const pyPayClaim = (name) => {
+    const n = payNorm(name);
+    if (!n) return 0;
+    let hit = pyPayPool.find(p => !p.used && p.norm === n);
+    if (!hit) hit = pyPayPool.find(p => !p.used && p.norm && (p.norm.includes(n) || n.includes(p.norm)));
+    if (!hit) return 0;
+    hit.used = true;
+    return hit.amount;
   };
+  const payLines = (bal.payableLines || []).map(l => ({ ...l, pyAmount: pyPayClaim(l.name) }));
+  {
+    const isDuty = (nm) => /^tds|^vat/i.test(String(nm || '').trim());
+    const before = [], after = [];
+    for (const p of pyPayPool) {
+      if (p.used || nil(p.amount)) continue;
+      (isDuty(p.name) ? after : before).push({ name: p.name, amount: 0, pyAmount: p.amount });
+    }
+    const splitAt = payLines.findIndex(l => /^tds/i.test(l.name || ''));
+    if (splitAt > 0) payLines.splice(splitAt, 0, ...before);
+    else payLines.push(...before);
+    payLines.push(...after);
+  }
   // Prior-year figures for the notes whose comparative column would otherwise
   // be blank. Matched by label against the client's own 3.8 lines rather than
   // splitting the SFP total, which would be inventing a breakdown.
@@ -679,13 +725,14 @@ function fsxBuildReport(out) {
   const recvImpIdx = recvLines.findIndex(l => l.key === 'impairment' || /impair/i.test(l.name || ''));
   const recvSumKeys = [];
   recvLines.forEach((l, i) => {
-    schBsRows.push(R(l.name, [l.amount, i === 0 ? pySfp.receivables : 0], 'item', {
+    schBsRows.push(R(l.name, [l.amount, l.pyAmount || 0], 'item', {
       k: 'recv' + i, balancing: !!l.balancing,
       xf: l.derive ? fsxDeriveXf(l.derive, ANCHORS) : undefined,
     }));
     if (i === recvImpIdx && recvImpIdx > 0) {
       const gross = (recvLines[recvImpIdx - 1] || {}).amount || 0;
-      schBsRows.push(R('Trade receivables-net', [gross - (l.amount || 0), 0], 'tot', {
+      const pyGross = (recvLines[recvImpIdx - 1] || {}).pyAmount || 0;
+      schBsRows.push(R('Trade receivables-net', [gross - (l.amount || 0), pyGross - (l.pyAmount || 0)], 'tot', {
         k: 'recvNet',
         xf: ({ R: r, c }) => `${c}${r['recv' + (recvImpIdx - 1)]}-${c}${r['recv' + recvImpIdx]}`,
       }));
@@ -752,7 +799,7 @@ function fsxBuildReport(out) {
   // survives, the sub-heading goes with them.
   const dutiesStart = payLines.findIndex(l => /^tds/i.test(l.name || ''));
   const payKeep = (skipNil && dutiesStart > 0)
-    ? payLines.filter((l, i) => i < dutiesStart || !nil(l.amount) || !nil(pyPay(l.name)))
+    ? payLines.filter((l, i) => i < dutiesStart || !nil(l.amount) || !nil(l.pyAmount))
     : payLines;
   const payDutiesIdx = payKeep.findIndex(l => /^tds/i.test(l.name || ''));
   payKeep.forEach((l, i) => {
@@ -768,7 +815,7 @@ function fsxBuildReport(out) {
     else if (/tds on salary/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'empTotal'); return x ? `${x}*1%` : null; };
     else if (/tds on rent/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'rent'); return x ? `${x}*10%` : null; };
     else if (/tds payable-audit/i.test(l.name)) extra.xf = ({ X }) => { const x = X('SchPL', 'auditFee'); return x ? `${x}*1.5%` : null; };
-    schBsRows.push(R(l.name, [l.amount, pyPay(l.name)], 'item', extra));
+    schBsRows.push(R(l.name, [l.amount, l.pyAmount || 0], 'item', extra));
   });
   schBsRows.push(
     R('Total', [bal.totalPayables, pySfp.payables], 'tot', { k: 'payTotal', xsum: payKeep.map((_, i) => 'pay' + i) }),
@@ -821,7 +868,10 @@ function fsxBuildReport(out) {
   // 3.12's direct-cost lines (Labour, Clearing & Freight, extras) pair with
   // their prior-year figure BY INDEX, so the nil test runs on the pair before
   // anything renumbers. Opening, purchases and closing always print.
-  const directPairs = (mat.directItems || []).map((it, i) => ({ it, py: ((pyMat.directItems || [])[i] || {}).amount || 0 }));
+  // The engine's own py (matched by keyword — "Wages Expenses" IS Labour
+  // Charges) wins over blind index pairing, which mispairs when the two
+  // years carry different line sets.
+  const directPairs = (mat.directItems || []).map((it, i) => ({ it, py: it.py != null ? it.py : (((pyMat.directItems || [])[i] || {}).amount || 0) }));
   const directKeep = skipNil ? directPairs.filter(p => !nil(p.it.amount) || !nil(p.py)) : directPairs;
   directKeep.forEach((p, i) => {
     schPlRows.push(R(p.it.name, [p.it.amount, p.py], 'item',
@@ -843,7 +893,8 @@ function fsxBuildReport(out) {
     BAND(),
   );
   (inc.employeeItems || []).forEach((it, i) => {
-    schPlRows.push(R(it.name, [it.amount, ((py.employeeItems || [])[i] || {}).amount || 0], 'item', { k: 'emp' + i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
+    const pyEmp = it.py != null ? it.py : (((py.employeeItems || [])[i] || {}).amount || 0);
+    schPlRows.push(R(it.name, [it.amount, pyEmp], 'item', { k: 'emp' + i, xf: fsxDeriveXf(it.derive, ANCHORS) }));
   });
   schPlRows.push(
     R('Total', [inc.employeeTotal, pySoi.employee], 'tot', { k: 'empTotal', xsum: (inc.employeeItems || []).map((_, i) => 'emp' + i) }),
@@ -860,11 +911,33 @@ function fsxBuildReport(out) {
     R('3.14 Finance Cost', [], 'head', { figNpr: true }),
     BAND(),
   );
+  // 3.14's comparative is matched by KEYWORD, never index: the prior year's
+  // note orders its lines differently per client ("Interest Expenses on
+  // OD/CC/STL" then "Bank comission…"), so index pairing put the commission
+  // figure on the Term row. Each prior-year line is claimed once; unclaimed
+  // ones with a figure are appended with a nil CY so the column still foots.
+  const pyFinPool = (py.financeItems || []).map(p => ({ name: p.name, amount: p.amount, used: false }));
+  const pyFinClaim = (it) => {
+    if (it.py != null) return it.py;
+    const re = it.key === 'interestOD' ? /\bod\b|\bcc\b|\bstl\b|overdraft|short/i
+      : it.key === 'interestTerm' ? /term/i
+        : it.key === 'bankCharges' ? /charge|com+ission/i : null;
+    const hit = re && pyFinPool.find(p => !p.used && re.test(p.name || ''));
+    if (!hit) return 0;
+    hit.used = true;
+    return hit.amount;
+  };
+  const finKeys = [];
   (inc.financeItems || []).forEach((it, i) => {
-    schPlRows.push(R(it.name, [it.amount, ((py.financeItems || [])[i] || {}).amount || 0], 'item', { k: 'fin' + i }));
+    finKeys.push('fin' + i);
+    schPlRows.push(R(it.name, [it.amount, pyFinClaim(it)], 'item', { k: 'fin' + i }));
+  });
+  pyFinPool.filter(p => !p.used && !nil(p.amount)).forEach((p, j) => {
+    finKeys.push('finPy' + j);
+    schPlRows.push(R(p.name, [0, p.amount], 'item', { k: 'finPy' + j }));
   });
   schPlRows.push(
-    R('Total', [inc.financeTotal, pySoi.financeCost], 'tot', { k: 'finTotal', xsum: (inc.financeItems || []).map((_, i) => 'fin' + i) }),
+    R('Total', [inc.financeTotal, pySoi.financeCost], 'tot', { k: 'finTotal', xsum: finKeys }),
     B(),
     R('3.15 Other Expenses', [], 'head', { figNpr: true }),
     BAND(),
@@ -872,8 +945,9 @@ function fsxBuildReport(out) {
   const pyOtherByName = {};
   for (const it of (py.otherItems || [])) pyOtherByName[String(it.name).toLowerCase().trim()] = it.amount;
   // A 3.15 head nil in both years drops (provisional) — a client's note
-  // otherwise lists every head the firm has ever used at "–".
-  const pyOther = (it) => pyOtherByName[String(it.name).toLowerCase().trim()] || 0;
+  // otherwise lists every head the firm has ever used at "–". The engine's
+  // own py (alias-merged when the head was read) wins over the name map.
+  const pyOther = (it) => (it.py != null ? it.py : (pyOtherByName[String(it.name).toLowerCase().trim()] || 0));
   const otherKeep = skipNil
     ? (inc.otherItems || []).filter(it => !nil(it.amount) || !nil(pyOther(it)))
     : (inc.otherItems || []);

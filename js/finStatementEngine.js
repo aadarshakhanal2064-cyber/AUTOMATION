@@ -413,8 +413,8 @@ const FinStatementEngine = (() => {
     const schBs = findSheet(wb, ['Sch-BS', 'Sch BS', 'Schedule BS']);
     if (schBs) {
       const gB = grid(schBs, XLSX);
-      const pick = (titleRe, skipRe) => {
-        const sec = noteSection(gB, titleRe);
+      const pick = (titleRe, skipRe, endRe) => {
+        const sec = noteSection(gB, titleRe, endRe);
         if (!sec) return [];
         const col = secCol(sec);
         const out = [];
@@ -434,8 +434,12 @@ const FinStatementEngine = (() => {
       py.receivableItems = pick(/^3\.3\b/, /trade receivable|provisions for impairment|non-current portion|current portion/);
       py.payableItems = pick(/^3\.9\b/, null);
       // 3.8 loan lines, so the comparative column of that note shows the
-      // client's own prior-year split rather than a fabricated one.
-      py.loanItems = pick(/^3\.8\b/, /^non-current|^current\s*:?$|^bank loans?$|total loans/);
+      // client's own prior-year split rather than a fabricated one. The note
+      // holds a "Total" after EACH of its two blocks, so the default fence
+      // stopped at the non-current one and silently dropped the whole current
+      // side (Bank Overdrafts) — fence on the note's own grand total instead;
+      // the internal Total rows are already skipped by the /^total/ rule.
+      py.loanItems = pick(/^3\.8\b/, /^non-current|^current\s*:?$|^bank loans?$|total loans/, /^total loans and borrowing/);
       // 3.6 / 3.7 give the equity notes their comparative figures.
       py.capitalItems = pick(/^3\.6\b/, /^type of shares|^number$|^npr$/);
       py.reserveItems = pick(/^3\.7\b/, /^retained earnings/);
