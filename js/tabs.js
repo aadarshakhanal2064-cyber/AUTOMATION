@@ -104,8 +104,26 @@ const MODULE_INITS = {
   orgSettings:         () => osInit(),
 };
 
-function openModule(tab) {
+// Financial Management's five modules sit behind a per-member password
+// (js/core/sectionLock.js). The gate is here rather than in each module
+// because this is the one funnel every entry point already goes through —
+// the topbar menu, the command palette's go() actions and any future
+// caller — so no new screen can reach those panels without passing it.
+//
+// The gate is a courtesy, not the protection: the eight tables behind the
+// section return zero rows to a locked member whatever the browser does
+// (db/2026-08-29_financial_section_lock.sql). This just means they see a
+// password box instead of five modules rendering empty.
+async function openModule(tab) {
+  // Close the menu FIRST — the lock overlay covers the screen, and a
+  // dropdown left hanging open behind it reads as a frozen click.
+  closeTopbarMenus();
+
+  if (typeof SectionLock !== 'undefined' && SectionLock.isLockedModule(tab)) {
+    const ok = await SectionLock.require();
+    if (!ok) return;
+  }
+
   switchTab(tab);
   if (MODULE_INITS[tab]) MODULE_INITS[tab]();
-  closeTopbarMenus();
 }

@@ -96,7 +96,16 @@ window.CommandPalette = (function () {
     const q = String(raw || '').trim().toLowerCase();
     const out = [];
 
+    // A member without Financial Management access should not find those
+    // modules by typing their names either — the topbar menu is hidden for
+    // them, and a palette that still lists them would be the one place the
+    // section is visible. Their go() actions call openModule(), which gates
+    // on the same lock, so this is presentation only: filtering here means
+    // "don't advertise it", not "don't allow it".
+    const finVisible = typeof SectionLock === 'undefined' || SectionLock.granted();
+
     const mods = MODULES
+      .filter(m => finVisible || m.hint !== 'Financial Management')
       .map(m => ({ ...m, group: 'Modules', s: q ? score(m.label, q) : 1 }))
       .filter(m => m.s >= 0)
       .sort((a, b) => a.s - b.s);

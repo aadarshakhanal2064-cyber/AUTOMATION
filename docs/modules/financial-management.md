@@ -206,3 +206,138 @@ modules:
 
 Party Ledger's opening-balance save invalidates `openings` before re-reading,
 for the same reason.
+
+---
+
+## 5.17 The section lock (`js/core/sectionLock.js`, `sl-` prefix)
+
+Added **2026-08-29** on the user's ask: *"lock the financial management section
+so that no one is able to see what's inside it, only a specific person — a
+personalised lock, only openable with a password, and resettable if I ever
+forget it."*
+
+### Where the lock actually is
+
+**In the database, not in this file.** The app is entirely client-side, so a
+password checked in JavaScript stops nobody: any signed-in member could read
+`service_memos`, `bank_transactions` or the firm's VAT book straight off
+PostgREST with the publishable key, never loading the UI at all. So all **31
+RLS policies** over the section's **eight tables** gained one more conjunct:
+
+```
+and (select private.fin_unlocked())
+```
+
+`js/core/sectionLock.js` is the door in front of that: it exists so a locked
+member sees a password box rather than five modules that render empty. Deleting
+it, or flipping any of its flags from the console, yields empty modules — never
+open ones. Nothing in it is trusted, and nothing in it needs to be.
+
+The eight tables are exactly the ones these five modules own, verified by
+grepping every `from('<table>')` in `js/` before the migration was written:
+`service_memos`, `service_memo_fee_skips`, `vat_purchases`, `vat_returns`,
+`vat_collections`, `party_opening_balances`, `bank_accounts`,
+`bank_transactions`. Final Account queries nothing itself — it is a pure view
+over Party Ledger's state (§5.17 above) — so those eight close the whole
+section. **Autobooks is a *client's* VAT book in different tables and is
+deliberately not locked.**
+
+### Three facts decide access
+
+All on `org_members`, all read in one call to `fin_status()`:
+
+| Column | Meaning |
+|---|---|
+| `fin_access` | An owner or admin ticked this member in **Team → Financial**. Default false. |
+| `fin_password_hash` | That member's **own** bcrypt section password. Two granted members have two passwords and neither opens the section with the other's. |
+| `fin_unlocked_until` | Deadline on the current unlock (4 h). **This is what RLS reads.** |
+
+Plus `fin_failed_attempts` / `fin_lockout_until`: five wrong tries costs a
+fifteen-minute wait. A section password is short by nature — people pick
+something they can type twenty times a day — and an RPC can be called in a loop.
+
+`unlocked()` is computed from the deadline rather than from the server's own
+`unlocked` boolean, so a window that expires while a tab sits open closes itself
+with no polling and can never disagree with what RLS decides on the next
+request. `refresh()` **fails closed**: a status call that did not answer is not
+permission.
+
+### The back door that nearly made it decorative
+
+Found while verifying the policies, and worth remembering as a class of bug.
+`org_members` carries `org_members_update_admin` (`db/2026-08-18_stage3_
+invitations.sql`), which lets **any admin or owner UPDATE any member row** in
+their organisation. That policy is right for what it was written for — Team's
+role and status controls — but it meant an admin could run
+
+```sql
+update org_members set fin_access = true,
+       fin_unlocked_until = now() + interval '99 years' where email = '…';
+```
+
+over PostgREST and read the entire section without ever knowing a password. RLS
+was gating the rows while nothing was gating the gate.
+
+The fix is a **privilege, not another policy** — a policy decides *which rows*,
+and the problem was *which columns*. Postgres cannot subtract a column from a
+table-wide UPDATE grant, so the grant is withdrawn and re-issued for the two
+columns Team actually writes:
+
+```sql
+revoke update on public.org_members from authenticated, anon;
+grant  update (role, status) on public.org_members to authenticated;
+```
+
+The six `fin_*` RPCs are `SECURITY DEFINER` and execute as their owner, so they
+are unaffected. **The general lesson: when a policy starts depending on a
+column, check who can write that column.**
+
+### The six RPCs
+
+Nothing writes the five `fin_*` columns directly; every transition goes through
+a `SECURITY DEFINER` function that decides for itself what is allowed. Each
+returns `json` rather than raising, because "wrong password" is an ordinary
+answer and not an error.
+
+| Function | Notes |
+|---|---|
+| `fin_status()` | granted / hasPassword / unlockedUntil / lockedOut. Returns null with no membership row — the engine treats that as denied. |
+| `fin_set_password(current, new)` | First-time set, or a change. A password already set can only be changed by someone who knows it, or an unattended signed-in tab is enough to take the section over. Unlocks on success. |
+| `fin_unlock(password)` | Opens a 4-hour window. Counts failures; returns `attemptsLeft`. |
+| `fin_lock()` | Clears the window. Takes no password — locking is never the dangerous direction. |
+| `fin_reset_password(account_password, new)` | The forgot path. Verifies the caller's **own Supabase account password** against `auth.users` inside Postgres rather than re-signing-in from the browser, which would churn the session token on every reset. |
+| `fin_set_access(email, grant)` | Owner/admin only, own org only. **Revoking wipes the password and the window in the same statement**, so a revoked member is shut out now rather than at the end of their window. |
+
+### Deliberate UI choices
+
+- **`lockNow()` reloads the page.** Switching tabs only toggles a panel's
+  `active` class: every row Bank Entry or Service Memo rendered is still in the
+  DOM, and the module globals still hold the arrays behind them. A "Lock now"
+  that leaves the ledger one devtools panel away is theatre. Locking is always a
+  deliberate act, so a reload costs nothing anyone was relying on.
+- **`signOut()` calls `fin_lock()`** — the deadline lives on the member row, not
+  in the tab, so without it the next person on a shared machine would still be
+  inside a window opened hours ago.
+- **The topbar menu and the command-palette entries are hidden** for an
+  ungranted member. Presentation only: their `go()` actions call `openModule()`,
+  which gates on the same lock. Filtering there means *don't advertise it*, not
+  *don't allow it*.
+- **The gate lives in `openModule()`** (`js/tabs.js`), not in each module —
+  that is the one funnel every entry point already goes through, so no future
+  screen can reach those panels without passing it.
+- **Team's Financial column is shown to everyone**, not only admins, and reads
+  as a state (`Allowed` / `Blocked`) rather than an action. A member who cannot
+  see the section still benefits from knowing who can, and an action label on a
+  row you are scanning for status is the classic way to revoke the wrong
+  person's access.
+
+### Known limit
+
+The unlock window is one timestamp **per member**, not per session, so
+unlocking in one browser unlocks that person's other signed-in tabs and devices
+for the rest of the four hours. Right for one person at one desk; revisit if a
+granted member routinely works from two machines. Sign-out and the Lock button
+both close it immediately.
+
+Migration: `db/2026-08-29_financial_section_lock.sql` ·
+rollback: `db/2026-08-29_financial_section_lock_rollback.sql`.

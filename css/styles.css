@@ -1895,6 +1895,7 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 .om-table th:first-child, .om-table td:first-child { word-break: break-all; }
 .om-col-role    { width: 120px; }
 .om-col-status  { width: 100px; }
+.om-col-fin     { width: 110px; }
 .om-col-invited { width: 180px; }
 .om-col-actions { width: 215px; }
 .om-table td.om-actions { white-space: nowrap; }
@@ -1910,6 +1911,13 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 }
 .om-role-select:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
 .om-you { color: var(--text-muted); font-size: 12px; font-style: italic; }
+
+/* The Financial Management toggle. It reads as a state, not an action — the
+   label is what the member currently IS ("Allowed"/"Blocked"), because an
+   action label ("Block") on a row you are scanning for status is the classic
+   way to revoke the wrong person's access. */
+.om-fin-btn { min-width: 76px; }
+.om-fin-btn.om-fin-on { color: var(--green-dk); border-color: var(--green-border); background: var(--green-bg); }
 .om-muted-row td { opacity: .6; }
 /* .table-wrap is overflow:hidden app-wide, so a table wider than the viewport
    is CLIPPED rather than scrolled — on a phone the Actions column simply
@@ -1946,6 +1954,34 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
    only, and all of it is decorative — so when the OS asks for reduced
    motion, all of it goes. Spinners stop rotating but stay visible, and the
    busy-button labels ("Saving…") already carry the state in words. */
+/* ── Section lock (js/core/sectionLock.js) — the Financial Management gate ──
+   Deliberately plain: it reuses .modal, .form-group, .action-row and
+   .status-box unchanged, so the password screen looks like every other
+   dialog in the app rather than announcing itself as a security feature.
+   Nothing here is load-bearing for the lock; the lock is RLS. */
+.sl-modal { max-width: 430px; }
+.sl-lede {
+  margin: 0 0 18px; color: var(--text-muted);
+  font-size: var(--fs-sm); line-height: 1.55;
+}
+.sl-view .form-group:last-of-type { margin-bottom: 0; }
+/* "Forgot your password?" is a link in a button's clothing — it must be a
+   real <button> for the keyboard, but must not read as a third action
+   competing with Cancel and Unlock. */
+.sl-link {
+  display: inline-block; margin-top: 10px; padding: 0;
+  background: none; border: 0; cursor: pointer;
+  color: var(--accent-blue); font-family: var(--font-ui);
+  font-size: var(--fs-sm); text-decoration: underline;
+}
+.sl-link:hover { color: var(--brand-navy); }
+/* Separated from the five modules above it: this entry leaves the section
+   rather than opening something in it. */
+.topbar-dropdown-lock {
+  border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px;
+  color: var(--text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

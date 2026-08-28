@@ -67,7 +67,7 @@ async function omReload() {
 async function omLoadMembers() {
   const { data, error } = await window.sb
     .from('org_members')
-    .select('id, email, role, status, invited_by, created_at')
+    .select('id, email, role, status, invited_by, created_at, fin_access')
     .order('role')
     .order('email');
   if (error) { omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); omMembers = []; return; }
@@ -104,7 +104,7 @@ function omRenderMembers() {
   if (!body) return;
 
   if (!omMembers.length) {
-    body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">No members found.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">No members found.</td></tr>`;
     return;
   }
 
@@ -120,6 +120,21 @@ function omRenderMembers() {
          </select>`
       : omRoleBadge(m.role);
 
+    // Financial Management access. Unlike role and status this is NOT a
+    // plain column update — org_members' fin_* columns are not writable
+    // from the app at all (db/2026-08-29_financial_section_lock.sql §6), so
+    // the toggle goes through the fin_set_access() RPC, which re-checks
+    // admin rights in Postgres rather than trusting this button.
+    //
+    // Deliberately shown to everyone, not just admins: a member who cannot
+    // see the section still benefits from knowing who can, and it makes the
+    // lock legible instead of mysterious.
+    const finOn = !!m.fin_access;
+    const finCell = (omIsAdmin() && !isMe)
+      ? `<button class="btn btn-outline btn-sm om-fin-btn${finOn ? ' om-fin-on' : ''}"
+                 onclick="omToggleFinAccess(${m.id})">${finOn ? 'Allowed' : 'Blocked'}</button>`
+      : `<span class="log-badge ${finOn ? 'badge-green' : ''}">${finOn ? 'Allowed' : 'Blocked'}</span>`;
+
     // Only ids reach the handler — never the email, which is free text
     // (CLAUDE.md rule 13). The row is looked up from state.
     const actions = (omIsAdmin() && !isMe)
@@ -131,6 +146,7 @@ function omRenderMembers() {
       <td>${escHtml(m.email)}</td>
       <td>${roleCell}</td>
       <td>${omStatusPill(m.status)}</td>
+      <td>${finCell}</td>
       <td>${escHtml(m.invited_by || '—')}</td>
       <td class="om-actions">${actions}</td>
     </tr>`;
@@ -251,6 +267,31 @@ async function omToggleStatus(id) {
   const { error } = await window.sb.from('org_members').update({ status: next }).eq('id', id);
   if (error) { omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); await omReload(); return; }
   omStatus(`✅ ${escHtml(m.email)} is now ${next}.`, 'success');
+  await omReload();
+}
+
+// Grant or revoke Financial Management. Revoking is the destructive
+// direction — it also wipes that member's section password server-side, so
+// re-granting means they choose a new one — hence the confirm on that side
+// only, matching omToggleStatus's asymmetry.
+async function omToggleFinAccess(id) {
+  const m = omMembers.find(x => x.id === id);
+  if (!m) return;
+  const next = !m.fin_access;
+  if (!next && !confirm(`Block ${m.email} from Financial Management?
+
+They lose access immediately, and their section password is cleared.`)) return;
+
+  const { data, error } = await window.sb.rpc('fin_set_access', { p_email: m.email, p_grant: next });
+  if (error)          { omStatus('❌ ' + escHtml(friendlyDbError(error)), 'error'); await omReload(); return; }
+  if (!data || !data.ok) {
+    omStatus('❌ ' + escHtml(data && data.error === 'not_admin'
+      ? 'Only an owner or admin can change Financial Management access.'
+      : 'Could not change access.'), 'error');
+    await omReload();
+    return;
+  }
+  omStatus(`✅ ${escHtml(m.email)} is ${next ? 'allowed into' : 'blocked from'} Financial Management.`, 'success');
   await omReload();
 }
 

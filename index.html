@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608290900">
+<link rel="stylesheet" href="css/styles.css?v=202608291200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -160,6 +160,9 @@ function cropLoginLogoIcon(img) {
         <button class="topbar-dropdown-item" onclick="openModule('partyLedger')">Party Ledger</button>
         <button class="topbar-dropdown-item" onclick="openModule('bankBook')">Bank Entry</button>
         <button class="topbar-dropdown-item" onclick="openModule('finalAccount')">Final Account</button>
+        <!-- Shown only while the section is unlocked (SectionLock.applyVisibility). -->
+        <button class="topbar-dropdown-item topbar-dropdown-lock" id="topbar-fin-lock"
+                style="display:none;" onclick="SectionLock.lockNow()">🔒 Lock this section</button>
       </div>
     </div>
     <div class="app-tag-dropdown">
@@ -550,6 +553,7 @@ function cropLoginLogoIcon(img) {
               <th>Email</th>
               <th class="om-col-role">Role</th>
               <th class="om-col-status">Status</th>
+              <th class="om-col-fin" title="Who can open Financial Management (Service Memo, VAT Register, Party Ledger, Bank Entry, Final Account)">Financial</th>
               <th class="om-col-invited">Invited by</th>
               <th class="om-col-actions">Actions</th>
             </tr>
@@ -4858,7 +4862,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
 <script defer src="js/core/libLoader.js?v=202608212300"></script>
 <script defer src="js/core/keyboard.js?v=202608212500"></script>
-<script defer src="js/core/commandPalette.js?v=202608261400"></script>
+<script defer src="js/core/commandPalette.js?v=202608291200"></script>
 <script defer src="js/core/nepaliLocale.js?v=202608241700"></script>
 <script defer src="js/core/documentEngine.js?v=202608241600"></script>
 <script defer src="js/core/searchEngine.js?v=202608212500"></script>
@@ -4870,10 +4874,15 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
 <script defer src="js/core/documentStore.js?v=202608261400"></script>
+<!-- The password gate on Financial Management. The GATE is here; the LOCK
+     itself is the RLS on the eight financial tables
+     (db/2026-08-29_financial_section_lock.sql). Must load before tabs.js,
+     whose openModule() consults SectionLock.isLockedModule(). -->
+<script defer src="js/core/sectionLock.js?v=202608291200"></script>
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
 <script defer src="js/core/orgIdentity.js?v=202608261400"></script>
-<script defer src="js/tabs.js?v=202608290900"></script>
+<script defer src="js/tabs.js?v=202608291200"></script>
 <script defer src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
@@ -4923,8 +4932,8 @@ function cropLoginLogoIcon(img) {
 <!-- Team (members + invitations). Self-registers with ModuleRegistry; opened
      from the topbar user menu, so it needs no nav button. -->
 <script defer src="js/orgSettings.js?v=202608212500"></script>
-<script defer src="js/orgMembers.js?v=202608212500"></script>
-<script defer src="js/auth.js?v=202608212500"></script>
+<script defer src="js/orgMembers.js?v=202608291200"></script>
+<script defer src="js/auth.js?v=202608291200"></script>
 
 </body>
 </html>

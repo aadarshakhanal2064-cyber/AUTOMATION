@@ -416,6 +416,13 @@ function signOut() {
   // app, leaving one firm's letterhead in memory means the next person to sign
   // in on this machine could see it before their own loads.
   OrgIdentity.clear();
+  // Close the Financial Management unlock window server-side. Its deadline
+  // lives in org_members, not in this tab, so without this the next person
+  // to sign in on a shared machine — or this person on any other device —
+  // would still be inside a window opened hours ago. Fire-and-forget: the
+  // sign-out below must not wait on it, and the section is locked again on
+  // the next request either way.
+  if (typeof SectionLock !== 'undefined') SectionLock.lockOnSignOut();
 
   window.sb.auth.signOut();
 
@@ -579,8 +586,17 @@ async function afterSupabaseSignIn(session) {
   // queries (audit_log) don't read either. The one thing the dashboard DOES
   // take from a directory — the client-count stat — is patched in below once
   // clients has resolved, because loadDashboard() may render before it.
+  // The Financial Management lock rides this same wave. It reads one small
+  // RPC and decides whether that topbar menu is shown at all, so it must
+  // resolve before the user can click anything — but it depends on nothing
+  // the other three loads produce, so it costs no extra boot time.
+  const finLock = (typeof SectionLock !== 'undefined')
+    ? SectionLock.init()
+    : Promise.resolve();
+
   const directories = Promise.all([loadClients(), loadRegistrarCompanies()]);
   const dash = loadDashboard();
+  await finLock;
   await directories;
   const clientStat = document.getElementById('dash-stat-clients');
   if (clientStat) clientStat.textContent = String((window.clientsList || []).length);
