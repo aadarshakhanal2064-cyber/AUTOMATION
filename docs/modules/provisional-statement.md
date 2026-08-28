@@ -96,6 +96,23 @@ and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 > — carried over from Projection's `TAX_SLABS`, selectable on the form, and
 > **deliberately not unified** with Financial Statement's D3 slabs (§15).
 
+> **The Computation of Income was removed from the UI 2026-08-28 by user
+> decision** — tax always charges straight off accounting profit, no COI
+> sheet prints, and the Tax card's accordion is three sections (Advance Tax ·
+> TDS · VAT). The ENGINE keeps the full COI bridge and `tools/psVerify.mjs`
+> keeps proving it: `psUseCoi()`/`asUseCoi()` returning `false` is the whole
+> removal, and flipping it back is the whole restore.
+
+> **Audit Fee and Rent are recognised by NAME, never by caller key**
+> (2026-08-28, `ProvisionalStatementEngine.headKeyFor()`). The prior-year
+> reader hands expense lines over without keys, so the modules keyed them
+> positionally ('other3') and the engine's `pick('auditFee')` found nothing —
+> Audit Fee Payable, TDS-Audit fee and TDS-Rent all derived to 0 and the flat
+> rule never applied, on every real upload, while psVerify (which supplies
+> keys) stayed green. Both collectors now key through `headKeyFor`, the
+> engine re-normalises internally, and psVerify carries a no-keys regression
+> block. Audit Fee Payable = fee − its own 1.5% TDS; TDS-Audit fee = 1.5%.
+
 ### 2.4 TDS / statutory payables — all derived
 
 | Line | Workbook formula | Rule |
@@ -388,8 +405,24 @@ behind it**, rather than twice as a summary:
   keeps its full three-source precedence (schedule → typed → the §2.3 formula)
   and `tools/psVerify.mjs` keeps asserting it, so restoring the screen is a UI
   change only.
-- **Party detail** (`p`, `s`) — built from the register, carrying the CA's own
-  *"As per books / Difference"* line rather than a new invention.
+- **Party detail** (`p`, `s`) — REMOVED 2026-08-28 by user decision, along
+  with the whole Party Detail & Reconciliation card. The register-level
+  comparison in `provisionalReconcile.js` stays; only the per-party panel
+  went. Recoverable from git history.
+- **Extra 3.9 payable and 3.3 receivable lines** (2026-08-28, user ask
+  "editable, can add lines, like other expenses") — the **Other Payables &
+  Receivables card** (`ps-extras`/`as-extras`, replacing the party panel).
+  Seeded from whatever last year's notes carried beyond the standard set
+  (Salary Payable, Expenses Payable, Advance to Suppliers, Deposits…), each
+  row showing the prior-year figure with this year's balance typed; add-line
+  and remove per row. State `psExtraPay`/`psExtraRecv` → engine
+  `cy.extraPayables`/`cy.extraReceivables` → `payableLines` (spliced between
+  the trading payables and the duties block) and `receivableLines` (after
+  impairment), inside the note totals and therefore the balance sheet and
+  cash flow. `pyName` keeps the prior-year spelling so a renamed line keeps
+  its comparative; a nil-both-years extra drops under zero-suppression even
+  above the duties split. Trade Payables / Trade Receivables stay in the
+  figures card; **Audit Fee Payable and the TDS lines stay derived**.
 
 ### 5.3 Reconciliation
 

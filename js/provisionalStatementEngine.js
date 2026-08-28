@@ -81,6 +81,20 @@ const ProvisionalStatementEngine = (() => {
     return headMap()[headKey(name)] || name;
   }
 
+  // The two SPECIAL heads are recognised by NAME, never by a caller-supplied
+  // key: the prior-year reader hands lines over as {name, amount} with no
+  // keys, so a positional 'other3' used to reach the engine and pick() found
+  // no 'auditFee' — Audit Fee Payable, TDS-Audit fee and TDS-Rent all derived
+  // to 0 and the flat rule never applied (found 2026-08-28, via a real
+  // upload; tools/psVerify.mjs never saw it because it supplies keys). Used
+  // by the engine AND the module's rules grid, so override keys can't drift.
+  function headKeyFor(name) {
+    const n = headKey(canonicalHead(name));
+    if (/\baudit fees?\b/.test(n)) return 'auditFee';
+    if (/\brent\b/.test(n) && !/income/.test(n)) return 'rent';
+    return null;
+  }
+
   // ════════════════════════════════════════════════════════════════
   //  DEFAULTS — every one of these is an editable default, never a
   //  hardcoded truth. They are what the firm's workbook actually does.
@@ -353,8 +367,11 @@ const ProvisionalStatementEngine = (() => {
     });
 
     const otherExpenses = mergedOther.map(e => {
-      const key = e.key || e.name;
-      const isFlat = FLAT_LINES.indexOf(e.key) >= 0;
+      // A positional key ('other3') yields to the name-recognised one, so
+      // Audit Fee and Rent are found however the caller keyed them.
+      const named = headKeyFor(e.name);
+      const key = (e.key && !/^other\d+$/.test(e.key)) ? e.key : (named || e.key || e.name);
+      const isFlat = FLAT_LINES.indexOf(key) >= 0;
       const l = line(key, e.amount, isFlat ? 'flat' : 'growth', { roundTo: 0 });
       return { key, name: e.name, py: l.py, amount: l.amount, rule: l.rule, growth: l.growth, derive: l.derive, merged: e.merged };
     });
@@ -557,14 +574,27 @@ const ProvisionalStatementEngine = (() => {
     const auditFeePayable = auditFee - tdsAuditFee;
 
     const tradePayables = num(cy.tradePayables);
+    // Extra trading payables (Salary Payable, Expenses Payable…) — the lines
+    // last year's note carried beyond the standard set, plus any the preparer
+    // adds (user ask 2026-08-28: note 3.9 editable with add-line, the
+    // other-expenses idiom). Typed balances, sitting between the trading
+    // payables and the duties block; `pyName` keeps the prior-year spelling
+    // so the comparative matcher still finds its figure after a rename.
+    const extraPayables = (cy.extraPayables || []).map((l, i) => ({
+      key: l.key || ('xpay' + i), name: l.name || 'Payable',
+      amount: num(l.amount), py: num(l.py), pyName: l.pyName || l.name || '',
+    }));
     // Each statutory line names the cell it withholds from, so the exported
     // workbook carries the firm's own =+'Sch-PL'!D61*10% rather than a pasted
-    // figure. The fee-payable line subtracts the audit-fee TDS row by KEY
-    // (pay6, its position in this list), never by a literal cell address.
+    // figure. The fee-payable line subtracts the audit-fee TDS row by its
+    // STABLE key ('tdsAuditFee'), never by list position — extras splice in
+    // and zero-suppression drops rows, so a positional 'pay7' pointed at
+    // whatever line happened to land seventh.
     const payableLines = [
       { key: 'tradePayables',  name: 'Trade Payables',                 amount: tradePayables },
       { key: 'auditFeePayable',name: 'Audit Fee Payable',              amount: auditFeePayable,
-        derive: tdsTyped('auditFee') ? null : { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'pay7' } },
+        derive: tdsTyped('auditFee') ? null : { kind: 'net', sheet: 'SchPL', row: 'auditFee', less: 'tdsAuditFee' } },
+      ...extraPayables,
       { key: 'tdsSalary',      name: 'TDS Payable-Salary(SST)',        amount: tdsSalary,
         derive: tdsTyped('salary') ? null : { kind: 'pct', sheet: 'SchPL', row: 'empTotal', pct: TDS.salary } },
       { key: 'tdsRent',        name: 'TDS Payable-Rent',               amount: tdsRent,
@@ -642,13 +672,23 @@ const ProvisionalStatementEngine = (() => {
     // Everything else on the asset side is now fixed, so trade receivables is
     // whatever makes the two sides meet. `totalEquityLiab` does not depend on
     // it, so this is a direct solve rather than an iteration.
+    // Extra receivable lines (Advance to Suppliers, Deposits…) — last year's
+    // note beyond the standard set, plus preparer-added lines (user ask
+    // 2026-08-28: note 3.3 editable with add-line). Typed balances inside the
+    // note's total, so with the plug on they reduce the trade line, and with
+    // it off they add to the total — exactly like Advance Tax and VAT.
+    const extraReceivables = (cy.extraReceivables || []).map((l, i) => ({
+      key: l.key || ('xrecv' + i), name: l.name || 'Receivable',
+      amount: num(l.amount), py: num(l.py), pyName: l.pyName || l.name || '',
+    }));
+    const extraRecvTotal = extraReceivables.reduce((s, l) => s + l.amount, 0);
     const otherAssets = ppeClosing + investmentsNC + otherReceivablesNC
                       + investmentsC + inventories + cash;
     const plugReceivables = opt.balanceVia !== 'none';
     const receivables = plugReceivables
       ? totalEquityLiab - otherAssets
-      : (num(cy.tradeReceivables) - impairment) + advanceTax + vatReceivable;   // `H20`
-    const tradeReceivablesNet = receivables - advanceTax - vatReceivable;
+      : (num(cy.tradeReceivables) - impairment) + advanceTax + vatReceivable + extraRecvTotal;   // `H20`
+    const tradeReceivablesNet = receivables - advanceTax - vatReceivable - extraRecvTotal;
     const tradeReceivables = tradeReceivablesNet + impairment;                  // `H17 =H15-H16`
 
     const totalNCA = ppeClosing + investmentsNC + otherReceivablesNC;
@@ -751,6 +791,7 @@ const ProvisionalStatementEngine = (() => {
         receivableLines: [
           { key: 'tradeReceivables', name: 'Trade Receivables', amount: tradeReceivables },
           { key: 'impairment',       name: 'Less: Provisions for impairment of trade receivables', amount: impairment },
+          ...extraReceivables,
           { key: 'advanceTax',       name: 'Advance Tax',       amount: advanceTax,
             derive: advanceTaxTyped ? null : { kind: 'advanceTax', pct: TDS.incentive } },
           ...(vatRegistered && Math.abs(vatReceivable) > 0.005
@@ -807,7 +848,7 @@ const ProvisionalStatementEngine = (() => {
   return {
     GROWTH, FLAT_LINES, PPE_RATES, TDS, CORPORATE_TAX, TAX_SLABS, RULES,
     xlRound, progressiveTax, applyRule, derive, pbtFromMargin,
-    canonicalHead, headKey,
+    canonicalHead, headKey, headKeyFor,
   };
 })();
 

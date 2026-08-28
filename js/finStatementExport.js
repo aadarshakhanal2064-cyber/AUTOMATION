@@ -549,10 +549,13 @@ function fsxBuildReport(out) {
   const recvAll = (bal.receivableLines || []).map((l, i) => {
     if (i === 0) return { ...l, pyAmount: (pySfp.receivables || 0) - pyRecvOthers };
     if (l.key === 'impairment' || /impair/i.test(l.name || '')) return { ...l, pyAmount: 0 };
-    const n = recvNorm(l.name);
+    // Claim on `pyName` (the prior-year spelling an extra line was seeded
+    // from) so a renamed line keeps its comparative; the engine's own `py`
+    // stands in when the claim finds nothing.
+    const n = recvNorm(l.pyName || l.name);
     let hit = pyRecvPool.find(p => !p.used && p.norm && p.norm === n);
     if (!hit) hit = pyRecvPool.find(p => !p.used && p.norm && n && (p.norm.includes(n) || n.includes(p.norm)));
-    if (!hit) return { ...l, pyAmount: 0 };
+    if (!hit) return { ...l, pyAmount: l.py || 0 };
     hit.used = true;
     return { ...l, pyAmount: hit.amount };
   });
@@ -575,14 +578,20 @@ function fsxBuildReport(out) {
   const pyPayPool = (py.payableItems || []).map(p => ({ norm: payNorm(p.name), name: p.name, amount: p.amount, used: false }));
   const pyPayClaim = (name) => {
     const n = payNorm(name);
-    if (!n) return 0;
+    if (!n) return null;
     let hit = pyPayPool.find(p => !p.used && p.norm === n);
     if (!hit) hit = pyPayPool.find(p => !p.used && p.norm && (p.norm.includes(n) || n.includes(p.norm)));
-    if (!hit) return 0;
+    if (!hit) return null;
     hit.used = true;
     return hit.amount;
   };
-  const payLines = (bal.payableLines || []).map(l => ({ ...l, pyAmount: pyPayClaim(l.name) }));
+  // Claim on `pyName` (the prior-year spelling an extra line was seeded
+  // from) so a renamed line keeps its comparative; the engine's own `py`
+  // stands in when the claim finds nothing.
+  const payLines = (bal.payableLines || []).map(l => {
+    const claimed = pyPayClaim(l.pyName || l.name);
+    return { ...l, pyAmount: claimed != null ? claimed : (l.py || 0) };
+  });
   {
     const isDuty = (nm) => /^tds|^vat/i.test(String(nm || '').trim());
     const before = [], after = [];
@@ -807,16 +816,24 @@ function fsxBuildReport(out) {
   // always print. Filter first, then find the split again — if no duty
   // survives, the sub-heading goes with them.
   const dutiesStart = payLines.findIndex(l => /^tds/i.test(l.name || ''));
+  // Extra lines ('xpay…') are nil-suppressed wherever they sit — they live
+  // ABOVE the duties split, where structural rows are otherwise always kept.
   const payKeep = (skipNil && dutiesStart > 0)
-    ? payLines.filter((l, i) => i < dutiesStart || !nil(l.amount) || !nil(l.pyAmount))
+    ? payLines.filter((l, i) => (i < dutiesStart && !/^xpay/.test(l.key || '')) || !nil(l.amount) || !nil(l.pyAmount))
     : payLines;
   const payDutiesIdx = payKeep.findIndex(l => /^tds/i.test(l.name || ''));
+  // Rows register under the ENGINE's stable key when one exists ('pay'+i for
+  // the appended prior-year-only rows) — a positional key renumbers whenever
+  // zero-suppression drops a row or an extra line splices in, and the
+  // fee-net-of-TDS formula would then subtract whatever landed seventh.
+  const payRowKeys = [];
   payKeep.forEach((l, i) => {
     if (i === payDutiesIdx && payDutiesIdx > 0) {
       schBsRows.push(B());
       schBsRows.push(R('Duties and taxes:', [], 'sub', { italic: true }));
     }
-    const extra = { k: 'pay' + i };
+    const extra = { k: l.key || ('pay' + i) };
+    payRowKeys.push(extra.k);
     // An explicit descriptor from the engine wins: it knows which figure the
     // line withholds from, where name-matching only guesses. The regex arm
     // stays for the audited module, which attaches none.
@@ -827,7 +844,7 @@ function fsxBuildReport(out) {
     schBsRows.push(R(l.name, [l.amount, l.pyAmount || 0], 'item', extra));
   });
   schBsRows.push(
-    R('Total', [bal.totalPayables, pySfp.payables], 'tot', { k: 'payTotal', xsum: payKeep.map((_, i) => 'pay' + i) }),
+    R('Total', [bal.totalPayables, pySfp.payables], 'tot', { k: 'payTotal', xsum: payRowKeys }),
     R('3.10 Provisions', [], 'head', { figNpr: true }),
     BAND(),
     R('Provision for Income Tax', [inc.tax, pySoi.tax], 'item', { k: 'provTax', xf: ({ X }) => X('SOI', 'tax') }),

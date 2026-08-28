@@ -455,6 +455,38 @@ const merged = Engine.derive({
 eq('head   two spellings collapse to one line', merged.income.otherItems.length, 2);
 eq('head   and carry both years',               merged.income.otherItems[0].amount, 52500);
 
+// ── name-keyed heads and extra note lines (2026-08-28) ──
+// A real upload hands otherExpenses over with positional keys ('other3'),
+// which is what the prior-year reader produces — the engine must still find
+// Audit Fee and Rent by NAME, or the flat rule, Audit Fee Payable, TDS-Audit
+// fee and TDS-Rent all silently derive to 0 (shipped exactly so; found via a
+// real client file). Extra 3.9 / 3.3 lines must land inside the note totals.
+const nk = Engine.derive({
+  py: {
+    sales: 1000000, otherIncome: 0, closingStock: 0, salary: 0, ppeClasses: [],
+    otherExpenses: [
+      { key: 'other0', name: 'Audit Fee',     amount: 40000 },
+      { key: 'other1', name: 'Rent expenses', amount: 120000 },
+    ],
+  },
+  cy: {
+    sales: 1000000, purchases: 0, closingStock: 0, tradePayables: 100000,
+    extraPayables: [{ name: 'Salary Payable', py: 50147, amount: 60000 }],
+    extraReceivables: [{ name: 'Deposits', py: 5000, amount: 7000 }],
+    tradeReceivables: 200000,
+  },
+  options: { taxProfile: 'corporate', balanceVia: 'none' },
+});
+eq('nameKey Audit Fee stays flat (name-recognised)', nk.income.otherItems.find(i => i.key === 'auditFee').amount, 40000);
+eq('nameKey Rent stays flat (name-recognised)',      nk.income.otherItems.find(i => i.key === 'rent').amount, 120000);
+eq('nameKey Audit Fee Payable = fee less 1.5% TDS',  nk.balance.payableLines.find(l => l.key === 'auditFeePayable').amount, 39400);
+eq('nameKey TDS-Audit fee = 1.5% of the fee',        nk.balance.payableLines.find(l => l.key === 'tdsAuditFee').amount, 600);
+eq('nameKey TDS-Rent = 10% of rent',                 nk.balance.payableLines.find(l => l.key === 'tdsRent').amount, 12000);
+eq('extra  payable line lands in note 3.9',          nk.balance.payableLines.find(l => l.name === 'Salary Payable').amount, 60000);
+eq('extra  payable sits inside the 3.9 total',       nk.balance.totalPayables, 100000 + 39400 + 600 + 12000 + 60000 + 10000 * 0 + nk.balance.payableLines.find(l => l.key === 'tdsSalary').amount + nk.balance.payableLines.find(l => l.key === 'tdsWages').amount + nk.balance.payableLines.find(l => l.key === 'tdsIncentive').amount + nk.balance.payableLines.find(l => l.key === 'tdsFreight').amount);
+eq('extra  receivable line lands in note 3.3',       nk.balance.receivableLines.find(l => l.name === 'Deposits').amount, 7000);
+eq('extra  receivable sits inside the 3.3 total',    nk.balance.receivables, 200000 + 7000 + nk.balance.receivableLines.find(l => l.key === 'advanceTax').amount);
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

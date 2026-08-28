@@ -60,6 +60,13 @@ let asTypedOver = {};
 // 2026-08-21 by user decision — UI only; the engine still honours
 // advanceTaxLines, so tools/psVerify.mjs keeps proving that path.)
 let asStock = [];
+// Extra note-3.9 / note-3.3 lines (user ask 2026-08-28) — the lines last
+// year's note carried beyond the standard set (Salary Payable, Advance to
+// Suppliers…) plus any added by hand. {name, pyName, py, amount}: `pyName`
+// keeps the prior-year spelling so the comparative column survives a rename,
+// `amount` is this year's typed balance (blank = nil).
+let asExtraPay = [];
+let asExtraRecv = [];
 let asReconcile = null;      // last ProvisionalReconcile.run() output
 // Tax card accordion — one section open at a time (user ask 2026-08-21).
 // Safe to re-render on toggle: every figure in the panel lives in asCy /
@@ -176,6 +183,7 @@ const asScope = WorkflowEngine.createClientScope({
     asCustom = []; asDirectCustom = []; asTds = {};
     asSrc = null; asItDep = null; asTypedOver = {};
     asStock = [];
+    asExtraPay = []; asExtraRecv = [];
     asTaxOpen = 'adv'; asVatSide = null; asCoiTouched = null;
     asSolveFor = 'purchases'; asPlugReceivables = true;
     asSavedId = null;
@@ -331,6 +339,7 @@ async function asHandlePyFile(input) {
     asSeedPpe();
     asSeedLoans();
     asSeedFigures();
+    asSeedExtraLines();
     asPrefillCapital();
     asRenderFigures();
     AuditLog.record('audited_py_parsed', {
@@ -711,7 +720,7 @@ function asRenderFigures() {
   asRenderPpe();
   asRenderTax();
   asRenderStock();
-  asRenderParties();
+  asRenderExtras();
 }
 
 function asSrcBadge() {
@@ -984,10 +993,6 @@ function asRenderTax() {
   }).join('');
 
   const advTyped = asCy.advanceTax != null && asCy.advanceTax !== '';
-  const coiOn = asUseCoi();
-  const itSrc = asSourceOf('itDepreciation');
-  const c = r ? r.coi : null;
-  const money = v => asFmt(v);
 
   // One collapsible section. The whole panel re-renders on toggle, which is
   // safe because every figure here lives in asCy/asTds, never only the DOM.
@@ -1056,47 +1061,14 @@ function asRenderTax() {
     ? `${side === 'receivable' ? 'Receivable' : 'Payable'} ${asFmt(asNum(asCy[sideKey]))}`
     : 'Not registered';
 
-  // ── COI — the bridge from accounting profit to taxable income, shown
-  //    whenever it is on so the tax figure can be traced rather than trusted ──
-  const coiBody = `
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500;">
-      <input type="checkbox" id="as-use-coi" ${coiOn ? 'checked' : ''} style="width:auto;" onchange="asSetUseCoi(this.checked)" />
-      Compute tax through a Computation of Income (adds the COI sheet)
-    </label>
-    <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">
-      ${itSrc ? escHtml(itSrc.source) + (itSrc.stale ? ' — no schedule for this year yet, so last year&rsquo;s is used' : '')
-              : 'No Income-Tax depreciation schedule found for this client. Without one the bridge deducts nothing.'}
-    </div>
-    ${coiOn ? `
-    <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;">
-      <div class="form-group" style="margin:0;">
-        <label>Depreciation per Income Tax Act ${itSrc ? asSrcBadge() : ''}</label>
-        <input type="number" step="0.01" value="${asCy.itDepreciation == null ? '' : asCy.itDepreciation}"
-               oninput="asFigureInput('itDepreciation', this.value)" />
-      </div>
-      <div class="form-group" style="margin:0;">
-        <label>Brought-forward loss</label>
-        <input type="number" step="0.01" value="${asCy.broughtForwardLoss == null ? '' : asCy.broughtForwardLoss}"
-               oninput="asFigureInput('broughtForwardLoss', this.value)" />
-        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Enter as a positive figure; it reduces taxable income.</div>
-      </div>
-    </div>
-    ${c ? `<div class="table-wrap" style="margin-top:12px;"><table class="client-table">
-      <tbody>
-        <tr><td>Net profit as per Income Statement</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.pbt)}</td></tr>
-        <tr><td>Add: Depreciation per Accounting Standard</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.accountingDep)}</td></tr>
-        <tr><td>Less: Depreciation per Income Tax Act</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.itDep)}</td></tr>
-        <tr><td>Add: Previous year Loss</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(-c.bfLoss)}</td></tr>
-        <tr style="font-weight:600;"><td>Total taxable income</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.taxableProfit)}</td></tr>
-        <tr style="font-weight:600;"><td>Provision for tax</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${money(c.tax)}</td></tr>
-      </tbody></table></div>` : ''}` : ''}`;
-  const coiSummary = coiOn ? (c ? `Provision ${asFmt(c.tax)}` : 'On') : 'Off &mdash; flat rate';
-
+  // (The Computation of Income section was removed 2026-08-28 by user
+  // decision — tax always charges straight off accounting profit. The engine
+  // still implements the COI bridge and tools/psVerify.mjs still proves it,
+  // so restoring the section is a UI change only.)
   host.innerHTML =
     section('adv', 'Advance Tax', advSummary, advBody)
     + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
-    + section('vat', 'VAT', vatSummary, vatBody)
-    + section('coi', 'Computation of Income', coiSummary, coiBody);
+    + section('vat', 'VAT', vatSummary, vatBody);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1150,45 +1122,84 @@ function asStockSet(i, field, v) {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  PARTY DETAIL — the firm's `p` and `s` sheets, built from the register
-//  rather than re-typed, and carrying the CA's own "As per books /
-//  Difference" line rather than a new invention.
+//  EXTRA PAYABLE / RECEIVABLE LINES — notes 3.9 and 3.3 beyond the standard
+//  set (user ask 2026-08-28, the other-expenses idiom: editable lines plus
+//  add-line). Seeded from whatever last year's note carried that the engine
+//  doesn't already own (Salary Payable, Advance to Suppliers…); this year's
+//  balance is typed. Trade Payables / Trade Receivables stay in the figures
+//  card, Audit Fee Payable and the TDS lines stay derived.
+//  (This card replaced the read-only Party Detail & Reconciliation panel,
+//  removed the same day by user decision.)
 // ════════════════════════════════════════════════════════════════
 
-function asRenderParties() {
-  const host = asEl('as-parties');
-  if (!host) return;
-  if (!asSrc) {
-    host.innerHTML = `<div style="color:var(--text-muted); font-size:13px; padding:4px 2px;">No saved Autobooks book for this client and fiscal year, so there is no party detail to show.</div>`;
-    return;
+// The engine's own 3.9 / 3.3 lines. A prior-year line matching one of these
+// must NOT be seeded as an extra, or it would print twice.
+function asIsStandardPayable(name) {
+  const n = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(payables?|on)\b/g, '').replace(/\s+/g, '');
+  return !n || n === 'trade' || n === 'auditfee' || /^tds|^vat/.test(n);
+}
+function asIsStandardReceivable(name) {
+  const n = String(name || '').toLowerCase();
+  return !String(name || '').trim() || /advance tax|^vat|trade receivable|impair/.test(n);
+}
+
+function asSeedExtraLines() {
+  if (!asPy) return;
+  if (!asExtraPay.length) {
+    asExtraPay = (asPy.payableItems || [])
+      .filter(l => !asIsStandardPayable(l.name))
+      .map(l => ({ name: l.name, pyName: l.name, py: asNum(l.amount), amount: null }));
   }
-  const r = asResult;
-  const side = (key, title, booksFigure, booksLabel) => {
-    const list = Object.values(asSrc.parties[key] || {})
-      .filter(p => Math.abs(p.amount) > 0.005)
-      .sort((a, b) => b.amount - a.amount);
-    const total = list.reduce((s, p) => s + p.amount, 0);
-    const diff = total - booksFigure;
-    return `<div style="margin-top:14px;">
-      <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:6px;">${title} &mdash; ${list.length} parties</div>
-      <div class="table-wrap"><table class="client-table">
-        <thead><tr><th style="width:130px;">PAN</th><th>Party Name</th><th style="text-align:right; width:160px;">Amount</th></tr></thead>
-        <tbody>${list.slice(0, 12).map(p => `<tr>
-          <td>${escHtml(p.pan || '—')}</td><td>${escHtml(p.name || '—')}</td>
-          <td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(p.amount)}</td></tr>`).join('')}
-          ${list.length > 12 ? `<tr><td colspan="2" style="color:var(--text-muted);">&hellip; and ${list.length - 12} more</td><td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${asFmt(list.slice(12).reduce((s, p) => s + p.amount, 0))}</td></tr>` : ''}
-        </tbody>
-        <tfoot>
-          <tr style="font-weight:600;"><td colspan="2">Total per party detail</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(total)}</td></tr>
-          <tr><td colspan="2">${booksLabel}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(booksFigure)}</td></tr>
-          <tr style="font-weight:600; color:${Math.abs(diff) < 0.5 ? 'var(--green-dk)' : 'var(--red-dk)'};">
-            <td colspan="2">Difference</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(diff)}</td></tr>
-        </tfoot>
-      </table></div></div>`;
-  };
+  if (!asExtraRecv.length) {
+    asExtraRecv = (asPy.receivableItems || [])
+      .filter(l => !asIsStandardReceivable(l.name))
+      .map(l => ({ name: l.name, pyName: l.name, py: asNum(l.amount), amount: null }));
+  }
+}
+
+function asRenderExtras() {
+  const host = asEl('as-extras');
+  if (!host) return;
+  // Same caret rule as the tax panel: these boxes fire onchange, but a
+  // debounced re-render mid-typing would still throw the caret away.
+  const focused = document.activeElement;
+  if (host.contains(focused) && focused.tagName === 'INPUT') return;
+  const block = (title, list, kind, addLabel) => `
+    <div style="margin-top:${title.startsWith('3.9') ? '0' : '16px'};">
+      <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:6px;">${title}</div>
+      ${list.length ? `<div class="table-wrap"><table class="client-table">
+        <thead><tr><th>Line</th><th style="text-align:right; width:160px;">Last year</th><th style="text-align:right; width:180px;">This year</th><th style="width:36px;"></th></tr></thead>
+        <tbody>${list.map((l, i) => `<tr>
+          <td><input type="text" value="${escHtml(l.name || '')}" onchange="asExtraSet('${kind}',${i},'name',this.value)" style="width:100%; min-width:180px;" /></td>
+          <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${asFmt(asNum(l.py))}</td>
+          <td style="text-align:right;"><input type="number" step="0.01" value="${l.amount == null ? '' : l.amount}" placeholder="0.00"
+                 onchange="asExtraSet('${kind}',${i},'amount',this.value)" style="width:160px; text-align:right; font-variant-numeric:tabular-nums;" /></td>
+          <td><button class="btn btn-outline btn-sm" onclick="asExtraRemove('${kind}',${i})">✕</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+      : `<div style="color:var(--text-muted); font-size:12.5px; padding:2px 2px 6px;">No extra lines — the note carries only its standard rows.</div>`}
+      <div style="margin-top:8px;"><button class="btn btn-outline btn-sm" onclick="asExtraAdd('${kind}')">${addLabel}</button></div>
+    </div>`;
   host.innerHTML =
-    side('purchase', 'Purchase / creditor detail', r ? r.income.materials.purchases : 0, 'As per books &mdash; Purchases of goods') +
-    side('sales', 'Sales / debtor detail', r ? r.income.revenueOps : 0, 'As per books &mdash; Revenue from operations');
+    block('3.9 Trade &amp; Other Payables — extra lines', asExtraPay, 'pay', '+ Add payable line')
+    + block('3.3 Trade &amp; Other Receivables — extra lines', asExtraRecv, 'recv', '+ Add receivable line');
+}
+
+function asExtraList(kind) { return kind === 'pay' ? asExtraPay : asExtraRecv; }
+function asExtraAdd(kind) {
+  asExtraList(kind).push({ name: '', pyName: '', py: 0, amount: null });
+  asRun(); asRenderExtras();
+}
+function asExtraRemove(kind, i) {
+  asExtraList(kind).splice(i, 1);
+  asRun(); asRenderExtras();
+}
+function asExtraSet(kind, i, field, v) {
+  const l = asExtraList(kind)[i];
+  if (!l) return;
+  l[field] = field === 'amount' ? (v === '' ? null : asNum(v)) : v;
+  asRun(); asRenderExtras();
 }
 
 function asTdsSet(k, v) {
@@ -1312,15 +1323,11 @@ function asInterestInput(k, v) { asFigureInput(k, v); }
 // collapsed accordion section, and a DOM flag would silently revert the
 // preparer's choice to the automatic rule.
 function asUseCoi() {
-  if (asCoiTouched != null) return asCoiTouched;
-  return !!(asItDep || asNum(asCy.itDepreciation));
-}
-
-function asSetUseCoi(on) {
-  asCoiTouched = !!on;
-  asRun();
-  asRenderFigures();
-  asRenderTax();
+  // The Computation of Income was removed 2026-08-28 by user decision — tax
+  // always charges straight off accounting profit and no COI sheet prints.
+  // The engine keeps the bridge (psVerify proves it); flipping this back on
+  // is the whole restore.
+  return false;
 }
 
 function asCollectInput() {
@@ -1336,10 +1343,13 @@ function asCollectInput() {
       incentiveExpense: 0,   // the dedicated row is retired; add one as an Other Expense
       taxExpense: p.soi && p.soi.tax,
       advanceTax: (p.receivableItems || []).reduce((s, r) => s + (/advance|tds/i.test(r.name || '') ? asNum(r.amount) : 0), 0),
-      otherExpenses: (p.otherItems || []).map((e, i) => ({
-        key: e.key || ('other' + i), name: e.name, amount: e.amount,
-        flat: flat.indexOf(e.key) >= 0,
-      })).concat(asCustom.map(c => ({ key: c.key, name: c.name, amount: 0 }))),
+      otherExpenses: (p.otherItems || []).map((e, i) => {
+        // Audit Fee and Rent are keyed by NAME so the engine's pick() and
+        // FLAT_LINES find them — a positional 'other3' reached the engine
+        // and Audit Fee Payable / TDS-Audit fee / TDS-Rent all derived to 0.
+        const key = e.key || ProvisionalStatementEngine.headKeyFor(e.name) || ('other' + i);
+        return { key, name: e.name, amount: e.amount, flat: flat.indexOf(key) >= 0 };
+      }).concat(asCustom.map(c => ({ key: c.key, name: c.name, amount: 0 }))),
       directExtra: asDirectCustom.map(d => ({ key: d.key, name: d.name, amount: 0 })),
       ppeClasses: asPpeInput,
       receivables: p.sfp && p.sfp.receivables, inventories: p.sfp && p.sfp.inventories,
@@ -1355,14 +1365,18 @@ function asCollectInput() {
       loansC: asLoans.st,
       tds: asTds,
       stockLines: asStock,
+      extraPayables: asExtraPay.map((l, i) => ({
+        key: 'xpay' + i, name: l.name, pyName: l.pyName, py: asNum(l.py), amount: asNum(l.amount),
+      })),
+      extraReceivables: asExtraRecv.map((l, i) => ({
+        key: 'xrecv' + i, name: l.name, pyName: l.pyName, py: asNum(l.py), amount: asNum(l.amount),
+      })),
     }),
     rules: asRules,
     options: {
       growth: 1 + asNum((asEl('as-growth') || {}).value || 5) / 100,
       taxProfile: asEntity() === 'proprietorship' ? 'progressive' : 'corporate',
       balanceVia: asPlugReceivables ? 'receivables' : 'none',
-      // The Computation of Income runs when the client has an Income-Tax
-      // depreciation schedule, unless the preparer says otherwise.
       useCoi: asUseCoi(),
       // 'purchases' means the typed PBT is held and purchases balances to it.
       solveFor: asSolveFor,
@@ -1392,7 +1406,7 @@ function asRecalcDebounced() {
     asRenderInterest();
     asRenderTax();
     asRenderStock();
-    asRenderParties();
+    asRenderExtras();
     asSyncSeesaw();
   }, 220);
 }
@@ -1546,7 +1560,8 @@ function asCollectSaveState() {
     py: asPy, pyIssues: asPyIssues,
     cy: asCy, rules: asRules, ppe: asPpeInput, loans: asLoans,
     custom: asCustom, directCustom: asDirectCustom, tds: asTds,
-    stock: asStock, typedOver: asTypedOver,
+    stock: asStock, extraPay: asExtraPay, extraRecv: asExtraRecv,
+    typedOver: asTypedOver,
     vatSide: asVatSide, coiTouched: asCoiTouched,
     solveFor: asSolveFor, plugReceivables: asPlugReceivables,
     depSource: asDepSource,
@@ -1725,6 +1740,10 @@ async function asLoadSaved(id) {
     asLoans = inp.loans && inp.loans.st ? inp.loans : { st: [], lt: [], pwc: [], hp: [] };
     asCustom = inp.custom || []; asDirectCustom = inp.directCustom || [];
     asTds = inp.tds || {}; asStock = inp.stock || [];
+    asExtraPay = inp.extraPay || []; asExtraRecv = inp.extraRecv || [];
+    // A record saved before the extras existed still carries its prior-year
+    // note lines — seed them so nothing silently drops off the comparative.
+    asSeedExtraLines();
     asTypedOver = inp.typedOver || {};
     asVatSide = inp.vatSide || null; asCoiTouched = inp.coiTouched != null ? inp.coiTouched : null;
     asSolveFor = inp.solveFor || 'purchases';
