@@ -345,6 +345,26 @@ const fixSignatureAlign = s => {
   return out;
 };
 
+// ── How far down each registrar letter's signature block sits ──
+//
+// The source leaves ONE blank line between the body and "निवेदक", which the
+// firm reads as the signature crowding the text it is meant to sit apart
+// from (2026-08-29, user ask: "the निवेदक and name and अध्यक्ष सञ्चालक sits way
+// up — give it some room, a bit lower, not all the way to the bottom").
+//
+// Expressed as spacing-before on the निवेदक paragraph rather than as extra
+// blank paragraphs, for the same reason CS_APPOINT's spacers are pinned:
+// a blank paragraph inherits the body's line height, so its height drifts
+// with any future leading change, while w:before is the gap itself. 63pt,
+// measured from the firm's own hand-fixed reference of both pages against
+// the generated output (the gap they drew reads ~65pt on page 5 and ~70pt
+// on page 6 — one value, since both letters are the same letter shape).
+//
+// Both letters keep a comfortable margin at this size: page 5 ends with its
+// बोधार्थ line and page 6 with the title, and page counts are re-measured in
+// Word after every change to this value (see the footer of this file).
+const LETTER_SIGN_BEFORE = '<w:spacing w:before="1260"/>';
+
 // The registrar-notification letter's signature block (निवेदक / name /
 // "अध्यक्ष सञ्चालक") has the identical disease as the §51 page's block above,
 // just with different hand-typed padding per line — spaces on two lines, ten
@@ -356,7 +376,7 @@ const fixSignatureAlign2 = s => {
   const IND = '<w:ind w:left="5400" w:right="0"/>';
   let out = s;
   const nivedakOld = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">                                                                       </w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
-  const nivedakNew = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
+  const nivedakNew = '<w:pPr>' + LETTER_SIGN_BEFORE + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
   const name2Old = '<w:pPr><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">                                                           {{chairmanName}}                          </w:t>';
   const name2New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t>';
   const title2Old = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">अध्यक्ष सञ्चालक  </w:t>';
@@ -375,7 +395,7 @@ const fixSignatureAlign3 = s => {
   const IND = '<w:ind w:left="5400" w:right="0"/>';
   let out = s;
   const niv3Old = '<w:pPr><w:tabs><w:tab w:val="left" w:pos="1035"/></w:tabs><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve"> </w:t><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/></w:r><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
-  const niv3New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
+  const niv3New = '<w:pPr>' + LETTER_SIGN_BEFORE + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">निवेदक</w:t>';
   const name3Old = '<w:pPr><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">     {{chairmanName}}                                                                                  </w:t>';
   const name3New = '<w:pPr>' + IND + '<w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">{{chairmanName}}</w:t>';
   const title3Old = '<w:pPr><w:ind w:firstLine="720"/><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Mangal" w:hAnsi="Mangal"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">अध्यक्ष </w:t>';
@@ -477,6 +497,59 @@ const fixVisargaColon = s => {
     .replace(/क्रमशः/g, 'क्रमश' + GUARD)
     .replace(/ः/g, ':')
     .replace(new RegExp(GUARD, 'g'), 'ः');
+};
+
+// ── The two registrar letters' विषय (subject) lines — pages 5 and 6 ──
+//
+// The source pushes each subject right with SIXTEEN hand-typed leading
+// spaces stacked on top of a firstLine indent, leaves it unbolded, and sits
+// it one plain line under the address block. A space count lines up for
+// exactly the one subject string it was typed against — the §15 rule this
+// document's other alignment repairs already follow — and the firm reads
+// this line as the letter's heading, so (2026-08-29, user ask, against
+// their own hand-fixed reference of both pages) it becomes: centred on a
+// real w:jc, bold, and given real air above and below instead of being
+// crammed against the address block.
+//
+// Anchored on the SUBJECT TEXT rather than a full-paragraph XML string:
+// the two paragraphs differ in their trailing padding, so one exact-string
+// pair per page would be two near-identical 600-character literals, and the
+// text is what actually identifies the line. The hit count is asserted
+// instead, which fails just as loudly if the source changes. Exactly two
+// paragraphs qualify — the only other "विषय" in the document is prose in
+// the AGM minutes ("...विषय बाँकी नरहेको हुँदा..."), which carries no colon.
+//
+// Must run AFTER fixVisargaColon: before it the subject reads "विषयः–" with
+// a visarga, and this match would silently find nothing (which the
+// assertion below would then turn into a loud failure).
+const SUBJECT_BEFORE = 240;   // twips = 12pt of air above the subject line
+const SUBJECT_AFTER = 180;    // twips =  9pt below it, before "महोदय ,"
+const fixLetterSubjectLines = s => {
+  let hits = 0;
+  const out = s.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/g, p => {
+    if (!p.includes('विषय:–')) return p;
+    hits++;
+    return p
+      // Real spacing + centring, replacing the firstLine indent that the
+      // hand-typed spaces were stacked on. w:spacing and w:jc go straight
+      // after <w:pPr> — both subject paragraphs carry only <w:ind> and the
+      // paragraph-mark <w:rPr>, so this lands in schema order (spacing,
+      // ind, jc, ..., rPr) with nothing to step over.
+      .replace(/<w:ind\b[^>]*\/>/, '')
+      .replace(/<w:pPr>/, `<w:pPr><w:spacing w:before="${SUBJECT_BEFORE}" w:after="${SUBJECT_AFTER}"/><w:jc w:val="center"/>`)
+      // Bold every run AND the paragraph mark. w:bCs as well as w:b: Word
+      // classifies Devanagari as complex script, and w:b alone leaves it
+      // rendering unbolded — the company-name heading on the same page
+      // carries both, which is the convention being matched here.
+      .replace(/<w:rPr>(<w:rFonts\b[^>]*\/>)?/g, (_, fonts) => '<w:rPr>' + (fonts || '') + '<w:b/><w:bCs/>')
+      // ...and the hand-typed padding itself, now that w:jc does its job.
+      .replace(/(<w:t xml:space="preserve">)\s+/g, '$1')
+      .replace(/\s+(<\/w:t>)/g, '$1');
+  });
+  if (hits !== 2) {
+    throw new Error(`expected 2 registrar-letter विषय lines, found ${hits} — source changed, revisit fixLetterSubjectLines`);
+  }
+  return out;
 };
 
 // ── PRINT SIZE ──
@@ -581,7 +654,7 @@ function fitSection51(xml) {
 }
 
 files['word/document.xml'] = Buffer.from(
-  mangalToNirmala(fitSection51(scaleBm(fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail)))))))))))))))),
+  mangalToNirmala(fitSection51(scaleBm(fixLetterSubjectLines(fixVisargaColon(fixDeclarationSignatureAlign(fixDeclarationHeaderAlign(stripBoardChangeMarker(fixDateLineTabs(fixSignatureAlign3(fixSignatureAlign2(fixSignatureAlign(fixTablePadding(stripListBullet(stripHighlight(fixExtraProposalFont(swapFonts(head + out + tail))))))))))))))))),
   'utf8'
 );
 for (const name of ['word/styles.xml', 'word/fontTable.xml', 'word/settings.xml']) {
@@ -622,6 +695,21 @@ files['word/styles.xml'] = Buffer.from(
   }
   if (built.includes('<w:tab/><w:tab/><w:tab/><w:tab/><w:t xml:space="preserve">मितिः– {{letterDate}}</w:t>')) {
     throw new Error('registrar-letter date line still presses tab 4 times');
+  }
+  // Both letters' subject lines: centred, bold, spaced, and with the source's
+  // sixteen hand-typed leading spaces gone (2026-08-29).
+  if ((built.match(/<w:spacing w:before="240" w:after="180"\/><w:jc w:val="center"\/>/g) || []).length !== 2) {
+    throw new Error('the two registrar-letter विषय lines did not both get centred + spaced');
+  }
+  if (/<w:t xml:space="preserve">\s+विषय:–/.test(built)) {
+    throw new Error('a विषय line still carries hand-typed leading spaces');
+  }
+  if ((built.match(/<w:b\/><w:bCs\/><w:sz w:val="29"\/><w:szCs w:val="29"\/><\/w:rPr><w:t[^>]*>विषय:–/g) || []).length !== 2) {
+    throw new Error('the two registrar-letter विषय lines are not both bold');
+  }
+  // Both letters' signature blocks sit clear of the body (2026-08-29).
+  if ((built.match(/<w:spacing w:before="1260"\/>/g) || []).length !== 2) {
+    throw new Error('the two registrar-letter निवेदक blocks did not both get their spacing-before');
   }
   if (built.includes('In case of Change of Board of Director')) throw new Error('board-change marker text survived — it should never print');
   if ((built.match(/isChairman/g) || []).length !== 8) {
