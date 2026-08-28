@@ -43,6 +43,11 @@ window.SectionLock = (function () {
 
   // ── Reading the lock ──────────────────────────────────────────────────
 
+  // PostgREST's code for "no such function in the schema cache". It is the
+  // one failure that means the lock is NOT INSTALLED, as opposed to not
+  // answering — and the two must lead to opposite behaviour (see below).
+  const RPC_MISSING = 'PGRST202';
+
   async function refresh() {
     try {
       const { data, error } = await window.sb.rpc('fin_status');
@@ -50,23 +55,43 @@ window.SectionLock = (function () {
       // fin_status() returns null when the caller has no membership row.
       state = data || { granted: false, hasPassword: false, unlockedUntil: null };
     } catch (e) {
-      // Fail CLOSED, always. A status call that did not answer is not
-      // permission — and because the database is the real gate, guessing
-      // "probably fine" here would only produce empty modules anyway.
-      console.warn('[SectionLock] status unavailable:', e);
-      state = { granted: false, hasPassword: false, unlockedUntil: null, unreachable: true };
+      if (e && e.code === RPC_MISSING) {
+        // The migration has not been applied to this database yet, so there
+        // is no lock to enforce: without private.fin_unlocked() the policies
+        // never reference it and the eight tables are open to every member
+        // regardless. Hiding the menu here would protect nothing and would
+        // only take Financial Management away from everyone — which is
+        // exactly what happened on 2026-08-29 when the migration went in
+        // ahead of this file and the section rendered empty for the owner
+        // too. So: no lock installed means behave as if this file did not
+        // exist. This is NOT a general fail-open; it is the single case
+        // where the database has told us there is nothing to gate.
+        state = { notInstalled: true };
+      } else {
+        // Everything else fails CLOSED. A status call that did not answer is
+        // not permission — and because the database is the real gate,
+        // guessing "probably fine" would only produce empty modules anyway.
+        console.warn('[SectionLock] status unavailable:', e);
+        state = { granted: false, hasPassword: false, unlockedUntil: null, unreachable: true };
+      }
     }
     applyVisibility();
     return state;
   }
 
-  function granted() { return !!(state && state.granted); }
+  // With no lock installed the app must look exactly as it did before this
+  // feature: menu shown, palette entries listed, openModule() straight
+  // through. Both predicates therefore answer true in that one case.
+  function notInstalled() { return !!(state && state.notInstalled); }
+
+  function granted() { return notInstalled() || !!(state && state.granted); }
 
   // Computed from the deadline rather than read off the server's `unlocked`
   // flag, so a window that expires while the tab sits open closes by itself
   // — no polling, and no disagreement with what RLS will decide on the next
   // request.
   function unlocked() {
+    if (notInstalled()) return true;
     if (!state || !state.granted || !state.unlockedUntil) return false;
     return new Date(state.unlockedUntil).getTime() > Date.now();
   }
@@ -153,8 +178,11 @@ window.SectionLock = (function () {
     if (trigger && trigger.parentElement) {
       trigger.parentElement.style.display = granted() ? '' : 'none';
     }
+    // "Lock this section" needs the lock to exist, not merely to be open —
+    // unlocked() answers true when nothing is installed, and offering a Lock
+    // button there would reload the page to no effect.
     const lockBtn = document.getElementById('topbar-fin-lock');
-    if (lockBtn) lockBtn.style.display = unlocked() ? '' : 'none';
+    if (lockBtn) lockBtn.style.display = (!notInstalled() && unlocked()) ? '' : 'none';
   }
 
   async function init() {

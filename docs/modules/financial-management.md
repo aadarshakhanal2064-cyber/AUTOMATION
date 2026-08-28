@@ -331,6 +331,36 @@ answer and not an error.
   row you are scanning for status is the classic way to revoke the wrong
   person's access.
 
+### Deploying it — order matters, and it bit once
+
+**Push the code first, then apply the migration.** Never the other way round.
+
+On 2026-08-29 the migration went in ahead of the front end and Financial
+Management broke for everyone, the owner included: the policies were enforcing
+a lock that no deployed screen could open. Two symptoms, both alarming and
+neither a data loss —
+
+- The five modules rendered **empty**, with no password box to explain why.
+- **Pending Memos jumped to ~60.** That list is derived (§5.13): verified ARF
+  tracks plus saved projections, *minus* the ones that already have a memo and
+  *minus* dismissed reminders. Both subtractions read locked tables, so both
+  became zero and every reminder the firm had already dealt with came back.
+  A derived list is only as scoped as the tables it subtracts with — worth
+  remembering before locking any table that another module subtracts against.
+
+`refresh()` now tells the two failures apart, which is what makes the safe
+order work:
+
+| Failure | Meaning | Behaviour |
+|---|---|---|
+| `PGRST202` (no such function) | The migration is not applied — so `private.fin_unlocked()` does not exist, no policy references it, and the eight tables are open to every member anyway | **Behave as if this file did not exist**: menu shown, palette entries listed, `openModule()` straight through. Hiding the section would protect nothing and take it from everyone. |
+| Anything else (network, permission, timeout) | The lock exists and we could not read our standing | **Fail closed.** |
+
+That is not a general fail-open. It is the single case where the database has
+told us there is nothing to gate. Deploying the engine against a database
+without the migration is therefore a complete no-op, which is what makes
+push-then-migrate safe.
+
 ### Known limit
 
 The unlock window is one timestamp **per member**, not per session, so
