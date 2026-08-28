@@ -503,6 +503,32 @@ function cpBuildDirectoryModel(list) {
   };
 }
 
+// Opens a plain print window over the same model the Excel/PDF export uses
+// (ReportExport.toHtml), so Preview and a PDF export can never show
+// different data — same idiom as File In Out / Audit Checklist. The
+// browser's own print dialog's "Save as PDF" is the actual preview-to-PDF
+// path, same as everywhere else this idiom is used — no separate feature.
+function cpOpenPrintWindow(model) {
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Allow pop-ups to print.', 'info'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>${escHtml(model.title)}</title>
+    <style>body{font-family:Inter,Arial,sans-serif;margin:28px;color:#1a202c;}
+    table{border-collapse:collapse;width:100%;font-size:10.5px;}
+    th,td{border:1px solid #d9dce5;padding:5px 7px;vertical-align:top;}
+    th{background:#f3f5fb;color:#0b1f3d;}
+    @page{size:A4 landscape;margin:12mm;}</style></head>
+    <body>${ReportExport.toHtml(model)}</body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 300);
+  AuditLog.record('registrar_company_register_printed', { module: 'companyProfile' });
+}
+
+function cpPreviewAll() {
+  const list = cpFiltered();
+  if (!list.length) { showToast('Nothing to preview for the current search.', 'info'); return; }
+  cpOpenPrintWindow(cpBuildDirectoryModel(list));
+}
+
 // Toast, not cpStatus — the export buttons sit on the toolbar, and cp-status
 // lives inside the add/edit drawer, which is normally closed when exporting.
 async function cpExport(kind) {
