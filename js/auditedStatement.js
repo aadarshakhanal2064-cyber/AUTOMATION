@@ -130,6 +130,11 @@ function asInit() {
   }
   asRenderPySummary();
   asRenderFigures();
+  // Show/hide the company-only capital boxes for whatever entity the select
+  // is sitting on (a re-open keeps the previous selection).
+  const isCompany = asEntity() === 'private';
+  document.querySelectorAll('#tab-finStatement-panel .as-cap-only')
+    .forEach(el => { el.style.display = isCompany ? '' : 'none'; });
 }
 
 // Fiscal-year list, read through the shared default so every module rolls
@@ -175,6 +180,9 @@ const asScope = WorkflowEngine.createClientScope({
     asSolveFor = 'purchases'; asPlugReceivables = true;
     asSavedId = null;
     const f = asEl('as-py-file'); if (f) f.value = '';
+    // The capital boxes are per-client figures — clear them with the rest so
+    // the next client can't inherit this one's share capital (§9).
+    ['as-cap-auth', 'as-cap-issued', 'as-cap-paid'].forEach(id => { const e = asEl(id); if (e) e.value = ''; });
     asRenderPySummary();
     asRenderFigures();
     asRenderLoans();
@@ -194,7 +202,9 @@ const asScope = WorkflowEngine.createClientScope({
     // ASSIGN unconditionally — an `if (mapped)` leaves the previous client's
     // tax profile standing when this one has none on file.
     const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(it.entity_type || '').toLowerCase().trim()];
-    asEl('as-tax-profile').value = profile === 'proprietorship' ? 'progressive' : 'corporate';
+    asEl('as-tax-profile').value = profile === 'proprietorship' ? 'proprietorship'
+      : profile === 'partnership' ? 'partnership' : 'private';
+    asOnEntityChange();
 
     asLoadDepreciation();
     asLoadSources();
@@ -321,6 +331,7 @@ async function asHandlePyFile(input) {
     asSeedPpe();
     asSeedLoans();
     asSeedFigures();
+    asPrefillCapital();
     asRenderFigures();
     AuditLog.record('audited_py_parsed', {
       module: 'finStatement', clientName: asEl('as-company').value, status: 'success',
@@ -548,11 +559,57 @@ const AS_FIGURES = [
   { k: 'dividend',         label: '@DIST@',                       grow: false, hint: 'Reduces retained earnings on the SOCE. Enter as a positive figure.' },
 ];
 
-// A company pays a dividend; a firm or proprietor takes drawings. Same row on
-// the SOCE either way — only the word changes, and it is the word the audit
-// report and the projection already use for that entity.
+// ── entity ──
+// One select carries both the entity and the tax rule (user ask 2026-08-28,
+// splitting the old corporate/progressive pair three ways): a partnership
+// taxes like a company but its note 3.6 reads "Partners Capital", not three
+// share-capital sections. The two legacy values map so saved records restore.
+function asEntity() {
+  const v = (asEl('as-tax-profile') || {}).value || 'private';
+  if (v === 'corporate') return 'private';
+  if (v === 'progressive') return 'proprietorship';
+  return v;
+}
+
+// The Authorized/Issued/Paid-Up boxes (and the face value) are meaningless
+// off a company, so they show only there; a proprietorship or partnership
+// carries one capital line the balance sheet already holds.
+function asOnEntityChange() {
+  const isCompany = asEntity() === 'private';
+  document.querySelectorAll('#tab-finStatement-panel .as-cap-only')
+    .forEach(el => { el.style.display = isCompany ? '' : 'none'; });
+  asPrefillCapital();
+  asRenderFigures();
+  asRecalcDebounced();
+}
+
+// Prefill the three capital boxes from the prior-year statement — by default
+// all three ARE the paid-up figure, which is what the firm's own notes print
+// (user ask 2026-08-28: "pre filled by default which I should be able to
+// change"). Only ever fills a blank box; a typed figure is never overwritten.
+function asPrefillCapital() {
+  if (asEntity() !== 'private' || !asPy) return;
+  const paid = asNum(asCy.shareCapital != null ? asCy.shareCapital : (asPy.sfp && asPy.sfp.shareCapital));
+  if (!paid) return;
+  ['as-cap-paid', 'as-cap-issued', 'as-cap-auth'].forEach(id => {
+    const el = asEl(id);
+    if (el && el.value === '') el.value = paid;
+  });
+}
+
+// Paid-up IS the balance sheet's Share Capital — editing it moves both, so
+// the note can never disagree with the face (the rule note 3.6 already keeps
+// by deriving share counts from the capital).
+function asCapPaidInput(v) {
+  if (v === '') delete asCy.shareCapital; else asCy.shareCapital = asNum(v);
+  asRecalcDebounced();
+}
+
+// A company pays a dividend; a proprietor takes drawings. Same row on the
+// SOCE either way — only the word changes. A partnership says Dividend too
+// (user decision 2026-08-28).
 function asDistLabel() {
-  return ((asEl('as-tax-profile') || {}).value === 'progressive') ? 'Drawings' : 'Dividend Paid';
+  return asEntity() === 'proprietorship' ? 'Drawings' : 'Dividend Paid';
 }
 
 // Which of the pair was typed last. Editing either one makes the other the
@@ -1302,7 +1359,7 @@ function asCollectInput() {
     rules: asRules,
     options: {
       growth: 1 + asNum((asEl('as-growth') || {}).value || 5) / 100,
-      taxProfile: (asEl('as-tax-profile') || {}).value || 'corporate',
+      taxProfile: asEntity() === 'proprietorship' ? 'progressive' : 'corporate',
       balanceVia: asPlugReceivables ? 'receivables' : 'none',
       // The Computation of Income runs when the client has an Income-Tax
       // depreciation schedule, unless the preparer says otherwise.
@@ -1393,21 +1450,27 @@ function asToOut(r) {
       // with the balance sheet. Authorised is constitutional, not derivable,
       // so it is asked for and falls back to the issued count.
       shareFace: asNum((asEl('as-face-value') || {}).value) || 100,
-      authorisedShares: asNum((asEl('as-auth-shares') || {}).value) || 0,
+      // Note 3.6's three sections carry AMOUNTS the preparer can edit
+      // (prefilled to the paid-up figure); blank falls back in the renderer.
+      authorisedCapital: asNum((asEl('as-cap-auth') || {}).value) || 0,
+      issuedCapital: asNum((asEl('as-cap-issued') || {}).value) || 0,
       basis: 'provisional',
       // The SOCE and the cash flow print whatever word this entity uses, so it
-      // has to follow the tax profile rather than be fixed at the company one.
+      // has to follow the entity select rather than be fixed at the company
+      // one. The capital HEADING follows the entity too (user decision
+      // 2026-08-28, reversing 2026-08-22's always-"Share Capital"): a
+      // proprietorship's note 3.6 reads "Proprietors Capital", a
+      // partnership's "Partners Capital" — the spellings the firm's own
+      // statements use.
       terms: (() => {
-        const prop = (asEl('as-tax-profile') || {}).value === 'progressive';
+        const ent = asEntity();
         return {
-          person: prop ? 'Proprietor' : 'Director/Chairman',
+          person: ent === 'proprietorship' ? 'Proprietor' : ent === 'partnership' ? 'Partner' : 'Director/Chairman',
           distribution: asDistLabel(),
-          // Always "Share Capital", even for a proprietorship (user decision
-          // 2026-08-22) — the entity word still drives the note's LAYOUT
-          // (single Proprietor's/Partner's Capital line), only the heading
-          // stays put.
-          capital: 'Share Capital',
-          entity: prop ? 'Proprietorship' : 'Private Limited Company',
+          capital: ent === 'proprietorship' ? 'Proprietors Capital'
+            : ent === 'partnership' ? 'Partners Capital' : 'Share Capital',
+          entity: ent === 'proprietorship' ? 'Proprietorship'
+            : ent === 'partnership' ? 'Partnership Firm' : 'Private Limited Company',
         };
       })(),
       titles: (() => {
@@ -1490,7 +1553,8 @@ function asCollectSaveState() {
     ui: {
       address: val('as-address'), growth: val('as-growth'),
       taxProfile: val('as-tax-profile'), staff: val('as-staff'),
-      faceValue: val('as-face-value'), authShares: val('as-auth-shares'),
+      faceValue: val('as-face-value'),
+      capAuth: val('as-cap-auth'), capIssued: val('as-cap-issued'), capPaid: val('as-cap-paid'),
       titleProvisional: (asEl('as-title-provisional') || {}).checked !== false,
     },
   };
@@ -1639,10 +1703,20 @@ async function asLoadSaved(id) {
     const set = (elId, v) => { const e = asEl(elId); if (e) e.value = v == null ? '' : v; };
     set('as-address', ui.address);
     set('as-growth', ui.growth);
-    set('as-tax-profile', ui.taxProfile || 'corporate');
+    // Records saved before the 3-way entity select stored 'corporate' /
+    // 'progressive'; asEntity() maps those, so setting the raw value on a
+    // select that no longer carries it must not silently land on option one.
+    const legacyTp = { corporate: 'private', progressive: 'proprietorship' };
+    set('as-tax-profile', legacyTp[ui.taxProfile] || ui.taxProfile || 'private');
     if (ui.staff) set('as-staff', ui.staff);
     set('as-face-value', ui.faceValue);
-    set('as-auth-shares', ui.authShares);
+    set('as-cap-auth', ui.capAuth);
+    set('as-cap-issued', ui.capIssued);
+    set('as-cap-paid', ui.capPaid);
+    // A pre-2026-08-28 record stored an authorised SHARE COUNT instead.
+    if (ui.capAuth == null && asNum(ui.authShares)) {
+      set('as-cap-auth', asNum(ui.authShares) * (asNum(ui.faceValue) || 100));
+    }
     const tp = asEl('as-title-provisional');
     if (tp) tp.checked = ui.titleProvisional !== false;
 
@@ -1657,6 +1731,9 @@ async function asLoadSaved(id) {
     asPlugReceivables = inp.plugReceivables !== false;
     asDepSource = inp.depSource || '';
 
+    // Sync the entity-dependent UI (capital boxes shown/hidden + prefilled)
+    // now that both the select and asPy are restored.
+    asOnEntityChange();
     asRenderPySummary();
     asRenderFigures();
     asRenderLoans();

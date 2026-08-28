@@ -2909,10 +2909,11 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>PAN</label><input type="text" id="ps-pan" /></div>
             <div class="form-group"><label>Address</label><input type="text" id="ps-address" /></div>
             <div class="form-group"><label>Fiscal Year</label><select id="ps-fy" onchange="psOnFyChange()"></select></div>
-            <div class="form-group"><label>Tax Rule</label>
-              <select id="ps-tax-profile" onchange="psRecalcDebounced()">
-                <option value="corporate">Pvt. Ltd. / Partnership &mdash; 25% flat</option>
-                <option value="progressive">Proprietorship &mdash; progressive slabs</option>
+            <div class="form-group"><label>Entity / Tax Rule</label>
+              <select id="ps-tax-profile" onchange="psOnEntityChange()">
+                <option value="private">Pvt. Ltd. Company &mdash; 25% flat</option>
+                <option value="partnership">Partnership Firm &mdash; 25% flat</option>
+                <option value="proprietorship">Proprietorship &mdash; progressive slabs</option>
               </select>
             </div>
             <div class="form-group"><label>Default Growth %</label>
@@ -2929,12 +2930,18 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>Period date in A.D. (optional)</label>
               <input type="text" id="ps-ad-date" placeholder="e.g. 16th July 2026" oninput="psRecalcDebounced()"
                      title="Printed in brackets after the B.S. date. Typed, not converted: the app has no B.S.-to-A.D. calendar table, and a guessed date on a signed statement would be worse than none." /></div>
-            <div class="form-group"><label>Face Value per Share (Rs)</label>
+            <div class="form-group ps-cap-only"><label>Face Value per Share (Rs)</label>
               <input type="number" id="ps-face-value" value="100" step="1" oninput="psRecalcDebounced()"
                      title="Used by note 3.6 to state share numbers. Share counts are derived from the capital, so the note cannot disagree with the balance sheet." /></div>
-            <div class="form-group"><label>Authorised Shares (number)</label>
-              <input type="number" id="ps-auth-shares" step="1" placeholder="Defaults to issued" oninput="psRecalcDebounced()"
-                     title="The constitutional figure from the company's memorandum. Blank falls back to the issued share count." /></div>
+            <div class="form-group ps-cap-only"><label>Authorized Share Capital (Rs)</label>
+              <input type="number" id="ps-cap-auth" step="0.01" placeholder="Defaults to paid-up" oninput="psRecalcDebounced()"
+                     title="The constitutional figure from the company's memorandum. Prefilled from the prior-year statement; edit freely. Blank falls back to the paid-up figure." /></div>
+            <div class="form-group ps-cap-only"><label>Issued Share Capital (Rs)</label>
+              <input type="number" id="ps-cap-issued" step="0.01" placeholder="Defaults to paid-up" oninput="psRecalcDebounced()"
+                     title="Prefilled from the prior-year statement; edit freely. Blank falls back to the paid-up figure." /></div>
+            <div class="form-group ps-cap-only"><label>Paid-Up Share Capital (Rs)</label>
+              <input type="number" id="ps-cap-paid" step="0.01" placeholder="From the balance sheet" oninput="psCapPaidInput(this.value)"
+                     title="The balance sheet's Share Capital. Prefilled from the prior-year statement; editing it moves the balance sheet too, so the note can never disagree with it." /></div>
           </div>
         </div>
 
@@ -3099,10 +3106,11 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>PAN</label><input type="text" id="as-pan" /></div>
             <div class="form-group"><label>Address</label><input type="text" id="as-address" /></div>
             <div class="form-group"><label>Fiscal Year</label><select id="as-fy" onchange="asOnFyChange()"></select></div>
-            <div class="form-group"><label>Tax Rule</label>
-              <select id="as-tax-profile" onchange="asRecalcDebounced()">
-                <option value="corporate">Pvt. Ltd. / Partnership &mdash; 25% flat</option>
-                <option value="progressive">Proprietorship &mdash; progressive slabs</option>
+            <div class="form-group"><label>Entity / Tax Rule</label>
+              <select id="as-tax-profile" onchange="asOnEntityChange()">
+                <option value="private">Pvt. Ltd. Company &mdash; 25% flat</option>
+                <option value="partnership">Partnership Firm &mdash; 25% flat</option>
+                <option value="proprietorship">Proprietorship &mdash; progressive slabs</option>
               </select>
             </div>
             <div class="form-group"><label>Default Growth %</label>
@@ -3119,12 +3127,18 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>Period date in A.D. (optional)</label>
               <input type="text" id="as-ad-date" placeholder="e.g. 16th July 2026" oninput="asRecalcDebounced()"
                      title="Printed in brackets after the B.S. date. Typed, not converted: the app has no B.S.-to-A.D. calendar table, and a guessed date on a signed statement would be worse than none." /></div>
-            <div class="form-group"><label>Face Value per Share (Rs)</label>
+            <div class="form-group as-cap-only"><label>Face Value per Share (Rs)</label>
               <input type="number" id="as-face-value" value="100" step="1" oninput="asRecalcDebounced()"
                      title="Used by note 3.6 to state share numbers. Share counts are derived from the capital, so the note cannot disagree with the balance sheet." /></div>
-            <div class="form-group"><label>Authorised Shares (number)</label>
-              <input type="number" id="as-auth-shares" step="1" placeholder="Defaults to issued" oninput="asRecalcDebounced()"
-                     title="The constitutional figure from the company's memorandum. Blank falls back to the issued share count." /></div>
+            <div class="form-group as-cap-only"><label>Authorized Share Capital (Rs)</label>
+              <input type="number" id="as-cap-auth" step="0.01" placeholder="Defaults to paid-up" oninput="asRecalcDebounced()"
+                     title="The constitutional figure from the company's memorandum. Prefilled from the prior-year statement; edit freely. Blank falls back to the paid-up figure." /></div>
+            <div class="form-group as-cap-only"><label>Issued Share Capital (Rs)</label>
+              <input type="number" id="as-cap-issued" step="0.01" placeholder="Defaults to paid-up" oninput="asRecalcDebounced()"
+                     title="Prefilled from the prior-year statement; edit freely. Blank falls back to the paid-up figure." /></div>
+            <div class="form-group as-cap-only"><label>Paid-Up Share Capital (Rs)</label>
+              <input type="number" id="as-cap-paid" step="0.01" placeholder="From the balance sheet" oninput="asCapPaidInput(this.value)"
+                     title="The balance sheet's Share Capital. Prefilled from the prior-year statement; editing it moves the balance sheet too, so the note can never disagree with it." /></div>
           </div>
         </div>
 
@@ -4881,13 +4895,13 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/projectionEngine.js?v=202608241100"></script>
 <script defer src="js/projection.js?v=202608241100"></script>
 <script defer src="js/projectionExport.js?v=202608241100"></script>
-<script defer src="js/finStatementEngine.js?v=202608281000"></script>
-<script defer src="js/finStatementExport.js?v=202608281000"></script>
+<script defer src="js/finStatementEngine.js?v=202608281200"></script>
+<script defer src="js/finStatementExport.js?v=202608281200"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608221900"></script>
-<script defer src="js/provisionalStatement.js?v=202608281000"></script>
+<script defer src="js/provisionalStatement.js?v=202608281200"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608281000"></script>
+<script defer src="js/auditedStatement.js?v=202608281200"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

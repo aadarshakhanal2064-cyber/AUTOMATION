@@ -675,24 +675,33 @@ function fsxBuildReport(out) {
   const capCy = bal.shareCapital || 0;
   const capPy = pySfp.shareCapital || 0;
   const nShares = (v) => (capFace ? v / capFace : 0);
-  const capAuthNum = fsxIsNum(m.authorisedShares) && m.authorisedShares > 0
-    ? m.authorisedShares : nShares(Math.max(capCy, capPy));
+  // Authorized and Issued are typed AMOUNTS (user ask 2026-08-28 — prefilled
+  // editable boxes), each falling back down the ladder: issued → paid-up,
+  // authorized → issued. A pre-2026-08-28 save carries an authorised share
+  // COUNT instead, still honoured.
+  const capIssuedAmt = fsxIsNum(m.issuedCapital) && m.issuedCapital > 0 ? m.issuedCapital : capCy;
+  const capAuthAmt = fsxIsNum(m.authorisedCapital) && m.authorisedCapital > 0 ? m.authorisedCapital
+    : (fsxIsNum(m.authorisedShares) && m.authorisedShares > 0 ? m.authorisedShares * capFace
+      : Math.max(capIssuedAmt, capCy, capPy));
   const shareLine = (n) => `${Math.round(n)} Equity Shares @ Rs. ${capFace} each`;
+  // A proprietorship or partnership carries ONE capital line, worded by the
+  // entity ("Proprietors Capital" / "Partners Capital" — T.capital, which
+  // also heads the note); the three share-capital sections are a company's.
   const capProp = /proprietor|partner/i.test(`${T.entity || ''} ${T.capital || ''}`);
   const capitalBlock = capProp
     ? [
       BAND(),
-      R("Proprietor's/Partner's Capital", [capCy, capPy], 'item', { k: 'capPaid' }),
+      R(/capital/i.test(T.capital || '') ? T.capital : "Proprietor's/Partner's Capital", [capCy, capPy], 'item', { k: 'capPaid' }),
       R('Total', [capCy, capPy], 'tot', { k: 'capTotal', xsum: ['capPaid'] }),
       B(),
     ]
     : [
       BAND(),
       R('Authorized Share Capital', [], 'sub', { italic: true }),
-      R(shareLine(capAuthNum), [capAuthNum * capFace, capAuthNum * capFace], 'item', { k: 'capAuth' }),
+      R(shareLine(nShares(capAuthAmt)), [capAuthAmt, capAuthAmt], 'item', { k: 'capAuth' }),
       B(),
       R('Issued Share Capital', [], 'sub', { italic: true }),
-      R(shareLine(nShares(capCy)), [capCy, capPy], 'item', { k: 'capIssued' }),
+      R(shareLine(nShares(capIssuedAmt)), [capIssuedAmt, capPy], 'item', { k: 'capIssued' }),
       B(),
       R('Paid-Up Share Capital', [], 'sub', { italic: true }),
       R(shareLine(nShares(capCy)), [capCy, capPy], 'item', { k: 'capPaid' }),

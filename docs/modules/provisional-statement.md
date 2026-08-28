@@ -613,12 +613,43 @@ is ONE box, not three quad sub-tables.** An italic sub-heading (Authorized /
 Issued / Paid-Up Share Capital) and a single "{count} Equity Shares @ Rs.
 {face} each" line per section, both years side by side, one Total — and a
 proprietorship/partnership (detected from `terms.entity`/`terms.capital`)
-carries a single "Proprietor's/Partner's Capital" line instead. Changed in
+carries a single capital line instead. Changed in
 `fsxBuildReport`, so preview, print and Excel all agree; the Number×NPR quad
 machinery stays in the renderer and writer for reversion but nothing emits
 quad rows any more. (The SOCE's `capOpen`/`capAdd` Excel formula lookups
 already resolved to nothing — the quad rows never carried keys — so those
 cells keep writing values, unchanged.)
+
+**Entity wording & prefilled capital (2026-08-28, user ask — REVERSING the
+2026-08-22 "always Share Capital heading" decision).** The Step-1 select is
+now three-way — Pvt. Ltd. / Partnership Firm / Proprietorship — carrying both
+the tax rule (proprietorship → progressive slabs, the other two → 25% flat)
+and the entity wording (`psEntity()`/`asEntity()`; the legacy stored values
+`corporate`/`progressive` still map, so old saves restore):
+
+- **The capital heading and line follow the entity**: `T.capital` is
+  "Proprietors Capital" / "Partners Capital" / "Share Capital" (the firm's
+  own spellings, apostrophe-free), and it drives note 3.6's heading and
+  single line, the SFP equity line and the SOCE's first column header — one
+  authority, four surfaces. Authorized/Issued/Paid-Up sections print for a
+  company ONLY.
+- **The three company amounts are prefilled, editable boxes** (`ps-cap-auth`
+  / `ps-cap-issued` / `ps-cap-paid`, shown only for a company): on upload all
+  three prefill to the prior year's paid-up figure, a typed figure is never
+  overwritten, and blank falls back down the ladder (issued → paid-up,
+  authorized → issued) in `fsxBuildReport` (`m.authorisedCapital` /
+  `m.issuedCapital`; a pre-change save's authorised share COUNT is still
+  honoured). **Editing Paid-Up writes `psCy.shareCapital`**, so the note can
+  never disagree with the balance sheet — the same rule share counts already
+  keep by being derived from the capital.
+- **Distribution word**: proprietorship → "Drawings"; partnership AND company
+  → "Dividend Paid" (user decision — a partnership says Dividend).
+- **Read-back tolerance**: the generated file is next year's upload, so
+  `parsePriorYear` accepts every spelling the app now prints — the SFP/SOCE
+  capital regexes take "Proprietors/Proprietor's/Partners/Partner's Capital"
+  and the SOCF drawing row takes "Drawings". Proven by the scratchpad
+  `cap36Check` harness (21 checks against a real proprietorship file:
+  wording per entity, typed/fallback amounts, round-trip re-parse).
 
 Fourth round (user: "consume less of the page, no format change"): base font
 11.5px, tighter cell padding and header spacing, the Notes column 40px, and

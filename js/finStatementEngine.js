@@ -243,7 +243,11 @@ const FinStatementEngine = (() => {
     py.sfp.cash                 = sVal(/cash (and|&) cash/, true, 'Cash and Cash Equivalents');
     py.sfp.totalCA              = sVal(/total current assets/, false);
     py.sfp.totalAssets          = sVal(/^total assets/, false);
-    py.sfp.shareCapital         = sVal(/share capital|^capital$/, true, 'Share Capital');
+    // The generated statements word this line by entity ("Proprietors
+    // Capital" / "Partners Capital" since 2026-08-28), and next year's
+    // preparer uploads exactly that file — so the read must accept every
+    // spelling the app itself prints, apostrophes included.
+    py.sfp.shareCapital         = sVal(/share capital|(proprietor|partner)'?s'? capital|^capital$/, true, 'Share Capital');
     py.sfp.reserves             = sVal(/^reserve/, true, 'Reserves');
     py.sfp.totalEquity          = sVal(/total equity$/, false);
     py.sfp.payables             = sVal(/trade (and|&) other payable/, false);
@@ -400,7 +404,7 @@ const FinStatementEngine = (() => {
           capital: cVal(/proceeds from capital introduced/),
           nonCurrentBorrowings: cVal(/non-current borrowing/),
           currentBorrowings: cVal(/from current borrowing/),
-          drawing: cVal(/^drawing$|^dividend paid$/),
+          drawing: cVal(/^drawings?$|^dividend paid$/),
           netFinancing: cVal(/net cash flows? from financing/),
           netIncrease: cVal(/net increase in cash/),
           openingCash: cVal(/cash & cash equivalents at the beginning|cash and cash equivalents at the beginning/),
@@ -532,7 +536,7 @@ const FinStatementEngine = (() => {
         const labelCol = gE[hdr].findIndex(v => norm(v) === 'particulars');
         const colFor = (re) => gE[hdr].findIndex((v, c) => c > labelCol && re.test(norm(v)));
         const g = (re) => { const c = colFor(re); return c === -1 ? 0 : num(gE[closing][c]); };
-        py.equity.shareCapital  = g(/share capital|^capital$/);
+        py.equity.shareCapital  = g(/share capital|(proprietor|partner)'?s'? capital|^capital$/);
         py.equity.sharePremium  = g(/premium/);
         py.equity.retained      = g(/retained/);
         py.equity.otherReserves = g(/other reserve/);

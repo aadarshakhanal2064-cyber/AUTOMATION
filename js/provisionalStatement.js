@@ -123,6 +123,11 @@ function psInit() {
   }
   psRenderPySummary();
   psRenderFigures();
+  // Show/hide the company-only capital boxes for whatever entity the select
+  // is sitting on (a re-open keeps the previous selection).
+  const isCompany = psEntity() === 'private';
+  document.querySelectorAll('#tab-provisionalStatement-panel .ps-cap-only')
+    .forEach(el => { el.style.display = isCompany ? '' : 'none'; });
 }
 
 // Fiscal-year list, read through the shared default so every module rolls
@@ -168,6 +173,9 @@ const psScope = WorkflowEngine.createClientScope({
     psSolveFor = 'purchases'; psPlugReceivables = true;
     psSavedId = null;
     const f = psEl('ps-py-file'); if (f) f.value = '';
+    // The capital boxes are per-client figures — clear them with the rest so
+    // the next client can't inherit this one's share capital (§9).
+    ['ps-cap-auth', 'ps-cap-issued', 'ps-cap-paid'].forEach(id => { const e = psEl(id); if (e) e.value = ''; });
     psRenderPySummary();
     psRenderFigures();
     psRenderLoans();
@@ -187,7 +195,9 @@ const psScope = WorkflowEngine.createClientScope({
     // ASSIGN unconditionally — an `if (mapped)` leaves the previous client's
     // tax profile standing when this one has none on file.
     const profile = (window.CLIENT_ENTITY_TO_REP_PROFILE || {})[String(it.entity_type || '').toLowerCase().trim()];
-    psEl('ps-tax-profile').value = profile === 'proprietorship' ? 'progressive' : 'corporate';
+    psEl('ps-tax-profile').value = profile === 'proprietorship' ? 'proprietorship'
+      : profile === 'partnership' ? 'partnership' : 'private';
+    psOnEntityChange();
 
     psLoadDepreciation();
     psLoadSources();
@@ -314,6 +324,7 @@ async function psHandlePyFile(input) {
     psSeedPpe();
     psSeedLoans();
     psSeedFigures();
+    psPrefillCapital();
     psRenderFigures();
     AuditLog.record('provisional_py_parsed', {
       module: 'provisionalStatement', clientName: psEl('ps-company').value, status: 'success',
@@ -541,11 +552,57 @@ const PS_FIGURES = [
   { k: 'dividend',         label: '@DIST@',                       grow: false, hint: 'Reduces retained earnings on the SOCE. Enter as a positive figure.' },
 ];
 
-// A company pays a dividend; a firm or proprietor takes drawings. Same row on
-// the SOCE either way — only the word changes, and it is the word the audit
-// report and the projection already use for that entity.
+// ── entity ──
+// One select carries both the entity and the tax rule (user ask 2026-08-28,
+// splitting the old corporate/progressive pair three ways): a partnership
+// taxes like a company but its note 3.6 reads "Partners Capital", not three
+// share-capital sections. The two legacy values map so saved records restore.
+function psEntity() {
+  const v = (psEl('ps-tax-profile') || {}).value || 'private';
+  if (v === 'corporate') return 'private';
+  if (v === 'progressive') return 'proprietorship';
+  return v;
+}
+
+// The Authorized/Issued/Paid-Up boxes (and the face value) are meaningless
+// off a company, so they show only there; a proprietorship or partnership
+// carries one capital line the balance sheet already holds.
+function psOnEntityChange() {
+  const isCompany = psEntity() === 'private';
+  document.querySelectorAll('#tab-provisionalStatement-panel .ps-cap-only')
+    .forEach(el => { el.style.display = isCompany ? '' : 'none'; });
+  psPrefillCapital();
+  psRenderFigures();
+  psRecalcDebounced();
+}
+
+// Prefill the three capital boxes from the prior-year statement — by default
+// all three ARE the paid-up figure, which is what the firm's own notes print
+// (user ask 2026-08-28: "pre filled by default which I should be able to
+// change"). Only ever fills a blank box; a typed figure is never overwritten.
+function psPrefillCapital() {
+  if (psEntity() !== 'private' || !psPy) return;
+  const paid = psNum(psCy.shareCapital != null ? psCy.shareCapital : (psPy.sfp && psPy.sfp.shareCapital));
+  if (!paid) return;
+  ['ps-cap-paid', 'ps-cap-issued', 'ps-cap-auth'].forEach(id => {
+    const el = psEl(id);
+    if (el && el.value === '') el.value = paid;
+  });
+}
+
+// Paid-up IS the balance sheet's Share Capital — editing it moves both, so
+// the note can never disagree with the face (the rule note 3.6 already keeps
+// by deriving share counts from the capital).
+function psCapPaidInput(v) {
+  if (v === '') delete psCy.shareCapital; else psCy.shareCapital = psNum(v);
+  psRecalcDebounced();
+}
+
+// A company pays a dividend; a proprietor takes drawings. Same row on the
+// SOCE either way — only the word changes. A partnership says Dividend too
+// (user decision 2026-08-28).
 function psDistLabel() {
-  return ((psEl('ps-tax-profile') || {}).value === 'progressive') ? 'Drawings' : 'Dividend Paid';
+  return psEntity() === 'proprietorship' ? 'Drawings' : 'Dividend Paid';
 }
 
 // Which of the pair was typed last. Editing either one makes the other the
@@ -1295,7 +1352,7 @@ function psCollectInput() {
     rules: psRules,
     options: {
       growth: 1 + psNum((psEl('ps-growth') || {}).value || 5) / 100,
-      taxProfile: (psEl('ps-tax-profile') || {}).value || 'corporate',
+      taxProfile: psEntity() === 'proprietorship' ? 'progressive' : 'corporate',
       balanceVia: psPlugReceivables ? 'receivables' : 'none',
       // The Computation of Income runs when the client has an Income-Tax
       // depreciation schedule, unless the preparer says otherwise.
@@ -1386,21 +1443,27 @@ function psToOut(r) {
       // with the balance sheet. Authorised is constitutional, not derivable,
       // so it is asked for and falls back to the issued count.
       shareFace: psNum((psEl('ps-face-value') || {}).value) || 100,
-      authorisedShares: psNum((psEl('ps-auth-shares') || {}).value) || 0,
+      // Note 3.6's three sections carry AMOUNTS the preparer can edit
+      // (prefilled to the paid-up figure); blank falls back in the renderer.
+      authorisedCapital: psNum((psEl('ps-cap-auth') || {}).value) || 0,
+      issuedCapital: psNum((psEl('ps-cap-issued') || {}).value) || 0,
       basis: 'provisional',
       // The SOCE and the cash flow print whatever word this entity uses, so it
-      // has to follow the tax profile rather than be fixed at the company one.
+      // has to follow the entity select rather than be fixed at the company
+      // one. The capital HEADING follows the entity too (user decision
+      // 2026-08-28, reversing 2026-08-22's always-"Share Capital"): a
+      // proprietorship's note 3.6 reads "Proprietors Capital", a
+      // partnership's "Partners Capital" — the spellings the firm's own
+      // statements use.
       terms: (() => {
-        const prop = (psEl('ps-tax-profile') || {}).value === 'progressive';
+        const ent = psEntity();
         return {
-          person: prop ? 'Proprietor' : 'Director/Chairman',
+          person: ent === 'proprietorship' ? 'Proprietor' : ent === 'partnership' ? 'Partner' : 'Director/Chairman',
           distribution: psDistLabel(),
-          // Always "Share Capital", even for a proprietorship (user decision
-          // 2026-08-22) — the entity word still drives the note's LAYOUT
-          // (single Proprietor's/Partner's Capital line), only the heading
-          // stays put.
-          capital: 'Share Capital',
-          entity: prop ? 'Proprietorship' : 'Private Limited Company',
+          capital: ent === 'proprietorship' ? 'Proprietors Capital'
+            : ent === 'partnership' ? 'Partners Capital' : 'Share Capital',
+          entity: ent === 'proprietorship' ? 'Proprietorship'
+            : ent === 'partnership' ? 'Partnership Firm' : 'Private Limited Company',
         };
       })(),
       titles: (() => {
@@ -1483,7 +1546,8 @@ function psCollectSaveState() {
     ui: {
       address: val('ps-address'), growth: val('ps-growth'),
       taxProfile: val('ps-tax-profile'), staff: val('ps-staff'),
-      faceValue: val('ps-face-value'), authShares: val('ps-auth-shares'),
+      faceValue: val('ps-face-value'),
+      capAuth: val('ps-cap-auth'), capIssued: val('ps-cap-issued'), capPaid: val('ps-cap-paid'),
       titleProvisional: (psEl('ps-title-provisional') || {}).checked !== false,
     },
   };
@@ -1623,10 +1687,20 @@ async function psLoadSaved(id) {
     const set = (elId, v) => { const e = psEl(elId); if (e) e.value = v == null ? '' : v; };
     set('ps-address', ui.address);
     set('ps-growth', ui.growth);
-    set('ps-tax-profile', ui.taxProfile || 'corporate');
+    // Records saved before the 3-way entity select stored 'corporate' /
+    // 'progressive'; psEntity() maps those, so setting the raw value on a
+    // select that no longer carries it must not silently land on option one.
+    const legacyTp = { corporate: 'private', progressive: 'proprietorship' };
+    set('ps-tax-profile', legacyTp[ui.taxProfile] || ui.taxProfile || 'private');
     if (ui.staff) set('ps-staff', ui.staff);
     set('ps-face-value', ui.faceValue);
-    set('ps-auth-shares', ui.authShares);
+    set('ps-cap-auth', ui.capAuth);
+    set('ps-cap-issued', ui.capIssued);
+    set('ps-cap-paid', ui.capPaid);
+    // A pre-2026-08-28 record stored an authorised SHARE COUNT instead.
+    if (ui.capAuth == null && psNum(ui.authShares)) {
+      set('ps-cap-auth', psNum(ui.authShares) * (psNum(ui.faceValue) || 100));
+    }
     const tp = psEl('ps-title-provisional');
     if (tp) tp.checked = ui.titleProvisional !== false;
 
@@ -1641,6 +1715,9 @@ async function psLoadSaved(id) {
     psPlugReceivables = inp.plugReceivables !== false;
     psDepSource = inp.depSource || '';
 
+    // Sync the entity-dependent UI (capital boxes shown/hidden + prefilled)
+    // now that both the select and psPy are restored.
+    psOnEntityChange();
     psRenderPySummary();
     psRenderFigures();
     psRenderLoans();
