@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608261400">
+<link rel="stylesheet" href="css/styles.css?v=202608281800">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1781,6 +1781,14 @@ function cropLoginLogoIcon(img) {
                 <input type="text" class="search-bar" id="cp-search" placeholder="Search by company name, registration number, PAN or chairman…" oninput="cpSearchChanged()" autocomplete="off" />
               </div>
               <div class="client-toolbar-filters">
+                <button class="btn btn-outline" onclick="cpExport('pdf')">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  Export PDF
+                </button>
+                <button class="btn btn-outline" onclick="cpExport('excel')">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  Export Excel
+                </button>
                 <button class="btn btn-outline" onclick="cpOpenImport()">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                   Import from Excel
@@ -4840,7 +4848,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608261400"></script>
+<script defer src="js/config.js?v=202608281800"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
@@ -4876,7 +4884,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/depreciationSlm.js?v=202608212300"></script>
 <script defer src="js/bmAgmMinutes.js?v=202608241800"></script>
 <script defer src="js/auditorChange.js?v=202608231200"></script>
-<script defer src="js/companyProfile.js?v=202608212500"></script>
+<script defer src="js/companyProfile.js?v=202608281800"></script>
 <script defer src="js/companySecretary.js?v=202608231200"></script>
 <script defer src="js/companyRegistration.js?v=202608241400"></script>
 <script defer src="js/salesPurchaseBook.js?v=202608212300"></script>

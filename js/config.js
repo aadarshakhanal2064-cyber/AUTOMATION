@@ -136,6 +136,7 @@ window.CLIENT_IMPORT_FIELDS = [
 // which is what the wizard's nameless-row handling reads `shareholder_name` for.
 window.REGISTRAR_IMPORT_FIELDS = [
   { key:'name',            label:'Company Name *', required:true, keywords:['company name','client name','party name','name','entity name'] },
+  { key:'name_english',    label:'Company Name (English)', required:false, keywords:['english name','name english','company name english','english company name'] },
   { key:'registration_number', label:'Registration Number', required:false, keywords:['registration number','regd no','regd number','reg no','reg number','registration no','company registration number','company reg','company reg.','company reg no','regn no','regn number'] },
   { key:'pan',             label:'PAN Number',    required:false, keywords:['pan no','pan number','pan'] },
   { key:'chairman_name',   label:'Chairman Name', required:false, keywords:['chairman name','chairman','chairperson'] },

@@ -16,9 +16,20 @@
 //  directory: search, browse, add, edit, delete, and bulk import.
 //
 //  Reads window.registrarCompanies via RegistrarDirectory (js/registrarCompanies.js),
-//  NEVER window.clientsList. An English-named audit client cannot be reached
-//  from here, and a Nepali company cannot be reached from anywhere else. That
-//  is the whole design — see the header of js/registrarCompanies.js.
+//  NEVER window.clientsList as a picker. An English-named audit client cannot
+//  be reached from here, and a Nepali company cannot be reached from anywhere
+//  else. That is the whole design — see the header of js/registrarCompanies.js.
+//
+//  ONE NARROW, DELIBERATE EXCEPTION (2026-08-28, user ask): the editor's PAN
+//  field does a read-only lookup into window.clientsList to offer importing
+//  that client's name into the new `name_english` column when the two share a
+//  PAN — cpCheckPanMatch()/cpImportClientName() below. This is not a picker,
+//  it never runs outside the editor, it only ever reads (never writes
+//  clientsList), and it requires an explicit click to import — typing a PAN
+//  never silently pulls in a name. Don't widen this into a merged picker or a
+//  second read site without asking; it exists purely because a company being
+//  added to the register is very often already an audit client under the
+//  same PAN, and re-typing its English name by hand is pure duplication.
 //
 //  Prefix: cp-   (see CLAUDE.md §9)
 // ════════════════════════════════════════════
@@ -36,6 +47,7 @@ ModuleRegistry.register({
 // company's own name need the room; a capital figure does not).
 const CP_FIELDS = [
   { key: 'name',                id: 'cp-f-name',            label: 'Company Name',        ph: 'कम्पनीको नाम', required: true, wide: true },
+  { key: 'name_english',        id: 'cp-f-nameeng',         label: 'Company Name (English)', ph: 'e.g. ABC Trading Pvt. Ltd.', wide: true },
   { key: 'registration_number', id: 'cp-f-regno',           label: 'Registration Number', ph: 'e.g. 123456/078/079', required: true },
   { key: 'pan',                 id: 'cp-f-pan',             label: 'PAN Number',          ph: 'e.g. 601234567' },
   { key: 'chairman_name',       id: 'cp-f-chairman',        label: 'Chairman Name',       ph: 'अध्यक्षको नाम', required: true },
@@ -45,6 +57,8 @@ const CP_FIELDS = [
   { key: 'paid_up_capital',     id: 'cp-f-paidcap',         label: 'Paid-up Capital',     ph: 'e.g. 25,00,000', required: true },
   { key: 'address',             id: 'cp-f-address',         label: 'Address',             ph: 'ठेगाना', wide: true },
   { key: 'country',             id: 'cp-f-country',         label: 'Country',             ph: 'Nepal' },
+  { key: 'ocr_username',        id: 'cp-f-ocruser',         label: 'OCR Portal Username', ph: 'Login ID on the Office of Company Registrar website' },
+  { key: 'ocr_password',        id: 'cp-f-ocrpass',         label: 'OCR Portal Password', ph: 'Shared with every staff member', type: 'password' },
   { key: 'notes',               id: 'cp-f-notes',           label: 'Notes',               ph: 'Optional — anything worth remembering about this company', wide: true },
 ];
 
@@ -93,7 +107,7 @@ function cpFiltered() {
   // and a half-typed registration number must not fuzzy-match a different
   // company's PAN. Same reasoning as the saved-documents picker (§4).
   return list.filter(c => [
-    c.name,
+    c.name, c.name_english,
     NepaliLocale.toEnglishDigits(c.registration_number || ''),
     NepaliLocale.toEnglishDigits(c.pan || ''),
     c.chairman_name, c.shareholder_name, c.address,
@@ -156,7 +170,8 @@ function cpRenderTable() {
           const c = cell.getRow().getData();
           const warn = cpIsComplete(c) ? ''
             : ' <span class="log-badge badge-yellow" title="Missing details a registrar document needs">incomplete</span>';
-          return `<div class="cp-name-cell">${escHtml(c.name)}${warn}</div>`;
+          const eng = c.name_english ? `<div class="cp-name-eng">${escHtml(c.name_english)}</div>` : '';
+          return `<div class="cp-name-cell">${escHtml(c.name)}${warn}</div>${eng}`;
         } },
       { title: 'Registration No.', field: 'registration_number', minWidth: 150,
         formatter: cell => escHtml(cell.getValue() || '—') },
@@ -196,10 +211,58 @@ function cpBuildForm() {
   grid.innerHTML = CP_FIELDS.map(f => `
     <div class="form-group${f.wide ? ' form-group-wide' : ''}">
       <label for="${f.id}">${escHtml(f.label)}${f.required ? ' <span class="cp-req">*</span>' : ''}</label>
-      <input type="text" id="${f.id}" placeholder="${escHtml(f.ph || '')}" autocomplete="off" />
+      ${f.type === 'password' ? `
+        <div class="cp-pw-wrap">
+          <input type="password" id="${f.id}" placeholder="${escHtml(f.ph || '')}" autocomplete="off" />
+          <button type="button" class="cp-pw-toggle" tabindex="-1" data-for="${f.id}" title="Show/hide">👁</button>
+        </div>` : `<input type="text" id="${f.id}" placeholder="${escHtml(f.ph || '')}" autocomplete="off" />`}
+      ${f.key === 'pan' ? '<div id="cp-pan-match"></div>' : ''}
     </div>
   `).join('');
   grid.dataset.built = '1';
+
+  grid.querySelectorAll('.cp-pw-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.for);
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+  });
+
+  const panEl = document.getElementById('cp-f-pan');
+  if (panEl) panEl.addEventListener('input', cpCheckPanMatch);
+}
+
+// ── PAN → Clients lookup (read-only, opt-in — see the file header) ──
+// Typing a PAN that matches an existing audit client offers to import that
+// client's name as this company's English name. Never fires automatically:
+// the user clicks "Use this name", same as every other cross-directory read
+// this app is careful never to make silent.
+function cpCheckPanMatch() {
+  const hint = document.getElementById('cp-pan-match');
+  if (!hint) return;
+  const pan = NepaliLocale.toEnglishDigits(String((document.getElementById('cp-f-pan') || {}).value || '').trim());
+  if (pan.length < 5) { hint.innerHTML = ''; return; }
+
+  const match = (window.clientsList || []).find(c =>
+    NepaliLocale.toEnglishDigits(String(c.pan || '').trim()) === pan);
+  if (!match) { hint.innerHTML = ''; return; }
+
+  hint.innerHTML = `
+    <div class="cp-pan-match-hint">
+      Matches client <strong>${escHtml(match.name)}</strong> (PAN ${escHtml(pan)}) —
+      <button type="button" class="btn-link" onclick="cpImportClientName('${String(match.id)}')">Use this name as English Name</button>
+    </div>`;
+}
+
+function cpImportClientName(clientId) {
+  const c = (window.clientsList || []).find(x => String(x.id) === String(clientId));
+  const el = document.getElementById('cp-f-nameeng');
+  if (!c || !el) return;
+  el.value = c.name || '';
+  cpRenderCompleteness();
+  const hint = document.getElementById('cp-pan-match');
+  if (hint) hint.innerHTML = `<div class="cp-pan-match-hint">Imported "${escHtml(c.name)}" from the Clients directory.</div>`;
 }
 
 function cpOpenEditor(id) {
@@ -219,6 +282,14 @@ function cpOpenEditor(id) {
   });
 
   cpRenderShareholders(c ? (c.shareholders || []).map(s => s.name) : []);
+
+  // Cross-record leftovers: a previous company's PAN-match hint, and the OCR
+  // password left toggled visible from a prior edit — both must reset on open,
+  // same "always assign / clear before load" rule as every field above.
+  const panHint = document.getElementById('cp-pan-match');
+  if (panHint) panHint.innerHTML = '';
+  const pwEl = document.getElementById('cp-f-ocrpass');
+  if (pwEl) pwEl.type = 'password';
 
   document.getElementById('cp-editor-title').textContent = c ? 'Edit Company' : 'Add Company';
   document.getElementById('cp-delete-btn').style.display =
@@ -402,6 +473,51 @@ async function cpDelete(id) {
 // shareholder on its own row under the company — imports exactly as it always
 // did, into the register instead of into the client directory.
 function cpOpenImport() { openImportModal('registrar'); }
+
+// ── Excel / PDF export ──
+// One ReportExport model (CLAUDE.md §4), same idiom as File In Out's register
+// export — exports whatever the search box currently shows, not the whole
+// register, matching every other list-export in the app. OCR credentials are
+// deliberately NOT included: a downloadable file leaves the app's own RLS
+// boundary, and this app has never put a login secret into an export.
+function cpBuildDirectoryModel(list) {
+  return {
+    title: 'Company Register',
+    subtitleLines: [`Generated ${NepaliLocale.todayISO()}`],
+    landscape: true,
+    columns: [
+      { label: 'Company', w: 1.8 }, { label: 'English Name', w: 1.6 },
+      { label: 'Registration No.', w: 1.2 }, { label: 'PAN', w: 1 },
+      { label: 'Chairman', w: 1.4 }, { label: 'Shareholders', w: 1.8 },
+      { label: 'Authorized Capital', w: 1.1, align: 'r' },
+      { label: 'Issued Capital', w: 1.1, align: 'r' },
+      { label: 'Paid-up Capital', w: 1.1, align: 'r' },
+      { label: 'Address', w: 1.6 },
+    ],
+    rows: list.map(c => ({ cells: [
+      c.name, c.name_english, c.registration_number, c.pan, c.chairman_name,
+      RegistrarDirectory.attendeeNames(c.id).join(', '),
+      c.authorized_capital, c.issued_capital, c.paid_up_capital, c.address,
+    ] })),
+    _filename: 'Company Register',
+  };
+}
+
+// Toast, not cpStatus — the export buttons sit on the toolbar, and cp-status
+// lives inside the add/edit drawer, which is normally closed when exporting.
+async function cpExport(kind) {
+  const list = cpFiltered();
+  if (!list.length) { showToast('Nothing to export for the current search.', 'info'); return; }
+  const model = cpBuildDirectoryModel(list);
+  try {
+    const ext = kind === 'pdf' ? 'pdf' : 'xlsx';
+    await ReportExport.download(model, kind, `${model._filename}.${ext}`, {
+      module: 'companyProfile', clientName: 'Company Register', sheetName: 'Company Register',
+    });
+  } catch (e) {
+    showToast('❌ Failed to export: ' + escHtml(friendlyDbError(e)), 'error');
+  }
+}
 
 // Recompute the meter as the user types, so the header reflects the form
 // rather than the last save.
