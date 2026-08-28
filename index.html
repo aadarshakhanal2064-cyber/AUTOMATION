@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608291200">
+<link rel="stylesheet" href="css/styles.css?v=202608291800">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2537,6 +2537,14 @@ function cropLoginLogoIcon(img) {
           <h3 class="card-header" style="margin-top:0;">Outstanding — VAT charged but not yet collected</h3>
           <div id="vr-out-output"></div>
         </div>
+        <!-- Memos whose VAT the FIRM bore rather than collected. They leave
+             the Outstanding list, so they are shown here rather than simply
+             vanishing — same "never silently hide" rule the Activity Log
+             follows. Hidden entirely while empty (vrRenderCollections). -->
+        <div class="table-wrap" id="vr-ledger-wrap" style="padding:24px; margin-bottom:24px; display:none;">
+          <h3 class="card-header" style="margin-top:0;">Carried to Party Ledger — VAT borne by the firm</h3>
+          <div id="vr-ledger-output"></div>
+        </div>
         <div class="table-wrap" style="padding:24px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap; margin-bottom:14px;">
             <h3 class="card-header" style="margin:0;">Collected</h3>
@@ -4856,7 +4864,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608282345"></script>
+<script defer src="js/config.js?v=202608291800"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
@@ -4889,7 +4897,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/registrarCompanies.js?v=202608290900"></script>
 <script defer src="js/clients.js?v=202608212500"></script>
 <script defer src="js/serviceMemo.js?v=202608231000"></script>
-<script defer src="js/vatRegister.js?v=202608222300"></script>
+<script defer src="js/vatRegister.js?v=202608291800"></script>
 <script defer src="js/report.js?v=202608212300"></script>
 <script defer src="js/notesToAccounts.js?v=202608212300"></script>
 <script defer src="js/auditEngagement.js?v=202608261400"></script>

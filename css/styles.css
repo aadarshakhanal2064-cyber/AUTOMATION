@@ -1954,6 +1954,13 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
    only, and all of it is decorative — so when the OS asks for reduced
    motion, all of it goes. Spinners stop rotating but stay visible, and the
    busy-button labels ("Saving…") already carry the state in words. */
+/* Says plainly that these amounts are recorded but not yet posted — the
+   screen must not imply a ledger movement that has not happened. */
+.vr-ledger-note {
+  margin: 12px 0 0; color: var(--text-muted);
+  font-size: var(--fs-sm); line-height: 1.55;
+}
+
 /* ── Section lock (js/core/sectionLock.js) — the Financial Management gate ──
    Deliberately plain: it reuses .modal, .form-group, .action-row and
    .status-box unchanged, so the password screen looks like every other

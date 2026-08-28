@@ -782,6 +782,7 @@ window.ACTIVITY_EVENT_LABELS = {
   vat_purchase_deleted: 'VAT purchase bill deleted',
   vat_return_saved: 'VAT return figures saved',
   vat_collection_created: 'VAT collection recorded', vat_collection_updated: 'VAT collection updated',
+  vat_carried_to_party_ledger: 'VAT carried to party ledger', vat_carry_to_party_ledger_undone: 'VAT carry to party ledger undone',
   vat_collection_deleted: 'VAT collection deleted',
   vat_register_printed: 'VAT register printed',
   wd_created: 'Work record created', wd_updated: 'Work record updated',

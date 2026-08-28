@@ -924,7 +924,17 @@ function vrCollectedMemoIds() {
 
 function vrOutstandingMemos() {
   const done = vrCollectedMemoIds();
-  return vrSalesMemos().filter(m => !done.has(m.id));
+  // A memo's VAT stops being outstanding by EITHER route: the client paid it
+  // to the firm (a vat_collections row), or the firm bore it for them
+  // (vat_ledger_at on the memo). Both resolve the row; only the first is
+  // money the firm received.
+  return vrSalesMemos().filter(m => !done.has(m.id) && !m.vat_ledger_at);
+}
+
+// The other half of that pair — memos whose VAT the firm carried to the
+// client's party ledger instead of collecting.
+function vrLedgerMemos() {
+  return vrSalesMemos().filter(m => !!m.vat_ledger_at);
 }
 
 function vrRenderCollections() {
@@ -949,7 +959,10 @@ function vrRenderCollections() {
         <td>${escHtml(m.client_pan || '—')}</td>
         <td style="text-align:right; font-variant-numeric:tabular-nums;">${vrAmt(m.vat_amount)}</td>
         <td>${escHtml(typeof smNatureText === 'function' ? smNatureText(m) : (m.nature_category || '—'))}</td>
-        <td><button class="btn btn-outline btn-sm" data-vr-collect="${i}">Record collection</button></td>
+        <td><div class="client-actions">
+          <button class="btn btn-outline btn-sm" data-vr-collect="${i}">Record collection</button>
+          <button class="btn btn-outline btn-sm" data-vr-toledger="${i}">Add to Party Ledger</button>
+        </div></td>
       </tr>`).join('');
       const total = outstanding.reduce((t, m) => t + vrNum(m.vat_amount), 0);
       oEl.innerHTML = `<table class="client-table"><thead>${head}</thead><tbody>${body}
@@ -958,11 +971,50 @@ function vrRenderCollections() {
           <td style="text-align:right; font-variant-numeric:tabular-nums;">${vrAmt(total)}</td><td></td><td></td>
         </tr></tbody></table>`;
       oEl.onclick = (e) => {
-        const b = e.target.closest('[data-vr-collect]');
-        if (!b) return;
-        vrOpenCollection(null, outstanding[parseInt(b.dataset.vrCollect, 10)]);
+        const c = e.target.closest('[data-vr-collect]');
+        const l = e.target.closest('[data-vr-toledger]');
+        if (c)      vrOpenCollection(null, outstanding[parseInt(c.dataset.vrCollect, 10)]);
+        else if (l) vrCarryVatToPartyLedger(outstanding[parseInt(l.dataset.vrToledger, 10)]);
       };
     }
+  }
+
+  // ── Carried to Party Ledger ──
+  // These left the Outstanding list, so they are shown rather than silently
+  // dropped, with an Undo — the whole block hides when there are none, so it
+  // costs nothing on a firm that never uses the button.
+  const ledger = vrLedgerMemos();
+  const lWrap = document.getElementById('vr-ledger-wrap');
+  const lEl = document.getElementById('vr-ledger-output');
+  if (lWrap) lWrap.style.display = ledger.length ? '' : 'none';
+  if (lEl && ledger.length) {
+    const head = `<tr><th>VAT Serial No.</th><th>Date</th><th>Bill No.</th><th>Name of Client</th><th>PAN</th>
+      <th style="text-align:right;">VAT Amount</th><th>Marked by</th><th></th></tr>`;
+    const body = ledger.map((m, i) => `<tr>
+      <td>${escHtml(vrVatSerialLabel(m))}</td>
+      <td>${escHtml(m.memo_date || '—')}</td>
+      <td>${escHtml(m.memo_number || '—')}</td>
+      <td>${escHtml(m.client_name || '—')}</td>
+      <td>${escHtml(m.client_pan || '—')}</td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums;">${vrAmt(m.vat_amount)}</td>
+      <td>${escHtml(m.vat_ledger_by || '—')}</td>
+      <td><button class="btn btn-outline btn-sm" data-vr-unledger="${i}">Undo</button></td>
+    </tr>`).join('');
+    const total = ledger.reduce((t, m) => t + vrNum(m.vat_amount), 0);
+    lEl.innerHTML = `<table class="client-table"><thead>${head}</thead><tbody>${body}
+      <tr style="font-weight:700; background:var(--bg-page-alt); color:var(--brand-navy);">
+        <td colspan="5">Total borne by the firm (${ledger.length})</td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums;">${vrAmt(total)}</td><td></td><td></td>
+      </tr></tbody></table>
+      <p class="vr-ledger-note">Recorded only. These amounts are <strong>not</strong> posted to the Party
+      Ledger yet — how they should move a client's balance is still to be decided.</p>`;
+    lEl.onclick = (e) => {
+      const u = e.target.closest('[data-vr-unledger]');
+      if (u) vrUndoVatToPartyLedger(ledger[parseInt(u.dataset.vrUnledger, 10)]);
+    };
+  } else if (lEl) {
+    lEl.innerHTML = '';
+    lEl.onclick = null;
   }
 
   const cEl = document.getElementById('vr-coll-output');
@@ -1133,6 +1185,78 @@ async function vrSaveCollection(btn) {
       showStatus('❌ Could not save the collection: ' + escHtml(friendlyDbError(e)), 'error', errEl);
     }
   });
+}
+
+// ── Carry a memo's VAT to the client's party ledger ─────────────────────
+//
+// The second way a memo's VAT stops being outstanding: the firm pays it for
+// the client rather than collecting it from them ("sometimes client pays the
+// vat themselves and sometimes i pay for them which i already include in my
+// fee"). The mark lives on the memo itself (vat_ledger_at / vat_ledger_by,
+// db/2026-08-29_service_memo_vat_party_ledger.sql) because it is a fact
+// about that memo's VAT, not a business record with its own date and amount.
+//
+// NOT posted into Party Ledger's arithmetic yet, on purpose (user: "we will
+// add features later where to connect and all"). plBuildParties() already
+// charges the client m.total_amount, which INCLUDES this VAT, so whether the
+// firm bearing it should raise the balance again (the p.taxes bucket, for tax
+// paid on a client's behalf) or leave the service line exactly as it stands
+// (the fee already covered it) is a question about the firm's own billing.
+// Guessing the sign on a receivable is worse than leaving it unposted, so
+// this records what happened and the screen says so in as many words.
+async function vrCarryVatToPartyLedger(m) {
+  if (!m) return;
+  const amt = vrAmt(m.vat_amount);
+  if (!confirm(`Carry the VAT of ${amt} on memo ${m.memo_number || '—'} to ${m.client_name}'s party ledger?
+
+`
+             + `Use this when the FIRM pays this client's VAT instead of collecting it from them.
+`
+             + `It leaves the outstanding list; you can undo it.`)) return;
+  try {
+    const { error } = await window.sb.from('service_memos')
+      .update({ vat_ledger_at: new Date().toISOString(), vat_ledger_by: vrUserEmail() })
+      .eq('id', m.id);
+    if (error) throw error;
+    AuditLog.record('vat_carried_to_party_ledger', {
+      module: 'vatRegister', recordRef: m.id, clientName: m.client_name,
+      firmKey: m.firm_key, fiscalYear: vrFy(), amount: vrNum(m.vat_amount),
+      memoNumber: m.memo_number,
+    });
+    showToast(`✅ VAT of ${escHtml(amt)} carried to <strong>${escHtml(m.client_name)}</strong>'s party ledger.`, 'success');
+    await vrReloadMemos();
+  } catch (e) {
+    vrStatus('❌ Could not carry that VAT to the party ledger: ' + escHtml(friendlyDbError(e)), 'error');
+  }
+}
+
+async function vrUndoVatToPartyLedger(m) {
+  if (!m) return;
+  if (!confirm(`Undo this? The VAT of ${vrAmt(m.vat_amount)} on memo ${m.memo_number || '—'} goes back to the outstanding list.`)) return;
+  try {
+    const { error } = await window.sb.from('service_memos')
+      .update({ vat_ledger_at: null, vat_ledger_by: null }).eq('id', m.id);
+    if (error) throw error;
+    AuditLog.record('vat_carry_to_party_ledger_undone', {
+      module: 'vatRegister', recordRef: m.id, clientName: m.client_name,
+      firmKey: m.firm_key, fiscalYear: vrFy(), amount: vrNum(m.vat_amount),
+      memoNumber: m.memo_number,
+    });
+    showToast(`Returned to outstanding: VAT on memo ${escHtml(m.memo_number || '—')}.`, 'info');
+    await vrReloadMemos();
+  } catch (e) {
+    vrStatus('❌ Could not undo that: ' + escHtml(friendlyDbError(e)), 'error');
+  }
+}
+
+// This module now WRITES to service_memos, so it owes the cache the same
+// contract every other write path follows (CLAUDE.md §6): drop every key that
+// reads that table — its own and Party Ledger's, which reads it under a
+// different ORDER BY — then refetch. Without this, Service Memo and Party
+// Ledger would show the stale memo for up to the 60s TTL.
+async function vrReloadMemos() {
+  DataCache.invalidate(window.LEDGER_KEYS.memosSm, window.LEDGER_KEYS.memosPl);
+  await vrRefresh();
 }
 
 async function vrDeleteCollection(row) {

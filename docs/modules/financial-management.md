@@ -209,6 +209,61 @@ for the same reason.
 
 ---
 
+## 5.16b VAT Collected — the two ways a memo's VAT is resolved (2026-08-29)
+
+The Outstanding list is derived: every VAT memo with nothing recorded against
+it. It used to have exactly one exit — **Record collection**, meaning the
+client paid the firm. The firm's real practice has two:
+
+> *"sometimes client pays the vat themselves and sometimes i pay for them
+> which i already include in my fee"*
+
+So each outstanding row now offers **Add to Party Ledger** beside Record
+collection. It marks that memo's VAT as **borne by the firm**, and the row
+leaves Outstanding by that second route.
+
+**The mark lives on the memo** — `service_memos.vat_ledger_at` /
+`vat_ledger_by` (`db/2026-08-29_service_memo_vat_party_ledger.sql`), not in a
+new table. Which of the two happened is a fact *about that memo's VAT*;
+`vat_collections` exists because a collection has its own date, voucher, bank
+and amount, and "the firm bore this" has none of those. **Presence of
+`vat_ledger_at` IS the flag** — no separate boolean, so the two cannot
+disagree.
+
+Marked memos are shown in their own **Carried to Party Ledger** block with an
+**Undo**, not silently dropped — the same rule the Activity Log follows. The
+block hides itself entirely when empty, so it costs nothing for a firm that
+never uses it.
+
+This module now **writes** to `service_memos`, so `vrReloadMemos()` invalidates
+**both** `LEDGER_KEYS.memosSm` and `memosPl` before refetching (§ the DataCache
+rules at the end of this file) — Party Ledger reads that table under a
+different ORDER BY and would otherwise show the stale memo for up to 60s.
+
+### The arithmetic is deliberately NOT wired yet
+
+User decision: *"we will add features later where to connect and all."* The
+marker records what happened and the screen says plainly that nothing is
+posted. That restraint is deliberate, not laziness — **the sign is genuinely
+ambiguous and a wrong one misstates a receivable:**
+
+`plBuildParties()` already pushes each memo's `total_amount` onto the party's
+`services`, and **that figure includes `vat_amount`**. So the client is
+*already* charged this VAT in the ledger. When the firm bears it instead,
+either:
+
+- **it should raise the balance again** — the firm paid tax on the client's
+  behalf, which is exactly what the existing `p.taxes` bucket models (fed today
+  only by Bank Entry payments with `particular = 'tax_payment'`); or
+- **it should leave the service line alone** — the fee already covered the VAT,
+  so what the client owes is unchanged and the marker is purely informational.
+
+Those differ by twice the VAT. It is a question about the firm's own billing,
+not something to infer from the schema. **Answer it before wiring
+`plBuildParties()`**, and add the resulting rule to CLAUDE.md §15.
+
+---
+
 ## 5.17 The section lock (`js/core/sectionLock.js`, `sl-` prefix)
 
 Added **2026-08-29** on the user's ask: *"lock the financial management section
