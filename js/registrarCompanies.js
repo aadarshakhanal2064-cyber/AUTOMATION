@@ -119,16 +119,22 @@ window.RegistrarDirectory = {
     const o = opts || {};
     SearchEngine.attachAutocomplete(inputEl, listEl, {
       getList: () => window.registrarCompanies || [],
-      keys: o.keys || ['name', 'registration_number', 'pan'],
+      // name_english added 2026-08-28 (user ask — search a company by its
+      // English name too, not just registration number/PAN/Devanagari
+      // name). Every caller that overrides `keys` (BM/AGM, Company
+      // Secretary, Auditor Change) lists it explicitly rather than relying
+      // on this default, so add it there too if this default ever changes.
+      keys: o.keys || ['name', 'registration_number', 'pan', 'name_english'],
       minChars: o.minChars,
       normalizeQuery: q => NepaliLocale.toEnglishDigits(q),
       normalizeItem: c => ({
         name: c.name,
+        name_english: c.name_english || '',
         registration_number: NepaliLocale.toEnglishDigits(c.registration_number || ''),
         pan: NepaliLocale.toEnglishDigits(c.pan || ''),
       }),
       renderItem: o.renderItem || (c => `
-        <div class="ac-name">${escHtml(c.name)}</div>
+        <div class="ac-name">${escHtml(c.name)}${c.name_english ? ' — ' + escHtml(c.name_english) : ''}</div>
         <div class="ac-email">${escHtml(c.registration_number ? 'Regd. ' + c.registration_number : (c.pan ? 'PAN ' + c.pan : 'No registration on file'))}</div>
       `),
       onSelect: o.onSelect,

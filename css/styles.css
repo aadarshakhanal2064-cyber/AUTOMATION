@@ -947,6 +947,11 @@ textarea { resize: vertical; min-height: 100px; }
   font-weight: 600; cursor: pointer; text-decoration: underline; font-size: 12px;
 }
 
+/* Live "रु ५,००,०००।– (पाँच लाख रुपैयाँ मात्र) = ..." preview under a
+   capital field (2026-08-28) — plain text, no box, matching how Company
+   Registration already shows the same conversion while typing. */
+.cp-capital-words { font-size: 12px; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
+
 /* ── Spreadsheet import wizard stat strip ──
    Shared by the Clients import and the Company Profile import (one wizard,
    two profiles — window.IMPORT_PROFILES). These classes were being rendered

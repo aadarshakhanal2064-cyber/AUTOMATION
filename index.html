@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608281800">
+<link rel="stylesheet" href="css/styles.css?v=202608290900">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -1320,7 +1320,7 @@ function cropLoginLogoIcon(img) {
             <div class="rep-form-grid">
               <div class="form-group" style="position:relative;">
                 <label>Search Company</label>
-                <input type="text" id="ac-companySearch" placeholder="Search by registration number or PAN…" autocomplete="off" />
+                <input type="text" id="ac-companySearch" placeholder="Search by name, registration number, PAN or English name…" autocomplete="off" />
                 <div class="autocomplete-list" id="ac-company-autocomplete-list" style="display:none;"></div>
               </div>
               <div class="form-group">
@@ -1452,7 +1452,7 @@ function cropLoginLogoIcon(img) {
             <div class="rep-form-grid">
               <div class="form-group" style="position:relative;">
                 <label>Search Company</label>
-                <input type="text" id="cs-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" />
+                <input type="text" id="cs-regNo" placeholder="Search by registration number, PAN or English name…" autocomplete="off" />
                 <div class="autocomplete-list" id="cs-regNo-autocomplete-list" style="display:none;"></div>
               </div>
 
@@ -1596,7 +1596,7 @@ function cropLoginLogoIcon(img) {
             <div class="rep-form-grid">
               <div class="form-group" style="position:relative;">
                 <label>Search Company</label>
-                <input type="text" id="bm-regNo" placeholder="Search by registration number or PAN…" autocomplete="off" />
+                <input type="text" id="bm-regNo" placeholder="Search by registration number, PAN or English name…" autocomplete="off" />
                 <div class="autocomplete-list" id="bm-regNo-autocomplete-list" style="display:none;"></div>
               </div>
 
@@ -4873,11 +4873,11 @@ function cropLoginLogoIcon(img) {
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
 <script defer src="js/core/orgIdentity.js?v=202608261400"></script>
-<script defer src="js/tabs.js?v=202608222000"></script>
+<script defer src="js/tabs.js?v=202608290900"></script>
 <script defer src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
-<script defer src="js/registrarCompanies.js?v=202608201200"></script>
+<script defer src="js/registrarCompanies.js?v=202608290900"></script>
 <script defer src="js/clients.js?v=202608212500"></script>
 <script defer src="js/serviceMemo.js?v=202608231000"></script>
 <script defer src="js/vatRegister.js?v=202608222300"></script>
@@ -4886,11 +4886,11 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/auditEngagement.js?v=202608261400"></script>
 <script defer src="js/depreciation.js?v=202608212300"></script>
 <script defer src="js/depreciationSlm.js?v=202608212300"></script>
-<script defer src="js/bmAgmMinutes.js?v=202608241800"></script>
-<script defer src="js/auditorChange.js?v=202608231200"></script>
-<script defer src="js/companyProfile.js?v=202608282330"></script>
-<script defer src="js/companySecretary.js?v=202608231200"></script>
-<script defer src="js/companyRegistration.js?v=202608241400"></script>
+<script defer src="js/bmAgmMinutes.js?v=202608290900"></script>
+<script defer src="js/auditorChange.js?v=202608290900"></script>
+<script defer src="js/companyProfile.js?v=202608290900"></script>
+<script defer src="js/companySecretary.js?v=202608290900"></script>
+<script defer src="js/companyRegistration.js?v=202608290900"></script>
 <script defer src="js/salesPurchaseBook.js?v=202608212300"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->

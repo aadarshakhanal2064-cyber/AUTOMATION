@@ -17,11 +17,11 @@ RegistrarDirectory.attachCompanyPicker(
   document.getElementById('bm-regNo'),
   document.getElementById('bm-regNo-autocomplete-list'),
   {
-    keys: ['registration_number', 'pan'],
+    keys: ['registration_number', 'pan', 'name_english'],
     minChars: 2,
     renderItem: c => `
       <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
-      <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}</div>
+      <div class="ac-email">${escHtml(c.name)}${c.name_english ? ' — ' + escHtml(c.name_english) : ''}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}</div>
     `,
     onSelect: selectBmClient,
   }
@@ -596,7 +596,12 @@ function bmActivateTokenEdit(span, target) {
 document.addEventListener('DOMContentLoaded', function () {
   WorkflowEngine.attachFormWatcher(document.getElementById('regd-bmAgmMinutes-panel'), bmOnFormChanged);
   bmSyncBoardChangedAvailability();
-  bmLoadDraft();
+  // No bmLoadDraft() here (2026-08-28) — REGD_INITS (js/tabs.js) now resets
+  // this form to blank on every open, so restoring a draft here would just
+  // be immediately wiped the moment the user actually looks at the tab.
+  // bmLoadDraft/bmAutosave/bmClearDraft are left in place (bmResetForm still
+  // calls bmClearDraft) rather than torn out, in case a future explicit
+  // "Restore last draft" affordance wants them.
   bmRenderFirmTrigger();
   bmUpdateCompletionIndicator();
 });

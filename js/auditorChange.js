@@ -20,10 +20,10 @@ RegistrarDirectory.attachCompanyPicker(
   document.getElementById('ac-companySearch'),
   document.getElementById('ac-company-autocomplete-list'),
   {
-    keys: ['registration_number', 'pan', 'name'],
+    keys: ['registration_number', 'pan', 'name', 'name_english'],
     minChars: 2,
     renderItem: c => `
-      <div class="ac-name">${escHtml(c.name)}</div>
+      <div class="ac-name">${escHtml(c.name)}${c.name_english ? ' — ' + escHtml(c.name_english) : ''}</div>
       <div class="ac-email">${escHtml(c.registration_number || c.pan || '')}</div>
     `,
     onSelect: selectAcClient,

@@ -753,7 +753,12 @@ document.addEventListener('DOMContentLoaded', function () {
   if (nature) nature.addEventListener('input', () => { nature.dataset.auto = '0'; });
   const issued = document.getElementById('cr-issuedCapital');
   if (issued) issued.addEventListener('input', crRecalcShares);
-  crAutosave.load();
+  // No crAutosave.load() here (2026-08-28) — REGD_INITS (js/tabs.js) now
+  // resets this form to blank on every open, so restoring a draft here
+  // would just be immediately wiped the moment the user actually looks at
+  // the tab. crAutosave/crClearDraft are left in place (crResetForm still
+  // calls crClearDraft) rather than torn out, in case a future explicit
+  // "Restore last draft" affordance wants them.
   // A fresh form still needs one objective and one founder to type into.
   if (!crGetFounderCards().length) crAddFounderRow();
   if (!document.querySelector('#cr-objectives .cr-objective-input')) crAddObjectiveRow();

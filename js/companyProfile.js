@@ -70,6 +70,17 @@ const CP_FIELDS = [
   { key: 'notes',               id: 'cp-f-notes',           label: 'Notes',               ph: 'Optional — anything worth remembering about this company', wide: true },
 ];
 
+// Capital fields that get a live "रु ... (... मात्र) = ... थान शेयर"
+// preview under them (2026-08-28). Paid-up capital deliberately shows no
+// share count — same rule Company Registration's own crUpdateDerived()
+// follows: paid-up is how much of the issued shares were actually paid for,
+// not a separate share count of its own.
+const CP_CAPITAL_KEYS = {
+  authorized_capital: { showShares: true },
+  issued_capital:      { showShares: true },
+  paid_up_capital:     { showShares: false },
+};
+
 // Which company the editor is open on. null = the editor is closed; a company
 // object = editing it; CP_NEW = adding one.
 const CP_NEW = { id: null, __new: true };
@@ -85,6 +96,38 @@ function cpStatus(msg, type) { showStatus(msg, type, 'cp-status'); }
 function cpCapitalCell(v) {
   const s = String(v || '').trim();
   return s ? escHtml(s) : '<span style="color:var(--text-faint);">—</span>';
+}
+
+// "5,00,000" / "५,००,०००" / "500000" -> 500000 (or 0) — same parse
+// Company Registration's crParseAmount does, reused rather than duplicated.
+function cpParseAmount(raw) {
+  const n = parseInt(NepaliLocale.toEnglishDigits(String(raw || '')).replace(/[^0-9]/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
+
+// Recomputes all three capital preview lines from whatever is currently
+// typed. Pure display — nothing here is ever saved; cpSave() still reads the
+// raw text the user typed into each capital field, unchanged.
+function cpUpdateCapitalWords() {
+  Object.entries(CP_CAPITAL_KEYS).forEach(([key, opts]) => {
+    const f = CP_FIELDS.find(x => x.key === key);
+    const input = f && document.getElementById(f.id);
+    const out = document.getElementById(`cp-${key}-words`);
+    if (!input || !out) return;
+    const amt = cpParseAmount(input.value);
+    if (!amt) { out.innerHTML = ''; return; }
+    const fig = NepaliLocale.formatAmount(amt);
+    const words = NepaliLocale.amountToWords(amt);
+    let line = `रु ${escHtml(fig)}।– (${escHtml(words)} रुपैयाँ मात्र)`;
+    if (opts.showShares) {
+      // रु १००।– per share — Company Registration's explicit rule
+      // (CLAUDE.md §15, "Shares are derived at रु १००/share"), reused here
+      // purely as a reference figure; this table has no shares column.
+      const shares = Math.floor(amt / 100);
+      line += ` = ${escHtml(NepaliLocale.formatAmount(shares))} (${escHtml(NepaliLocale.amountToWords(shares))}) थान शेयर`;
+    }
+    out.innerHTML = line;
+  });
 }
 
 // ════════════════════════════════════════════
@@ -226,6 +269,7 @@ function cpBuildForm() {
         </div>` : `<input type="text" id="${f.id}" placeholder="${escHtml(f.ph || '')}" autocomplete="off" />`}
       ${f.key === 'pan' ? '<div id="cp-pan-match"></div>' : ''}
       ${f.key === 'name_english' ? '<div class="autocomplete-list" id="cp-nameeng-ac-list" style="display:none;"></div>' : ''}
+      ${CP_CAPITAL_KEYS[f.key] ? `<div class="cp-capital-words" id="cp-${f.key}-words"></div>` : ''}
     </div>
   `).join('');
   grid.dataset.built = '1';
@@ -240,6 +284,17 @@ function cpBuildForm() {
 
   const panEl = document.getElementById('cp-f-pan');
   if (panEl) panEl.addEventListener('input', cpCheckPanMatch);
+
+  // Live "रु ५,००,०००।– (पाँच लाख रुपैयाँ मात्र) = ५,००० (पाँच हजार) थान
+  // शेयर" preview under each capital field (2026-08-28, user ask) — the same
+  // NepaliLocale.amountToWords conversion Company Registration already shows
+  // while typing a fresh incorporation's capital, reused here rather than
+  // duplicated (CLAUDE.md §10 rule 1). Display-only: never written anywhere.
+  Object.keys(CP_CAPITAL_KEYS).forEach(key => {
+    const f = CP_FIELDS.find(x => x.key === key);
+    const el = f && document.getElementById(f.id);
+    if (el) el.addEventListener('input', cpUpdateCapitalWords);
+  });
 
   // Search-by-English-name → import PAN/address (read-only lookup into
   // window.clientsList, the same one narrow exception described in the file
@@ -348,6 +403,7 @@ function cpOpenEditor(id) {
   document.getElementById('cp-editor').classList.add('open');
   document.getElementById('cp-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
   cpRenderCompleteness();
+  cpUpdateCapitalWords();
   cpStatus('', 'info');
   const first = document.getElementById(CP_FIELDS[0].id);
   if (first) first.focus();

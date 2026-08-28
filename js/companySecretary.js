@@ -55,11 +55,11 @@ RegistrarDirectory.attachCompanyPicker(
   document.getElementById('cs-regNo'),
   document.getElementById('cs-regNo-autocomplete-list'),
   {
-    keys: ['registration_number', 'pan'],
+    keys: ['registration_number', 'pan', 'name_english'],
     minChars: 2,
     renderItem: c => `
       <div class="ac-name">${escHtml(c.registration_number || c.pan)}</div>
-      <div class="ac-email">${escHtml(c.name)}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}</div>
+      <div class="ac-email">${escHtml(c.name)}${c.name_english ? ' — ' + escHtml(c.name_english) : ''}${c.pan ? ' · PAN ' + escHtml(c.pan) : ''}</div>
     `,
     onSelect: selectCsClient,
   }
@@ -522,9 +522,13 @@ function csUpdateCompletionIndicator() {
 
 document.addEventListener('DOMContentLoaded', function () {
   WorkflowEngine.attachFormWatcher(document.getElementById('regd-companySecretary-panel'), csOnFormChanged);
-  // Seeded before the draft loads, so a restored draft's own value wins.
   const t = document.getElementById('cs-meetingTime');
   if (t && !t.value) t.value = CS_DEFAULT_TIME;
-  csLoadDraft();
+  // No csLoadDraft() here (2026-08-28) — REGD_INITS (js/tabs.js) now resets
+  // this form to blank on every open, so restoring a draft here would just
+  // be immediately wiped the moment the user actually looks at the tab.
+  // csLoadDraft/csAutosave/csClearDraft are left in place (csResetForm still
+  // calls csClearDraft) rather than torn out, in case a future explicit
+  // "Restore last draft" affordance wants them.
   csUpdateCompletionIndicator();
 });
