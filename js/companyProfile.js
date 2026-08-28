@@ -20,16 +20,24 @@
 //  be reached from here, and a Nepali company cannot be reached from anywhere
 //  else. That is the whole design — see the header of js/registrarCompanies.js.
 //
-//  ONE NARROW, DELIBERATE EXCEPTION (2026-08-28, user ask): the editor's PAN
-//  field does a read-only lookup into window.clientsList to offer importing
-//  that client's name into the new `name_english` column when the two share a
-//  PAN — cpCheckPanMatch()/cpImportClientName() below. This is not a picker,
-//  it never runs outside the editor, it only ever reads (never writes
-//  clientsList), and it requires an explicit click to import — typing a PAN
-//  never silently pulls in a name. Don't widen this into a merged picker or a
-//  second read site without asking; it exists purely because a company being
-//  added to the register is very often already an audit client under the
-//  same PAN, and re-typing its English name by hand is pure duplication.
+//  TWO NARROW, DELIBERATE EXCEPTIONS (2026-08-28, user ask) to "no registrar
+//  module reads window.clientsList" — both confined to this one editor, both
+//  read-only, both requiring an explicit user action, never firing from
+//  passive typing alone:
+//    - cpCheckPanMatch()/cpImportClientName(): type a PAN, get offered a
+//      matching client's name to import into `name_english` (one click).
+//    - cpSelectClientMatch() (wired to the name_english field's own
+//      autocomplete in cpBuildForm): search by English name, and PICKING a
+//      result imports that client's PAN and address too (CLAUDE.md §9's
+//      "always assign" convention — an autocomplete pick is itself the
+//      explicit action, same as every other company picker in this app).
+//  Neither ever touches the Devanagari `name` field — that is what every
+//  registrar document actually prints, and it stays exactly what was typed
+//  regardless of anything imported from Clients. Don't widen either into a
+//  merged picker or add a third read site without asking; they exist purely
+//  because a company being added to the register is very often already an
+//  audit client, and re-typing its name/PAN/address by hand is pure
+//  duplication of data already on file.
 //
 //  Prefix: cp-   (see CLAUDE.md §9)
 // ════════════════════════════════════════════
@@ -209,7 +217,7 @@ function cpBuildForm() {
   const grid = document.getElementById('cp-form-grid');
   if (!grid || grid.dataset.built === '1') return;
   grid.innerHTML = CP_FIELDS.map(f => `
-    <div class="form-group${f.wide ? ' form-group-wide' : ''}">
+    <div class="form-group${f.wide ? ' form-group-wide' : ''}"${f.key === 'name_english' ? ' style="position:relative;"' : ''}>
       <label for="${f.id}">${escHtml(f.label)}${f.required ? ' <span class="cp-req">*</span>' : ''}</label>
       ${f.type === 'password' ? `
         <div class="cp-pw-wrap">
@@ -217,6 +225,7 @@ function cpBuildForm() {
           <button type="button" class="cp-pw-toggle" tabindex="-1" data-for="${f.id}" title="Show/hide">👁</button>
         </div>` : `<input type="text" id="${f.id}" placeholder="${escHtml(f.ph || '')}" autocomplete="off" />`}
       ${f.key === 'pan' ? '<div id="cp-pan-match"></div>' : ''}
+      ${f.key === 'name_english' ? '<div class="autocomplete-list" id="cp-nameeng-ac-list" style="display:none;"></div>' : ''}
     </div>
   `).join('');
   grid.dataset.built = '1';
@@ -231,6 +240,46 @@ function cpBuildForm() {
 
   const panEl = document.getElementById('cp-f-pan');
   if (panEl) panEl.addEventListener('input', cpCheckPanMatch);
+
+  // Search-by-English-name → import PAN/address (read-only lookup into
+  // window.clientsList, the same one narrow exception described in the file
+  // header — this is the reverse direction of cpCheckPanMatch: there you
+  // type a PAN and get offered a name, here you type a name and get offered
+  // a PAN + address). A real autocomplete pick is a deliberate act, so this
+  // follows the app's "always assign" convention (CLAUDE.md §9) rather than
+  // the fill-blanks-only caution cpImportClientName uses for a passive
+  // typing-triggered hint.
+  const nameEngEl = document.getElementById('cp-f-nameeng');
+  const nameEngList = document.getElementById('cp-nameeng-ac-list');
+  if (nameEngEl && nameEngList) {
+    SearchEngine.attachAutocomplete(nameEngEl, nameEngList, {
+      getList: () => window.clientsList || [],
+      keys: ['name'],
+      minChars: 2,
+      renderItem: c => `
+        <div class="ac-name">${escHtml(c.name)}</div>
+        <div class="ac-email">${escHtml(c.pan ? 'PAN ' + c.pan : (c.address || ''))}</div>
+      `,
+      onSelect: cpSelectClientMatch,
+    });
+  }
+}
+
+// The company's own Devanagari `name` — what every registrar document
+// actually prints — is NEVER touched here, only name_english/pan/address.
+// Searching for a company by its English name is a convenience for finding
+// data already on file, not a way to set the name a generated document
+// shows; that stays a deliberate, separate, Nepali-typed field.
+function cpSelectClientMatch(c) {
+  const nameEngEl = document.getElementById('cp-f-nameeng');
+  const panEl = document.getElementById('cp-f-pan');
+  const addrEl = document.getElementById('cp-f-address');
+  if (nameEngEl) nameEngEl.value = c.name || '';
+  if (panEl) panEl.value = c.pan || '';
+  if (addrEl) addrEl.value = c.address || '';
+  cpRenderCompleteness();
+  cpCheckPanMatch();
+  showToast(`Imported PAN and address for <strong>${escHtml(c.name)}</strong> from the Clients directory.`, 'info');
 }
 
 // ── PAN → Clients lookup (read-only, opt-in — see the file header) ──
@@ -290,6 +339,8 @@ function cpOpenEditor(id) {
   if (panHint) panHint.innerHTML = '';
   const pwEl = document.getElementById('cp-f-ocrpass');
   if (pwEl) pwEl.type = 'password';
+  const nameEngList = document.getElementById('cp-nameeng-ac-list');
+  if (nameEngList) nameEngList.style.display = 'none';
 
   document.getElementById('cp-editor-title').textContent = c ? 'Edit Company' : 'Add Company';
   document.getElementById('cp-delete-btn').style.display =
