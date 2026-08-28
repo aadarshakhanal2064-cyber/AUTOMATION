@@ -12,7 +12,7 @@
 
 ## 6. Database (Supabase Postgres)
 
-Project: `rennqzmwyhkdsizvlqwd.supabase.co`. Schema below **verified live on 2026-08-18** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot.
+Project: `wtjrqeptsaoizkunfwbc.supabase.co` — **ap-south-1 (Mumbai) since 2026-08-28**. The predecessor `rennqzmwyhkdsizvlqwd` (ap-northeast-1, Tokyo) still exists, frozen at the cutover, purely as the rollback target; never read it as current state. Schema below **verified live on 2026-08-18** via the Supabase MCP — re-verify before schema-dependent work rather than trusting this snapshot. (`db/00_bootstrap.sql` was regenerated from the live catalog on 2026-08-28 and is the most current schema record in the repo.)
 
 ### 6.1 Tables (32 live — **20 of them documented below**)
 
