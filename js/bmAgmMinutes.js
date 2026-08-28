@@ -732,13 +732,19 @@ function bmResetForm() {
   // the document that was just cleared off the screen
   bmSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
-  // A cleared form derives again from the next board-meeting date typed.
-  Object.keys(BM_DERIVED_DATE_OFFSETS).forEach(id => {
+  // A cleared form derives again: the Date of Audit from the fiscal year
+  // below, and the other three from that date.
+  Object.keys(BM_DERIVED_DATE_OFFSETS).concat(BM_AUDIT_DATE_ID).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.dataset.auto = '1';
   });
   document.getElementById('bm-termYears').value = '4';
   document.getElementById('bm-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
+  // Seeded here rather than left blank, so a fresh form already carries the
+  // audit date and the three dates derived from it (this runs on every open
+  // of the sub-tab — REGD_INITS, js/tabs.js).
+  bmApplyAuditDate();
+  bmApplyDerivedDates();
   document.getElementById('bm-auditorFirm').value = '';
   bmRenderFirmTrigger();
   bmClearExtraShareholders();
@@ -772,12 +778,21 @@ function bmOnFormChanged(e) {
   // draft and completion indicator all see the filled dates in the same
   // pass rather than one keystroke behind.
   const id = e && e.target && e.target.id;
-  if (id === 'bm-bmDate') bmApplyDerivedDates();
+  // Changing the fiscal year re-fills the Date of Audit (unless the user has
+  // claimed it), and the three dates that hang off that date follow in the
+  // same pass — neither assignment fires an event of its own.
+  if (id === 'bm-fiscalYear') { bmApplyAuditDate(); bmApplyDerivedDates(); }
   // Editing a derived field hands it to the user for good. Any event landing
-  // here IS a user edit: the two places that write these fields
-  // (bmApplyDerivedDates, bmApplyState) assign .value directly, which fires
-  // nothing — so a field only un-owns itself when somebody types in it. A
-  // future programmatic writer must keep to that rule or set data-auto itself.
+  // here IS a user edit: the places that write these fields
+  // (bmApplyDerivedDates, bmApplyAuditDate, bmApplyState) assign .value
+  // directly, which fires nothing — so a field only un-owns itself when
+  // somebody types in it. A future programmatic writer must keep to that
+  // rule or set data-auto itself.
+  else if (id === BM_AUDIT_DATE_ID) {
+    const el = document.getElementById(id);
+    if (el) el.dataset.auto = '0';
+    bmApplyDerivedDates();
+  }
   else if (id in BM_DERIVED_DATE_OFFSETS) {
     const el = document.getElementById(id);
     if (el) el.dataset.auto = '0';
@@ -811,6 +826,42 @@ const BM_DERIVED_DATE_OFFSETS = {
   'bm-boardChangeDate': 2,
 };
 
+// ── The Date of Audit itself now derives from the fiscal year ──
+//
+// 2026-08-29, user ask: selecting F.Y. 2082-83 should fill 2083/04/01, and
+// 2081-82 should fill 2082/04/01. That is Shrawan 1 of the year the fiscal
+// year ENDS in — the first day after the year under audit closes — so it is
+// one rule rather than a per-year table, and a fiscal year the dropdown
+// gains later needs no new mapping.
+//
+// This field was previously "the ONE date typed by hand" that the AGM,
+// registrar-letter and board-change dates all hung off (the offsets above).
+// It still is, in the sense that matters: this only fills a DEFAULT, and it
+// carries the same `data-auto` ownership flag as the three dates it feeds —
+// type in it once and the fiscal year stops rewriting it, for good. Without
+// that, changing the year late in a filing would silently re-date a
+// document somebody had already dated deliberately.
+const BM_AUDIT_DATE_ID = 'bm-bmDate';
+
+// "2082-83" -> "2083/04/01". Slash separators, matching the field's own
+// placeholder and what bmParseBsDate/bmApplyDerivedDates already accept.
+function bmAuditDateFromFy(fyValue) {
+  const start = NepaliLocale.fyStartYear(fyValue);
+  return start ? `${start + 1}/04/01` : '';
+}
+
+// Fills the Date of Audit from the currently selected fiscal year, unless
+// the user has claimed the field. Callers follow it with
+// bmApplyDerivedDates(), since assigning .value fires no event and the three
+// downstream dates would otherwise stay one change behind.
+function bmApplyAuditDate() {
+  const el = document.getElementById(BM_AUDIT_DATE_ID);
+  if (!el || el.dataset.auto === '0') return;
+  el.value = bmAuditDateFromFy((document.getElementById('bm-fiscalYear') || {}).value);
+  el.dataset.auto = '1';
+  bmValidateDateField(BM_AUDIT_DATE_ID);
+}
+
 // A derived field carries data-auto="1" while it still holds a generated
 // value, and drops to "0" the moment the user edits it themselves — the
 // `data-auto` idiom Company Registration's founder-share split already uses.
@@ -818,7 +869,11 @@ const BM_DERIVED_DATE_OFFSETS = {
 // somebody had deliberately typed, which on a registrar filing is the same
 // class of bug as the client-switch "always assign" rule (CLAUDE.md §9).
 function bmMarkDerivedDatesManual() {
-  Object.keys(BM_DERIVED_DATE_OFFSETS).forEach(id => {
+  // BM_AUDIT_DATE_ID included since 2026-08-29 for the same reason as the
+  // three offsets: a record saved before either derivation existed had every
+  // date typed by hand, and opening it must not let the fiscal year re-date
+  // a filing that already went out.
+  Object.keys(BM_DERIVED_DATE_OFFSETS).concat(BM_AUDIT_DATE_ID).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.dataset.auto = '0';
   });
@@ -880,8 +935,12 @@ function bmFormState() {
   // without carrying the distinction every restore would have to assume the
   // cautious answer ("all typed") — which quietly stops the board-meeting
   // date from driving the others again for the rest of that record's life.
+  //
+  // The Date of Audit is in this list too (2026-08-29): it is now derived
+  // from the fiscal year, so it has exactly the same "generated or typed?"
+  // distinction to carry as the three dates hanging off it.
   const derivedAuto = {};
-  Object.keys(BM_DERIVED_DATE_OFFSETS).forEach(id => {
+  Object.keys(BM_DERIVED_DATE_OFFSETS).concat(BM_AUDIT_DATE_ID).forEach(id => {
     const el = document.getElementById(id);
     if (el) derivedAuto[id] = el.dataset.auto === '0' ? '0' : '1';
   });
