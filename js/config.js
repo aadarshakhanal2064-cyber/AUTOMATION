@@ -14,8 +14,19 @@ window.AUTH_URL_PARAMS = {
   query: new URLSearchParams(window.location.search),
 };
 
-const SUPABASE_URL = 'https://rennqzmwyhkdsizvlqwd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_jatb0tzHNTFzmDrY9HV2tQ_9HAhZ2XW';
+// Mumbai (ap-south-1) since 2026-08-28. The project was in ap-northeast-1
+// (Tokyo) until then, which cost ~2.1 s per REST round trip from the office
+// in Chitwan — measured in the browser against every other host the page
+// talks to (Cloudflare 13 ms, jsDelivr 59 ms, Google Fonts 134 ms, the app's
+// own Vercel origin 193 ms, Supabase 2,067 ms with a 20 s worst case). That
+// is distance, not cold starts: the free-tier idle suspension is a separate
+// problem, handled by the 5-minute external keep-alive ping.
+//
+// The old Tokyo project (rennqzmwyhkdsizvlqwd) is kept intact as a rollback
+// target — reverting is this two-line change plus the preconnect in
+// index.html. Its data is frozen at the 2026-08-28 cutover.
+const SUPABASE_URL = 'https://wtjrqeptsaoizkunfwbc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_PFZNG7VQLPjh1XCViQ1DhA_Jy_wHP5m';
 
 // Nepal's standard VAT rate. Service Memo's optional VAT line is the only
 // consumer since Billing was removed (2026-08-18); kept here rather than
