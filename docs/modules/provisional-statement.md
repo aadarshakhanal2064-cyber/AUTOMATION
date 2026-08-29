@@ -104,15 +104,20 @@ and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 it was copied to Provisional and the return type became automatic. The
 fallback above now serves only records saved before the card existed.)*
 
-**The return type is AUTO by default.** `NepalTax.autoReturnType()` is the
-statute as a decision tree — not a proprietorship → D-3; turnover ≤ 30 lakh
-→ D-1; ≤ 1 crore **and taxable income ≤ 10 lakh** → D-2; else D-3 — resolved
-on every recalculation, with the deciding threshold printed on the card. The
-income gate matters: sec 4(4Ka) bars turnover tax above Rs 10,00,000 of
-taxable income, and ignoring it would file the wrong return for exactly the
-clients where the two charges differ most. A named type in the picker is an
-explicit override and is honoured; the directory's `it_return_type` is
-context only, flagged when it disagrees with what the figures resolve to.
+**The return type is AUTO by default, and the picker SHOWS the resolved
+D-1/D-2/D-3 — never the word "Auto"** (user ask 2026-08-30, refining the
+previous day's Auto option). `NepalTax.autoReturnType()` is the statute as a
+decision tree — not a proprietorship → D-3; turnover ≤ 30 lakh → D-1; ≤ 1
+crore **and taxable income ≤ 10 lakh** → D-2; else D-3 — resolved on every
+recalculation, with the deciding threshold printed on the card. The income
+gate matters: sec 4(4Ka) bars turnover tax above Rs 10,00,000 of taxable
+income, and ignoring it would file the wrong return for exactly the clients
+where the two charges differ most. The picker follows the app's derived
+-figure idiom: the select displays the resolved type with an **auto** badge,
+changing it claims it as a manual choice (honoured, with warnings where it
+disagrees with the Act), and **↺ hands the decision back to the figures**.
+The directory's `it_return_type` is context only, flagged when it disagrees
+with what the figures resolve to.
 
 The rule set lives in **`js/core/nepalTax.js`** (CLAUDE.md §4) and is picked in
 the **Income Tax Rule** card, which prints the workings rather than asserting a

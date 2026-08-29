@@ -1220,9 +1220,22 @@ function asRenderTaxRule() {
         ${list.map(o => `<option value="${escHtml(keyOf(o))}"${keyOf(o) === value ? ' selected' : ''}>${escHtml(labelOf(o))}</option>`).join('')}
       </select></div>`;
 
-  const typeOptions = [{ key: 'auto', label: 'Auto — decided from the figures' }].concat(NepalTax.RETURN_TYPES);
+  // The picker SHOWS the resolved D-1/D-2/D-3, never the word "Auto" (user
+  // ask 2026-08-30) — the same idiom as every derived figure in the app: the
+  // value on display IS the answer, a badge says the figures chose it,
+  // changing it claims it as a manual choice, and ↺ hands it back.
+  const typePicker = `
+    <div class="form-group" style="margin:0;">
+      <label>Type of IT Return ${isAuto ? '<span class="log-badge badge-info" style="font-size:10px;">auto</span>' : ''}</label>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <select onchange="asTaxRuleSet('returnType', this.value)" style="flex:1;">
+          ${NepalTax.RETURN_TYPES.map(o => `<option value="${escHtml(o.key)}"${o.key === rt ? ' selected' : ''}>${escHtml(o.label)}</option>`).join('')}
+        </select>
+        ${isAuto ? '' : `<button class="btn btn-outline btn-sm" title="Back to automatic — the figures decide" onclick="asTaxRuleSet('returnType','auto')">&#8634;</button>`}
+      </div>
+    </div>`;
   const ruleFields = [
-    pick('Type of IT Return', 'returnType', typeOptions, asTaxRule.returnType, o => o.key, o => o.label),
+    typePicker,
     (rt === 'D1' || rt === 'D2')
       ? pick('Location of business', 'location', NepalTax.LOCATIONS, asTaxRule.location, o => o.key, o => `${o.label} — ${NepalTax.fmt(o.presumptive)}`)
       : '',
@@ -1239,7 +1252,7 @@ function asRenderTaxRule() {
   // choice is checkable, not asserted.
   const autoNote = isAuto && detail && detail.auto
     ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">
-         Resolved to <strong>${escHtml(detail.returnType)}</strong> &mdash; ${escHtml(detail.auto.reason)}.
+         Chosen automatically &mdash; ${escHtml(detail.auto.reason)}.
        </div>`
     : '';
 
