@@ -81,6 +81,7 @@ function load() {
       },
       setMeta(k, v) { spbRecoMeta()[k] = v; },
       model(i) { return spbRecoModel(SPB_RECO_STATEMENTS[i]); },
+      visible: rows => spbRecoVisibleRows(rows),
       vat() { return spbRecoVatModel(); },
       period() { return spbRecoPeriod(); },
     };
@@ -209,6 +210,64 @@ R.setMeta('pyPurchaseAdj', '5000');
 check('a prior-year adjustment the return never carried is left unexplained', R.vat().unexplained, true);
 R.setMeta('pyPurchaseAdj', '500');
 check('…while under Rs 1,000 it is absorbed as rounding', R.vat().unexplained, false);
+
+console.log('\n── Zero rows do not print (2026-08-30, user ask) ──');
+// The reference year's sales statement carries real figures on most lines but
+// nil on others ("Tax Free Sales Omiited in Maskebari" among them). The
+// exported statement printed those as "0.00" rows; now a line prints only
+// when it has an amount, with Net Difference the one deliberate exception.
+R.setBook(SALES_BOOK, PUR_BOOK);
+R.blankReturn();
+R.setReturn('sales', SALES_RETURN);
+R.setReturn('purchase', PUR_RETURN);
+R.setOmitted([
+  { section: 'sales', taxable: 145731, taxfree: -2482, vat: 145731 * 0.13 },
+  { section: 'purchase', taxable: 55433.04, taxfree: 50000, vat: 55433.04 * 0.13 },
+]);
+m = R.model(0);
+let vis = R.visible(m.rows);
+const labelsOf = rows => rows.map(r => r.label);
+check('a nil line is not shown ("Tax Free Sales Omiited", 0)',
+  vis.some(r => r.kind === 'line' && Math.abs(r.amount || 0) < 0.005), false);
+check('lines with figures all survive',
+  vis.filter(r => r.kind === 'line').length >= 5, true);
+check('the non-zero Rounding Effect still prints', labelsOf(vis).includes('Less: Rounding Effect'), true);
+check('both anchors survive regardless', vis.filter(r => r.kind === 'anchor').length, 2);
+check('Net Difference survives AT NIL — the one named exception',
+  vis.some(r => r.kind === 'net' && Math.abs(r.amount) < 0.005), true);
+
+// A statement with nothing to adjust: book == return, no omitted bills.
+R.setReturn('sales', SALES_BOOK.map(x => x.slice()));
+R.setOmitted([]);
+m = R.model(0);
+vis = R.visible(m.rows);
+check('a fully clean statement keeps no adjustment lines',
+  vis.some(r => r.kind === 'line'), false);
+check('…and no Add:/Less: groups', vis.some(r => r.kind === 'sub'), false);
+check('…and neither numbered heading', vis.some(r => r.kind === 'heading'), false);
+check('…while its skeleton stays: anchors, After Adjustment, Net Difference',
+  vis.map(r => r.kind).join(','), 'anchor,total,anchor,net');
+check('its nil Net Difference still prints', vis[vis.length - 1].kind === 'net', true);
+
+// Heading 1 alive, heading 2 empty: gaps exist but no omitted bills.
+R.setReturn('sales', SALES_RETURN);
+m = R.model(0);
+vis = R.visible(m.rows);
+check('heading 1 stays while it has lines',
+  labelsOf(vis).some(l => /1\. Difference due to Calculation/.test(l)), true);
+check('heading 2 collapses when no bill was omitted',
+  labelsOf(vis).some(l => /2\. Difference due to Bill/.test(l)), false);
+// The non-zero rounding line sits right after heading 2's span — it must not
+// keep the empty heading alive (the `standalone` flag).
+check('…even though the Rounding line right after it prints',
+  labelsOf(vis).includes('Less: Rounding Effect'), true);
+
+// The VAT cross-check's typed rows are inputs and never disappear.
+R.setMeta('openingVat', '');
+R.setMeta('pyPurchaseAdj', '');
+const vv = R.vat();
+check('typed rows survive at nil — they are inputs, not findings',
+  R.visible(vv.crossRows).filter(r => r.kind === 'typed').length, 2);
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

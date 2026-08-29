@@ -168,7 +168,10 @@ function spbRecoModel(st) {
   const after = ret + named + rounding;
   const net = after - books;
 
-  rows.push({ kind: 'line', label: 'Less: Rounding Effect', amount: rounding });
+  // `standalone` keeps this line out of heading 2's span when the visibility
+  // pruning walks the rows — a non-zero rounding must not keep an otherwise
+  // empty heading alive.
+  rows.push({ kind: 'line', standalone: true, label: 'Less: Rounding Effect', amount: rounding });
   rows.push({ kind: 'total', label: st.retLabel + ' After Adjustment', amount: after });
   rows.push({ kind: 'anchor', label: st.bookLabel, amount: books });
   rows.push({ kind: 'net', label: 'Net Difference', amount: net });
@@ -261,6 +264,45 @@ function spbRecoVatModel() {
   };
 }
 
+// ── What actually prints ────────────────────────────────────────────────────
+// A row with a nil amount says nothing and is not shown (2026-08-30, user ask
+// — the exported statement was carrying "Tax Free Sales Omiited … 0.00" lines
+// and empty Add:/Less: groups). One filter, applied by the screen, the print
+// document and both exports, so no output can disagree about what the
+// statement contains. What survives regardless of amount:
+//
+//   · the anchors, After Adjustment, and NET DIFFERENCE — the user's one named
+//     exception: a nil Net Difference is the statement's conclusion, not noise;
+//   · typed rows — hiding an input because it currently reads 0 would make the
+//     figure impossible to enter.
+//
+// An Add:/Less: with no surviving line goes with its lines, and a numbered
+// heading with nothing left under it goes too — a heading over nothing reads
+// as a claim that the category was checked and somehow printed blank.
+function spbRecoVisibleRows(rows) {
+  const nz = v => Math.abs(v || 0) >= 0.005;
+  const keep = rows.map(r => r.kind !== 'line' || nz(r.amount));
+  rows.forEach((r, i) => {
+    if (r.kind !== 'sub') return;
+    let any = false;
+    for (let j = i + 1; j < rows.length && rows[j].kind === 'line' && !rows[j].standalone; j++) {
+      if (keep[j]) { any = true; break; }
+    }
+    if (!any) keep[i] = false;
+  });
+  rows.forEach((r, i) => {
+    if (r.kind !== 'heading') return;
+    let any = false;
+    for (let j = i + 1; j < rows.length; j++) {
+      const k = rows[j].kind;
+      if (k === 'heading' || (k !== 'sub' && k !== 'line') || rows[j].standalone) break;
+      if (k === 'line' && keep[j]) { any = true; break; }
+    }
+    if (!any) keep[i] = false;
+  });
+  return rows.filter((r, i) => keep[i]);
+}
+
 // "For the year ended 32nd Ashadh 2083" — the firm's own wording. The last day
 // is READ from the calendar rather than assumed: five of the eleven tabulated
 // B.S. years have a 31-day Ashadh, and printing 32nd on one of those would put
@@ -316,6 +358,7 @@ function spbRenderReco() {
 }
 
 function spbRecoStatementHtml(title, rows, m, footHtml) {
+  rows = spbRecoVisibleRows(rows);
   let html = `<section class="spb-reco-card">
     <header class="spb-reco-head">
       <h3>${escHtml(title)}</h3>
@@ -371,7 +414,7 @@ function spbRecoExportModel() {
   spbRecoAllStatements().forEach(({ title, m, rows: only }) => {
     rows.push({ cells: [title], style: 'section' });
     rows.push({ cells: [spbRecoPeriod()], style: 'subtle' });
-    (only || m.rows).forEach(r => {
+    spbRecoVisibleRows(only || m.rows).forEach(r => {
       if (r.kind === 'heading' || r.kind === 'sub') { rows.push({ cells: [r.label], style: 'subtle' }); return; }
       const label = (r.kind === 'line' || r.kind === 'typed') ? '   ' + r.label : r.label;
       rows.push({
@@ -402,7 +445,7 @@ function spbPrintReco() {
     body += `<h2 class="reco-t">${escHtml(title)}</h2>
       <p class="reco-p">${escHtml(spbRecoPeriod())}</p>
       <table class="reco"><thead><tr><th>Particulars</th><th class="r">Amount (Rs.)</th></tr></thead><tbody>`;
-    (only || m.rows).forEach(r => {
+    spbRecoVisibleRows(only || m.rows).forEach(r => {
       if (r.kind === 'heading') { body += `<tr><td colspan="2" class="h">${escHtml(r.label)}</td></tr>`; return; }
       if (r.kind === 'sub') { body += `<tr><td colspan="2" class="s">${escHtml(r.label)}</td></tr>`; return; }
       const cls = r.kind === 'anchor' || r.kind === 'total' ? ' class="b"'

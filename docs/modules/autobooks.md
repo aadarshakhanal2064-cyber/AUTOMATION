@@ -1138,3 +1138,20 @@ correctly reports clean (different suppliers sharing a bill number is normal
 there). Harness: 20 new assertions in `tools/spbEntryVerify.mjs` (105 total),
 including the design's key split — the applied BOOK excludes the unreadable
 row while the GRID keeps all rows for fixing.
+
+### Zero rows do not print (2026-08-30, user ask)
+
+The exported statement was carrying every skeleton line — "Tax Free Sales
+Omiited in Maskebari … 0.00", Add:/Less: groups with nothing under them. A nil
+row says nothing, so `spbRecoVisibleRows()` prunes it once, and the screen,
+the print document and both exports all read through that one filter. An
+Add:/Less: with no surviving line collapses, and a numbered heading with
+nothing left under it goes too. A fully reconciled statement is four lines:
+the two anchors, After Adjustment, and **Net Difference — the user's one named
+exception, shown even at 0.00**, because a nil Net Difference is the
+statement's conclusion, not noise. Typed rows (the VAT cross-check's opening
+position and prior-year adjustment) also always show — they are inputs, and
+hiding one at 0 would make the figure impossible to enter. The Rounding line
+carries `standalone: true` so a non-zero rounding can never keep an otherwise
+empty heading 2 alive — the visibility walk stops at it. 14 assertions in
+`tools/spbRecoVerify.mjs` (54 total).
