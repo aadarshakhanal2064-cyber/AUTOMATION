@@ -207,6 +207,44 @@ let spbEnView = [];              // absolute row indices currently rendered
 let spbEnPrior = [];             // prior-year autobooks_parties for this client
 let spbEnPriorFor = null;        // identity the prior fetch answered
 let spbEnDirty = false;          // sheet has been edited since load/seed
+let spbEnFull = false;           // the sheet covers the whole viewport
+
+// Full screen is a sticky preference, not a per-visit toggle — the user asked
+// for the sheet to BE full screen like Excel, so once chosen it opens that
+// way every time. A UI preference, not client data, so localStorage is fine.
+const SPB_EN_FULL_PREF = 'spbEntryFullscreen';
+
+function spbEnToggleFull(on) {
+  spbEnFull = on == null ? !spbEnFull : !!on;
+  try { localStorage.setItem(SPB_EN_FULL_PREF, spbEnFull ? '1' : '0'); } catch (e) { /* best-effort */ }
+  spbRenderEntry();
+}
+
+function spbEnApplyFullClass() {
+  const card = document.getElementById('spb-en-card');
+  if (card) card.classList.toggle('spb-en-full', spbEnFull);
+  // The tab panel's fadeIn animation applies a transform, and a transformed
+  // ancestor becomes the containing block for position:fixed — the "full
+  // screen" card would pin itself inside the panel instead of the viewport.
+  // Neutralized only while full screen is on, so the switch animation is
+  // untouched the rest of the time.
+  const panel = document.getElementById('tab-salesPurchaseBook-panel');
+  if (panel) panel.classList.toggle('spb-en-fullhost', spbEnFull);
+}
+
+// The save affordance inside full screen. spbSaveBook() reports into the
+// ledger status box, which lives on the Import tab and is invisible here —
+// mirror its outcome into a toast where the user actually is.
+async function spbEnSave() {
+  const why = spbSaveBlockedReason();
+  if (why) { showToast(why, 'error', 6000); return; }
+  await spbSaveBook();
+  const box = document.getElementById('spb-ledger-status');
+  const msg = box ? box.textContent.trim() : '';
+  if (msg && typeof showToast === 'function') {
+    showToast(msg, box.className.includes('status-error') ? 'error' : 'success', 6000);
+  }
+}
 
 function spbEnStatus(html, type) { showStatus(html, type, 'spb-en-status'); }
 
@@ -468,6 +506,12 @@ function spbEnCols() {
 function spbRenderEntry() {
   const host = document.getElementById('spb-en-body');
   if (!host) return;
+  // The full-screen preference is sticky: once chosen, the sheet opens that
+  // way on every visit until turned off.
+  if (!spbEnFull) {
+    try { spbEnFull = localStorage.getItem(SPB_EN_FULL_PREF) === '1'; } catch (e) { /* ignore */ }
+  }
+  spbEnApplyFullClass();
   spbEnSyncIdentity();
 
   // An uploaded file is open — its corrections belong in Data Doctor, and two
@@ -518,13 +562,27 @@ function spbRenderEntry() {
   const hasBookRows = spbData && spbData[spbEnSection] && spbData[spbEnSection].txns.length &&
     !rows.some(r => !spbEnRowInert(r));
 
+  // In full screen the rest of the app is out of sight, so the toolbar has to
+  // carry the context (whose book, which year) and the Save that normally
+  // lives on the Import tab.
+  const ctxChip = spbEnFull && ident
+    ? `<span class="spb-en-ctx">${escHtml(ident.client_name)} · F.Y. ${escHtml(ident.fiscal_year)}</span>` : '';
+  const fullBtns =
+    (spbEnFull ? `<button class="btn btn-primary btn-sm" onclick="spbEnSave()">Save book</button>` : '') +
+    `<button class="btn btn-outline btn-sm" onclick="spbEnToggleFull()">` +
+    `${spbEnFull ? 'Exit full screen (Esc)' : '⛶ Full screen'}</button>`;
+
   host.innerHTML = `
     <div class="spb-en-toolbar">
-      <div class="rep-view-toggle" style="margin:0;">${secBtns}</div>
+      <div class="spb-en-tools">
+        <div class="rep-view-toggle" style="margin:0;">${secBtns}</div>
+        ${ctxChip}
+      </div>
       <div class="spb-en-tools">
         ${extraToggle}
         ${hasBookRows ? `<button class="btn btn-outline btn-sm" onclick="spbEnLoadFromBook()">Load the ${escHtml(spbEnSection)} register into the sheet</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="spbEnClearSheet()">Clear this sheet</button>
+        ${fullBtns}
       </div>
     </div>
     ${ident ? '' : `<div class="status-box status-info" style="display:block; margin-bottom:10px;">
@@ -1065,6 +1123,16 @@ function spbEnAdoptImport() {
   // A fixed-position dropdown must not float free of a scrolled cell.
   host.addEventListener('scroll', spbEnAcHide, true);
   window.addEventListener('resize', spbEnAcHide);
+  // Esc leaves full screen — but only once the autocomplete has had its turn
+  // (its own Escape closes the list and stops propagation, the searchEngine
+  // rule), and only while the sheet is actually on screen.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !spbEnFull || spbEnAcOpen()) return;
+    if (spbSection !== 'entry') return;
+    const panel = document.getElementById('tab-salesPurchaseBook-panel');
+    if (!panel || !panel.classList.contains('active')) return;   // another tab is fronted
+    spbEnToggleFull(false);
+  });
   document.addEventListener('click', e => {
     if (spbEnAcOpen() && spbEnAc.input !== e.target &&
         !(spbEnAc.el && spbEnAc.el.contains(e.target))) spbEnAcHide();

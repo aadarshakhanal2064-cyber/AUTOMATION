@@ -662,7 +662,7 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-en-pill-n { margin-left: 5px; font-weight: 700; opacity: .75; font-variant-numeric: tabular-nums; }
 .spb-en-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12.5px; }
 .spb-en-notes { color: var(--yellow-dk); }
-.spb-en-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.spb-en-wrap { max-height: 62vh; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 10px; }
 .spb-en-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .spb-en-table thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-page-alt); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 8px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .spb-en-table tfoot td { position: sticky; bottom: 0; background: var(--bg-page-alt); border-top: 1px solid var(--border); font-weight: 700; color: var(--brand-navy); padding: 7px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -680,6 +680,24 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-en-del { border: none; background: transparent; color: var(--text-muted); font-size: 15px; line-height: 1; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
 .spb-en-del:hover { color: var(--red-dk); background: var(--red-bg); }
 .spb-en-help { font-size: 12.5px; color: var(--text-muted); margin-top: 12px; line-height: 1.7; }
+/* Full screen — the sheet takes the whole viewport, Excel-style. A sticky
+   preference (spbEnToggleFull); Esc exits. margin needs !important because the
+   card carries an inline margin-top in the markup. z-index sits below the
+   grid's own dropdown (300) and the toasts. */
+.card.spb-en-full { position: fixed; inset: 0; z-index: 250; margin: 0 !important; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; overflow: hidden; }
+/* While full screen is on, the host panel may not carry a transform — a
+   transformed ancestor is the containing block for position:fixed, which
+   would pin the "full screen" card inside the panel instead of the viewport.
+   (The fadeIn keyframes animate translateY; frozen first frames in
+   non-compositing tabs make this permanent, not just a 0.25s blink.) */
+.tab-panel.spb-en-fullhost { animation: none !important; transform: none !important; }
+.spb-en-full .card-header .card-desc { display: none; }          /* the prose yields to rows */
+.spb-en-full .card-header { margin-bottom: 8px; }
+.spb-en-full #spb-en-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.spb-en-full .spb-en-wrap { flex: 1 1 auto; max-height: none; min-height: 0; }
+.spb-en-full .spb-en-help { display: none; }
+.spb-en-ctx { font-size: 12.5px; font-weight: 600; color: var(--brand-navy); white-space: nowrap; }
+
 /* right:auto — the shared list class pins right:0 for in-form pickers, which
    under this dropdown's position:fixed would mean the viewport's right edge. */
 .spb-en-ac { right: auto; z-index: 300; max-height: 260px; overflow: auto; }

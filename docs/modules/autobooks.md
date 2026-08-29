@@ -820,3 +820,26 @@ anything it feeds**, alongside `node tools/spbVerify.mjs` (still 36/36).
 Browser-verified 2026-08-29 against the dev server: suggestion pick, PAN-first
 entry, conflict flagging, month pills, register totals, draft reload, and a
 full section/tab regression sweep with a clean console.
+
+### Full screen (2026-08-29, user ask — "exactly like Excel")
+
+**⛶ Full screen** in the sheet's toolbar expands the card over the whole
+viewport (`.spb-en-full`, `position: fixed; inset: 0`), with the grid flexed
+to fill, the prose hidden, and the toolbar carrying what is otherwise out of
+sight: the client · F.Y. context chip and a **Save book** button
+(`spbEnSave()`, which mirrors `spbSaveBook()`'s outcome into a toast — the
+ledger status box lives on the Import tab and is invisible here). Esc exits,
+after the autocomplete has had its turn. **The choice is sticky**
+(`spbEntryFullscreen` in localStorage — a UI preference, not client data), so
+once chosen the sheet opens full screen on every visit.
+
+The trap worth remembering: `.tab-panel.active`'s fadeIn animation applies a
+`transform`, and a transformed ancestor becomes the containing block for
+`position: fixed` — the "full screen" card pinned itself inside the panel.
+Worse than a 0.25 s blink: in a non-compositing tab the animation freezes on
+its first frame and the transform is permanent. So while full screen is on the
+host panel carries `.spb-en-fullhost` (`animation/transform: none`); the
+switch animation is untouched otherwise. Body scroll is deliberately NOT
+locked — a body class would stick if the user palette-jumped to another tab
+while full screen — `overscroll-behavior: contain` on the grid wrap handles
+the chaining instead.
