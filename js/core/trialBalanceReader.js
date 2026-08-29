@@ -480,7 +480,12 @@ const TrialBalanceReader = (() => {
     return { blocks, check: parsed.check, sheetName: parsed.sheetName };
   }
 
-  return { parse, toFigures, toReport, findSheet, BLOCKS, SECTIONS, LOAN_GROUPS, PPE_CLASSES, key };
+  // REVENUE_LINES and `classify` are exported for js/core/trialBalanceModel.js,
+  // which splits a TYPED revenue block the same three ways this reader splits
+  // an imported one. A second copy of these spellings would drift the first
+  // time a client wrote "Commission Income" and only one of them learnt it.
+  return { parse, toFigures, toReport, findSheet, BLOCKS, SECTIONS,
+           REVENUE_LINES, LOAN_GROUPS, PPE_CLASSES, key, classify: firstMatch };
 })();
 
 // Browser: global (matches the app's no-module architecture). Node: export so
