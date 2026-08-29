@@ -716,3 +716,107 @@ disabled with that reason in place of a vague message; and `spbSaveGateHtml()`
 gives each gated screen its **own working Save button**, so the user saves from
 where they hit the wall instead of being sent to another tab. Saving then
 re-renders the section they were on, rather than leaving them to click back.
+
+---
+
+## In-app Data Entry — the smart sheet (M6, `js/salesPurchaseBookEntry.js`, 2026-08-29)
+
+The step before the upload, brought inside the app. Staff used to type the
+year's bills into Excel and upload the file here; the **Data Entry** section
+tab (between Import and Register) is a spreadsheet that knows the firm's data,
+built because employees' spelling and PAN mistakes in Excel were the single
+biggest source of downstream corrections. What Excel cannot do, this sheet
+does at the keystroke:
+
+- **Party names autocomplete from everything the client's books already
+  hold** — the rows typed so far, the open book's party groups, the stored
+  confirmation-ledger parties, and the client's **prior-year saved books**
+  (fetched silently from `autobooks_books`/`autobooks_parties`, so the very
+  first bill of a new year already knows last year's suppliers). Picking a
+  party fills its PAN and jumps focus to the Taxable cell; typing a known PAN
+  fills the party back.
+- **A PAN that contradicts the party's established PAN goes red on the spot**
+  with the known PAN named; a PAN belonging to a *different* party warns. The
+  directory's display spelling and PAN are both decided by **weight**, the
+  Annexure-13 lesson — a one-row typo never out-votes the real entry — and a
+  malformed PAN never becomes a party's PAN.
+- **Blank VAT completes at 13% of its taxable while the row is still under the
+  user's eyes** (off for a PAN-only client's sales, the importer's own rule).
+  A VAT the user typed or corrected is theirs — the autofill lets go the
+  moment the cell is hand-edited.
+- **Dates carry forward row to row** and accept every form the importer reads:
+  `2082.4.1`, `4.15` (year inferred from the F.Y.), a bare `15` (continues the
+  row above), month names with all their observed misspellings, Devanagari.
+  Normalized on commit to the canonical `YYYY.MM.DD`. **Sales bill numbers
+  auto-increment** on a fresh row (zero-padding preserved); purchases get no
+  such guess — those are other people's bill numbers.
+- **Enter moves down the column** (the spreadsheet reflex), a new seeded row
+  is always waiting at the bottom, and the view is **one fiscal month at a
+  time** (pills with live counts; "Whole year" available) so a 1,600-line
+  register never renders 17,000 inputs — the confirmation grid's lesson.
+  Cells are patched in place, never re-rendered mid-typing.
+
+### Not a second parser — the crux
+
+Typed rows are converted to the exact `{rows, header}` shape an uploaded sheet
+produces (`spbEnSheet`) and pushed through the module's **own** `spbParseRows`
+→ `spbComputeBook` → `spbComputeGroups` on every committed edit — the same
+contract `spbLoadBook()` follows for rehydration. `spbData[section].source`
+reads `'Manual entry'`. Register, Monthly reconciliation, Confirmation,
+Annexure-13, Reco, the generated workbook and Save all read the result with no
+new code path. The synthetic header includes a purchase-only column **only
+when some row carries a figure in it** (value-driven, the `spbLedgerCols`
+idiom), so a typed book cannot invent an all-zero Capital column — and
+`spbSectionAmountKeys()` itself gained the same value-driven fallback for any
+book without `spbRaw`, fixing a real pre-existing gap where a workbook
+generated off a *loaded* book silently dropped its Import/Capital columns.
+
+A typed book carries **no `spbRaw`**, exactly like a loaded one — the grid is
+the correction surface, so Data Doctor/column-mapping/reparse are correctly
+absent. While an uploaded file IS open, the Data Entry tab gates itself shut
+(two editors over one book is how they drift) and offers a one-way,
+confirm-guarded switch (`spbEnAdoptImport`): the corrected rows become the
+sheet and `spbRaw` closes.
+
+### Rows, drafts, and who wins
+
+- **A row is INERT while it holds only a date and bill number** — exactly what
+  the carry-forward seeds a fresh row with. Inert rows are typing surface, not
+  data: excluded from the parser, totals, counts and drafts, or every seeded
+  blank would print as a zero-amount bill (this shipped as a bug in the first
+  browser test and is asserted in the harness).
+- **Drafts autosave to localStorage keyed (client, FY)** — the `spbVr` idiom
+  (`spbEntryDrafts`, 20 newest kept). A restored draft **re-applies itself as
+  the module's book**, or Save/Generate/Register would read "nothing imported"
+  while a full sheet sits on screen.
+- **Draft vs saved book is decided by timestamp, twice.** At first render the
+  book row may not have loaded yet (async), so the decision is re-made in
+  `spbEntryOnBookLoaded()` with the real `updated_at` in hand: a newer draft
+  re-applies over the loaded book; an older one steps aside for it.
+- **Rows typed under "(NO CLIENT)" follow the client picked next** (same FY
+  only) — they can only have been typed on purpose. Between two real clients
+  nothing ever carries over (§9 scope rules); `spbEntryReset()` clears the
+  grid on client switch and the draft stays under its own key.
+
+### The grid's autocomplete is deliberately not SearchEngine.attachAutocomplete
+
+The engine binds a document-level click listener per attached input; a grid
+re-issues its cell inputs on every structural render, which would accumulate
+dead listeners by design. The grid runs ONE delegated dropdown styled as the
+shared `.autocomplete-list`, ranked starts-with → word-start → substring (the
+CommandPalette precedent — prefix intent, not fuzzy matching, is what "k" →
+"ko" → "kot" means). Every single-input picker elsewhere stays on the engine.
+
+### Verification — `node tools/spbEntryVerify.mjs`
+
+60 assertions, vm-loading the REAL core + ledger + entry files (the
+`spbVerify.mjs` pattern): date normalization (16 forms including Devanagari),
+bill sequencing, synthetic-sheet column inclusion, directory weighting and
+ranking, typed rows through the real pipeline (VAT fill, month grouping,
+safeKey merging, capital-slice arithmetic, value-driven workbook columns), the
+book → sheet → book round trip, and per-row validation (PAN conflict, VAT
+deviation, F.Y. window). **Run it before and after touching the entry sheet or
+anything it feeds**, alongside `node tools/spbVerify.mjs` (still 36/36).
+Browser-verified 2026-08-29 against the dev server: suggestion pick, PAN-first
+entry, conflict flagging, month pills, register totals, draft reload, and a
+full section/tab regression sweep with a clean console.

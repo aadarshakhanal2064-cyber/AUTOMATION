@@ -649,6 +649,42 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-map-grid { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; font-size: 12.5px; }
 .spb-map-grid label { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-weight: 500; }
 .spb-map-grid select { padding: 6px 8px; font-size: 12.5px; border-radius: 6px; border: 1px solid var(--border); }
+/* Data-entry sheet (js/salesPurchaseBookEntry.js) — spreadsheet-density cells,
+   deliberately tighter than the app's list tables: this is a typing surface. */
+.spb-en-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.spb-en-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.spb-en-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
+.spb-en-toggle input { width: 14px; height: 14px; accent-color: var(--accent-blue); }
+.spb-en-pills { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+.spb-en-pill { padding: 5px 10px; border: 1px solid var(--border); border-radius: 20px; background: #fff; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: var(--trans-ctrl); }
+.spb-en-pill:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+.spb-en-pill.active { background: var(--brand-navy); border-color: var(--brand-navy); color: #fff; }
+.spb-en-pill-n { margin-left: 5px; font-weight: 700; opacity: .75; font-variant-numeric: tabular-nums; }
+.spb-en-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12.5px; }
+.spb-en-notes { color: var(--yellow-dk); }
+.spb-en-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.spb-en-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.spb-en-table thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-page-alt); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 8px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.spb-en-table tfoot td { position: sticky; bottom: 0; background: var(--bg-page-alt); border-top: 1px solid var(--border); font-weight: 700; color: var(--brand-navy); padding: 7px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spb-en-td { padding: 0; border-bottom: 1px solid var(--border-soft); }
+.spb-en-in { width: 100%; border: none; background: transparent; padding: 6px 8px; font-size: 12.5px; font-family: inherit; font-variant-numeric: tabular-nums; border-radius: 0; }
+.spb-en-in:focus { outline: 2px solid var(--accent-blue); outline-offset: -2px; background: #fff; }
+.spb-en-r { text-align: right; }
+.spb-en-num { text-align: right; color: var(--text-muted); font-size: 11px; padding: 6px 8px; border-bottom: 1px solid var(--border-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spb-en-st-err { color: var(--red-dk); font-weight: 700; }
+.spb-en-st-err::after { content: ' ●'; }
+.spb-en-st-warn { color: var(--yellow-dk); font-weight: 700; }
+.spb-en-st-warn::after { content: ' ●'; }
+.spb-en-bad { background: var(--red-bg); }
+.spb-en-warnc { background: var(--yellow-bg); }
+.spb-en-del { border: none; background: transparent; color: var(--text-muted); font-size: 15px; line-height: 1; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.spb-en-del:hover { color: var(--red-dk); background: var(--red-bg); }
+.spb-en-help { font-size: 12.5px; color: var(--text-muted); margin-top: 12px; line-height: 1.7; }
+/* right:auto — the shared list class pins right:0 for in-form pickers, which
+   under this dropdown's position:fixed would mean the viewport's right edge. */
+.spb-en-ac { right: auto; z-index: 300; max-height: 260px; overflow: auto; }
+.spb-en-ac .autocomplete-item { padding: 8px 12px; font-size: 12.5px; white-space: nowrap; }
+.spb-en-ac-pan { margin-left: 8px; color: var(--text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* ── CONFIRMATION LETTERS ── */
 .cl-table th, .cl-table td { text-align: right; white-space: nowrap; padding: 8px 10px; font-variant-numeric: tabular-nums; }

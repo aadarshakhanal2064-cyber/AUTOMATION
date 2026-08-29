@@ -758,6 +758,9 @@ function spbReset() {
   // and the confirmation figures. A client switch must clear those too, or the
   // next client's screen would still point at the previous client's book.
   if (typeof spbLedgerReset === 'function') spbLedgerReset();
+  // Same for the data-entry sheet (js/salesPurchaseBookEntry.js) — its rows
+  // belong to the client they were typed under; the draft survives per key.
+  if (typeof spbEntryReset === 'function') spbEntryReset();
 }
 
 // ════════════════════════════════════════════
@@ -1926,10 +1929,20 @@ function spbHeaderRow(ws, rowIdx, labels) {
 // never buy capital goods, and inventing a column the source never had is
 // exactly the sort of silent difference this module exists to avoid.
 function spbSectionAmountKeys(key) {
-  const col = spbRaw && spbRaw[key] && spbRaw[key].header ? spbRaw[key].header.col : {};
+  const col = spbRaw && spbRaw[key] && spbRaw[key].header ? spbRaw[key].header.col : null;
   return SPB_AMOUNT_FIELDS
     .filter(f => !f.purchaseOnly || key === 'purchase')
-    .filter(f => !f.purchaseOnly || col[f.key] != null)
+    .filter(f => {
+      if (!f.purchaseOnly) return true;
+      if (col) return col[f.key] != null;
+      // No uploaded sheet behind this book (loaded from the database, or typed
+      // in Data Entry) — decide by VALUE, the spbLedgerCols idiom: the column
+      // appears when any bill line actually carries a figure in it. The old
+      // `col = {}` fallback silently DROPPED Import/Capital columns (and their
+      // figures) from a workbook generated off a loaded book.
+      const txns = spbData && spbData[key] ? spbData[key].txns : [];
+      return txns.some(x => (x[f.key] || 0) !== 0);
+    })
     .map(f => f.key);
 }
 
@@ -2323,11 +2336,14 @@ function spbOnContextChange() {
   // layer still gets a look.
   if (!spbRaw) {
     if (typeof spbLedgerOnContext === 'function') spbLedgerOnContext();
-    return;
+  } else {
+    spbVr = spbBlankVr();
+    spbVrLoadDraft();
+    spbReparse();
   }
-  spbVr = spbBlankVr();
-  spbVrLoadDraft();
-  spbReparse();
+  // The data-entry sheet keys its rows and drafts on (client, FY) — a changed
+  // selection must swap them. Guarded: separate file, loaded after this one.
+  if (typeof spbEntryOnContext === 'function') spbEntryOnContext();
 }
 
 // The imported transactions belong to whoever was selected when the files

@@ -105,7 +105,7 @@ function spbSaveBlockedReason() {
   if (!spbVal('spb-company')) return 'Pick a client at the top of the Import tab first.';
   if (!spbVal('spb-fy')) return 'Choose a fiscal year at the top of the Import tab first.';
   if (!spbData || !SPB_SECTIONS.some(s => spbData[s.key])) {
-    return 'Import a Sales or Purchase file on the Import tab first — there is nothing to save yet.';
+    return 'Import a Sales or Purchase file on the Import tab — or type the book in Data Entry — there is nothing to save yet.';
   }
   return null;
 }
@@ -458,6 +458,9 @@ async function spbLoadBook(silent) {
     spbRenderRegister();
     spbRenderOmittedTable();
     if (typeof spbRenderConfirm === 'function') spbRenderConfirm();
+    // The data-entry sheet may be open and empty, waiting for exactly this
+    // register to edit. Guarded: separate file, loaded after this one.
+    if (typeof spbEntryOnBookLoaded === 'function') spbEntryOnBookLoaded();
     spbLedgerStatus(`✅ Opened the saved book — ${escHtml(counts.join(' · '))} bill lines` +
       (spbOmitted.length ? ` · ${spbOmitted.length} omitted` : '') + '.', 'success');
     return true;
