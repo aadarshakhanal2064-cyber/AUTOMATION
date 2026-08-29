@@ -25,6 +25,13 @@
 
 const ProvisionalStatementEngine = (() => {
 
+  // The income-tax rule set (js/core/nepalTax.js). Browser: already a global,
+  // because js/core/* loads before every feature module. Node: required, so
+  // tools/psVerify.mjs keeps working by requiring this file alone.
+  const Tax = (typeof module !== 'undefined' && module.exports)
+    ? require('./core/nepalTax.js')
+    : (typeof window !== 'undefined' ? window.NepalTax : null);
+
   // ── rounding ──
   // Excel's ROUND is half-away-from-zero; JS Math.round is half-up, which
   // disagrees on negatives. The workbook only ever rounds positives, but the
@@ -131,10 +138,20 @@ const ProvisionalStatementEngine = (() => {
     freight:  0.015,  // `H98 =+'Sch-PL'!D26*1.5%`
   };
 
+  // ── the fallback tax basis ──
+  //
+  //  These two are what the engine charges when the caller supplies no
+  //  `options.taxRule`. That is still every Provisional Statement and every
+  //  Audited record saved before 2026-08-29, so they stay exactly as they
+  //  were: a flat 25%, or one hardcoded ladder. Where a rule IS supplied,
+  //  NepalTax answers instead and neither of these is consulted — see the
+  //  tax block in derive().
   const CORPORATE_TAX = 0.25;   // `Sch-PL D75 =+SOI!F27*0.25`
 
   // Proprietorship slabs, carried from Projection. Deliberately NOT unified
-  // with the Audited engine's D3 slabs — two schedules for two purposes (§15).
+  // with NepalTax's D-3 ladder — that one is the CA's own current-year rule
+  // set and this one is the historical fallback, so unifying them would
+  // silently restate every statement saved before the rule set existed.
   const TAX_SLABS = [
     { upto: 500000,  rate: 0    },
     { upto: 700000,  rate: 0.10 },
@@ -503,9 +520,33 @@ const ProvisionalStatementEngine = (() => {
       warn('The Computation of Income is on but no Income-Tax depreciation was found, so the bridge adds back accounting depreciation and deducts nothing. Check the client has a saved Income-Tax depreciation schedule.');
     }
 
+    // ── the charge itself ──
+    //
+    //  With a rule set (`options.taxRule`) the charge comes from NepalTax,
+    //  which is the firm's CA's own D-1 / D-2 / D-3 sheet as data. Two of
+    //  those three do not read profit at all — a D-1 charge is a flat figure
+    //  and a D-2 charge is a percentage of TURNOVER — which is why the rule
+    //  is handed the revenue line as well, and why the result carries the
+    //  workings rather than just a number.
+    //
+    //  Without one, the two-way fallback above stands. That is deliberate
+    //  rather than a migration: a saved statement must reprint the figure it
+    //  was issued with, and the Provisional module has not been given the
+    //  rule picker.
     const profile = opt.taxProfile || 'corporate';
-    let tax, taxRule;
-    if (profile === 'progressive') {
+    let tax, taxRule, taxDetail = null;
+    if (opt.taxRule && Tax) {
+      taxDetail = Tax.compute(Object.assign(
+        { entity: profile === 'progressive' ? 'proprietorship' : 'private' },
+        opt.taxRule,
+        { turnover: revenueOps, taxableProfit }
+      ));
+      tax = taxDetail.tax;
+      taxRule = taxDetail.label;
+      // A rule that disagrees with the figures is a finding about the inputs,
+      // shown and never silently corrected (§15, the proof-row rule).
+      taxDetail.warnings.forEach(w => warn(w));
+    } else if (profile === 'progressive') {
       tax = progressiveTax(Math.max(0, taxableProfit));
       taxRule = 'Proprietorship — progressive slabs';
     } else {
@@ -517,7 +558,13 @@ const ProvisionalStatementEngine = (() => {
     const taxExpense = tax + priorPeriodTax;     // `D77 =SUM(D75:D76)`
     const netProfit = pbt - taxExpense;          // `SOI F31 =F27-F29`
 
-    if (pbt < 0) warn('Profit Before Tax is negative, so no tax has been provided. Check Purchases and Closing Stock.');
+    // A turnover-based charge is still owed on a loss-making year, so this
+    // sentence is only true where tax is charged on profit.
+    if (pbt < 0 && (!taxDetail || taxDetail.base === 'profit')) {
+      warn('Profit Before Tax is negative, so no tax has been provided. Check Purchases and Closing Stock.');
+    } else if (pbt < 0) {
+      warn(`Profit Before Tax is negative, but ${taxDetail.returnType} charges tax on turnover, so ${taxRule.split(' — ')[0]} is still provided. Check Purchases and Closing Stock.`);
+    }
 
     // ════════════════════════════════════════════════
     //  BALANCE SHEET — derived statutory lines (Sch-BS)
@@ -782,7 +829,13 @@ const ProvisionalStatementEngine = (() => {
         // `Sch-PL D62 =ROUND(COI!F18,)` does the same. Without it, and only on
         // the flat corporate rate, the rate is expressible as one cell formula;
         // progressive slabs are a schedule and export as a figure.
+        // A rule set answers this itself: only D-3 on a company or a
+        // partnership is a single rate on profit and so expressible as one
+        // cell formula. A D-1 or D-2 charge reads turnover, and a
+        // proprietor's ladder is a schedule — both export as a figure, the
+        // same treatment a typed number gets.
         taxDerive: useCoi ? null
+          : taxDetail ? (taxDetail.rate ? { kind: 'taxOnProfit', rate: taxDetail.rate } : null)
           : (profile === 'corporate' ? { kind: 'taxOnProfit', rate: CORPORATE_TAX } : null),
       },
       balance: {
@@ -815,7 +868,11 @@ const ProvisionalStatementEngine = (() => {
         capitalProceeds, ncBorrowMove, cBorrowMove, dividend, netFinancing,
         netIncrease, openingCash, closingCash, cashProof,
       },
-      tax: { rule: taxRule, base: Math.max(0, taxableProfit), onProfits: tax, priorPeriod: priorPeriodTax, total: taxExpense },
+      // `detail` is the NepalTax result when a rule set was supplied — the
+      // return type, the workings behind the charge and any warnings — so the
+      // screen can show the arithmetic instead of asserting a figure. Null on
+      // the fallback basis.
+      tax: { rule: taxRule, base: Math.max(0, taxableProfit), onProfits: tax, priorPeriod: priorPeriodTax, total: taxExpense, detail: taxDetail },
       // The COI bridge, whether or not it is printed — the reconciliation
       // panel checks it foots even on a Tier A set.
       coi: {

@@ -93,8 +93,92 @@ and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 | Advance Tax | `Sch-BS H18 =+J18-SOI!H29+SOI!F15*15%` | **PY advance tax − PY tax expense + (CY other income × 15%)** |
 
 > 25% is the Pvt. Ltd. / Partnership rate. Proprietorship uses progressive slabs
-> — carried over from Projection's `TAX_SLABS`, selectable on the form, and
-> **deliberately not unified** with Financial Statement's D3 slabs (§15).
+> carried over from Projection's `TAX_SLABS`. **This whole table is the
+> FALLBACK basis**, used whenever the caller passes no `options.taxRule` —
+> which is every Provisional Statement. Audited Statement passes one; see
+> §2.3a. The three schedules are deliberately not unified (CLAUDE.md §15).
+
+#### 2.3a Audited Statement charges by the CA's D-1 / D-2 / D-3 rule sheet
+
+*(2026-08-29, user ask — the firm's chartered accountant supplied the rule
+sheet. Audited Statement only; Provisional keeps the fallback above.)*
+
+The rule set lives in **`js/core/nepalTax.js`** (CLAUDE.md §4) and is picked in
+the Tax card's new first accordion section, **Income Tax Rule**, which prints
+the workings rather than asserting a figure — the CA's sheet has an "Example"
+column for the same reason.
+
+**Why it is an engine and not two more constants.** Two of the three rules do
+not read profit at all. A D-1 charge is a flat figure decided by the client's
+municipality; a D-2 charge is a percentage of **turnover**. Neither can be
+written inside an expression whose only variable is `taxableProfit`, which is
+what the tax block used to be.
+
+| Return | Base | Charge |
+|---|---|---|
+| **D-1** — proprietorship, turnover ≤ Rs 30,00,000 | turnover | Flat: Rs 7,500 metro/sub-metro · Rs 4,000 municipality · Rs 2,500 rural municipality |
+| **D-2** — proprietorship, Rs 30,00,000 to Rs 1,00,00,000 | turnover | The location figure **plus** a rate on turnover *above Rs 30,00,000*, marginal and stacking: general goods 1% then 0.8% above 50 lakh · ≤3%-commission goods (gas, cigarette) 0.25% then 0.3% · service 2% throughout |
+| **D-3** — everyone else | taxable profit | Company / partnership 25%, or 20% for a special industry. Proprietorship above the D-2 ceiling: the natural-person ladder |
+
+**The D-3 proprietorship ladder** (F.Y. 2082-83, couple — the sheet's own
+table). First band **0%, not the 1% social security tax**: that 1% is not
+levied on business income (Schedule 1 sec 1(4)), and the published slab table
+prints "–" in the proprietorship column.
+
+| Band | Normal | Special industry |
+|---|---|---|
+| Up to 6,00,000 | 0% | 0% |
+| Next 2,00,000 | 10% | 10% |
+| Next 3,00,000 | 20% | 20% |
+| Next 9,00,000 | 30% | 20% |
+| Next 30,00,000 | 36% | 24% |
+| Remaining | 39% | 26% |
+
+The concession replaces the 30% base rate with 20%; the two surcharged bands
+above it (36% = 30% plus a fifth, 39% = 30% plus three tenths) scale with it.
+
+**Marginal, never pre-summed.** The Act publishes D-2's second band as a fixed
+amount plus a rate ("Rs 27,500 + 0.8% of (Turnover − 50,00,000)" for a
+metropolitan trader). The engine computes it marginally from the location base
+instead — 7,500 + 20,00,000 × 1% = 27,500, and likewise 24,000 and 22,500 —
+because storing six pre-summed figures is how the three location tiers drift
+apart. `tools/taxVerify.mjs` asserts the marginal form reproduces every
+published figure.
+
+**Three extensions beyond the CA's sheet**, each additive, each leaving his own
+cases reproduced exactly by the defaults: the **rural municipality Rs 2,500**
+tier (the sheet lists two of the Act's three, and reading rural as Rs 4,000
+overcharges those clients); the **≤3%-commission goods** band; and an
+**Individual / Couple** choice, the sheet's table being the couple ladder.
+Both ladders close their 30% band at Rs 20,00,000 and their 36% band at
+Rs 50,00,000 — the check that they have not drifted.
+
+**Two rules that follow from the base being turnover.** A D-1 or D-2 charge
+**exports as a figure, not a live formula** (`income.taxDerive === null`) —
+there is no single-cell expression for a number that reads the turnover line;
+the same treatment a typed figure gets. And a turnover charge **is still owed
+in a loss-making year**, so the "negative PBT, so no tax has been provided"
+warning is raised only where tax is charged on profit.
+
+**A rule that disagrees with the figures warns; it never self-corrects** — a
+D-2 return above the Rs 1 crore turnover ceiling or the Rs 10,00,000 taxable
+-income ceiling, a D-1 return above Rs 30,00,000, a D-3 proprietor still inside
+the D-2 range, a service election the Act bars for consultancy professions.
+Same rule as Final Account's Net Difference and the statement's proof rows.
+
+**Prefill.** `returnType` is seeded from the client's own `it_return_type`,
+assigned unconditionally (§9). `'D1/D2'` genuinely means "one of the two, the
+preparer decides" (§15) and so resolves to nothing rather than a coin-flip
+presented as a fact; the caption says so.
+
+**Persistence** is the `inputs` JSON blob — `taxRule` alongside `vatSide` and
+`coiTouched`, no migration. It is merged over the defaults on restore so a
+record saved before a field existed gains it rather than restoring `undefined`
+into a select.
+
+**The sheet's "Name of Auditor (Choose)" block is `window.ARF_AUDITORS`**,
+which already matched it exactly. Nothing was changed there, and the Audited
+Statement carries no signature block of its own.
 
 > **The Computation of Income was removed from the UI 2026-08-28 by user
 > decision** — tax always charges straight off accounting profit, no COI
