@@ -20,10 +20,21 @@
 // fsxBuildReport() is pure (no DOM, no vendor calls) so it can be verified in
 // Node against the real sample workbooks.
 
-// The firm's own accounting format (lifted from the T3 template): negatives
-// carry a leading minus, never parentheses; zero renders as an en-dash.
-const FSX_NUMFMT = '_ * #,##0.00_ ;_ * -#,##0.00_ ;_ * "-"??_ ;_ @_ ';
-const FSX_NUMFMT0 = '_ * #,##0_ ;_ * -#,##0_ ;_ * "-"??_ ;_ @_ ';
+// Amounts group lakh/crore, matching the app preview (user ask 2026-08-29:
+// the workbook must look like the preview, not like the T3 template's
+// western #,##0.00 — that template format is what this replaced).
+//
+// Excel's format language has no locale-aware grouping, so this is the
+// standard conditional-section idiom: ≥1 crore and ≥1 lakh each get a
+// pattern with literal commas at the Indian positions — safe because the
+// condition guarantees the digits exist to fill every group — and below a
+// lakh the two grouping systems are identical anyway. A custom format
+// allows only the two conditions plus a catch-all, so negatives and zero
+// share the third section: a negative prints with a minus and western
+// grouping (rare on the face of these statements, and the preview prints
+// its own minus), and zero prints 0.00 rather than the en-dash.
+const FSX_NUMFMT = '[>=10000000]#\\,##\\,##\\,##0.00;[>=100000]#\\,##\\,##0.00;#,##0.00';
+const FSX_NUMFMT0 = '[>=10000000]#\\,##\\,##\\,##0;[>=100000]#\\,##\\,##0;#,##0';
 
 // Column geometry per sheet, taken from the template. `cy`/`py` are the current
 // and comparative value columns; `cols` is used by the matrix sheets (SOCE,
@@ -1513,6 +1524,70 @@ ${txt}`;
       if (r.balancing) {
         const cn = fsxColNum(fsxSheetCol(geom, 0, !!sh.matrix));
         if (cn) ws.getCell(rowNo, cn).note = 'Balancing figure';
+      }
+    }
+
+    // ── the preview's ruled grid, drawn onto the sheet ──
+    //
+    // The on-screen preview draws a bordered table — outer box, a hairline
+    // under every item row, vertical hairlines left of each value and note
+    // column — and the user asked for the workbook to look the same
+    // (2026-08-29), superseding the T3 template's borders-on-value-cells-only
+    // styling this replaced. Everything here MERGES onto what the row loop
+    // already drew: the band's medium underline and the thin+double total
+    // rules stay exactly as they were, this pass only fills in the grid
+    // around them.
+    //
+    // Same exceptions as the preview's CSS: the PPE sheet drops the vertical
+    // lines (fsp-novlines — too many columns), and a schedule's note/fignpr
+    // rows sit outside the grid.
+    {
+      const hair = { style: 'hair' };
+      const boxThin = { style: 'thin' };
+      const noteColN = geom.note ? fsxColNum(geom.note) : null;
+      // The real (bordered) columns: label, note, every value column.
+      const realCols = new Set([labelCol]);
+      if (noteColN) realCols.add(noteColN);
+      for (let i = 0; i < ((sh.cols || []).length || 1); i++) {
+        const L = fsxSheetCol(geom, i, !!sh.matrix);
+        if (L) realCols.add(fsxColNum(L));
+      }
+      for (const q of (sh.quadCols || [])) realCols.add(fsxColNum(q));
+      // A self-banded schedule (Sch-BS/Sch-PL/PPE) has no single band row —
+      // its notes carry their own — so its grid starts at the first data row.
+      const firstRow = layout.bandRow || layout.firstDataRow;
+      const lastRow = layout.firstDataRow + sh.rows.length - 1;
+      const merge = (rowNo, colNo, add) => {
+        const cell = ws.getCell(rowNo, colNo);
+        cell.border = Object.assign({}, cell.border, add);
+      };
+      let rowNo = layout.firstDataRow;
+      const kinds = {};
+      for (const r of sh.rows) { kinds[rowNo] = r.kind || 'item'; rowNo++; }
+      for (let rNo = firstRow; rNo <= lastRow; rNo++) {
+        const k = kinds[rNo] || 'band';
+        const outside = k === 'note' || k === 'fignpr';
+        for (let c = labelCol; c <= lastCol; c++) {
+          const add = {};
+          // Vertical rules: left of every real column past the label, so the
+          // rules run unbroken from the band to the foot — blank spacer rows
+          // included, exactly as the preview draws them.
+          if (!outside && sh.key !== 'PPE' && c > labelCol && realCols.has(c)) add.left = hair;
+          // A hairline under every ordinary row; head/sub/blank rows and the
+          // ruled kinds (band/tot/grand keep their own) stay as drawn.
+          if (k === 'item') {
+            const has = ws.getCell(rNo, c).border || {};
+            if (!has.bottom) add.bottom = hair;
+          }
+          // The outer box.
+          if (!outside) {
+            if (c === labelCol) add.left = boxThin;
+            if (c === lastCol) add.right = boxThin;
+            if (rNo === firstRow) add.top = boxThin;
+            if (rNo === lastRow) { const has = ws.getCell(rNo, c).border || {}; if (!has.bottom || has.bottom.style === 'hair') add.bottom = boxThin; }
+          }
+          if (Object.keys(add).length) merge(rNo, c, add);
+        }
       }
     }
 

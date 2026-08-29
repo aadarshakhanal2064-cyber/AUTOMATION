@@ -65,6 +65,32 @@ let psReconcile = null;      // last ProvisionalReconcile.run() output
 // Safe to re-render on toggle: every figure in the panel lives in psCy /
 // psTds, not the DOM, so a collapsed section loses nothing.
 let psTaxOpen = 'adv';       // 'adv' | 'tds' | 'vat' | 'coi' | ''
+// The income-tax rule this statement's charge is computed by — the firm's
+// CA's own D-1 / D-2 / D-3 sheet, as data in js/core/nepalTax.js.
+//
+// It is module state rather than DOM values for the same reason psCoiTouched
+// is: the fields live inside a collapsible accordion section and unrender
+// when it closes, so anything read back off the elements would revert the
+// moment the preparer collapsed the card.
+//
+// `returnType` defaults to 'auto' (user ask 2026-08-29: "choose the d1 d2
+// d3 automatically according to the revenue") — the Act itself decides which
+// return applies from the entity, the turnover and the taxable income, so
+// `NepalTax.autoReturnType()` resolves it on every recalculation and the
+// screen shows which rule was chosen and the threshold that chose it.
+// Picking a named type is an explicit override and is honoured; 'auto' is
+// one click away to hand the decision back.
+let psTaxRule = psDefaultTaxRule();
+function psDefaultTaxRule() {
+  return {
+    returnType: 'auto',
+    location: NepalTax.DEFAULT_LOCATION,        // 'municipality'
+    d2Nature: NepalTax.DEFAULT_D2_NATURE,       // 'goods'
+    filing: NepalTax.DEFAULT_FILING,            // 'couple' — the CA sheet's ladder
+    special: false,
+    fromClient: null,   // the client's directory it_return_type, for the caption
+  };
+}
 // Which side the VAT return leaves the client on. The two figures never
 // coexist, so the UI shows ONE box and this picks which key it writes.
 // null = follow whichever key holds a value, then the Autobooks sign.
@@ -178,6 +204,7 @@ const psScope = WorkflowEngine.createClientScope({
     psStock = [];
     psExtraPay = []; psExtraRecv = [];
     psTaxOpen = 'adv'; psVatSide = null; psCoiTouched = null;
+    psTaxRule = psDefaultTaxRule();
     psSolveFor = 'purchases'; psPlugReceivables = true;
     psSavedId = null;
     const f = psEl('ps-py-file'); if (f) f.value = '';
@@ -206,6 +233,25 @@ const psScope = WorkflowEngine.createClientScope({
     psEl('ps-tax-profile').value = profile === 'proprietorship' ? 'proprietorship'
       : profile === 'partnership' ? 'partnership' : 'private';
     psOnEntityChange();
+
+    // The return type stays on 'auto' — the Act decides it from the figures
+    // (user ask 2026-08-29), so the directory's `it_return_type` is shown as
+    // context in the caption rather than driving the choice. Where the two
+    // disagree, the figures win by default and the caption makes the
+    // disagreement visible instead of silent.
+    psTaxRule.returnType = 'auto';
+    psTaxRule.fromClient = it.it_return_type || null;
+
+    // A VAT-registered client's VAT line prints, so the box is ticked from
+    // the directory rather than by hand (user ask 2026-08-29) and the VAT
+    // fields are open on arrival. **`tax_registration_type` is the client's
+    // own registration — NOT `vat_status`, which is whether the firm files
+    // their monthly return; the two are deliberately different facts (§15).**
+    // Assigned unconditionally, so a PAN-only client can never inherit the
+    // previous client's tick (§9).
+    psCy.vatRegistered =
+      String(it.tax_registration_type || '').trim().toUpperCase() === 'VAT';
+
 
     psLoadDepreciation();
     psLoadSources();
@@ -623,6 +669,9 @@ function psOnEntityChange() {
     .forEach(el => { el.style.display = isCompany ? '' : 'none'; });
   psPrefillCapital();
   psRenderFigures();
+  // The entity decides which D-3 sub-rule applies, so the tax card's fields
+  // change with it.
+  psRenderTax();
   psRecalcDebounced();
 }
 
@@ -999,6 +1048,13 @@ function psSetVatSide(side) {
 }
 
 function psRenderTax() {
+  // The rule card is its own card at the top of step 2 (user ask 2026-08-29 —
+  // the rule decides the basis, so it is chosen before any figure is typed).
+  // Rendered BEFORE the caret guard below, deliberately: it carries no text
+  // input of its own, so it can always refresh, and its header summary is the
+  // running tax charge — which would otherwise sit stale while somebody types
+  // into Advance Tax.
+  psRenderTaxRule();
   const host = psEl('ps-tax');
   if (!host) return;
   // Same caret rule as psRenderInterest: the Advance Tax and VAT boxes fire
@@ -1103,6 +1159,139 @@ function psRenderTax() {
     section('adv', 'Advance Tax', advSummary, advBody)
     + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
     + section('vat', 'VAT', vatSummary, vatBody);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INCOME TAX RULE — its own card, first in step 2
+//
+//  Moved out of the Tax card 2026-08-29 (user ask). It belongs above the
+//  figures rather than below them because it decides the BASIS: on a D-1 or
+//  D-2 return the charge never looks at profit at all, so which figures
+//  matter is settled here before any of them is typed.
+//
+//  The card header carries the running charge, so the answer stays visible
+//  while the preparer is further down the page.
+// ════════════════════════════════════════════════════════════════
+
+function psRenderTaxRule() {
+  const host = psEl('ps-tax-rule');
+  if (!host) return;
+  const r = psResult;
+
+  // The firm's CA's own D-1 / D-2 / D-3 sheet, made into a picker. Only the
+  // fields the EFFECTIVE rule actually reads are shown: a D-1 charge is
+  // decided by the municipality alone, a D-2 charge by the municipality and
+  // what is traded, and a D-3 charge by the entity, whether it is a special
+  // industry and — for a proprietor — whether the assessment is joint.
+  //
+  // On 'auto' (the default) the effective rule is whatever the Act resolved
+  // from the figures — `detail.returnType` — and the caption states the
+  // threshold that decided it. The conditional fields key off the EFFECTIVE
+  // type, not the picker value, so an auto-resolved D-2 still offers its
+  // location and nature.
+  //
+  // The workings are printed rather than summarised on purpose. A tax figure
+  // that just appears is a figure nobody can check against a return; the
+  // sheet's own "Example" column exists for the same reason.
+  const isAuto = psTaxRule.returnType === 'auto';
+  const ent = psEntity();
+  const detail = r && r.tax ? r.tax.detail : null;
+  // Before the first derive there is no result to resolve against, so auto
+  // previews what the tree would say with nothing typed yet.
+  const rt = isAuto
+    ? (detail ? detail.returnType : NepalTax.autoReturnType({ entity: ent, turnover: 0, taxableProfit: 0 }).returnType)
+    : psTaxRule.returnType;
+
+  const pick = (label, field, list, value, keyOf, labelOf) => `
+    <div class="form-group" style="margin:0;"><label>${label}</label>
+      <select onchange="psTaxRuleSet('${field}', this.value)">
+        ${list.map(o => `<option value="${escHtml(keyOf(o))}"${keyOf(o) === value ? ' selected' : ''}>${escHtml(labelOf(o))}</option>`).join('')}
+      </select></div>`;
+
+  const typeOptions = [{ key: 'auto', label: 'Auto — decided from the figures' }].concat(NepalTax.RETURN_TYPES);
+  const ruleFields = [
+    pick('Type of IT Return', 'returnType', typeOptions, psTaxRule.returnType, o => o.key, o => o.label),
+    (rt === 'D1' || rt === 'D2')
+      ? pick('Location of business', 'location', NepalTax.LOCATIONS, psTaxRule.location, o => o.key, o => `${o.label} — ${NepalTax.fmt(o.presumptive)}`)
+      : '',
+    rt === 'D2'
+      ? pick('Nature of business', 'd2Nature', NepalTax.D2_NATURES, psTaxRule.d2Nature, o => o.key, o => o.label)
+      : '',
+    (rt === 'D3' && ent === 'proprietorship')
+      ? pick('Assessed as', 'filing', Object.keys(NepalTax.LADDERS).map(k => ({ key: k, label: NepalTax.LADDERS[k].label })),
+             psTaxRule.filing, o => o.key, o => o.label)
+      : '',
+  ].filter(Boolean).join('');
+
+  // Why auto landed where it did — shown right under the picker so the
+  // choice is checkable, not asserted.
+  const autoNote = isAuto && detail && detail.auto
+    ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">
+         Resolved to <strong>${escHtml(detail.returnType)}</strong> &mdash; ${escHtml(detail.auto.reason)}.
+       </div>`
+    : '';
+
+  const workRows = (detail ? detail.workings : []).map(w => `<tr>
+      <td>${escHtml(w.label)}</td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${w.base == null ? '' : psFmt(w.base)}</td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(w.amount)}</td>
+    </tr>`).join('');
+
+  // The directory's it_return_type is context. When it disagrees with what
+  // the figures resolved to, say so — one of the two is wrong, and either a
+  // stale directory or a mistyped turnover deserves a look.
+  const dirRt = NepalTax.returnTypeFromClient(psTaxRule.fromClient);
+  const dirNote = psTaxRule.fromClient ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+      The client directory records this client's IT return type as <strong>${escHtml(psTaxRule.fromClient)}</strong>${
+        dirRt ? (isAuto && detail && dirRt !== detail.returnType
+          ? ` — <span style="color:var(--amber-dk, #8a6100);">which disagrees with the ${escHtml(detail.returnType)} the figures resolve to; check the turnover or the directory</span>` : '')
+        : ' (which names both)'}.
+    </div>` : '';
+
+  const ruleBody = `
+    <div class="form-grid" style="grid-template-columns:repeat(2,minmax(220px,1fr)); gap:10px;">${ruleFields}</div>
+    ${autoNote}${dirNote}
+    ${rt === 'D3' ? `
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:12px;">
+      <input type="checkbox" ${psTaxRule.special ? 'checked' : ''} style="width:auto;" onchange="psTaxRuleSet('special', this.checked)" />
+      Special industry${ent === 'proprietorship'
+        ? ' — the 30 / 36 / 39% bands become 20 / 24 / 26%'
+        : ' — 20% instead of 25%'}
+    </label>` : ''}
+    ${detail ? `
+    <div class="table-wrap" style="margin-top:14px; max-width:560px;"><table class="client-table">
+      <thead><tr><th>How the charge is arrived at</th><th style="text-align:right; width:150px;">On</th><th style="text-align:right; width:150px;">Tax</th></tr></thead>
+      <tbody>${workRows}</tbody>
+      <tfoot><tr style="font-weight:600;">
+        <td>${escHtml(detail.label)}</td><td></td>
+        <td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(detail.tax)}</td>
+      </tr></tfoot>
+    </table></div>
+    ${detail.base === 'turnover'
+      ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Charged on turnover of ${psFmt(r.income.revenueOps)}, not on profit &mdash; so it exports as a figure rather than a live formula.</div>`
+      : ''}
+    ${detail.warnings.length ? `<ul style="margin:10px 0 0; padding-left:18px; font-size:11.5px; color:var(--amber-dk, #8a6100);">
+      ${detail.warnings.map(w => `<li style="margin-bottom:4px;">${escHtml(w)}</li>`).join('')}</ul>` : ''}`
+    : '<div style="font-size:12px; color:var(--text-muted); margin-top:12px;">Upload the prior-year statement to see the charge worked out.</div>'}
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">
+      Rates are those for F.Y. ${escHtml(NepalTax.FISCAL_YEAR)}, per the firm&rsquo;s tax rule sheet.
+    </div>`;
+
+  host.innerHTML = ruleBody;
+  const sum = psEl('ps-tax-rule-summary');
+  if (sum) {
+    sum.innerHTML = detail
+      ? `${psFmt(detail.tax)} &middot; ${escHtml(detail.label)}`
+      : escHtml(rt);
+  }
+}
+
+// A rule field changed: recompute, then redraw the panel so the fields the
+// new rule reads appear and the workings catch up.
+function psTaxRuleSet(field, value) {
+  psTaxRule[field] = field === 'special' ? !!value : value;
+  psRun();
+  psRenderTax();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1244,6 +1433,10 @@ function psTdsSet(k, v) {
 
 function psSetVat(on) {
   psCy.vatRegistered = !!on;
+  // Claimed by hand, so neither the directory prefill nor a later Autobooks
+  // load may quietly tick it back on — the same contract every other sourced
+  // figure follows.
+  psTypedOver.vatRegistered = true;
   if (!on) { delete psCy.vatReceivable; delete psCy.vatPayable; psVatSide = null; }
   psRun();
   psRenderTax();
@@ -1410,6 +1603,16 @@ function psCollectInput() {
     options: {
       growth: 1 + psNum((psEl('ps-growth') || {}).value || 5) / 100,
       taxProfile: psEntity() === 'proprietorship' ? 'progressive' : 'corporate',
+      // The CA's D-1 / D-2 / D-3 rule set. `entity` rides along because the
+      // D-3 branch needs to tell a company from a proprietor, and the engine
+      // supplies turnover and taxable profit itself. Passing this is what
+      // switches the engine off its two-way fallback basis. 'auto' becomes
+      // an ABSENT returnType, which is compute()'s cue to resolve it from
+      // the figures.
+      taxRule: Object.assign({}, psTaxRule, {
+        entity: psEntity(),
+        returnType: psTaxRule.returnType === 'auto' ? null : psTaxRule.returnType,
+      }),
       balanceVia: psPlugReceivables ? 'receivables' : 'none',
       useCoi: psUseCoi(),
       // 'purchases' means the typed PBT is held and purchases balances to it.
@@ -1596,7 +1799,7 @@ function psCollectSaveState() {
     custom: psCustom, directCustom: psDirectCustom, tds: psTds,
     stock: psStock, extraPay: psExtraPay, extraRecv: psExtraRecv,
     typedOver: psTypedOver,
-    vatSide: psVatSide, coiTouched: psCoiTouched,
+    vatSide: psVatSide, coiTouched: psCoiTouched, taxRule: psTaxRule,
     solveFor: psSolveFor, plugReceivables: psPlugReceivables,
     depSource: psDepSource,
     ui: {
@@ -1771,6 +1974,9 @@ async function psLoadSaved(id) {
     psSeedExtraLines();
     psTypedOver = inp.typedOver || {};
     psVatSide = inp.vatSide || null; psCoiTouched = inp.coiTouched != null ? inp.coiTouched : null;
+    // Merged over the defaults rather than assigned, so a record saved before
+    // a field existed gains it instead of restoring `undefined` into a select.
+    psTaxRule = Object.assign(psDefaultTaxRule(), inp.taxRule || {});
     psSolveFor = inp.solveFor || 'purchases';
     psPlugReceivables = inp.plugReceivables !== false;
     psDepSource = inp.depSource || '';

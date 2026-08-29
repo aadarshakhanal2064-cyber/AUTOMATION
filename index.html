@@ -2933,11 +2933,15 @@ function cropLoginLogoIcon(img) {
             <div class="form-group"><label>PAN</label><input type="text" id="ps-pan" /></div>
             <div class="form-group"><label>Address</label><input type="text" id="ps-address" /></div>
             <div class="form-group"><label>Fiscal Year</label><select id="ps-fy" onchange="psOnFyChange()"></select></div>
-            <div class="form-group"><label>Entity / Tax Rule</label>
+            <!-- The rate is no longer named here: it is decided by the IT
+                 return type in the Income Tax Rule card, where D-1 and D-2 do
+                 not read profit at all. This select still says WHICH entity,
+                 which is what the capital notes and the D-3 sub-rule read. -->
+            <div class="form-group"><label>Entity Type</label>
               <select id="ps-tax-profile" onchange="psOnEntityChange()">
-                <option value="private">Pvt. Ltd. Company &mdash; 25% flat</option>
-                <option value="partnership">Partnership Firm &mdash; 25% flat</option>
-                <option value="proprietorship">Proprietorship &mdash; progressive slabs</option>
+                <option value="private">Pvt. Ltd. Company</option>
+                <option value="partnership">Partnership Firm</option>
+                <option value="proprietorship">Proprietorship</option>
               </select>
             </div>
             <div class="form-group"><label>Default Growth %</label>
@@ -2979,7 +2983,19 @@ function cropLoginLogoIcon(img) {
 
       <!-- Step 2 -->
       <div id="ps-section-figures" style="display:none;">
+        <!-- The tax rule comes FIRST because it decides the basis: on a D-1
+             or D-2 return the charge never reads profit, so which figures
+             matter is settled before any of them is typed. -->
         <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
+            <div class="card-title" style="font-size:14px;">Income Tax Rule</div>
+            <div id="ps-tax-rule-summary" style="font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; text-align:right;"></div>
+          </div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">The D-1 / D-2 / D-3 rule this statement&rsquo;s tax is charged by, and the workings behind it. Auto by default &mdash; the Act decides from the entity, the turnover and the taxable income. Only the fields the chosen rule actually reads are shown.</p>
+          <div id="ps-tax-rule"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Loans &amp; Borrowings</div></div>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every facility and what it costs, in one place &mdash; the balances feed note 3.8 and the interest feeds note 3.14.</p>
           <div style="display:grid; grid-template-columns:1fr; gap:16px;">
@@ -3188,7 +3204,7 @@ function cropLoginLogoIcon(img) {
             <div class="card-title" style="font-size:14px;">Income Tax Rule</div>
             <div id="as-tax-rule-summary" style="font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; text-align:right;"></div>
           </div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">The D-1 / D-2 / D-3 rule this statement&rsquo;s tax is charged by, and the workings behind it. Only the fields the chosen rule actually reads are shown.</p>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">The D-1 / D-2 / D-3 rule this statement&rsquo;s tax is charged by, and the workings behind it. Auto by default &mdash; the Act decides from the entity, the turnover and the taxable income. Only the fields the chosen rule actually reads are shown.</p>
           <div id="as-tax-rule"></div>
         </div>
 
@@ -4896,7 +4912,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/reportExport.js?v=202608212300"></script>
 <script defer src="js/core/workbookReader.js?v=202608291800"></script>
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
-<script defer src="js/core/nepalTax.js?v=202608292100"></script>
+<script defer src="js/core/nepalTax.js?v=202608300000"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
 <script defer src="js/core/documentStore.js?v=202608261400"></script>
 <!-- The password gate on Financial Management. The GATE is here; the LOCK
@@ -4942,12 +4958,12 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/projection.js?v=202608291800"></script>
 <script defer src="js/projectionExport.js?v=202608291800"></script>
 <script defer src="js/finStatementEngine.js?v=202608291600"></script>
-<script defer src="js/finStatementExport.js?v=202608281500"></script>
+<script defer src="js/finStatementExport.js?v=202608300000"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608292300"></script>
-<script defer src="js/provisionalStatement.js?v=202608292300"></script>
+<script defer src="js/provisionalStatement.js?v=202608300000"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608292300"></script>
+<script defer src="js/auditedStatement.js?v=202608300000"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

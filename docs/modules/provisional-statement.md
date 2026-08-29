@@ -98,10 +98,21 @@ and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 > which is every Provisional Statement. Audited Statement passes one; see
 > §2.3a. The three schedules are deliberately not unified (CLAUDE.md §15).
 
-#### 2.3a Audited Statement charges by the CA's D-1 / D-2 / D-3 rule sheet
+#### 2.3a Both clones charge by the CA's D-1 / D-2 / D-3 rule sheet
 
-*(2026-08-29, user ask — the firm's chartered accountant supplied the rule
-sheet. Audited Statement only; Provisional keeps the fallback above.)*
+*(2026-08-29, user asks — the CA supplied the rule sheet; later the same day
+it was copied to Provisional and the return type became automatic. The
+fallback above now serves only records saved before the card existed.)*
+
+**The return type is AUTO by default.** `NepalTax.autoReturnType()` is the
+statute as a decision tree — not a proprietorship → D-3; turnover ≤ 30 lakh
+→ D-1; ≤ 1 crore **and taxable income ≤ 10 lakh** → D-2; else D-3 — resolved
+on every recalculation, with the deciding threshold printed on the card. The
+income gate matters: sec 4(4Ka) bars turnover tax above Rs 10,00,000 of
+taxable income, and ignoring it would file the wrong return for exactly the
+clients where the two charges differ most. A named type in the picker is an
+explicit override and is honoured; the directory's `it_return_type` is
+context only, flagged when it disagrees with what the figures resolve to.
 
 The rule set lives in **`js/core/nepalTax.js`** (CLAUDE.md §4) and is picked in
 the **Income Tax Rule** card, which prints the workings rather than asserting a
@@ -174,10 +185,17 @@ D-2 return above the Rs 1 crore turnover ceiling or the Rs 10,00,000 taxable
 the D-2 range, a service election the Act bars for consultancy professions.
 Same rule as Final Account's Net Difference and the statement's proof rows.
 
-**Prefill.** `returnType` is seeded from the client's own `it_return_type`,
-assigned unconditionally (§9). `'D1/D2'` genuinely means "one of the two, the
-preparer decides" (§15) and so resolves to nothing rather than a coin-flip
-presented as a fact; the caption says so.
+**Prefill.** Selecting a client resets the picker to auto and stores the
+directory's `it_return_type` for the caption (`'D1/D2'` shows as "names
+both"). The figures, not the directory, decide the rule.
+
+**The workbook is formatted like the preview** (same-day user ask): amounts
+in lakh/crore grouping via the conditional `FSX_NUMFMT` (proven in real
+Excel over COM; negatives keep western grouping — the format language allows
+only two conditions plus a catch-all), and the preview's ruled grid drawn on
+by a border post-pass in `fsxWriteWorkbook` that merges around the band and
+total rules (PPE skips the vertical rules, as `fsp-novlines` does on
+screen). Live formulas and cached results are untouched.
 
 **Persistence** is the `inputs` JSON blob — `taxRule` alongside `vatSide` and
 `coiTouched`, no migration. It is merged over the defaults on restore so a

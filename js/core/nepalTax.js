@@ -205,6 +205,43 @@ const NepalTax = (() => {
   ];
   const DEFAULT_RETURN_TYPE = 'D3';
 
+  // ── automatic return-type selection ──
+  //
+  //  The Act itself decides which return a client files — nobody sits and
+  //  chooses it (user ask 2026-08-29: "choose the d1 d2 d3 automatically
+  //  according to the revenue"). The decision tree IS the statute:
+  //
+  //    not a natural person            → D-3   (sec 4(4)/(4Ka) are open to
+  //                                             resident natural persons only)
+  //    turnover ≤ 30,00,000            → D-1   (sec 4(4))
+  //    turnover ≤ 1,00,00,000
+  //      and taxable income ≤ 10,00,000 → D-2  (sec 4(4Ka))
+  //    otherwise                       → D-3
+  //
+  //  The income ceiling matters: a small-turnover firm with a fat margin is
+  //  barred from turnover tax by the Act, and an auto-picker that ignored
+  //  that would file the wrong return for exactly the clients where the two
+  //  charges differ most. `reason` states which threshold decided, so the
+  //  screen can show WHY rather than assert a letter.
+  function autoReturnType(o) {
+    const opt = o || {};
+    const t = Math.max(0, num(opt.turnover));
+    const p = num(opt.taxableProfit);
+    if (opt.entity !== 'proprietorship') {
+      return { returnType: 'D3', reason: 'not a proprietorship — sec 4(4)/(4Ka) are open to natural persons only' };
+    }
+    if (t <= D1_TURNOVER_CEIL) {
+      return { returnType: 'D1', reason: `turnover ${fmt(t)} is within the ${fmt(D1_TURNOVER_CEIL)} presumptive ceiling` };
+    }
+    if (t <= D2_TURNOVER_CEIL && p <= D2_INCOME_CEIL) {
+      return { returnType: 'D2', reason: `turnover ${fmt(t)} is between ${fmt(D2_TURNOVER_FLOOR)} and ${fmt(D2_TURNOVER_CEIL)}` };
+    }
+    if (t <= D2_TURNOVER_CEIL) {
+      return { returnType: 'D3', reason: `taxable income ${fmt(p)} is above the ${fmt(D2_INCOME_CEIL)} ceiling sec 4(4Ka) allows, so turnover tax is barred` };
+    }
+    return { returnType: 'D3', reason: `turnover ${fmt(t)} is above the ${fmt(D2_TURNOVER_CEIL)} turnover-tax ceiling` };
+  }
+
   // A client's stored `it_return_type`, which the firm writes as 'D-01' /
   // 'D-02' / 'D-03' / 'D1/D2'. 'D1/D2' genuinely means "one of the two, the
   // preparer decides" (CLAUDE.md §15) and so resolves to nothing — a picker
@@ -290,7 +327,17 @@ const NepalTax = (() => {
     const opt = o || {};
     const turnover = Math.max(0, num(opt.turnover));
     const taxableProfit = num(opt.taxableProfit);
-    const rt = RETURN_TYPES.some(r => r.key === opt.returnType) ? opt.returnType : DEFAULT_RETURN_TYPE;
+    // 'auto' (also the default when nothing is passed) resolves the return
+    // type from the figures; a named type is the preparer's explicit choice
+    // and is honoured even where the Act suggests otherwise — the warnings
+    // below say so rather than overruling.
+    let rt, auto = null;
+    if (RETURN_TYPES.some(r => r.key === opt.returnType)) {
+      rt = opt.returnType;
+    } else {
+      auto = autoReturnType({ entity: opt.entity, turnover, taxableProfit });
+      rt = auto.returnType;
+    }
     const warnings = [];
 
     if (rt === 'D1') {
@@ -299,7 +346,7 @@ const NepalTax = (() => {
         warnings.push(`Turnover of ${fmt(turnover)} is above the ${fmt(D1_TURNOVER_CEIL)} ceiling for a D-1 return — sec 4(4Ka) turnover tax (D-2) applies from there.`);
       }
       return {
-        returnType: rt, base: 'turnover', rate: null,
+        returnType: rt, base: 'turnover', rate: null, auto,
         tax: rs(loc.presumptive),
         label: `D-1 presumptive — ${loc.label}`,
         workings: [{ label: `${loc.label} — flat charge`, base: null, rate: null, amount: loc.presumptive }],
@@ -323,7 +370,7 @@ const NepalTax = (() => {
       }
       const r = turnoverTax(turnover, nat.key, opt.location);
       return {
-        returnType: rt, base: 'turnover', rate: null,
+        returnType: rt, base: 'turnover', rate: null, auto,
         tax: rs(r.tax),
         label: `D-2 turnover tax — ${nat.label}, ${location(opt.location).label}`,
         workings: r.workings, warnings,
@@ -346,7 +393,7 @@ const NepalTax = (() => {
       const lad = ladder(opt.filing);
       const r = ladderTax(charged, opt.filing, special);
       return {
-        returnType: rt, base: 'profit', rate: null,
+        returnType: rt, base: 'profit', rate: null, auto,
         tax: rs(r.tax),
         label: `D-3 proprietorship — ${lad.label} slabs${special ? ', special industry' : ''}`,
         workings: r.workings, warnings,
@@ -355,7 +402,7 @@ const NepalTax = (() => {
 
     const rate = special ? ENTITY_RATES.special : ENTITY_RATES.normal;
     return {
-      returnType: rt, base: 'profit', rate,
+      returnType: rt, base: 'profit', rate, auto,
       tax: rs(charged * rate),
       label: `D-3 ${entity === 'partnership' ? 'partnership firm' : 'company'} — ${pct(rate)} of taxable profit`
              + (special ? ' (special industry)' : ''),
@@ -368,7 +415,7 @@ const NepalTax = (() => {
     FISCAL_YEAR, LOCATIONS, RETURN_TYPES, D2_NATURES, LADDERS, ENTITY_RATES,
     D1_TURNOVER_CEIL, D2_TURNOVER_FLOOR, D2_TURNOVER_CEIL, D2_INCOME_CEIL,
     DEFAULT_RETURN_TYPE, DEFAULT_LOCATION, DEFAULT_D2_NATURE, DEFAULT_FILING,
-    compute, ladderTax, turnoverTax, returnTypeFromClient, fmt, pct,
+    compute, ladderTax, turnoverTax, autoReturnType, returnTypeFromClient, fmt, pct,
   };
 })();
 

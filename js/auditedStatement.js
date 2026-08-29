@@ -82,19 +82,22 @@ let asTaxOpen = 'adv';       // 'adv' | 'tds' | 'vat' | 'coi' | ''
 // when it closes, so anything read back off the elements would revert the
 // moment the preparer collapsed the card.
 //
-// `returnType` is prefilled from the client's own `it_return_type` and is
-// always overridable — the client record says which return the firm files,
-// which is exactly this question, but a directory field is not a reason to
-// stop the preparer choosing.
+// `returnType` defaults to 'auto' (user ask 2026-08-29: "choose the d1 d2
+// d3 automatically according to the revenue") — the Act itself decides which
+// return applies from the entity, the turnover and the taxable income, so
+// `NepalTax.autoReturnType()` resolves it on every recalculation and the
+// screen shows which rule was chosen and the threshold that chose it.
+// Picking a named type is an explicit override and is honoured; 'auto' is
+// one click away to hand the decision back.
 let asTaxRule = asDefaultTaxRule();
 function asDefaultTaxRule() {
   return {
-    returnType: NepalTax.DEFAULT_RETURN_TYPE,   // 'D3'
+    returnType: 'auto',
     location: NepalTax.DEFAULT_LOCATION,        // 'municipality'
     d2Nature: NepalTax.DEFAULT_D2_NATURE,       // 'goods'
     filing: NepalTax.DEFAULT_FILING,            // 'couple' — the CA sheet's ladder
     special: false,
-    fromClient: null,   // the client value it was prefilled from, for the caption
+    fromClient: null,   // the client's directory it_return_type, for the caption
   };
 }
 // Which side the VAT return leaves the client on. The two figures never
@@ -240,13 +243,12 @@ const asScope = WorkflowEngine.createClientScope({
       : profile === 'partnership' ? 'partnership' : 'private';
     asOnEntityChange();
 
-    // Which IT return the firm files for this client is already on the client
-    // record. ASSIGN unconditionally, same rule as the profile above — but a
-    // client stored as 'D1/D2' genuinely means "one of the two, the preparer
-    // decides" (§15), so that resolves to nothing and the default stands
-    // rather than a coin-flip being presented as a fact.
-    const rt = NepalTax.returnTypeFromClient(it.it_return_type);
-    asTaxRule.returnType = rt || NepalTax.DEFAULT_RETURN_TYPE;
+    // The return type stays on 'auto' — the Act decides it from the figures
+    // (user ask 2026-08-29), so the directory's `it_return_type` is shown as
+    // context in the caption rather than driving the choice. Where the two
+    // disagree, the figures win by default and the caption makes the
+    // disagreement visible instead of silent.
+    asTaxRule.returnType = 'auto';
     asTaxRule.fromClient = it.it_return_type || null;
 
     // A VAT-registered client's VAT line prints, so the box is ticked from
@@ -1189,17 +1191,28 @@ function asRenderTaxRule() {
   const r = asResult;
 
   // The firm's CA's own D-1 / D-2 / D-3 sheet, made into a picker. Only the
-  // fields the chosen rule actually reads are shown: a D-1 charge is decided
-  // by the municipality alone, a D-2 charge by the municipality and what is
-  // traded, and a D-3 charge by the entity, whether it is a special industry
-  // and — for a proprietor — whether the assessment is joint.
+  // fields the EFFECTIVE rule actually reads are shown: a D-1 charge is
+  // decided by the municipality alone, a D-2 charge by the municipality and
+  // what is traded, and a D-3 charge by the entity, whether it is a special
+  // industry and — for a proprietor — whether the assessment is joint.
+  //
+  // On 'auto' (the default) the effective rule is whatever the Act resolved
+  // from the figures — `detail.returnType` — and the caption states the
+  // threshold that decided it. The conditional fields key off the EFFECTIVE
+  // type, not the picker value, so an auto-resolved D-2 still offers its
+  // location and nature.
   //
   // The workings are printed rather than summarised on purpose. A tax figure
   // that just appears is a figure nobody can check against a return; the
   // sheet's own "Example" column exists for the same reason.
-  const rt = asTaxRule.returnType;
+  const isAuto = asTaxRule.returnType === 'auto';
   const ent = asEntity();
   const detail = r && r.tax ? r.tax.detail : null;
+  // Before the first derive there is no result to resolve against, so auto
+  // previews what the tree would say with nothing typed yet.
+  const rt = isAuto
+    ? (detail ? detail.returnType : NepalTax.autoReturnType({ entity: ent, turnover: 0, taxableProfit: 0 }).returnType)
+    : asTaxRule.returnType;
 
   const pick = (label, field, list, value, keyOf, labelOf) => `
     <div class="form-group" style="margin:0;"><label>${label}</label>
@@ -1207,8 +1220,9 @@ function asRenderTaxRule() {
         ${list.map(o => `<option value="${escHtml(keyOf(o))}"${keyOf(o) === value ? ' selected' : ''}>${escHtml(labelOf(o))}</option>`).join('')}
       </select></div>`;
 
+  const typeOptions = [{ key: 'auto', label: 'Auto — decided from the figures' }].concat(NepalTax.RETURN_TYPES);
   const ruleFields = [
-    pick('Type of IT Return', 'returnType', NepalTax.RETURN_TYPES, rt, o => o.key, o => o.label),
+    pick('Type of IT Return', 'returnType', typeOptions, asTaxRule.returnType, o => o.key, o => o.label),
     (rt === 'D1' || rt === 'D2')
       ? pick('Location of business', 'location', NepalTax.LOCATIONS, asTaxRule.location, o => o.key, o => `${o.label} — ${NepalTax.fmt(o.presumptive)}`)
       : '',
@@ -1221,18 +1235,34 @@ function asRenderTaxRule() {
       : '',
   ].filter(Boolean).join('');
 
+  // Why auto landed where it did — shown right under the picker so the
+  // choice is checkable, not asserted.
+  const autoNote = isAuto && detail && detail.auto
+    ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">
+         Resolved to <strong>${escHtml(detail.returnType)}</strong> &mdash; ${escHtml(detail.auto.reason)}.
+       </div>`
+    : '';
+
   const workRows = (detail ? detail.workings : []).map(w => `<tr>
       <td>${escHtml(w.label)}</td>
       <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${w.base == null ? '' : asFmt(w.base)}</td>
       <td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(w.amount)}</td>
     </tr>`).join('');
 
+  // The directory's it_return_type is context. When it disagrees with what
+  // the figures resolved to, say so — one of the two is wrong, and either a
+  // stale directory or a mistyped turnover deserves a look.
+  const dirRt = NepalTax.returnTypeFromClient(asTaxRule.fromClient);
+  const dirNote = asTaxRule.fromClient ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+      The client directory records this client's IT return type as <strong>${escHtml(asTaxRule.fromClient)}</strong>${
+        dirRt ? (isAuto && detail && dirRt !== detail.returnType
+          ? ` — <span style="color:var(--amber-dk, #8a6100);">which disagrees with the ${escHtml(detail.returnType)} the figures resolve to; check the turnover or the directory</span>` : '')
+        : ' (which names both)'}.
+    </div>` : '';
+
   const ruleBody = `
     <div class="form-grid" style="grid-template-columns:repeat(2,minmax(220px,1fr)); gap:10px;">${ruleFields}</div>
-    ${asTaxRule.fromClient ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">
-      The client directory records this client's IT return type as <strong>${escHtml(asTaxRule.fromClient)}</strong>${
-        NepalTax.returnTypeFromClient(asTaxRule.fromClient) ? '' : ' — which names both, so the return type above is the default until you choose'}.
-    </div>` : ''}
+    ${autoNote}${dirNote}
     ${rt === 'D3' ? `
     <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:12px;">
       <input type="checkbox" ${asTaxRule.special ? 'checked' : ''} style="width:auto;" onchange="asTaxRuleSet('special', this.checked)" />
@@ -1588,8 +1618,13 @@ function asCollectInput() {
       // The CA's D-1 / D-2 / D-3 rule set. `entity` rides along because the
       // D-3 branch needs to tell a company from a proprietor, and the engine
       // supplies turnover and taxable profit itself. Passing this is what
-      // switches the engine off its two-way fallback basis.
-      taxRule: Object.assign({}, asTaxRule, { entity: asEntity() }),
+      // switches the engine off its two-way fallback basis. 'auto' becomes
+      // an ABSENT returnType, which is compute()'s cue to resolve it from
+      // the figures.
+      taxRule: Object.assign({}, asTaxRule, {
+        entity: asEntity(),
+        returnType: asTaxRule.returnType === 'auto' ? null : asTaxRule.returnType,
+      }),
       balanceVia: asPlugReceivables ? 'receivables' : 'none',
       useCoi: asUseCoi(),
       // 'purchases' means the typed PBT is held and purchases balances to it.

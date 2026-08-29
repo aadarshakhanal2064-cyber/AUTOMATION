@@ -309,6 +309,29 @@ eq("'D-01' → D1", T.returnTypeFromClient('D-01') === 'D1', true);
 ok("'D1/D2' resolves to nothing", T.returnTypeFromClient('D1/D2') === null);
 ok('an unset return type resolves to nothing', T.returnTypeFromClient(null) === null);
 
+section('Auto return-type selection — the Act decides from the figures');
+
+// The decision tree is statute, not heuristics: entity, then the 30-lakh
+// presumptive ceiling, then the 1-crore / 10-lakh-income turnover-tax gate.
+const auto = (entity, turnover, taxableProfit) => T.autoReturnType({ entity, turnover, taxableProfit });
+ok('auto · company is always D3',                 auto('private', 2000000, 100000).returnType === 'D3');
+ok('auto · partnership is always D3',             auto('partnership', 2000000, 100000).returnType === 'D3');
+ok('auto · proprietor at 25 lakh → D1',           auto('proprietorship', 2500000, 200000).returnType === 'D1');
+ok('auto · proprietor at exactly 30 lakh → D1',   auto('proprietorship', 3000000, 200000).returnType === 'D1');
+ok('auto · proprietor at 30 lakh + 1 → D2',       auto('proprietorship', 3000001, 200000).returnType === 'D2');
+ok('auto · proprietor at 80 lakh → D2',           auto('proprietorship', 8000000, 900000).returnType === 'D2');
+ok('auto · proprietor at exactly 1 crore → D2',   auto('proprietorship', 10000000, 900000).returnType === 'D2');
+ok('auto · proprietor at 1 crore + 1 → D3',       auto('proprietorship', 10000001, 900000).returnType === 'D3');
+// The income gate: sec 4(4Ka) is barred above 10 lakh of taxable income,
+// so a fat-margin firm inside the turnover range still files D-3.
+ok('auto · 80 lakh turnover but 15 lakh income → D3', auto('proprietorship', 8000000, 1500000).returnType === 'D3');
+ok('auto · every answer names its reason', ['private','proprietorship'].every(e => [1000000, 5000000, 20000000].every(t => !!auto(e, t, 500000).reason)));
+// compute() with no returnType resolves through the same tree and says so.
+const autoC = T.compute({ entity: 'proprietorship', location: 'municipality', turnover: 2550000, taxableProfit: 200000 });
+ok("compute · unset returnType auto-resolves (25.5 lakh → D1, Rs 4,000)", autoC.returnType === 'D1' && autoC.tax === 4000 && !!autoC.auto);
+const manC = T.compute({ returnType: 'D3', entity: 'proprietorship', turnover: 2550000, taxableProfit: 200000 });
+ok('compute · an explicit choice is honoured, not auto-overridden', manC.returnType === 'D3' && manC.auto === null);
+
 section('Structure — workings add back to the charge');
 for (const o of [
   { returnType: 'D1', location: 'metro', turnover: 2000000 },
