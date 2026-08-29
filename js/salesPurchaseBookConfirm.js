@@ -19,10 +19,19 @@
 //  the figure being compared has to be everything the firm has booked, or a
 //  reconciled party still reads as a gap.
 //
-//  Sign: Difference = BOOKS − CONFIRMATION (2026-08-16, user decision), the
-//  convention the firm's own reconciled file uses. A negative figure means the
-//  books are SHORT of what the party confirmed, which is what an omitted bill
-//  then fills in.
+//  Sign: Difference = CONFIRMATION − BOOKS (2026-08-30), the convention on the
+//  CA's own Details sheet, which the firm asked the app to follow. This
+//  REVERSES the 2026-08-16 decision to print Books − Confirmation; the figure
+//  and the fix now point the same way, since a POSITIVE difference means the
+//  party reports more trade than the register holds and an omitted bill is
+//  what closes it. Compared total-to-total (taxable + tax free), as he does.
+//
+//  SHOWN AS "PARTIES", NOT "CONFIRMATION" (2026-08-30, user ask). His workbook
+//  has no Confirmation sheet at all: the as-per-confirmation figures are two
+//  columns on Sales/Purchase Details, beside each party's own book totals.
+//  This screen IS that sheet — everything in code still says `spbCf`/`confirm`,
+//  the display-name-only convention the four renamed modules follow
+//  (CLAUDE.md §5).
 // ════════════════════════════════════════════
 
 // Both thresholds are the workbook's own, not invented here (CLAUDE.md §15 —
@@ -89,14 +98,27 @@ function spbConfirmRows(section) {
     r.ledgerId = led.id != null ? led.id : null;
     r.opening = led.opening_balance != null ? Number(led.opening_balance) : null;
     r.confirmed = led.confirmed_taxable != null ? Number(led.confirmed_taxable) : null;
+    r.confirmedFree = led.confirmed_taxfree != null ? Number(led.confirmed_taxfree) : null;
     r.closing = led.confirmed_closing != null ? Number(led.confirmed_closing) : null;
     r.remarks = led.remarks || '';
     r.ann13 = led.ann13_category || null;
 
     // A confirmation that hasn't arrived is NOT a confirmed zero. Keeping the
     // two apart is what stops an unanswered party being reported as agreed.
-    r.diff = r.confirmed == null ? null : r.taxable - r.confirmed;
-    r.status = r.confirmed == null ? 'pending'
+    // Either figure arriving counts as the letter having come back — a party
+    // with only exempt trade confirms a tax-free figure and nothing else.
+    r.hasConfirmation = r.confirmed != null || r.confirmedFree != null;
+    // Sign: CONFIRMATION − BOOKS, the CA's own reference workbook (2026-08-30,
+    // user ask to follow that file). This REVERSES the 2026-08-16 decision to
+    // print Books − Confirmation. His convention reads the way the work is
+    // actually done: a POSITIVE difference means the party says they traded
+    // more than the register holds, which is a bill still to be entered —
+    // so the figure and the fix point the same way. Compared total-to-total
+    // (taxable + tax free), as his Details sheet does.
+    r.diff = r.hasConfirmation
+      ? ((r.confirmed || 0) + (r.confirmedFree || 0)) - (r.taxable + r.taxfree)
+      : null;
+    r.status = !r.hasConfirmation ? 'pending'
              : (Math.abs(r.diff) <= SPB_CONFIRM_TOLERANCE ? 'ok' : 'flag');
     // Tiering is on the taxable figure INCLUDING omitted bills, because that is
     // the party's real trade for the year and what the annexure reports.
@@ -124,7 +146,9 @@ function spbCfHint(r) {
   if (spbCfInOpenMerge(r.key)) {
     return ' <span style="color:var(--text-muted); font-size:11px;">possible duplicate party — see Import › Possible duplicate parties</span>';
   }
-  if (r.diff < 0 && r.omCount === 0) {
+  // Positive means the party confirms MORE than the register holds — under the
+  // CA's sign that is the direction an omitted bill fixes.
+  if (r.diff > 0 && r.omCount === 0) {
     return ' <span style="color:var(--text-muted); font-size:11px;">books are short — try an omitted bill</span>';
   }
   return '';
@@ -142,7 +166,7 @@ function spbCfVisible(rows) {
     (spbCfStatusFilter === 'all' || r.status === spbCfStatusFilter));
 }
 
-const SPB_CF_SUM_KEYS = ['opening', 'taxfree', 'bookTaxable', 'omTaxable', 'taxable', 'vat', 'confirmed', 'diff', 'closing'];
+const SPB_CF_SUM_KEYS = ['opening', 'taxfree', 'bookTaxable', 'omTaxable', 'taxable', 'vat', 'confirmedFree', 'confirmed', 'diff', 'closing'];
 
 function spbCfTotals(rows) {
   const t = {};
@@ -161,8 +185,16 @@ async function spbCfSetField(idx, field, raw) {
   const value = String(raw).trim() === '' ? null
               : (field === 'remarks' ? String(raw) : spbNum(raw));
   const col = { opening: 'opening_balance', confirmed: 'confirmed_taxable',
+                confirmedFree: 'confirmed_taxfree',
                 closing: 'confirmed_closing', remarks: 'remarks' }[field];
   if (!col) return;
+  // Columns added by db/2026-08-30_autobooks_ca_workflow.sql. Code ships before
+  // the migration (CLAUDE.md §15), so writing one before it lands must fail
+  // softly and say why — never lose the rest of the row's edit.
+  if (SPB_CF_NEW_COLUMNS.includes(col) && spbCfMissingColumns.has(col)) {
+    spbCfStatus(spbCfMigrationNote(col), 'info');
+    return;
+  }
 
   const cell = document.getElementById('spb-cf-save-' + idx);
   if (cell) cell.textContent = '…';
@@ -191,8 +223,35 @@ async function spbCfSetField(idx, field, raw) {
   } catch (err) {
     console.error('[Autobooks] confirmation save failed', err);
     if (cell) cell.textContent = '!';
+    // PostgREST answers PGRST204 for a column its schema cache doesn't know —
+    // i.e. the migration hasn't been applied to this database yet. That is a
+    // deployment state, not a fault the user caused, so it is reported as such
+    // and the field is disabled rather than failing again on every keystroke.
+    if (SPB_CF_NEW_COLUMNS.includes(col) && spbCfIsMissingColumn(err)) {
+      spbCfMissingColumns.add(col);
+      spbCfStatus(spbCfMigrationNote(col), 'info');
+      spbRenderConfirmTable();
+      return;
+    }
     spbCfStatus('❌ Could not save that figure: ' + escHtml(friendlyDbError(err)), 'error');
   }
+}
+
+// ── While the migration is pending ──────────────────────────────────────────
+const SPB_CF_NEW_COLUMNS = ['confirmed_taxfree', 'classify', 'classify_note'];
+const spbCfMissingColumns = new Set();
+
+function spbCfIsMissingColumn(err) {
+  const code = err && err.code;
+  const msg = String((err && err.message) || '');
+  return code === 'PGRST204' || code === '42703' ||
+    /could not find .* column|column .* does not exist/i.test(msg);
+}
+
+function spbCfMigrationNote(col) {
+  return `ℹ️ This column isn't in the database yet — <code>${escHtml(col)}</code> arrives with ` +
+    `<code>db/2026-08-30_autobooks_ca_workflow.sql</code>. Everything else on this screen saves normally; ` +
+    `apply that migration and this field starts working, with nothing to re-enter.`;
 }
 
 // Patch the derived cells in place rather than re-rendering — a full redraw
@@ -200,8 +259,11 @@ async function spbCfSetField(idx, field, raw) {
 // and their scroll position on every single field.
 function spbCfRecompute(idx) {
   const r = spbCfRows[idx];
-  r.diff = r.confirmed == null ? null : r.taxable - r.confirmed;
-  r.status = r.confirmed == null ? 'pending'
+  r.hasConfirmation = r.confirmed != null || r.confirmedFree != null;
+  r.diff = r.hasConfirmation
+    ? ((r.confirmed || 0) + (r.confirmedFree || 0)) - (r.taxable + r.taxfree)
+    : null;
+  r.status = !r.hasConfirmation ? 'pending'
            : (Math.abs(r.diff) <= SPB_CONFIRM_TOLERANCE ? 'ok' : 'flag');
   const diffEl = document.getElementById('spb-cf-diff-' + idx);
   if (diffEl) {
@@ -352,7 +414,7 @@ function spbRenderConfirmTable() {
       note: 'Kept apart from the tier above; totalled on its own.', open: spbCfShowMinor },
   ];
 
-  const cols = 11 + (anyOmitted ? 1 : 0);
+  const cols = 12 + (anyOmitted ? 1 : 0);
   let html = `<div class="table-wrap" style="overflow-x:auto;"><table class="client-table spb-cf-table" style="font-size:12.5px;">
     <thead><tr>
       <th>#</th><th>Party Name</th><th>Pan No.</th>
@@ -361,7 +423,8 @@ function spbRenderConfirmTable() {
       <th style="text-align:right;">Taxable — Books</th>
       ${anyOmitted ? '<th style="text-align:right;">Omitted</th>' : ''}
       <th style="text-align:right;">Taxable — Total</th>
-      <th style="text-align:right;">As Per Confirmation</th>
+      <th style="text-align:right;">As per Confirmation Tax Free</th>
+      <th style="text-align:right;">As Per Confirmation Taxable</th>
       <th style="text-align:right;">Difference</th>
       <th style="text-align:right;">Closing Balance</th>
       <th>Remarks</th>
@@ -370,11 +433,11 @@ function spbRenderConfirmTable() {
   tiers.forEach(tier => {
     const mine = visible.filter(r => r.tier === tier.key);
     const t = spbCfTotals(mine);
-    html += `<tr><td colspan="${cols}" style="background:#eef1fa; padding:11px 16px;">
+    html += `<tr class="spb-cf-tier"><td colspan="${cols}">
       <button type="button" class="btn btn-outline btn-sm" style="margin-right:10px;"
         onclick="spbCfToggleTier('${tier.key}')">${tier.open ? '▾' : '▸'}</button>
-      <strong style="color:var(--brand-navy);">${escHtml(tier.title)}</strong>
-      <span style="color:var(--text-muted);"> — ${mine.length} part${mine.length === 1 ? 'y' : 'ies'} · ${escHtml(tier.note)}</span>
+      <strong>${escHtml(tier.title)}</strong>
+      <span class="spb-cf-tier-note"> — ${mine.length} part${mine.length === 1 ? 'y' : 'ies'} · ${escHtml(tier.note)}</span>
     </td></tr>`;
 
     if (tier.open) {
@@ -395,6 +458,7 @@ function spbRenderConfirmTable() {
           <td style="text-align:right;">${spbFmt(r.bookTaxable)}</td>
           ${anyOmitted ? `<td style="text-align:right;${r.omTaxable < 0 ? 'color:var(--red-dk);' : ''}">${r.omCount ? spbFmt(r.omTaxable) : '—'}</td>` : ''}
           <td style="text-align:right; font-weight:600;">${spbFmt(r.taxable)}</td>
+          <td style="text-align:right;">${spbCfMoneyInput(idx, 'confirmedFree', r.confirmedFree)}</td>
           <td style="text-align:right;">${spbCfMoneyInput(idx, 'confirmed', r.confirmed)}</td>
           <td id="spb-cf-diff-${idx}" style="text-align:right;${r.status === 'flag' ? 'color:var(--red-dk); font-weight:700;' : (r.status === 'ok' ? 'color:var(--green-dk);' : '')}">${r.diff == null ? '—' : spbFmt(r.diff)}</td>
           <td style="text-align:right;">${spbCfMoneyInput(idx, 'closing', r.closing)}</td>
@@ -405,13 +469,14 @@ function spbRenderConfirmTable() {
       });
     }
 
-    html += `<tr style="background:#fffbe6; font-weight:700;">
+    html += `<tr class="spb-cf-tot">
       <td colspan="3">Total — ${escHtml(tier.title)}</td>
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-opening">${spbFmt(t.opening)}</td>
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-taxfree">${spbFmt(t.taxfree)}</td>
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-bookTaxable">${spbFmt(t.bookTaxable)}</td>
       ${anyOmitted ? `<td style="text-align:right;" id="spb-cf-t-${tier.key}-omTaxable">${spbFmt(t.omTaxable)}</td>` : ''}
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-taxable">${spbFmt(t.taxable)}</td>
+      <td style="text-align:right;" id="spb-cf-t-${tier.key}-confirmedFree">${spbFmt(t.confirmedFree)}</td>
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-confirmed">${spbFmt(t.confirmed)}</td>
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-diff">${spbFmt(t.diff)}</td>
       <td style="text-align:right;" id="spb-cf-t-${tier.key}-closing">${spbFmt(t.closing)}</td>
@@ -419,13 +484,14 @@ function spbRenderConfirmTable() {
   });
 
   const all = spbCfTotals(visible);
-  html += `<tr style="background:var(--amber-bg); color:var(--amber-dk); font-weight:800;">
-      <td colspan="3">Grand Total — both tiers</td>
+  html += `<tr class="spb-cf-grand">
+      <td colspan="3">Grand Total</td>
       <td style="text-align:right;" id="spb-cf-t-all-opening">${spbFmt(all.opening)}</td>
       <td style="text-align:right;" id="spb-cf-t-all-taxfree">${spbFmt(all.taxfree)}</td>
       <td style="text-align:right;" id="spb-cf-t-all-bookTaxable">${spbFmt(all.bookTaxable)}</td>
       ${anyOmitted ? `<td style="text-align:right;" id="spb-cf-t-all-omTaxable">${spbFmt(all.omTaxable)}</td>` : ''}
       <td style="text-align:right;" id="spb-cf-t-all-taxable">${spbFmt(all.taxable)}</td>
+      <td style="text-align:right;" id="spb-cf-t-all-confirmedFree">${spbFmt(all.confirmedFree)}</td>
       <td style="text-align:right;" id="spb-cf-t-all-confirmed">${spbFmt(all.confirmed)}</td>
       <td style="text-align:right;" id="spb-cf-t-all-diff">${spbFmt(all.diff)}</td>
       <td style="text-align:right;" id="spb-cf-t-all-closing">${spbFmt(all.closing)}</td>
@@ -611,5 +677,11 @@ async function spbExportConfirm(kind) {
 // ── Registration ──
 // Appended rather than declared in the ledger file, so this section only exists
 // once the screen behind it does.
-SPB_SECTION_TABS.push({ key: 'confirm', label: 'Confirmation', panel: 'spb-sec-confirm', onShow: 'spbRenderConfirm' });
+// Registered as "Parties", not "Confirmation" (2026-08-30, user ask backed by
+// the CA's workbook). He has no Confirmation sheet: the as-per-confirmation
+// figures are two COLUMNS on his Sales/Purchase Details sheet, beside the
+// party's own book totals, because that is the only place they mean anything.
+// The screen is the same one — this is the party ledger, and a confirmation is
+// something a party has, not a place you go.
+SPB_SECTION_TABS.push({ key: 'confirm', label: 'Parties', panel: 'spb-sec-confirm', onShow: 'spbRenderConfirm' });
 spbRenderSectionNav();

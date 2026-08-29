@@ -1919,14 +1919,64 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
 }
 .spb-cf-in:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
 .spb-cf-remarks { width: 150px; text-align: left; }
+/* Tier bands and totals (calmed 2026-08-30). These were a blue band, a cream
+   total and an amber grand total — three tints competing on one grid, which is
+   what made a wide table hard to read. Structure now comes from weight and a
+   rule, the way the reconciliation statements do. */
+.spb-cf-tier td { background: var(--bg-page-alt); padding: 11px 16px; }
+.spb-cf-tier strong { color: var(--brand-navy); }
+.spb-cf-tier-note { color: var(--text-muted); font-weight: 400; }
+.spb-cf-tot td { font-weight: 700; border-top: 1px solid var(--border); background: var(--bg-page-alt); }
+.spb-cf-grand td { font-weight: 800; color: var(--brand-navy); border-top: 2px solid var(--border); background: var(--bg-page-alt); }
 .spb-cf-table td:nth-child(n+4) { white-space: nowrap; }
 /* Annexure-13's Goods/Service pickers sit inside the same dense grid. */
 .spb-ann-kind { padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 7px; font-family: var(--font-ui); background: var(--white); }
-/* Reconciliation statement: a description that fills its column, and bolded
-   anchor rows so the four figures that matter read at a glance. */
-.spb-reco-desc { width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1px solid var(--border); border-radius: 7px; font-family: var(--font-ui); background: var(--white); }
-.spb-reco-desc:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
-.spb-reco-b { font-weight: 700; }
+/* ── Reconciliation statements (rebuilt 2026-08-29) ────────────────────────
+   A statement an auditor reads top to bottom, so it is deliberately QUIET:
+   no badges, no tinted rows, one right-aligned column of figures on tabular
+   numerals, and structure carried by weight and spacing rather than colour.
+   Colour appears in exactly one place — a Net Difference that does not clear.
+   The previous version tinted the grand row amber, printed blue "automatic"
+   pills mid-sentence and packed rows at list density, which is what made a
+   page of figures read as cramped and loud. */
+.spb-reco-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.spb-reco-card { max-width: 720px; margin: 0 0 34px; }
+.spb-reco-head h3 { font-size: 14.5px; font-weight: 700; color: var(--brand-navy); margin: 0; letter-spacing: .1px; }
+.spb-reco-head p { font-size: 12.5px; color: var(--text-muted); margin: 3px 0 14px; }
+.spb-reco-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.spb-reco-table th {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted);
+  font-weight: 600; text-align: left; padding: 0 12px 8px 0; border-bottom: 1px solid var(--border);
+}
+.spb-reco-table th:last-child { text-align: right; padding-right: 0; }
+.spb-reco-table td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+.spb-reco-table td:last-child {
+  text-align: right; padding-right: 0; white-space: nowrap;
+  font-variant-numeric: tabular-nums; width: 170px;
+}
+/* Detail lines sit under their Add:/Less: heading rather than being run
+   together with it — the indent is what makes the two groups readable. */
+.spb-reco-table tbody tr td:first-child { padding-left: 26px; }
+.spb-reco-table tr.spb-reco-h td, .spb-reco-table tr.spb-reco-s td,
+.spb-reco-table tr.spb-reco-a td:first-child, .spb-reco-table tr.spb-reco-t td:first-child,
+.spb-reco-table tr.spb-reco-n td:first-child, .spb-reco-table tr.spb-reco-typed td:first-child { padding-left: 0; }
+.spb-reco-table tr.spb-reco-h td { font-weight: 700; color: var(--brand-navy); padding-top: 20px; border-bottom: none; }
+.spb-reco-table tr.spb-reco-s td { font-weight: 600; padding-top: 10px; padding-bottom: 4px; border-bottom: none; }
+.spb-reco-table tr.spb-reco-a td { font-weight: 700; }
+.spb-reco-table tr.spb-reco-t td { font-weight: 700; border-top: 1px solid var(--border); }
+.spb-reco-table tr.spb-reco-n td { font-weight: 800; border-top: 1px solid var(--border); border-bottom: none; padding-top: 10px; }
+.spb-reco-ok { color: var(--green-dk); }
+.spb-reco-bad { color: var(--red-dk); }
+.spb-reco-in {
+  width: 150px; padding: 5px 8px; font-size: 12.5px; text-align: right;
+  font-variant-numeric: tabular-nums; border: 1px solid var(--border); border-radius: 7px;
+  font-family: var(--font-ui); background: var(--white);
+}
+.spb-reco-in:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
+.spb-reco-legend { font-size: 12px; color: var(--text-muted); margin: 12px 0 0; }
+.spb-reco-warn { font-size: 12.5px; color: var(--red-dk); margin: 12px 0 0; line-height: 1.6; max-width: 620px; }
+.spb-reco-notes { max-width: 720px; border-top: 1px solid var(--border); padding-top: 14px; }
+.spb-reco-notes p { font-size: 12.5px; color: var(--text-muted); margin: 0 0 8px; line-height: 1.65; }
 
 /* ── TEAM (members + invitations) ──────────────────────────────────────────
    Layout only — the table itself is .client-table, the app's plain-table

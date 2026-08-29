@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608292300">
+<link rel="stylesheet" href="css/styles.css?v=202608300100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2295,8 +2295,8 @@ function cropLoginLogoIcon(img) {
         <div class="card" style="margin-top:20px;">
           <div class="card-header">
             <div>
-              <div class="card-title" style="font-size:14px;">Confirmation reconciliation</div>
-              <div class="card-desc">What each party confirmed, beside what the books say. <strong>Difference = Books − Confirmation</strong>: a negative figure means the books are short of what the party confirmed, which is usually a bill that surfaced after the register closed. Within Rs 1,000 counts as matched; beyond that it is reported as a difference. Every figure saves as you leave the field. The two tiers are separated because Annexure-13 reports them differently.</div>
+              <div class="card-title" style="font-size:14px;">Parties — books, confirmations and balances</div>
+              <div class="card-desc">Every party in the register with its own totals, the figures its signed confirmation letter states, and the gap between them. <strong>Difference = Confirmation − Books</strong>: a positive figure means the party reports more trade than the register holds, which is usually a bill that surfaced after the register closed — enter it under Omitted Bills and the difference closes. Within Rs 1,000 counts as matched. Every figure saves as you leave the field, and the two tiers are separated because Annexure-13 reports them differently.</div>
             </div>
           </div>
           <div id="spb-confirm-body"></div>
@@ -4964,14 +4964,14 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/companyProfile.js?v=202608290900"></script>
 <script defer src="js/companySecretary.js?v=202608290900"></script>
 <script defer src="js/companyRegistration.js?v=202608290900"></script>
-<script defer src="js/salesPurchaseBook.js?v=202608292300"></script>
+<script defer src="js/salesPurchaseBook.js?v=202608300100"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script defer src="js/salesPurchaseBookLedger.js?v=202608292300"></script>
+<script defer src="js/salesPurchaseBookLedger.js?v=202608300100"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
-<script defer src="js/salesPurchaseBookConfirm.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookConfirm.js?v=202608300100"></script>
 <script defer src="js/salesPurchaseBookAnnexure.js?v=202608212500"></script>
-<script defer src="js/salesPurchaseBookReco.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookReco.js?v=202608300100"></script>
 <script defer src="js/salesPurchaseBookVatReturn.js?v=202608212500"></script>
 <!-- The in-app data-entry sheet. LAST of the Autobooks block: it splices its
      section tab into SPB_SECTION_TABS (ledger) and feeds typed rows through

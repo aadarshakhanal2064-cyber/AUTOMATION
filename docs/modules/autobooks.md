@@ -927,3 +927,129 @@ to `SPB_SECTION_TABS[0].key` rather than a hardcoded `'import'`, so the order
 follows whichever parts of Autobooks have registered. `spbInit()` re-shows the
 current section on every tab open, so its `onShow` runs against the fiscal
 year just built rather than the empty selector it was last drawn with.
+
+---
+
+## Following the CA's workbook (2026-08-30)
+
+The firm supplied its CA's own *Sales & Purchase* workbook for a real client
+year and asked the app to follow it. It has eight sheets — Sales, Purchase,
+Monthly, Sales Details, Purchase Details, omiited, **Classify**, Reco — and
+carries instructions written for this project in as many words, including a
+column headed *"Remarks for Claud Code"*. What it settles:
+
+| The CA's sheet | What it means for Autobooks |
+|---|---|
+| **No Confirmation sheet at all** | the as-per-confirmation figures are two COLUMNS on Sales/Purchase Details. Confirmation is something a party HAS, not a screen you visit. |
+| `Difference = I + H − G` on Details | difference is **Confirmation − Books**, the reverse of what this app printed. |
+| **Classify** (new) | Sales: Goods/Service. Purchase: Goods/Assets/Expenses — and that choice is what fills Annexure-13. |
+| omiited derives from the Details difference | a party's unexplained gap IS its omitted amount; the "+" expands to bill-wise detail. |
+| Reco's two numbered headings | every adjustment is derived, nothing is typed. |
+
+His own notes, verbatim: *"By Default it should Good Sales"* · *"Remove Total
+After Party name"* · *"Goods should auto fill Goods Purchase others in Ann-13"*
+· *"Assets should auto fill Goods Purchase Capital in Ann-13"* · *"Expenses
+should auto fill Goods Purchase others in Ann-13"* · *"Sales should auto fill
+Sales in Ann-13"* · *"Service should auto fill Service in Ann-13"* · *"if we
+click + Sign then it will should Bill wise detail of party and entry bill wise
+remarks"* · *"Eye Should be there to view individaual confirmation"* · *"If we
+have Enter as per Confirmation then Confirmation letter should display Sales
+free sales & Taxable Sales as per Confirmation [otherwise as per our
+records]"* · *"If Pool A/B/C/D is selected then it should auto fill in
+Depreciation module as per Income Date Date Wise"*.
+
+### The reconciliation, rebuilt (`js/salesPurchaseBookReco.js`)
+
+Structural, not cosmetic. The statement used to be free-text adjustment lines
+someone typed, seeded by a *"suggest from monthly differences"* button. The
+CA's format has **nothing to type**:
+
+```
+<X> as Per Maskebari
+1. Difference due to Calculation mistake in maskebari
+     Add:   / Less:    ← each month's book-minus-return gap, split by sign
+2. Difference due to Bill omiited or excess entry
+     Add:   / Less:    ← omitted bills, split by sign
+Less: Rounding Effect
+<X> as Per Maskebari After Adjustment
+<X> as Per Accounts
+Net Difference
+```
+
+**That format is complete by construction**, which is why the free-text lines
+were removed rather than left unused: every month's gap is captured under
+heading 1 and every late bill under heading 2, so
+`return + Σ(gaps) + omitted` **is** the book figure. The statement foots
+arithmetically, Net Difference reads nil, and a hand-typed line on top could
+only double-count. Sub-rupee gaps route to Rounding Effect rather than being
+named month by month — the filed return is truncated to whole rupees, so a
+19-paisa gap is not a "calculation mistake".
+
+Two further blocks the app did not have: a **VAT Reconciliation Statement**
+(opening position + return VAT, then 13% of the *taxable* adjustments only —
+tax-free carries no VAT) and the **Cross Check of VAT Payables (Receivables)**
+that rebuilds the closing position from the opening one. `(−)` is a
+receivable, `(+)` a payable, printed on the statement as he prints it.
+
+**Two figures are typed, and they ride in the `vat_return` jsonb** rather than
+new columns (so this half needed no migration): the opening VAT position from
+last year's financial statements, and any prior-year purchase adjustment not
+yet adjusted. Neither is derivable from this year's register.
+
+**`node tools/spbRecoVerify.mjs` — 40 assertions replaying his figures.**
+Every line of all three statements plus the cross-check reproduces exactly,
+including the **−0.30 rounding line**, which the app reaches only by routing
+Magh's sub-rupee gap to rounding instead of naming it. The harness also pins
+the footing property (with no omitted bills, with an arbitrary one, and with
+no return filed at all) and proves the VAT statement still reports a real
+divergence it cannot absorb.
+
+### A duplicate-definition bug this uncovered
+
+`js/salesPurchaseBook.js` defined **`spbReturnTaxable` and `spbReturnVat`
+twice**: an earlier pair reading `.taxable`/`.vat` (a *transaction's* keys) and
+a later pair reading `.t`/`.v` (a *month's*). Function declarations hoist, so
+the later pair silently won every call and the earlier one was dead code that
+still read as the documented contract. A caller written against it got the
+capital figure alone — no error anywhere. Now one definition, month-shaped
+because that is what both real callers pass; a transaction adds `taxable + cap`
+directly. Both existing harnesses still pass, which is what proves the surviving
+behaviour is the one the app already had.
+
+### Confirmation is gone; the screen is now **Parties**
+
+Renamed and reshaped to his Details sheet. Display-name-only, the convention
+the four renamed modules follow — the file, the `spbCf` prefix, the `confirm`
+section key and the `spb-sec-confirm` panel all keep their names (CLAUDE.md §5).
+
+- **Difference is now `Confirmation − Books`**, reversing the 2026-08-16
+  decision. His convention reads the way the work is done: a POSITIVE
+  difference means the party reports more trade than the register holds, which
+  is a bill still to enter — the figure and the fix now point the same way.
+- **`As per Confirmation Tax Free` joins `As Per Confirmation Taxable`.** A
+  letter states both, and compared total-to-total as he does. A client with
+  exempt trade could never reconcile without it.
+- **Either figure arriving counts as the letter having come back** — a party
+  with only exempt trade confirms a tax-free figure and nothing else. The
+  "a confirmation that hasn't arrived is not a confirmed zero" rule is intact.
+- Tier bands, totals and the grand total were a blue band, a cream row and an
+  amber row competing on one wide grid; they now use one neutral token, with
+  structure from weight and rules.
+
+### Pending: `db/2026-08-30_autobooks_ca_workflow.sql`
+
+Three additive nullable columns on `autobooks_parties` — `confirmed_taxfree`,
+`classify`, `classify_note`. **Shipped code-first** (CLAUDE.md §15): a
+PostgREST `PGRST204` on one of them is caught, the field reports that the
+migration is pending, and every other figure on the screen saves normally. So
+the code is a no-op against a database that has not received it.
+
+### Still to do from his workbook
+
+- **Omitted Bills** — party-wise summary derived from the Parties difference,
+  with the "+" expanding to the bill-wise entry that already exists.
+- **Classify + Annexure-13** — the Goods/Service/Assets/Expenses picker and
+  its auto-fill mapping into the annexure's buckets, plus the asset-class hand
+  off to Depreciation.
+- **Excel output** — *"Remove Total After Party name"*, and Details/Classify/
+  omiited/Reco sheets in his layout.

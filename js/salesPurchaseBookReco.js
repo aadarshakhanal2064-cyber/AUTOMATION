@@ -1,439 +1,430 @@
 // ════════════════════════════════════════════
-//  AUTOBOOKS — RECONCILIATION STATEMENT
+//  AUTOBOOKS — RECONCILIATION STATEMENTS
 //
-//  The year-end statement that proves the filed VAT returns and the books tell
-//  the same story, and names every reason they don't. Three of them — Sales,
-//  Purchase, VAT — each laid out the way the firm's own Reco sheet is:
+//  Rebuilt 2026-08-29 to the CA's own reference workbook (its "Reco" sheet),
+//  which the firm asked the app to follow. The change is structural, not
+//  cosmetic: the statement used to be a list of free-text adjustment lines a
+//  staff member typed (with a "suggest from the monthly differences" button to
+//  seed them). In the CA's format there is nothing to type — every adjustment
+//  is DERIVED, under two named headings:
 //
-//      <X> as Per Maskebari                      (the filed return)
-//      Add:   … reasons the return is short
-//      Less:  … reasons the return is over
-//      Less:  Rounding Effect
+//      <X> as Per Maskebari                        (the filed return)
+//      1. Difference due to Calculation mistake in maskebari
+//           Add:   … months where the book exceeds the return
+//           Less:  … months where the return exceeds the book
+//      2. Difference due to Bill omiited or excess entry
+//           Add:   … bills omitted from the return
+//           Less:  … amounts entered in excess
+//      Less: Rounding Effect
 //      <X> as Per Maskebari After Adjustment
-//      <X> as Per Accounts                       (the books)
+//      <X> as Per Accounts                         (the books)
 //      Net Difference
 //
-//  It runs FROM the return TO the books, so every adjustment is
-//  BOOK − RETURN. Verified against the reference sheet: its Ashadh line of
-//  87,710.14 is book 887,710.14 less return 800,000, and its Jestha line of
-//  −50,000 is book 200,000 less return 250,000. Note this is the opposite sign
-//  to the Monthly grid, which prints a uniform Return − Book difference — each
-//  is internally consistent and neither is being changed (CLAUDE.md §8).
+//  That format is COMPLETE by construction, which is why the free-text lines
+//  are gone rather than merely unused. Every month's book-minus-return gap is
+//  captured under heading 1 and every late bill under heading 2, so
+//  return + Σ(monthly gaps) + omitted IS the book figure — the statement foots
+//  arithmetically and Net Difference reads nil unless something upstream is
+//  wrong. A hand-typed line on top of that could only double-count.
 //
-//  DISTINCT FROM the Monthly grid, which compares month by month. This is one
-//  statement for the year, with ad-hoc adjustment lines, because which mistakes
-//  exist varies per client and per year — nothing here is hardcoded to a month.
+//  Sub-rupee gaps go to Rounding Effect instead of being named month by month:
+//  the filed return is truncated to whole rupees, so a 19-paisa gap is not a
+//  "calculation mistake". Same threshold the parser already uses for a real gap
+//  (SPB_ROUNDING_TOLERANCE), and it reproduces the CA's own −0.30 rounding line.
+//
+//  Everything runs FROM the return TO the books, so an adjustment is
+//  BOOK − RETURN. The Monthly grid prints Return − Book; each is internally
+//  consistent and neither is changing (CLAUDE.md §8).
 // ════════════════════════════════════════════
 
-// "if Difference is less than 1000 then round off Difference" — the sheet's own
-// note. At or above a thousand rupees it is not a rounding effect, it is a real
+// "if Difference is less than 1000 then round off Difference" — the firm's own
+// note. At or above a thousand rupees it is not rounding, it is a real
 // unexplained difference, and it stays on the face of the statement.
 const SPB_RECO_ROUNDING_LIMIT = 1000;
 
 const SPB_RECO_STATEMENTS = [
-  { key: 'sales', title: 'Sales Reconciliation Statement',
-    retLabel: 'Sales as Per Maskebari', bookLabel: 'Sales as Per Accounts', section: 'sales' },
-  { key: 'purchase', title: 'Purchase Reconciliation Statement',
-    retLabel: 'Purchase as Per Maskebari', bookLabel: 'Purchase as Per Accounts', section: 'purchase' },
-  { key: 'vat', title: 'VAT Reconciliation Statement',
-    retLabel: 'VAT Payable as per Return', bookLabel: 'VAT Payable as Per Books', section: null },
+  { key: 'sales', section: 'sales', title: 'Sales Reconciliation Statement',
+    retLabel: 'Sales as Per Maskebari', bookLabel: 'Sales as Per Accounts', noun: 'Sales' },
+  { key: 'purchase', section: 'purchase', title: 'Purchase Reconciliation Statement',
+    retLabel: 'Purchase as Per Maskebari', bookLabel: 'Purchase as Per Accounts', noun: 'Purchase' },
 ];
 
 function spbRecoStatus(html, type) { showStatus(html, type, 'spb-reco-status'); }
 
-// ── Anchors ─────────────────────────────────────────────────────────────────
-// Both ends are DERIVED, never typed. The return figure is the one already
-// entered in the Monthly reconciliation grid (and stored on the book); the
-// books figure is computed from the register. Giving either an override would
-// create a second source of truth for a number this app already holds — and an
-// adjustment line is the correct way to say "the real figure differs, here is
-// why", which is what the statement is for.
-function spbRecoAnchors(st) {
-  const vr = spbVr || spbBlankVr();
-  const book = spbBook || {};
-  let ret = 0, books = 0, retTyped = false;
-
-  if (st.key === 'vat') {
-    SPB_SECTIONS.forEach(({ key }) => {
-      const sign = key === 'sales' ? 1 : -1;   // VAT payable = output − input
-      (vr[key] || []).forEach(m => {
-        const v = spbReturnVat({ v: spbNum(m.v), capVat: spbNum(m.capVat) }) + spbNum(m.impVat);
-        if (String(m.v).trim() !== '') retTyped = true;
-        ret += sign * v;
-      });
-      (book[key] || []).forEach(m => {
-        books += sign * ((m.v || 0) + (m.capVat || 0) + (m.impVat || 0));
-      });
-      // The VAT on omitted bills is booked too. Leaving it out here while the
-      // automatic line below subtracts it from the RETURN side meant the two
-      // ends of this statement were built differently, and it could never foot
-      // — the Sales and Purchase statements already add their omitted figure
-      // to books for exactly this reason.
-      books += sign * spbRecoOmittedVat(key);
-    });
-  } else {
-    const k = st.section;
-    (vr[k] || []).forEach(m => {
-      if (String(m.t).trim() !== '' || String(m.f).trim() !== '') retTyped = true;
-      ret += spbReturnTaxable({ t: spbNum(m.t), cap: spbNum(m.cap) }) + spbNum(m.f) + spbNum(m.imp);
-    });
-    (book[k] || []).forEach(m => { books += m.t + m.f + (m.imp || 0); });
-    // The books include bills entered after the register was closed — they are
-    // booked, they are simply not in the filed return. That is precisely what
-    // the "omitted in Maskebari" line below adds back on the return side.
-    books += spbRecoOmitted(k);
-  }
-  return { ret, books, retTyped };
+// ── The two typed figures ───────────────────────────────────────────────────
+// The VAT cross-check opens with last year's closing VAT position, which is a
+// fact about the FINANCIAL STATEMENTS and cannot be derived from this year's
+// register. It rides in the vat_return jsonb (already the home of everything
+// "as per the return") rather than a new column, so this needed no migration.
+function spbRecoMeta() {
+  if (!spbVr) spbVr = spbBlankVr();
+  if (!spbVr.meta) spbVr.meta = {};
+  return spbVr.meta;
 }
 
-// Net effect of this register's omitted bills, signed (a return or debit note
-// subtracts). Derived, never a stored adjustment — a figure copied out of the
-// Omitted Bills screen would drift the moment one was edited there.
-function spbRecoOmitted(section) {
-  return spbOmitted.filter(x => x.section === section)
-    .reduce((a, x) => a + (x.taxable || 0) * spbOmittedSign(x) + (x.taxfree || 0) * spbOmittedSign(x), 0);
+function spbRecoSetMeta(field, raw) {
+  spbRecoMeta()[field] = String(raw == null ? '' : raw).trim();
+  spbVrScheduleDraft();
+  spbDirty = true;
+  spbRenderReco();
+}
+
+// ── Derived adjustments ─────────────────────────────────────────────────────
+// One month's gap on one measure. Split by SIGN into the Add and Less buckets
+// the CA's headings call for, with sub-rupee gaps routed to rounding.
+function spbRecoGaps(section, measure) {
+  const out = { add: 0, less: 0, rounding: 0, months: [], unfiled: [] };
+  if (!spbBook || !spbVr) return out;
+  SPB_MONTH_NAMES.forEach((month, i) => {
+    const b = (spbBook[section] || [])[i];
+    const v = (spbVr[section] || [])[i];
+    if (!b) return;
+    const bookVal = measure === 'taxable'
+      ? spbReturnTaxable(b) + (b.imp || 0)
+      : b.f;
+    const retVal = measure === 'taxable'
+      ? spbReturnTaxable({ t: spbNum(v && v.t), cap: spbNum(v && v.cap) }) + spbNum(v && v.imp)
+      : spbNum(v && v.f);
+    // A month whose return was never entered reads as nil, so its whole book
+    // figure lands in the gap. That is arithmetically right — the statement
+    // still foots — but it is not a "calculation mistake", so the months are
+    // named under the table rather than left to look like findings.
+    const filed = v && SPB_VR_FIELDS.some(f => String(v[f] == null ? '' : v[f]).trim() !== '');
+    if (!filed && (bookVal || retVal)) out.unfiled.push(month);
+    const diff = Math.round((bookVal - retVal) * 100) / 100;
+    if (!diff) return;
+    if (Math.abs(diff) <= SPB_ROUNDING_TOLERANCE) { out.rounding += diff; return; }
+    if (diff > 0) out.add += diff; else out.less += diff;
+    out.months.push({ month, diff });
+  });
+  return out;
+}
+
+// Omitted bills, signed (a return or debit note subtracts) and split the same
+// way. Derived from the Omitted Bills screen, never a stored figure — a copy
+// would drift the moment one was edited there.
+function spbRecoOmitted(section, measure) {
+  const out = { add: 0, less: 0, count: 0 };
+  spbOmitted.filter(x => x.section === section).forEach(x => {
+    const v = (measure === 'taxable'
+      ? ((x.taxable || 0) + (x.cap || 0)) + (x.imp || 0)
+      : (x.taxfree || 0)) * spbOmittedSign(x);
+    if (!v) return;
+    out.count++;
+    if (v > 0) out.add += v; else out.less += v;
+  });
+  return out;
 }
 
 function spbRecoOmittedVat(section) {
   return spbOmitted.filter(x => x.section === section)
-    .reduce((a, x) => a + (x.vat || 0) * spbOmittedSign(x), 0);
+    .reduce((a, x) => a + ((x.vat || 0) + (x.capVat || 0) + (x.impVat || 0)) * spbOmittedSign(x), 0);
 }
 
-// ── The statement ───────────────────────────────────────────────────────────
+// Everything one statement needs, in the CA's own row order.
 function spbRecoModel(st) {
-  const { ret, books, retTyped } = spbRecoAnchors(st);
-  const auto = [], adds = [], lessers = [];
+  const vr = spbVr || spbBlankVr();
+  const book = spbBook || {};
+  const sec = st.section;
 
-  // Automatic lines: things the app already knows, shown as lines rather than
-  // silently folded into an anchor, so the statement explains itself.
-  if (st.key === 'vat') {
-    SPB_SECTIONS.forEach(({ key, label }) => {
-      const v = spbRecoOmittedVat(key) * (key === 'sales' ? 1 : -1);
-      if (v) auto.push({ label: `VAT on ${label.toLowerCase()} bills omitted in Maskebari`, amount: v });
-    });
-  } else {
-    const om = spbRecoOmitted(st.section);
-    if (om) auto.push({ label: `${st.section === 'sales' ? 'Sales' : 'Purchase'} omitted in Maskebari`, amount: om });
-  }
+  let ret = 0, retTyped = false;
+  (vr[sec] || []).forEach(m => {
+    if (SPB_VR_FIELDS.some(f => String(m[f] == null ? '' : m[f]).trim() !== '')) retTyped = true;
+    ret += spbReturnTaxable({ t: spbNum(m.t), cap: spbNum(m.cap) }) + spbNum(m.imp) + spbNum(m.f);
+  });
 
-  spbAdjustments.filter(a => a.statement === st.key)
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-    .forEach(a => (a.direction === 'add' ? adds : lessers).push(a));
+  let books = 0;
+  (book[sec] || []).forEach(m => {
+    books += spbReturnTaxable(m) + (m.imp || 0) + m.f;
+  });
+  const omT = spbRecoOmitted(sec, 'taxable');
+  const omF = spbRecoOmitted(sec, 'taxfree');
+  books += omT.add + omT.less + omF.add + omF.less;
 
-  const autoTotal = auto.reduce((s, l) => s + l.amount, 0);
-  const addTotal = adds.reduce((s, a) => s + Number(a.amount || 0), 0);
-  const lessTotal = lessers.reduce((s, a) => s + Number(a.amount || 0), 0);
+  const gapT = spbRecoGaps(sec, 'taxable');
+  const gapF = spbRecoGaps(sec, 'taxfree');
 
-  const adjusted = ret + autoTotal + addTotal - lessTotal;
-  const residual = books - adjusted;
-  // Under a thousand rupees it is rounding and is absorbed; at or above it is a
-  // real difference and is reported. Never silently absorbed either way.
-  const rounding = Math.abs(residual) < SPB_RECO_ROUNDING_LIMIT ? residual : 0;
-  const after = adjusted + rounding;
+  const noun = st.noun;
+  const rows = [
+    { kind: 'anchor', label: st.retLabel, amount: ret },
+    { kind: 'heading', label: '1. Difference due to Calculation mistake in maskebari' },
+    { kind: 'sub', label: 'Add:' },
+    { kind: 'line', label: `Calculation Mistake of Taxable ${noun} in Masebari`, amount: gapT.add },
+    { kind: 'line', label: `Calculation Mistake of Tax free ${noun} in Masebari`, amount: gapF.add },
+    { kind: 'sub', label: 'Less:' },
+    { kind: 'line', label: `Calculation Mistake of Taxable ${noun} in Masebari`, amount: gapT.less },
+    { kind: 'line', label: `Calculation Mistake of Tax free ${noun} in Masebari`, amount: gapF.less },
+    { kind: 'heading', label: '2. Difference due to Bill omiited or excess entry' },
+    { kind: 'sub', label: 'Add:' },
+    { kind: 'line', label: `Taxable ${noun} Omiited in Maskebari`, amount: omT.add },
+    { kind: 'line', label: `Tax Free ${noun} Omiited in Maskebari`, amount: omF.add },
+    { kind: 'sub', label: 'Less:' },
+    { kind: 'line', label: `Taxable ${noun} Excess in Maskebari`, amount: omT.less },
+    { kind: 'line', label: `Tax Free ${noun} Excess in Maskebari`, amount: omF.less },
+  ];
+
+  const named = gapT.add + gapT.less + gapF.add + gapF.less + omT.add + omT.less + omF.add + omF.less;
+  const rounding = gapT.rounding + gapF.rounding;
+  const after = ret + named + rounding;
+  const net = after - books;
+
+  rows.push({ kind: 'line', label: 'Less: Rounding Effect', amount: rounding });
+  rows.push({ kind: 'total', label: st.retLabel + ' After Adjustment', amount: after });
+  rows.push({ kind: 'anchor', label: st.bookLabel, amount: books });
+  rows.push({ kind: 'net', label: 'Net Difference', amount: net });
 
   return {
-    st, ret, books, retTyped, auto, adds, lessers,
-    autoTotal, addTotal, lessTotal, adjusted, rounding, after,
-    net: books - after,
-    absorbed: rounding !== 0,
-    unexplained: Math.abs(books - after) >= SPB_RECO_ROUNDING_LIMIT,
+    st, rows, ret, books, after, rounding, net, retTyped,
+    // The taxable adjustments alone carry VAT — tax-free ones never do. This is
+    // what the VAT statement's Sales/Purchase Adjustment lines are 13% of.
+    taxableAdjustment: gapT.add + gapT.less + omT.add + omT.less,
+    unfiled: [...new Set([...gapT.unfiled, ...gapF.unfiled])],
+    unexplained: Math.abs(net) >= SPB_RECO_ROUNDING_LIMIT,
   };
 }
 
-// ── Adjustment lines ────────────────────────────────────────────────────────
-async function spbRecoAdd(key) {
-  if (!spbBookId) return;
-  try {
-    const { data, error } = await window.sb.from('autobooks_adjustments').insert({
-      book_id: spbBookId, statement: key, direction: 'add', description: '', amount: 0,
-      sort_order: spbAdjustments.filter(a => a.statement === key).length,
-    }).select().limit(1);
-    if (error) throw error;
-    if (data && data[0]) spbAdjustments.push(data[0]);
-    spbRenderReco();
-  } catch (err) {
-    spbRecoStatus('❌ Could not add a line: ' + escHtml(friendlyDbError(err)), 'error');
-  }
-}
+// ── VAT ─────────────────────────────────────────────────────────────────────
+// Two blocks, exactly as the CA draws them: the reconciliation itself, and a
+// cross-check that rebuilds the closing VAT position from the opening one.
+//
+// Sign convention throughout, printed on the statement: (−) is a RECEIVABLE
+// and (+) a PAYABLE. So output VAT on sales adds and input VAT on purchases
+// subtracts.
+function spbRecoVatModel() {
+  const vr = spbVr || spbBlankVr();
+  const book = spbBook || {};
+  const meta = spbRecoMeta();
+  const opening = spbNum(meta.openingVat);
+  const pyAdj = spbNum(meta.pyPurchaseAdj);
 
-async function spbRecoSetField(id, field, raw) {
-  const row = spbAdjustments.find(a => a.id === id);
-  if (!row) return;
-  const value = field === 'amount' ? Math.abs(spbNum(raw)) : String(raw);
-  try {
-    const { error } = await window.sb.from('autobooks_adjustments')
-      .update({ [field]: value }).eq('id', id);
-    if (error) throw error;
-    row[field] = value;
-    spbRenderReco();
-  } catch (err) {
-    spbRecoStatus('❌ Could not save that line: ' + escHtml(friendlyDbError(err)), 'error');
-  }
-}
-
-async function spbRecoDelete(id) {
-  const row = spbAdjustments.find(a => a.id === id);
-  if (!row) return;
-  if (row.description || Number(row.amount)) {
-    if (!confirm(`Remove this adjustment?\n\n${row.description || '(no description)'}\n${spbFmt(row.amount)}`)) return;
-  }
-  try {
-    const { error } = await window.sb.from('autobooks_adjustments').delete().eq('id', id);
-    if (error) throw error;
-    spbAdjustments = spbAdjustments.filter(a => a.id !== id);
-    spbRenderReco();
-  } catch (err) {
-    spbRecoStatus('❌ Could not delete: ' + escHtml(friendlyDbError(err)), 'error');
-  }
-}
-
-// ── Suggest from the monthly differences ────────────────────────────────────
-// The firm's own sheet does exactly this by hand: each adjustment on the Reco
-// sheet is one month's book-versus-return gap, described in words. Its Ashadh
-// line of 87,710.14 IS book 887,710.14 less return 800,000. Offering it as a
-// button is the same arithmetic without the retyping — and it creates ordinary
-// editable lines, so a wrong one can be reworded or removed like any other.
-function spbRecoSuggestable(st) {
-  if (!spbBook || !spbVr) return [];
-  const out = [];
-  const push = (section, field, label) => {
-    SPB_MONTH_NAMES.forEach((month, i) => {
-      const b = (spbBook[section] || [])[i];
-      const v = (spbVr[section] || [])[i];
-      if (!b || !v) return;
-      if (String(v[field] == null ? '' : v[field]).trim() === '') return;   // month not filed yet
-      const bookVal = field === 't' ? b.t + (b.cap || 0) : (field === 'v' ? b.v + (b.capVat || 0) : b[field]);
-      const retVal = field === 't' ? spbNum(v.t) + spbNum(v.cap) : (field === 'v' ? spbNum(v.v) + spbNum(v.capVat) : spbNum(v[field]));
-      const diff = Math.round((bookVal - retVal) * 100) / 100;
-      // Sub-rupee gaps are not "calculation mistakes" — they are the filed
-      // return's whole-rupee truncation, and the firm's own sheet leaves them
-      // to the Rounding Effect line rather than naming a month for each. Same
-      // threshold the module already uses for a real gap (SPB_ROUNDING_TOLERANCE).
-      // On the reference sheet this is exactly right: Falgun +0.19 and Chaitra
-      // −0.07 stay unnamed and net to the 0.12 rounding line it prints.
-      if (Math.abs(diff) <= SPB_ROUNDING_TOLERANCE) return;
-      out.push({ month, amount: diff, label: `Calculation Mistake of ${label} in month of ${month} in Maskebari` });
+  // "As per return" reads the FILED VAT column when it has been entered — the
+  // filed figure is typed, never derived (CLAUDE.md §15) — and falls back to
+  // 13% of the filed taxable, which is how the CA's own sheet computes it.
+  const retVat = key => {
+    let sum = 0, typed = false;
+    (vr[key] || []).forEach(m => {
+      const v = spbReturnVat({ v: spbNum(m.v), capVat: spbNum(m.capVat) }) + spbNum(m.impVat);
+      if (String(m.v == null ? '' : m.v).trim() !== '') typed = true;
+      sum += v;
     });
+    if (typed) return sum;
+    let fallback = 0;
+    (vr[key] || []).forEach(m => {
+      fallback += (spbReturnTaxable({ t: spbNum(m.t), cap: spbNum(m.cap) }) + spbNum(m.imp)) * 0.13;
+    });
+    return fallback;
   };
-  if (st.key === 'vat') {
-    push('sales', 'v', 'VAT on Sales');
-    push('purchase', 'v', 'VAT on Purchase');
-  } else {
-    push(st.section, 't', st.section === 'sales' ? 'Taxable Sales' : 'Taxable Purchase');
-    push(st.section, 'f', 'VAT Exempted');
-  }
-  return out;
+  const bookVat = key => {
+    let sum = 0;
+    (book[key] || []).forEach(m => { sum += (m.v || 0) + (m.capVat || 0) + (m.impVat || 0); });
+    return sum + spbRecoOmittedVat(key);
+  };
+
+  const retSalesVat = retVat('sales'), retPurVat = retVat('purchase');
+  const bookSalesVat = bookVat('sales'), bookPurVat = bookVat('purchase');
+
+  const asPerReturn = opening + retSalesVat - retPurVat;
+  const salesAdj = spbRecoModel(SPB_RECO_STATEMENTS[0]).taxableAdjustment * 0.13;
+  const purAdj = -spbRecoModel(SPB_RECO_STATEMENTS[1]).taxableAdjustment * 0.13;
+
+  // The cross-check IS the books figure — one number, computed once.
+  const closing = opening - bookPurVat + bookSalesVat - pyAdj;
+
+  const beforeRound = asPerReturn + salesAdj + purAdj;
+  const residual = closing - beforeRound;
+  const rounding = Math.abs(residual) < SPB_RECO_ROUNDING_LIMIT ? residual : 0;
+  const after = beforeRound + rounding;
+
+  return {
+    opening, pyAdj, retSalesVat, retPurVat, bookSalesVat, bookPurVat,
+    asPerReturn, salesAdj, purAdj, rounding, after, closing,
+    net: after - closing,
+    unexplained: Math.abs(after - closing) >= SPB_RECO_ROUNDING_LIMIT,
+    rows: [
+      { kind: 'anchor', label: 'VAT Payables (Receivables) as per Return', amount: asPerReturn },
+      { kind: 'line', label: 'Sales Adjustment', amount: salesAdj },
+      { kind: 'line', label: 'Purchase Adjustment', amount: purAdj },
+      { kind: 'line', label: 'Round off', amount: rounding },
+      { kind: 'total', label: 'VAT Payables (Receivables) as per Return After Adjustment', amount: after },
+      { kind: 'anchor', label: 'VAT Payables (Receivables) as Per Books', amount: closing },
+      { kind: 'net', label: 'Net Difference', amount: after - closing },
+    ],
+    crossRows: [
+      { kind: 'typed', label: 'Opening VAT Payables (Receivables) as Per Financial Statement',
+        amount: opening, field: 'openingVat' },
+      { kind: 'line', label: 'Add: VAT on Purchase', amount: -bookPurVat },
+      { kind: 'line', label: 'Less: VAT on Sales', amount: bookSalesVat },
+      { kind: 'typed', label: 'Less: Previous Year Purchase adjustment not adjusted',
+        amount: -pyAdj, field: 'pyPurchaseAdj' },
+      { kind: 'total', label: 'Closing VAT Payables (Receivables)', amount: closing },
+    ],
+  };
 }
 
-async function spbRecoSuggest(key) {
-  const st = SPB_RECO_STATEMENTS.find(s => s.key === key);
-  const sugg = spbRecoSuggestable(st);
-  if (!sugg.length) {
-    spbRecoStatus('ℹ️ No month differs between the book and the filed return, so there is nothing to suggest. (If the VAT-return figures haven\'t been entered, do that in <strong>Import › Monthly reconciliation</strong> first.)', 'info');
-    return;
+// "For the year ended 32nd Ashadh 2083" — the firm's own wording. The last day
+// is READ from the calendar rather than assumed: five of the eleven tabulated
+// B.S. years have a 31-day Ashadh, and printing 32nd on one of those would put
+// a date on the statement that does not exist.
+function spbRecoPeriod() {
+  const y = spbFyStartYear();
+  if (!y) return '';
+  let last = 32;
+  if (NepaliLocale.bsMonthEnd) {
+    const e = NepaliLocale.bsMonthEnd(y + 1, 3);
+    if (e) last = e;
   }
-  const existing = new Set(spbAdjustments.filter(a => a.statement === key).map(a => a.description));
-  const fresh = sugg.filter(s => !existing.has(s.label));
-  if (!fresh.length) { spbRecoStatus('ℹ️ Every monthly difference is already on the statement.', 'info'); return; }
-  if (!confirm(`Add ${fresh.length} adjustment line${fresh.length === 1 ? '' : 's'} from the monthly differences?\n\nEach is that month's book figure less its filed figure. They become ordinary lines you can reword, change or remove.`)) return;
-  try {
-    let order = spbAdjustments.filter(a => a.statement === key).length;
-    const rows = fresh.map(s => ({
-      book_id: spbBookId, statement: key,
-      direction: s.amount >= 0 ? 'add' : 'less',
-      description: s.label, amount: Math.abs(s.amount), sort_order: order++,
-    }));
-    const { data, error } = await window.sb.from('autobooks_adjustments').insert(rows).select();
-    if (error) throw error;
-    (data || []).forEach(r => spbAdjustments.push(r));
-    AuditLog.record('spb_reco_suggested', {
-      module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: spbBookId,
-      detail: { fiscalYear: spbVal('spb-fy'), statement: key, lines: rows.length },
-    });
-    spbRenderReco();
-    spbRecoStatus(`✅ Added ${rows.length} line${rows.length === 1 ? '' : 's'} from the monthly differences.`, 'success');
-  } catch (err) {
-    spbRecoStatus('❌ Could not add the lines: ' + escHtml(friendlyDbError(err)), 'error');
-  }
+  return `For the year ended ${last}${last === 31 ? 'st' : 'nd'} Ashadh ${y + 1}`;
 }
 
 // ── Screen ──────────────────────────────────────────────────────────────────
+// Deliberately quiet. This is a statement an auditor reads top to bottom, so
+// it gets one typeface weight for structure, generous row spacing, figures in
+// a single right-aligned column — and colour ONLY where something is wrong.
 function spbRenderReco() {
   const el = document.getElementById('spb-reco-body');
   if (!el) return;
-  if (!spbBookId) {
-    el.innerHTML = spbSaveGateHtml('Adjustment lines are');
-    return;
-  }
   if (!spbBook) { el.innerHTML = '<p class="log-empty">No book loaded yet.</p>'; return; }
 
-  let html = `<div class="action-row" style="margin:0 0 16px;">
+  let html = `<div class="spb-reco-actions">
       <button class="btn btn-outline btn-sm" onclick="spbPrintReco()">Print / Preview</button>
       <button class="btn btn-outline btn-sm" onclick="spbExportReco('pdf')">Export PDF</button>
       <button class="btn btn-outline btn-sm" onclick="spbExportReco('excel')">Export Excel</button>
     </div><div id="spb-reco-status"></div>`;
 
+  const notes = [];
   SPB_RECO_STATEMENTS.forEach(st => {
     const m = spbRecoModel(st);
-    html += `<div class="card" style="margin-bottom:20px;">
-      <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-        <div>
-          <div class="card-title" style="font-size:14px;">${escHtml(st.title)}</div>
-          <div class="card-desc">${escHtml(spbRecoPeriod())}</div>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="spbRecoSuggest('${st.key}')">Suggest from monthly differences</button>
-          <button class="btn btn-outline btn-sm" onclick="spbRecoAdd('${st.key}')">+ Add line</button>
-        </div>
-      </div>`;
-
     if (!m.retTyped) {
-      html += `<div class="log-sub" style="margin-bottom:12px; color:var(--amber-dk);">
-        No filed figures have been entered for this statement, so "${escHtml(st.retLabel)}" reads nil.
-        Enter them in <strong>Import › Monthly reconciliation</strong>.</div>`;
+      notes.push(`No filed figures have been entered for ${st.noun.toLowerCase()}, so "${st.retLabel}" reads nil and the whole book shows as a difference. Enter them in <strong>Import › Monthly reconciliation</strong>.`);
+    } else if (m.unfiled.length) {
+      notes.push(`${st.noun}: no filed figures for ${escHtml(m.unfiled.join(', '))} — those months' book figures appear under <em>Calculation mistake</em>.`);
     }
-
-    html += `<div class="table-wrap"><table class="client-table" style="font-size:13px;">
-      <thead><tr><th>Particulars</th><th style="text-align:right; width:190px;">Amount (Rs.)</th><th style="width:60px;"></th></tr></thead><tbody>`;
-    html += spbRecoRow(escHtml(st.retLabel), m.ret, { bold: true });
-
-    if (m.auto.length || m.adds.length) html += spbRecoHead('Add:');
-    m.auto.filter(l => l.amount > 0).forEach(l => {
-      html += spbRecoRow(escHtml(l.label) + spbRecoAutoTag(), l.amount, { indent: true });
-    });
-    m.adds.forEach(a => { html += spbRecoEditRow(a); });
-
-    const negAuto = m.auto.filter(l => l.amount < 0);
-    if (negAuto.length || m.lessers.length) html += spbRecoHead('Less:');
-    negAuto.forEach(l => {
-      html += spbRecoRow(escHtml(l.label) + spbRecoAutoTag(), Math.abs(l.amount), { indent: true });
-    });
-    m.lessers.forEach(a => { html += spbRecoEditRow(a); });
-
-    html += spbRecoRow('Less: Rounding Effect' +
-      (m.absorbed ? '' : ` <span style="color:var(--text-muted); font-size:11.5px;">(only applied below Rs ${spbFmt(SPB_RECO_ROUNDING_LIMIT)})</span>`),
-      m.rounding, { muted: !m.absorbed });
-    html += spbRecoRow(escHtml(st.retLabel) + ' After Adjustment', m.after, { bold: true, rule: true });
-    html += spbRecoRow(escHtml(st.bookLabel), m.books, { bold: true });
-    html += spbRecoRow('Net Difference', m.net, {
-      bold: true, grand: true,
-      color: m.unexplained ? 'var(--red-dk)' : (Math.abs(m.net) < 0.005 ? 'var(--green-dk)' : ''),
-    });
-    html += `</tbody></table></div>`;
-
-    if (m.unexplained) {
-      html += `<div class="log-sub" style="margin-top:12px; color:var(--red-dk);">
-        <strong>Rs ${spbFmt(Math.abs(m.net))} is unexplained.</strong> It exceeds Rs ${spbFmt(SPB_RECO_ROUNDING_LIMIT)},
-        so it is not absorbed as rounding — add an adjustment line naming the reason, or check the figures.</div>`;
-    }
-    html += `</div>`;
+    html += spbRecoStatementHtml(st.title, m.rows, m);
   });
+
+  const v = spbRecoVatModel();
+  html += spbRecoStatementHtml('VAT Reconciliation Statement', v.rows, v,
+    `<p class="spb-reco-legend">(−) indicates VAT Receivables &nbsp;·&nbsp; (+) indicates VAT Payables</p>`);
+  html += spbRecoStatementHtml('Cross Check of VAT Payables (Receivables)', v.crossRows, null,
+    `<p class="spb-reco-legend">The opening position comes from last year's financial statements — it is the one
+     figure here that cannot be derived from this year's register.</p>`);
+
+  if (notes.length) {
+    html += `<div class="spb-reco-notes">${notes.map(n => `<p>${n}</p>`).join('')}</div>`;
+  }
   el.innerHTML = html;
 }
 
-function spbRecoAutoTag() {
-  return ' <span class="log-badge badge-blue" style="font-size:10px; padding:2px 7px;">automatic</span>';
-}
-
-function spbRecoHead(label) {
-  return `<tr><td colspan="3" style="font-weight:700; padding-top:12px;">${escHtml(label)}</td></tr>`;
-}
-
-function spbRecoRow(labelHtml, amount, opts) {
-  const o = opts || {};
-  return `<tr${o.grand ? ' style="background:var(--amber-bg);"' : (o.rule ? ' style="border-top:2px solid var(--border);"' : '')}>
-    <td${o.indent ? ' style="padding-left:30px;"' : ''}${o.bold ? ' class="spb-reco-b"' : ''}>${labelHtml}</td>
-    <td style="text-align:right;${o.bold ? 'font-weight:700;' : ''}${o.muted ? 'color:var(--text-muted);' : ''}${o.color ? 'color:' + o.color + ';' : ''}">${spbFmt(amount)}</td>
-    <td></td></tr>`;
-}
-
-// An adjustment is free text and a plain amount on purpose — which mistakes
-// exist varies per client and per year, so nothing is hardcoded to a month.
-function spbRecoEditRow(a) {
-  return `<tr>
-    <td style="padding-left:30px;">
-      <input type="text" class="spb-reco-desc" value="${escHtml(a.description || '')}"
-             placeholder="Reason for the difference…" onchange="spbRecoSetField(${a.id}, 'description', this.value)" />
-    </td>
-    <td style="text-align:right;">
-      <input type="text" class="spb-cf-in" inputmode="decimal" value="${a.amount ? escHtml(String(a.amount)) : ''}"
-             onchange="spbRecoSetField(${a.id}, 'amount', this.value)" />
-    </td>
-    <td style="text-align:right;">
-      <button class="btn btn-outline btn-sm" onclick="spbRecoDelete(${a.id})" title="Remove this line">✕</button>
-    </td></tr>`;
-}
-
-// "For the year ended 32nd Ashadh 2083" — the fiscal year's last day, in the
-// firm's own wording on its Reco sheet.
-function spbRecoPeriod() {
-  const y = spbFyStartYear();
-  return y ? `For the year ended 32nd Ashadh ${y + 1}` : '';
+function spbRecoStatementHtml(title, rows, m, footHtml) {
+  let html = `<section class="spb-reco-card">
+    <header class="spb-reco-head">
+      <h3>${escHtml(title)}</h3>
+      <p>${escHtml(spbRecoPeriod())}</p>
+    </header>
+    <table class="spb-reco-table">
+      <thead><tr><th>Particulars</th><th>Amount (Rs.)</th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    if (r.kind === 'heading') {
+      html += `<tr class="spb-reco-h"><td colspan="2">${escHtml(r.label)}</td></tr>`;
+      return;
+    }
+    if (r.kind === 'sub') {
+      html += `<tr class="spb-reco-s"><td colspan="2">${escHtml(r.label)}</td></tr>`;
+      return;
+    }
+    if (r.kind === 'typed') {
+      html += `<tr class="spb-reco-typed"><td>${escHtml(r.label)}</td>
+        <td><input type="text" inputmode="decimal" class="spb-reco-in"
+          value="${escHtml(String(spbRecoMeta()[r.field] || ''))}" placeholder="0.00"
+          onchange="spbRecoSetMeta('${r.field}', this.value)" /></td></tr>`;
+      return;
+    }
+    const cls = r.kind === 'anchor' ? 'spb-reco-a'
+      : r.kind === 'total' ? 'spb-reco-t'
+      : r.kind === 'net' ? 'spb-reco-n' : '';
+    const nil = r.kind === 'net' && Math.abs(r.amount) < 0.005;
+    const bad = r.kind === 'net' && m && m.unexplained;
+    html += `<tr class="${cls}"><td>${escHtml(r.label)}</td>
+      <td class="${bad ? 'spb-reco-bad' : (nil ? 'spb-reco-ok' : '')}">${spbFmt(r.amount)}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  if (footHtml) html += footHtml;
+  if (m && m.unexplained) {
+    html += `<p class="spb-reco-warn">Rs ${spbFmt(Math.abs(m.net))} is unexplained — it exceeds
+      Rs ${spbFmt(SPB_RECO_ROUNDING_LIMIT)}, so it is not absorbed as rounding. Check the filed figures
+      and the omitted bills.</p>`;
+  }
+  return html + `</section>`;
 }
 
 // ── Output ──────────────────────────────────────────────────────────────────
+function spbRecoAllStatements() {
+  const out = SPB_RECO_STATEMENTS.map(st => ({ title: st.title, m: spbRecoModel(st) }));
+  const v = spbRecoVatModel();
+  out.push({ title: 'VAT Reconciliation Statement', m: v, rows: v.rows });
+  out.push({ title: 'Cross Check of VAT Payables (Receivables)', m: null, rows: v.crossRows });
+  return out;
+}
+
 function spbRecoExportModel() {
-  const columns = [
-    { label: 'Particulars', align: 'l', w: 62 },
-    { label: 'Amount (Rs.)', align: 'r', num: true, w: 38 },
-  ];
   const rows = [];
-  SPB_RECO_STATEMENTS.forEach(st => {
-    const m = spbRecoModel(st);
-    rows.push({ cells: [st.title], style: 'section' });
-    rows.push({ cells: [st.retLabel, m.ret] });
-    if (m.auto.length || m.adds.length) rows.push({ cells: ['Add:'], style: 'subtle' });
-    m.auto.filter(l => l.amount > 0).forEach(l => rows.push({ cells: ['   ' + l.label, l.amount] }));
-    m.adds.forEach(a => rows.push({ cells: ['   ' + (a.description || '(not described)'), Number(a.amount) || 0] }));
-    const neg = m.auto.filter(l => l.amount < 0);
-    if (neg.length || m.lessers.length) rows.push({ cells: ['Less:'], style: 'subtle' });
-    neg.forEach(l => rows.push({ cells: ['   ' + l.label, Math.abs(l.amount)] }));
-    m.lessers.forEach(a => rows.push({ cells: ['   ' + (a.description || '(not described)'), Number(a.amount) || 0] }));
-    rows.push({ cells: ['Less: Rounding Effect', m.rounding] });
-    rows.push({ cells: [st.retLabel + ' After Adjustment', m.after], style: 'total' });
-    rows.push({ cells: [st.bookLabel, m.books] });
-    rows.push({ cells: ['Net Difference', m.net], style: 'grand' });
+  spbRecoAllStatements().forEach(({ title, m, rows: only }) => {
+    rows.push({ cells: [title], style: 'section' });
+    rows.push({ cells: [spbRecoPeriod()], style: 'subtle' });
+    (only || m.rows).forEach(r => {
+      if (r.kind === 'heading' || r.kind === 'sub') { rows.push({ cells: [r.label], style: 'subtle' }); return; }
+      const label = (r.kind === 'line' || r.kind === 'typed') ? '   ' + r.label : r.label;
+      rows.push({
+        cells: [label, r.amount],
+        style: r.kind === 'total' ? 'total' : (r.kind === 'net' ? 'grand' : undefined),
+      });
+    });
+    rows.push({ cells: [''] });
   });
   return {
     title: 'Reconciliation Statements',
     subtitleLines: [
       spbVal('spb-company') + (spbVal('spb-pan') ? '  ·  PAN ' + spbVal('spb-pan') : ''),
       spbRecoPeriod(),
-      `Rounding is absorbed only below Rs ${spbFmt(SPB_RECO_ROUNDING_LIMIT)}.`,
+      '(−) indicates VAT Receivables · (+) indicates VAT Payables',
     ],
-    columns, rows, landscape: false,
+    columns: [
+      { label: 'Particulars', align: 'l', w: 66 },
+      { label: 'Amount (Rs.)', align: 'r', num: true, w: 34 },
+    ],
+    rows, landscape: false,
   };
 }
 
 function spbPrintReco() {
   let body = '';
-  SPB_RECO_STATEMENTS.forEach(st => {
-    const m = spbRecoModel(st);
-    const row = (label, amount, bold) =>
-      `<tr><td${bold ? ' style="font-weight:700;"' : ''}>${escHtml(label)}</td>` +
-      `<td style="text-align:right;${bold ? 'font-weight:700;' : ''}">${spbFmt(amount)}</td></tr>`;
-    body += `<h2 style="font-size:13px; margin:22px 0 2px;">${escHtml(st.title)}</h2>
-      <p style="font-size:11px; color:#444; margin:0 0 8px;">${escHtml(spbRecoPeriod())}</p>
-      <table style="max-width:620px;"><thead><tr><th>Particulars</th><th style="text-align:right;">Amount (Rs.)</th></tr></thead><tbody>`;
-    body += row(st.retLabel, m.ret, true);
-    if (m.auto.length || m.adds.length) body += `<tr><td colspan="2" style="font-weight:700;">Add:</td></tr>`;
-    m.auto.filter(l => l.amount > 0).forEach(l => { body += row('    ' + l.label, l.amount); });
-    m.adds.forEach(a => { body += row('    ' + (a.description || '(not described)'), Number(a.amount) || 0); });
-    const neg = m.auto.filter(l => l.amount < 0);
-    if (neg.length || m.lessers.length) body += `<tr><td colspan="2" style="font-weight:700;">Less:</td></tr>`;
-    neg.forEach(l => { body += row('    ' + l.label, Math.abs(l.amount)); });
-    m.lessers.forEach(a => { body += row('    ' + (a.description || '(not described)'), Number(a.amount) || 0); });
-    body += row('Less: Rounding Effect', m.rounding);
-    body += row(st.retLabel + ' After Adjustment', m.after, true);
-    body += row(st.bookLabel, m.books, true);
-    body += `<tr style="background:#fff3e0;"><td style="font-weight:800;">Net Difference</td>
-      <td style="text-align:right; font-weight:800;${m.unexplained ? 'color:var(--red-dk);' : ''}">${spbFmt(m.net)}</td></tr>`;
+  spbRecoAllStatements().forEach(({ title, m, rows: only }) => {
+    body += `<h2 class="reco-t">${escHtml(title)}</h2>
+      <p class="reco-p">${escHtml(spbRecoPeriod())}</p>
+      <table class="reco"><thead><tr><th>Particulars</th><th class="r">Amount (Rs.)</th></tr></thead><tbody>`;
+    (only || m.rows).forEach(r => {
+      if (r.kind === 'heading') { body += `<tr><td colspan="2" class="h">${escHtml(r.label)}</td></tr>`; return; }
+      if (r.kind === 'sub') { body += `<tr><td colspan="2" class="s">${escHtml(r.label)}</td></tr>`; return; }
+      const cls = r.kind === 'anchor' || r.kind === 'total' ? ' class="b"'
+        : (r.kind === 'net' ? ' class="n"' : '');
+      const indent = (r.kind === 'line' || r.kind === 'typed') ? ' class="i"' : '';
+      body += `<tr${cls}><td${indent}>${escHtml(r.label)}</td><td class="r">${spbFmt(r.amount)}</td></tr>`;
+    });
     body += `</tbody></table>`;
-    if (m.unexplained) {
-      body += `<p style="font-size:11px; color:#444; margin-top:6px;">Rs ${spbFmt(Math.abs(m.net))} remains unexplained; it exceeds Rs ${spbFmt(SPB_RECO_ROUNDING_LIMIT)} and is not absorbed as rounding.</p>`;
-    }
   });
-  spbOpenPrint(spbPrintDoc('Reconciliation Statements', spbRecoPeriod(), body));
+  body += `<p class="reco-p">(−) indicates VAT Receivables &nbsp;·&nbsp; (+) indicates VAT Payables</p>`;
+  spbOpenPrint(spbPrintDoc('Reconciliation Statements', spbRecoPeriod(), body, { portrait: true, css: `
+    .reco { max-width: 640px; margin-bottom: 26px; }
+    .reco-t { font-size: 13px; margin: 26px 0 2px; }
+    .reco-p { font-size: 10.5px; color: #444; margin: 0 0 10px; }
+    .reco td, .reco th { padding: 5px 10px; }
+    .reco td.r, .reco th.r { text-align: right; }
+    .reco td.i { padding-left: 26px; }
+    .reco td.h { font-weight: 700; padding-top: 12px; }
+    .reco td.s { font-weight: 600; padding-left: 14px; }
+    .reco tr.b td { font-weight: 700; }
+    .reco tr.n td { font-weight: 800; border-top: 1px solid #999; }
+  ` }));
   AuditLog.record('spb_reco_printed', {
     module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: spbBookId,
     detail: { fiscalYear: spbVal('spb-fy') },

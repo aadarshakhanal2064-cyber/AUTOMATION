@@ -586,12 +586,22 @@ function spbMajorityFi(list) {
 
 // The figure that goes on the filed VAT return: capital purchase is entered in
 // its own column but is REPORTED inside taxable purchase (2026-08-14, user).
-function spbReturnTaxable(o) {
-  return (o.taxable || 0) + (o.cap || 0);
+//
+// Takes a MONTH object — `{t, v, f, cap, capVat, …}`, the shape spbComputeBook()
+// and spbVr both use. There were two definitions of each of these in this file
+// for months: an earlier pair reading `.taxable`/`.vat` (a TRANSACTION's keys)
+// and a later pair reading `.t`/`.v`. Function declarations hoist, so the later
+// pair silently won every call and the earlier one was dead — which meant a
+// caller written against the documented `.taxable` shape got back the capital
+// figure alone, with no error anywhere. One definition now, month-shaped
+// because that is what both real callers pass; a transaction adds its own
+// `taxable + cap` directly.
+function spbReturnTaxable(m) {
+  return (m.t || 0) + (m.cap || 0);
 }
 
-function spbReturnVat(o) {
-  return (o.vat || 0) + (o.capVat || 0);
+function spbReturnVat(m) {
+  return (m.v || 0) + (m.capVat || 0);
 }
 
 // Called once per file as its read settles. The whole downstream pipeline —
@@ -1725,8 +1735,6 @@ function spbVrModel(key) {
 // The figures that go on the filed VAT return. Capital purchase is entered in
 // its own column but REPORTED inside taxable purchase (2026-08-14, user), so
 // every comparison against the return has to add it back.
-function spbReturnTaxable(m) { return (m.t || 0) + (m.cap || 0); }
-function spbReturnVat(m) { return (m.v || 0) + (m.capVat || 0); }
 
 function spbRenderVrGrid() {
   const card = document.getElementById('spb-vr-card');
@@ -1891,6 +1899,11 @@ function spbVrLoadDraft() {
         SPB_VR_FIELDS.forEach(f => { if (m[f] != null) vr[key][fi][f] = String(m[f]); });
       });
     });
+    // `meta` carries the two figures the VAT cross-check needs that no month
+    // holds — last year's closing VAT position and the unadjusted prior-year
+    // purchase (js/salesPurchaseBookReco.js). Rebuilding from spbBlankVr()
+    // drops anything that isn't a month, so it is carried across by hand.
+    if (d.vr.meta) vr.meta = d.vr.meta;
     spbVr = vr;
   } catch (e) { /* ignore a corrupt draft */ }
 }

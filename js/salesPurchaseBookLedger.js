@@ -888,7 +888,13 @@ function spbRenderRegisterTable() {
 // One shared builder: every Autobooks preview (register now, party statement
 // and the annexure next) prints through this, so they share one page setup and
 // one set of print rules rather than each inventing its own.
-function spbPrintDoc(title, subtitle, bodyHtml) {
+// `opts` (2026-08-29): `{ css, portrait }`. A register is a wide grid and wants
+// landscape; a reconciliation statement is a two-column list and reads wrong
+// stretched across an A4 landscape page, so it asks for portrait and adds its
+// own rules. Everything shared — the letterhead block, the tokens below, the
+// print behaviour — stays here rather than being copied per statement.
+function spbPrintDoc(title, subtitle, bodyHtml, opts) {
+  const o = opts || {};
   const ident = spbBookIdentity() || {};
   const head = `
     <div style="text-align:center; margin-bottom:18px;">
@@ -913,7 +919,7 @@ function spbPrintDoc(title, subtitle, bodyHtml) {
     .badge-amber { background:var(--amber-bg); color:var(--amber-dk); border:1px solid #fbd38d; }
     .badge-sent  { background:var(--green-bg); color:var(--green-dk); border:1px solid #a7f3d0; }
 
-    @page { size: A4 landscape; margin: 10mm 8mm; }
+    @page { size: A4 ${o.portrait ? 'portrait' : 'landscape'}; margin: ${o.portrait ? '14mm 12mm' : '10mm 8mm'}; }
     body { margin:0; padding:16px; background:#fff; color:#000; font-family:'Inter',Arial,sans-serif; font-size:11px; }
     table { width:100%; border-collapse:collapse; }
     th, td { border:1px solid #94a3b8; padding:4px 6px; }
@@ -921,6 +927,7 @@ function spbPrintDoc(title, subtitle, bodyHtml) {
     thead { display: table-header-group; }
     tr { page-break-inside: avoid; }
     @media print { html, body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } body { padding:0; } }
+    ${o.css || ''}
   </style></head><body>${head}${bodyHtml}
   <script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>
   </body></html>`;
