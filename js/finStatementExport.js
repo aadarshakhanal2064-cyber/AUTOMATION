@@ -41,8 +41,9 @@ const FSX_NUMFMT0 = '[>=10000000]#\\,##\\,##\\,##0;[>=100000]#\\,##\\,##0;#,##0'
 // 3.1 PPE) whose columns are categories rather than years.
 const FSX_GEOM = {
   COI:   { label: 'A', cy: 'F' },
-  // The Trial Balance page: A label, then Detail / Total / Taken by. A
-  // matrix geometry because the third column is TEXT, not a second year.
+  // The Trial Balance page: A label, then Detail / Total. A matrix geometry
+  // because the two columns are a detail line and its section subtotal, not
+  // two years.
   TB:    { label: 'A', first: 'C', step: 2 },
   SFP:   { label: 'B', note: 'D', cy: 'F', py: 'H' },
   SOI:   { label: 'B', note: 'D', cy: 'F', py: 'H' },
@@ -194,51 +195,6 @@ function fsxBuildReport(out) {
   const pyHead = m.asAtPy || 'Comparative';
   const yrHead = m.yearEndedCy || cyHead;
   const yrHeadPy = m.yearEndedPy || pyHead;
-
-  // ── TB: the trial balance, as read, with the totals it does not carry ──
-  //
-  //  The firm's own TB sheet has section subtotals but no block totals and
-  //  no grand total ("total of investments", "total of expenses" — user ask
-  //  2026-08-30), so they are added here. Every figure the statements took
-  //  is named in a third column: this page is the audit trail between the
-  //  client's ledger and the statement, which is exactly what nobody can
-  //  reconstruct once the figures are sitting in the other seven sheets.
-  //
-  //  Printed only when a trial balance was actually imported.
-  const tb = out.tb;
-  if (tb && tb.blocks && tb.blocks.length) {
-    const tbRows = [];
-    let grandDr = 0, grandCr = 0;
-    for (const blk of tb.blocks) {
-      tbRows.push(R(blk.title, [], 'head'));
-      let blockTotal = 0;
-      for (const sec of blk.sections) {
-        // The section's own heading carries its subtotal, so a section with
-        // no detail lines still reads as a figure rather than an empty row.
-        tbRows.push(R(sec.title, [null, sec.total, sec.takenBy || ''], sec.lines.length ? 'sub' : 'item'));
-        for (const l of sec.lines) tbRows.push(R('    ' + l.name, [l.amount, null, l.takenBy || ''], 'item'));
-        if (sec.lines.length) tbRows.push(R('    Total ' + sec.shortTitle, [null, sec.total, ''], 'tot'));
-        blockTotal += sec.total;
-      }
-      tbRows.push(R('Total ' + blk.title, [null, blockTotal, ''], 'tot'));
-      tbRows.push(B());
-      if (blk.side === 'dr') grandDr += blockTotal; else grandCr += blockTotal;
-    }
-    tbRows.push(R('Total of Assets & Expenses', [null, grandDr, ''], 'grand'));
-    tbRows.push(R('Total of Revenue, Equity & Liabilities', [null, grandCr, ''], 'grand'));
-    tbRows.push(R('Difference in Trial', [null, grandDr - grandCr, ''], 'grand'));
-    tbRows.push(B());
-    tbRows.push(R(Math.abs(grandDr - grandCr) <= 0.5
-      ? 'The trial balance foots. Every figure above that the statements use is named in the last column.'
-      : 'THE TRIAL BALANCE DOES NOT FOOT — the difference above is unexplained. The figures have still been carried through.', [], 'note'));
-
-    sheets.push({
-      key: 'TB', name: 'Trial Balance', geom: FSX_GEOM.TB, matrix: true,
-      title: 'TRIAL BALANCE', subtitle: m.asAtLine, noHeaderBand: false,
-      cols: [{ h1: '', h2: 'Detail' }, { h1: '', h2: 'Total' }, { h1: '', h2: 'Taken by' }],
-      rows: tbRows,
-    });
-  }
 
   // ── COI: Return of Income (the tax computation) ──
   // A provisional set is seven sheets — SFP, SOI, SOCE, SOCF, 3.1 PPE, Sch-BS,
@@ -1085,6 +1041,126 @@ function fsxBuildReport(out) {
     rows: schPlRows,
   });
 
+  // ── Trial Balance: the ledger the statements were built from ──
+  //
+  //  LAST in the set, after Sch-PL (user ask 2026-08-30) — it is the working
+  //  behind the statements, not a preface to them.
+  //
+  //  The firm's own TB sheet has section subtotals but no block totals and no
+  //  grand total, so those are added here. What makes the page an audit trail
+  //  is not a description column (there was one, removed the same day) but the
+  //  fact that the OTHER SHEETS POINT AT IT: once this sheet exists, every
+  //  statement cell holding a figure this trial balance supplied is written as
+  //  `='Trial Balance'!E11` rather than as a literal. See the linking pass
+  //  below fsxBuildReport's sheet list.
+  //
+  //  Printed only when a trial balance was actually imported.
+  const tb = out.tb;
+  if (tb && tb.blocks && tb.blocks.length) {
+    const tbRows = [];
+    let grandDr = 0, grandCr = 0;
+    for (const blk of tb.blocks) {
+      tbRows.push(R(blk.title, [], 'head'));
+      let blockTotal = 0;
+      for (const sec of blk.sections) {
+        // Keys are stable and derived from the reader's own ids, so the
+        // linking pass can address any row here by name OR by section.
+        const secKey = 'sec_' + blk.id + '_' + sec.id;
+        tbRows.push(R(sec.title, [null, sec.total], sec.lines.length ? 'sub' : 'item', { k: secKey }));
+        sec.lines.forEach((l, i) => {
+          tbRows.push(R('    ' + l.name, [l.amount, null], 'item', { k: 'ln_' + blk.id + '_' + sec.id + '_' + i }));
+        });
+        if (sec.lines.length) {
+          tbRows.push(R('    Total ' + sec.shortTitle, [null, sec.total], 'tot', { k: secKey + '_tot' }));
+        }
+        blockTotal += sec.total;
+      }
+      tbRows.push(R('Total ' + blk.title, [null, blockTotal], 'tot'));
+      tbRows.push(B());
+      if (blk.side === 'dr') grandDr += blockTotal; else grandCr += blockTotal;
+    }
+    tbRows.push(R('Total of Assets & Expenses', [null, grandDr], 'grand'));
+    tbRows.push(R('Total of Revenue, Equity & Liabilities', [null, grandCr], 'grand'));
+    tbRows.push(R('Difference in Trial', [null, grandDr - grandCr], 'grand'));
+    tbRows.push(B());
+    tbRows.push(R(Math.abs(grandDr - grandCr) <= 0.5
+      ? 'The trial balance foots. Every statement figure taken from it is a live reference to this sheet.'
+      : 'THE TRIAL BALANCE DOES NOT FOOT — the difference above is unexplained. The figures have still been carried through.', [], 'note'));
+
+    sheets.push({
+      key: 'TB', name: 'Trial Balance', geom: FSX_GEOM.TB, matrix: true,
+      title: 'TRIAL BALANCE', subtitle: m.asAtLine,
+      cols: [{ h1: '', h2: 'Detail' }, { h1: '', h2: 'Total' }],
+      rows: tbRows,
+    });
+
+    // ── the linking pass: point every statement cell at this sheet ──
+    //
+    //  A cell is linked when its LABEL matches a trial-balance row AND its
+    //  current-year VALUE still equals that row's figure. Both conditions
+    //  matter:
+    //
+    //   · the label alone would link "Other Expenses" in three different
+    //     sections to whichever it met first;
+    //   · the value is what makes a figure the preparer has TYPED OVER stay a
+    //     literal. It no longer equals the ledger, so it must not claim to
+    //     come from it — which is the same contract the on-screen provenance
+    //     badge follows.
+    //
+    //  Matching on the pair rather than on a hand-kept table of row keys is
+    //  also what lets a client's own expense heads link without anyone
+    //  maintaining a list of them.
+    const tbByLabel = {};
+    for (const r of tbRows) {
+      if (!r.k || r.kind === 'tot' || r.kind === 'grand') continue;
+      const lbl = fsxLinkKey(r.label);
+      if (!lbl) continue;
+      // WHICH column holds the figure matters: a detail line carries it in
+      // Detail (index 0) and a section row in Total (index 1). Linking every
+      // row to index 0 produced `='Trial Balance'!C40` against an empty cell
+      // for every section — a reference that reads fine and resolves to nil.
+      const ci = (r.vals || []).findIndex(x => fsxIsNum(x));
+      if (ci < 0) continue;
+      const v = r.vals[ci];
+      // A nil needs no reference, and zero matches far too many rows.
+      if (Math.abs(v) < 0.005) continue;
+      // First writer wins, so a section subtotal is not displaced by a line
+      // that happens to repeat its wording.
+      if (!tbByLabel[lbl]) tbByLabel[lbl] = { k: r.k, v, ci };
+    }
+    // The handful whose statement wording differs from the ledger's. Keyed by
+    // the STATEMENT label, valued by the trial-balance section id.
+    const TB_ALIAS = {
+      'cash in hand bank balances': 'sec_assets_cash',
+      'cash and cash equivalents': 'sec_assets_cash',
+      'purchases of goods': 'sec_expenses_purchases',
+      'sale of goods': 'sec_revenue_revenue',
+      'balance on end of the year': 'sec_assets_inventories',
+      'closing stock': 'sec_assets_inventories',
+    };
+    for (const [lbl, key] of Object.entries(TB_ALIAS)) {
+      const row = tbRows.find(r => r.k === key);
+      if (!row || tbByLabel[lbl]) continue;
+      const ci = (row.vals || []).findIndex(x => fsxIsNum(x));
+      if (ci >= 0 && Math.abs(row.vals[ci]) >= 0.005) tbByLabel[lbl] = { k: key, v: row.vals[ci], ci };
+    }
+
+    let linked = 0;
+    for (const sh of sheets) {
+      if (sh.key === 'TB') continue;
+      for (const r of sh.rows) {
+        if (!r.k || r.xf || r.xsum || r.colSum) continue;   // never displace a real formula
+        const hit = tbByLabel[fsxLinkKey(r.label)];
+        if (!hit) continue;
+        const cy = (r.vals || [])[0];
+        if (!fsxIsNum(cy) || Math.abs(cy - hit.v) > 0.005) continue;
+        r.xf = ({ X }) => X('TB', hit.k, hit.ci);
+        linked++;
+      }
+    }
+    if (linked) issues.push({ level: 'info', msg: `${linked} statement figures are written as live references to the Trial Balance sheet.` });
+  }
+
   // ── which comparative-column aggregations may carry a formula ──
   // The firm's own workbook wires BOTH columns with formulas. We follow it, but
   // only where the sum provably reproduces the figure the prior-year statement
@@ -1147,6 +1223,13 @@ function fsxBuildReport(out) {
 // ════════════════════════════════════════════════════════════════
 
 const fsxIsNum = (v) => typeof v === 'number' && isFinite(v);
+
+// Label key for the Trial Balance linking pass: case-, punctuation- and
+// numbering-insensitive on trimmed word content — the same conservative rule
+// wdWorkTypesForLabel() follows, so it can never invent a match.
+const fsxLinkKey = (s) => String(s == null ? '' : s)
+  .replace(/^[A-Za-z]?\s*\d*\s*[.)]\s*/, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
 // Accounting presentation, matching the Excel number format literally: a

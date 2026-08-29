@@ -470,30 +470,49 @@ On import, therefore, every P&L line the TB did not supply becomes
 - **A head already typed a non-zero figure is left alone** — the preparer's
   own entry outranks the import, as everywhere else in this module.
 
-## 2.13 The Trial Balance page
+## 2.13 The Trial Balance page, and the references into it
 
-*(2026-08-30, user ask. Printed only when a TB was imported; first sheet in
-the set, on screen and in Excel.)*
+*(2026-08-30, user ask. Printed only when a TB was imported; **last** sheet in
+the set, after Sch-PL, on screen and in Excel. COI is first.)*
 
-It reprints the trial balance as read, and adds the two things the client's own
-sheet does not have:
+The page reprints the trial balance as read and adds the totals the client's
+own sheet never draws — per section, per block, and the two grand totals either
+side of the trial, with the difference.
 
-- **totals it never draws** — per section, per block, and the two grand totals
-  either side of the trial, with the difference;
-- **a `Taken by` column naming where each figure went** — `SFP — Trade and
-  Other Receivables (note 3.3)`, `3.1 PPE — vehicles`, `SOI — Bank Charges`,
-  `Sch-PL note 3.15, under its own name`.
+**The audit trail is the formulas, not a description.** A `Taken by` column
+naming each destination was built first and removed the same day: the export
+layer now writes every statement cell the trial balance supplied as a live
+reference to this sheet —
 
-That column is the point of the page. Once the figures are sitting in the other
-eight sheets nobody can reconstruct which ledger balance became which statement
-line — which is exactly what a reviewer checking a provisional set against the
-ledger is doing by hand. The map lives in `TrialBalanceReader.DESTINATION`,
-beside the section list, because it is a fact about the **reading**, not about
-the printing.
+```
+Sch-PL  Purchases of goods            ='Trial Balance'!E40
+Sch-PL  Insurance Exp                 ='Trial Balance'!C61
+Sch-BS  Cash in Hand & Bank Balances  ='Trial Balance'!E33
+```
 
-Sections whose lines split across different statement lines (finance cost,
-revenue, loans, PPE) carry a per-LINE destination instead, via
-`LINE_DESTINATION`.
+— which is a trail a reviewer can follow in Excel rather than a sentence they
+have to trust.
+
+**A cell links only when its label matches a TB row AND its current-year value
+still equals that row's figure.** Both halves are load-bearing:
+
+- the **label** alone would bind "Other Expenses" to whichever section it met
+  first;
+- the **value** is what keeps a figure the preparer has typed over a literal.
+  It no longer equals the ledger, so it must not claim to come from it — the
+  same contract the on-screen provenance badge follows. Typing over Purchases
+  drops the reference count by exactly one.
+
+Matching on the pair rather than a hand-maintained key table is also what lets
+a client's own expense heads link without anyone keeping a list of them.
+
+Two details that were bugs before they were rules: **a section row holds its
+figure in the Total column and a detail line in Detail**, so the link records
+which column — pointing every row at Detail produced references to empty cells
+that resolved to nil and read perfectly. And **a nil is never linked**, because
+zero matches far too many rows. `TB_ALIAS` covers the handful whose statement
+wording differs from the ledger's ("Cash in Hand & Bank Balances" against
+"9.Cash and Cash Equivalents").
 
 ## 3. Empty account heads are removed
 

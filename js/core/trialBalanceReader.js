@@ -440,72 +440,15 @@ const TrialBalanceReader = (() => {
   // ════════════════════════════════════════════════════════════════
   //  toReport — the trial balance as a printable page
   //
-  //  Two things the client's own sheet does not have, both asked for
-  //  (2026-08-30): the totals it never draws (a block total per side, and a
-  //  grand total either side of the trial), and a column naming WHERE each
-  //  figure went — SFP, SOI, Sch-PL, note 3.3 and so on.
+  //  The totals the client's own sheet never draws: a total per section, a
+  //  total per block, and the two grand totals either side of the trial.
   //
-  //  That last column is the point of the page. Once the figures are sitting
-  //  in the other seven sheets nobody can reconstruct which ledger balance
-  //  became which statement line, and a reviewer checking a provisional set
-  //  against the ledger is doing exactly that by hand today.
+  //  It does NOT carry a column describing where each figure went. It briefly
+  //  did (2026-08-30) and that was the wrong answer: the export layer now
+  //  writes every statement cell the trial balance supplied as a live
+  //  reference to this sheet (`='Trial Balance'!E11`), which is a trail you
+  //  can follow in Excel rather than a sentence you have to trust.
   // ════════════════════════════════════════════════════════════════
-
-  // Where each section lands. Kept beside the section list rather than in the
-  // export layer, because it is a fact about the READING, not about the
-  // printing — the same table that says what a section is says where it goes.
-  const DESTINATION = {
-    assets: {
-      ppe:              'SFP — Property, Plant and Equipment (note 3.1)',
-      investments:      'SFP — Investments (note 3.2)',
-      otherReceivables: 'SFP — Other Receivables (note 3.3)',
-      inventories:      'SFP — Inventories (note 3.4) · Sch-PL Closing Stock',
-      tradeReceivables: 'SFP — Trade and Other Receivables (note 3.3)',
-      vatReceivable:    'Sch-BS — VAT Receivable (note 3.3)',
-      advanceTax:       'Sch-BS — Advance Tax (note 3.3)',
-      prepayments:      'Sch-BS — note 3.3, line by line',
-      cash:             'SFP — Cash and Cash Equivalents (note 3.5)',
-    },
-    expenses: {
-      purchases:      'Sch-PL — Purchases (note 3.12)',
-      directExpenses: 'Sch-PL — direct costs (note 3.12)',
-      employee:       'SOI — Employee Benefit Expenses (note 3.13)',
-      financeCost:    'SOI — Finance Cost (note 3.14)',
-      otherExpenses:  'Sch-PL — Other Expenses (note 3.15)',
-    },
-    revenue: { revenue: 'SOI — Revenue from Operations' },
-    equity: {
-      shareCapital:  'SFP — Share Capital (note 3.6) · SOCE',
-      reserves:      'SFP — Reserves (note 3.7) · SOCE opening',
-      loans:         'SFP — Loans and Borrowings (note 3.8), by facility',
-      tradePayables: 'SFP — Trade and Other Payables (note 3.9)',
-      dutiesTaxes:   'Sch-BS — TDS payable (note 3.9)',
-    },
-  };
-  // Detail lines that carry their own destination, because the section's
-  // lines are split across different statement lines rather than summed.
-  const LINE_DESTINATION = {
-    financeCost: l => ({
-      interestTerm: 'SOI — Interest on Term / HP / PWC',
-      interestOD:   'SOI — Interest on OD / CC / Short term',
-      bankCharges:  'SOI — Bank Charges',
-    }[firstMatch(FINANCE_LINES, l.name)] || ''),
-    revenue: l => ({
-      sales:          'SOI — Revenue from Operations',
-      otherIncome:    'SOI — Other Income',
-      interestIncome: 'SOI — Interest Income',
-    }[firstMatch(REVENUE_LINES, l.name)] || ''),
-    loans: l => 'note 3.8 — ' + ({
-      pwc: 'Permanent Working Capital', hp: 'Hire Purchase',
-      lt: 'Long Term Loan', st: 'Short Term / OD / CC',
-    }[firstMatch(LOAN_GROUPS, l.name)] || 'Short Term / OD / CC'),
-    ppe: l => {
-      const c = firstMatch(PPE_CLASSES, l.name);
-      return c ? '3.1 PPE — ' + c : '';
-    },
-    otherExpenses: () => 'Sch-PL note 3.15, under its own name',
-    prepayments: () => 'Sch-BS note 3.3, under its own name',
-  };
 
   const BLOCK_TITLES = {
     assets:   { title: 'A. Assets', side: 'dr' },
@@ -521,7 +464,6 @@ const TrialBalanceReader = (() => {
       const b = parsed.blocks[id];
       if (!b) continue;
       const meta = BLOCK_TITLES[id];
-      const lineDest = LINE_DESTINATION;
       blocks.push({
         id, title: meta.title, side: meta.side,
         sections: b.sections.map(sec => ({
@@ -531,18 +473,14 @@ const TrialBalanceReader = (() => {
           title: String(sec.label || sec.id).trim().replace(/\s*:\s*$/, ''),
           shortTitle: String(sec.label || sec.id).trim().replace(/^[A-Za-z]?\s*\d*\s*[.)]\s*/, '').replace(/\s*:\s*$/, ''),
           total: sec.total,
-          takenBy: (DESTINATION[id] || {})[sec.id] || '',
-          lines: sec.lines.map(l => ({
-            name: l.name, amount: l.amount,
-            takenBy: lineDest[sec.id] ? lineDest[sec.id](l) : '',
-          })),
+          lines: sec.lines.map(l => ({ name: l.name, amount: l.amount })),
         })),
       });
     }
     return { blocks, check: parsed.check, sheetName: parsed.sheetName };
   }
 
-  return { parse, toFigures, toReport, findSheet, BLOCKS, SECTIONS, LOAN_GROUPS, PPE_CLASSES, DESTINATION, key };
+  return { parse, toFigures, toReport, findSheet, BLOCKS, SECTIONS, LOAN_GROUPS, PPE_CLASSES, key };
 })();
 
 // Browser: global (matches the app's no-module architecture). Node: export so
