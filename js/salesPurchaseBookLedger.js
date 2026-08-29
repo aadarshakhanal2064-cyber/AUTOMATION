@@ -90,7 +90,9 @@ function spbLedgerReset() {
   // hand here — otherwise the previous client's half-typed bill stays on screen
   // under the next client's name.
   if (document.getElementById('spb-om-form')) spbOmResetForm();
-  spbShowSection('import');
+  // The first tab, whichever it is — the order is decided by which parts of
+  // Autobooks have registered, not hardcoded here.
+  spbShowSection(SPB_SECTION_TABS[0].key);
   spbRenderBookCard();
   spbRenderOmittedTable();
   if (typeof spbRenderConfirm === 'function') spbRenderConfirm();

@@ -103,6 +103,89 @@ function spbEnNextBill(bill) {
   return m[1] + (m[2].length > next.length ? next.padStart(m[2].length, '0') : next);
 }
 
+// ── Duplicate bill numbers — the rule is OPPOSITE on the two registers ──────
+// This is not a shared test with a different label on it; the two registers
+// number bills from different ends of the transaction:
+//
+//  SALES — the bill number is the FIRM'S OWN invoice number, one running
+//    sequence for the whole year. Bill no. 1 exists exactly once in the
+//    register, whoever the customer is. Hanuman Supplier and Lateswori
+//    Supplier both holding sales bill 1 means one of them is wrong, so the
+//    key is the BILL NUMBER ALONE.
+//  PURCHASE — the bill number is written by the SUPPLIER, and every supplier
+//    numbers from their own 1. Hanuman's purchase bill 1 and Lateswori's
+//    purchase bill 1 are two ordinary bills and must never be flagged. Only
+//    the SAME supplier billing one number twice is suspicious, so the key is
+//    PARTY + BILL NUMBER.
+//
+// (The amount is deliberately NOT part of either key. Keying on it meant two
+// bills sharing a number escaped notice whenever their amounts differed —
+// which is the case a wrong bill number actually produces.)
+function spbEnBillKey(bill) {
+  return String(bill == null ? '' : bill).toUpperCase().replace(/\s+/g, '')
+    .replace(/(\d+)$/, d => d.replace(/^0+(?=\d)/, ''));   // "0012" and "12" are one bill
+}
+
+function spbEnDupMap(rows, section) {
+  const groups = new Map();
+  rows.forEach((r, i) => {
+    if (spbEnRowInert(r)) return;
+    const bill = spbEnBillKey(r.bill);
+    if (!bill) return;
+    const key = section === 'sales' ? bill : spbSafeKey(r.party) + '|' + bill;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(i);
+  });
+  const out = new Map();
+  groups.forEach(list => {
+    if (list.length < 2) return;
+    list.forEach(i => out.set(i, { peers: list.filter(x => x !== i) }));
+  });
+  return out;
+}
+
+// Where a row sits as the user SEES it — "Bhadra, row 4". Counted exactly the
+// way the month view lists rows (undated rows appear in every month), so the
+// number printed here is the number in the grid's own # column.
+function spbEnRowLabel(rows, idx, fyStartYear) {
+  const fi = spbEnNormDate(rows[idx].date, fyStartYear).fi;
+  let n = 0;
+  for (let i = 0; i <= idx; i++) {
+    if (spbEnRowInert(rows[i])) continue;
+    const di = spbEnNormDate(rows[i].date, fyStartYear).fi;
+    if (di == null || di === fi) n++;
+  }
+  return { fi, n, month: fi == null ? 'no date' : SPB_MONTH_NAMES[fi] };
+}
+
+// The duplicate finding as the user reads it: which party, which month, which
+// row — never a bare count. Saying "1 possible duplicate bill" leaves the
+// staff member to find it among 1,600 lines, which is the work being replaced.
+function spbEnDupFindings(rows, section, fyStartYear) {
+  const out = new Map();
+  spbEnDupMap(rows, section).forEach((info, i) => {
+    const r = rows[i];
+    const bill = String(r.bill || '').trim();
+    const peer = rows[info.peers[0]];
+    const at = spbEnRowLabel(rows, info.peers[0], fyStartYear);
+    const where = `${at.month}, row ${at.n}`;
+    const more = info.peers.length > 1 ? ` and ${info.peers.length - 1} more` : '';
+    const peerName = String(peer.party || '').trim() || '(no party)';
+    if (section !== 'sales') {
+      out.set(i, { level: 'warn', msg: `${peerName} already has purchase bill ${bill} — ${where}${more}` });
+      return;
+    }
+    if (spbSafeKey(peer.party) !== spbSafeKey(r.party)) {
+      out.set(i, { level: 'err', msg: `Sales bill ${bill} is also on ${peerName} — ${where}${more}. One sales bill number, one bill.` });
+    } else if (spbNum(peer.taxable) === spbNum(r.taxable)) {
+      out.set(i, { level: 'err', msg: `Same bill ${bill}, same amount as ${where}${more} — looks entered twice` });
+    } else {
+      out.set(i, { level: 'err', msg: `Sales bill ${bill} is used again at ${where}${more}, for a different amount` });
+    }
+  });
+  return out;
+}
+
 // Which purchase-only amount columns this sheet actually uses — value-driven,
 // the spbLedgerCols idiom. What decides the synthetic header below, and via
 // that header what spbSectionAmountKeys prints: a typed book must not invent
@@ -594,7 +677,9 @@ function spbRenderEntry() {
     <p class="spb-en-help">Type a few letters of a party used before and pick it — the PAN fills itself; typing a
       known PAN fills the party. A blank VAT completes at 13% of its taxable when you leave the row.
       Dates accept <strong>2082.04.15</strong>, a bare day (<strong>15</strong> continues the row above),
-      or a month name. <strong>Enter</strong> moves down a column; a new row appears as you reach the end.
+      or a month name. <strong>Arrow keys move between cells</strong> and <strong>Enter</strong> moves down a
+      column — a new row appears as you reach the end; ← and → keep editing the text while your cursor is
+      inside a word.
       Everything autosaves as a draft on this computer — <strong>Save book to database</strong> (Import tab)
       makes it permanent and opens the Register, Confirmation and Annexure screens.</p>`;
 
@@ -641,6 +726,16 @@ function spbEnRenderRows() {
   // compact them here, where indices are about to be re-issued anyway. Never
   // done mid-typing: this runs only on structural renders.
   spbEnRows[spbEnSection] = spbEnSectionRows().filter(r => !spbEnRowInert(r));
+  // A structural render is exactly the moment the rows or the section may have
+  // been swapped underneath the caches (section switch, client switch, draft
+  // restore, seeding from a book) — so they are dropped here unconditionally
+  // rather than at each of those call sites, where one omission is invisible.
+  spbEnInvalidate();
+  // The dropdown holds a reference to the input it was opened from. A render
+  // replaces every cell, so an open list would be left pointing at a detached
+  // element — and it swallows the arrow keys while it thinks it is open, which
+  // is how the whole grid appeared to lose keyboard navigation.
+  spbEnAcHide();
   spbEnView = spbEnComputeView();
   const cols = spbEnCols();
   const html = spbEnView.map((idx, n) => spbEnRowHtml(idx, n, cols));
@@ -763,10 +858,41 @@ function spbEnRowIssues(idx) {
       issues.push({ level: 'warn', k: vk, msg: `VAT differs from 13% (expected ${spbFmt(exp)})` });
     }
   });
+  // A duplicate is a cross-row fact, so it is computed once per edit and read
+  // here — the Bill cell itself turns red, rather than the news of it living
+  // only in a summary line.
+  const dup = spbEnDups().get(idx);
+  if (dup) issues.push({ level: dup.level, k: 'bill', msg: dup.msg });
   return issues;
 }
 
 let spbEnDirCache = null;
+let spbEnDupCache = null;
+
+// Both caches are derived from (rows × section), so ANY change to either has
+// to drop them. Getting this wrong is not a stale-number problem: the two
+// registers' duplicate rules are opposites, so a sales cache read while the
+// purchase sheet is on screen would flag every supplier sharing a bill number
+// — the exact false alarm the rule exists to prevent.
+function spbEnInvalidate() {
+  spbEnDirCache = null;
+  spbEnDupCache = null;
+}
+
+// The cache stamps what it was built FROM, so a stale one can never be handed
+// back across a section or row-array swap however this is reached. The
+// explicit invalidations above still matter for edits, which mutate the rows
+// in place and so leave both stamps unchanged.
+function spbEnDups() {
+  const rows = spbEnSectionRows();
+  if (!spbEnDupCache || spbEnDupCache.section !== spbEnSection || spbEnDupCache.rows !== rows) {
+    spbEnDupCache = {
+      section: spbEnSection, rows,
+      map: spbEnDupFindings(rows, spbEnSection, spbFyStartYear()),
+    };
+  }
+  return spbEnDupCache.map;
+}
 
 function spbEnValidateRow(idx) {
   const tr = document.getElementById('spb-en-row-' + idx);
@@ -796,28 +922,49 @@ function spbEnRenderSummary() {
   if (!el) return;
   const rows = spbEnSectionRows().filter(r => !spbEnRowInert(r));
   if (!rows.length) { el.innerHTML = ''; return; }
+  const all = spbEnSectionRows();
+  const fy = spbFyStartYear();
   const notes = [];
-  let errs = 0, warns = 0;
-  spbEnSectionRows().forEach((r, i) => {
+  // Every finding carries WHERE it is — month, row and party — and clicking it
+  // jumps to that cell. A bare count ("1 possible duplicate bill") leaves the
+  // staff member to hunt through 1,600 lines, which is the work this module
+  // exists to remove.
+  const found = [];
+  all.forEach((r, i) => {
     if (spbEnRowInert(r)) return;
-    spbEnRowIssues(i).forEach(x => { if (x.level === 'err') errs++; else warns++; });
+    spbEnRowIssues(i).forEach(x => found.push({ idx: i, ...x }));
   });
-  // Duplicates — same party + bill + taxable, the Data Doctor's own test.
-  const seen = new Map();
-  let dups = 0;
-  rows.forEach(r => {
-    const key = spbSafeKey(r.party) + '|' + String(r.bill || '').trim() + '|' + spbNum(r.taxable);
-    if (String(r.bill || '').trim() && seen.has(key)) dups++;
-    seen.set(key, true);
-  });
-  if (dups) notes.push(`${dups} possible duplicate bill${dups > 1 ? 's' : ''} (same party, bill no. and amount)`);
+  const errs = found.filter(f => f.level === 'err').length;
+  const warns = found.length - errs;
+  const SHOW = 12;
+  const shown = found.slice().sort((a, b) =>
+    (a.level === b.level ? a.idx - b.idx : a.level === 'err' ? -1 : 1)).slice(0, SHOW);
+  const findingHtml = shown.map(f => {
+    const at = spbEnRowLabel(all, f.idx, fy);
+    const party = String(all[f.idx].party || '').trim();
+    return `<div class="spb-en-finding${f.level === 'err' ? ' spb-en-finding-err' : ''}" ` +
+      `onclick="spbEnGoToRow(${f.idx})" title="Go to this row">` +
+      `<span class="spb-en-finding-at">${escHtml(at.month)} · row ${at.n}` +
+      `${party ? ' · ' + escHtml(party) : ''}</span> ${escHtml(f.msg)}</div>`;
+  }).join('');
+  const moreN = found.length - shown.length;
+
   if (spbEnSection === 'sales') {
     const bills = rows.map(r => parseInt(String(r.bill || '').replace(/\D/g, ''), 10)).filter(n => !isNaN(n));
     if (bills.length > 1) {
       const uniq = [...new Set(bills)].sort((a, b) => a - b);
-      let gaps = 0;
-      for (let i = 1; i < uniq.length; i++) gaps += Math.min(uniq[i] - uniq[i - 1] - 1, 50);
-      if (gaps > 0) notes.push(`${gaps} sales bill number${gaps > 1 ? 's' : ''} missing from the sequence (IRD audit point)`);
+      const missing = [];
+      for (let i = 1; i < uniq.length; i++) {
+        const from = uniq[i - 1] + 1, to = uniq[i] - 1;
+        if (to < from || to - from >= 50) continue;      // a 50+ jump is a new series, not a gap
+        missing.push(from === to ? String(from) : `${from}–${to}`);
+      }
+      // Naming the missing numbers is the difference between a note and an
+      // instruction — the IRD asks which bills are missing, not how many.
+      if (missing.length) {
+        notes.push(`Missing sales bill no. ${missing.slice(0, 8).join(', ')}` +
+          `${missing.length > 8 ? ` and ${missing.length - 8} more` : ''} (IRD audit point)`);
+      }
     }
   }
   const chips = [];
@@ -826,7 +973,32 @@ function spbEnRenderSummary() {
   if (warns) chips.push(`<span class="log-badge badge-yellow">${warns} to check</span>`);
   if (!errs && !warns) chips.push('<span class="log-badge badge-sent">clean</span>');
   el.innerHTML = `<div class="spb-en-summary">${chips.join(' ')}` +
-    (notes.length ? `<span class="spb-en-notes">${notes.map(escHtml).join(' · ')}</span>` : '') + '</div>';
+    (notes.length ? `<span class="spb-en-notes">${notes.map(escHtml).join(' · ')}</span>` : '') + '</div>' +
+    (findingHtml ? `<div class="spb-en-findings">${findingHtml}` +
+      (moreN > 0 ? `<div class="spb-en-finding-more">and ${moreN} more — the ● beside a row number marks it in the grid</div>` : '') +
+      '</div>' : '');
+}
+
+// Jump to the row a finding names. The row OBJECT is captured before the
+// re-render, not its index: spbEnRenderRows() compacts inert rows out of the
+// array, so an index taken beforehand can point at a different bill by the
+// time the grid is redrawn.
+function spbEnGoToRow(idx) {
+  const row = spbEnSectionRows()[idx];
+  if (!row) return;
+  const fi = spbEnNormDate(row.date, spbFyStartYear()).fi;
+  if (fi != null && spbEnMonth !== -1 && spbEnMonth !== fi) {
+    spbEnMonth = fi;
+    spbRenderEntry();
+  }
+  const at = spbEnSectionRows().indexOf(row);
+  const tr = document.getElementById('spb-en-row-' + at);
+  if (!tr) return;
+  tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  tr.classList.add('spb-en-flash');
+  setTimeout(() => tr.classList.remove('spb-en-flash'), 1600);
+  const inp = tr.querySelector('input[data-k="bill"]');
+  if (inp) { inp.focus(); inp.select(); }
 }
 
 // ── EVENTS — delegated once; rows are patched, never re-rendered mid-typing ─
@@ -836,6 +1008,7 @@ function spbEnOnChange(inp) {
   const rows = spbEnSectionRows();
   const r = rows[idx];
   if (!r) return;
+  const prevVal = r[k];
   r[k] = inp.value;
   spbEnDirty = true;
 
@@ -858,15 +1031,24 @@ function spbEnOnChange(inp) {
     if (hit && hit.pan && !String(r.pan || '').trim()) spbEnSetCell(idx, 'pan', hit.pan);
   }
   // A blank VAT beside its taxable completes at 13% — the importer's own rule,
-  // running while the row is still under the user's eyes. A VAT the user has
-  // typed (or corrected) is theirs and is never touched again.
+  // running while the row is still under the user's eyes. A VAT the user typed
+  // is theirs and is never touched.
+  //
+  // Whether the sitting VAT was ours is read from the FIGURES, not only from
+  // the `_auto` flag: a VAT that is exactly 13% of the amount being replaced
+  // was plainly derived from it, so it follows the correction. The flag alone
+  // could not answer this — it does not survive a draft reload (drafts store
+  // the typed columns, not internal state), so after reopening a book,
+  // correcting a taxable left yesterday's VAT sitting beside it.
   const pair = SPB_VAT_PAIRS.find(([base]) => base === k);
   if (pair) {
     const [base, vk] = pair;
     const vatExpected = !(spbEnSection === 'sales' && spbIsPanOnly());
     r._auto = r._auto || {};
-    const vatBlank = String(r[vk] || '').trim() === '';
-    if (vatExpected && (vatBlank || r._auto[vk])) {
+    const sitting = String(r[vk] || '').trim();
+    const wasDerived = sitting === '' || r._auto[vk] ||
+      (spbNum(prevVal) !== 0 && Math.abs(spbNum(sitting) - spbNum(prevVal) * 0.13) < 0.005);
+    if (vatExpected && wasDerived) {
       const b = spbNum(r[base]);
       const v = b ? String(Math.round(b * 0.13 * 100) / 100) : '';
       spbEnSetCell(idx, vk, v);
@@ -879,7 +1061,7 @@ function spbEnOnChange(inp) {
   }
 
   if (idx === rows.length - 1 && !spbEnRowInert(r)) spbEnAppendTrailing();
-  spbEnDirCache = null;
+  spbEnInvalidate();
   spbEnValidateRow(idx);
   spbEnApplyBook();
   spbEnPatchTotals();
@@ -925,29 +1107,76 @@ function spbEnDeleteRow(idx) {
   if (!rows[idx]) return;
   rows.splice(idx, 1);
   spbEnDirty = true;
-  spbEnDirCache = null;
+  spbEnInvalidate();
   spbEnRenderRows();
   spbEnApplyBook();
   spbEnRenderSummary();
   spbEnScheduleDraft();
 }
 
-// Enter = down the same column, the spreadsheet reflex. The autocomplete owns
-// Enter while its list is open (it stops propagation itself).
+// ── Keyboard navigation — the spreadsheet reflexes ─────────────────────────
+// Enter and ↓ move down the column, ↑ moves up, ← → move across. Tab keeps
+// its native behaviour.
+//
+// Left/Right move a CELL only when the caret is already at the end of the
+// text it would otherwise travel through (and nothing is selected) — inside a
+// half-typed party name those keys still have to edit text. Up/Down always
+// move, since a single-line input has no vertical text meaning. That split is
+// what lets one key set serve both editing and navigation.
+//
+// The autocomplete owns the arrows while its list is open, and is asked first.
+// Landing on a cell selects its whole value, and a fully-selected cell counts
+// as NOT being edited — ← and → navigate straight out of it, the way Excel
+// moves across a row of filled cells. Without this the arrows died at the
+// first cell that had anything in it. Clicking into the text or typing
+// collapses the selection, and text editing takes over again.
+function spbEnWholeSelected(inp) {
+  const n = (inp.value || '').length;
+  return n > 0 && inp.selectionStart === 0 && inp.selectionEnd === n;
+}
+
+function spbEnCaretAtStart(inp) {
+  return (inp.selectionStart === 0 && inp.selectionEnd === 0) || spbEnWholeSelected(inp);
+}
+
+function spbEnCaretAtEnd(inp) {
+  const n = (inp.value || '').length;
+  return (inp.selectionStart === n && inp.selectionEnd === n) || spbEnWholeSelected(inp);
+}
+
 function spbEnOnKeydown(e) {
   const inp = e.target;
   if (!inp.classList || !inp.classList.contains('spb-en-in')) return;
   if (spbEnAcOpen()) { spbEnAcKey(e); return; }
-  if (e.key !== 'Enter') return;
+  let dRow = 0, dCol = 0;
+  if (e.key === 'Enter' || e.key === 'ArrowDown') dRow = 1;
+  else if (e.key === 'ArrowUp') dRow = -1;
+  else if (e.key === 'ArrowLeft' && spbEnCaretAtStart(inp)) dCol = -1;
+  else if (e.key === 'ArrowRight' && spbEnCaretAtEnd(inp)) dCol = 1;
+  else return;
   e.preventDefault();
+  spbEnMove(inp, dRow, dCol);
+}
+
+function spbEnMove(inp, dRow, dCol) {
+  // Leaving a cell commits it, so autofill and validation have run before the
+  // next cell is reached — the same order Enter has always followed.
   inp.dispatchEvent(new Event('change', { bubbles: true }));
-  const idx = parseInt(inp.dataset.r, 10);
-  const pos = spbEnView.indexOf(idx);
-  let next = document.querySelector(`#spb-en-row-${spbEnView[pos + 1]} input[data-k="${inp.dataset.k}"]`);
-  if (!next) {
+  const cols = spbEnCols().map(c => c.k);
+  let ci = cols.indexOf(inp.dataset.k) + dCol;
+  if (ci < 0 || ci >= cols.length) return;         // stops at the edge, as Excel does
+  let pos = spbEnView.indexOf(parseInt(inp.dataset.r, 10)) + dRow;
+  if (pos < 0) return;
+  if (pos >= spbEnView.length) {
+    // Moving down off the end opens the next row — unless the row already
+    // sitting there is the untouched blank one, or arrowing down would breed
+    // empty rows forever.
+    const last = spbEnSectionRows()[spbEnView[spbEnView.length - 1]];
+    if (!last || spbEnRowInert(last)) return;
     spbEnAppendTrailing();
-    next = document.querySelector(`#spb-en-row-${spbEnView[spbEnView.length - 1]} input[data-k="${inp.dataset.k}"]`);
+    pos = spbEnView.length - 1;
   }
+  const next = document.querySelector(`#spb-en-row-${spbEnView[pos]} input[data-k="${cols[ci]}"]`);
   if (next) { next.focus(); next.select(); }
 }
 
@@ -1006,7 +1235,7 @@ function spbEnAcPick(i) {
   if (it.pan && !String(r.pan || '').trim()) spbEnSetCell(idx, 'pan', it.pan);
   r.party = it.name;
   spbEnDirty = true;
-  spbEnDirCache = null;
+  spbEnInvalidate();
   spbEnValidateRow(idx);
   spbEnApplyBook();
   spbEnPatchTotals();
@@ -1082,7 +1311,7 @@ function spbEnClearSheet() {
     'Rows already saved to the database stay saved until the next Save.')) return;
   spbEnRows[spbEnSection] = [];
   spbEnDirty = true;
-  spbEnDirCache = null;
+  spbEnInvalidate();
   spbEnApplyBook();
   spbEnScheduleDraft();
   spbRenderEntry();
@@ -1138,7 +1367,11 @@ function spbEnAdoptImport() {
         !(spbEnAc.el && spbEnAc.el.contains(e.target))) spbEnAcHide();
   });
 
-  // After Import, before Register — the order of the actual work.
-  SPB_SECTION_TABS.splice(1, 0, { key: 'entry', label: 'Data Entry', panel: 'spb-sec-entry', onShow: 'spbRenderEntry' });
-  spbRenderSectionNav();
+  // FIRST, ahead of Import (2026-08-29, user ask). Typing the book in the app
+  // is now the way a book starts; uploading a spreadsheet is the fallback, so
+  // the order follows the work rather than the module's own history. This is
+  // also the landing section — a first tab that isn't the one you land on
+  // reads as a mis-click.
+  SPB_SECTION_TABS.unshift({ key: 'entry', label: 'Data Entry', panel: 'spb-sec-entry', onShow: 'spbRenderEntry' });
+  spbShowSection('entry');
 })();

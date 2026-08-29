@@ -843,3 +843,87 @@ switch animation is untouched otherwise. Body scroll is deliberately NOT
 locked — a body class would stick if the user palette-jumped to another tab
 while full screen — `overscroll-behavior: contain` on the grid wrap handles
 the chaining instead.
+
+### Duplicate bill numbers — the rule is OPPOSITE on the two registers (2026-08-29)
+
+Told to us by the firm, and it is not one test with two labels. The registers
+number bills from **different ends of the transaction**:
+
+| | Whose number it is | Duplicate key | A clash means |
+|---|---|---|---|
+| **Sales** | the firm's OWN invoice number, one sequence for the year | the **bill number alone** | a real mistake — Hanuman Supplier and Lateswori Supplier cannot both hold sales bill 1 |
+| **Purchase** | the **supplier's** number, and every supplier counts from their own 1 | **party + bill number** | only the same supplier billing one number twice |
+
+Two suppliers sharing purchase bill 1 is an ordinary day and must never be
+flagged; that false alarm is what the old shared test produced. Sales clashes
+are `err`, purchase repeats are `warn` (a supplier's own numbering is
+occasionally messy, and nothing here blocks output).
+
+**The amount is deliberately no longer part of either key.** The first version
+keyed on party + bill + amount, so two bills sharing a number escaped notice
+whenever their amounts differed — which is precisely what a mistyped bill
+number produces.
+
+`spbEnBillKey()` reads `0012` and `12` as one bill (leading zeros stripped
+from the trailing digit run) while a prefix keeps two series apart (`A/1` ≠
+`B/1`).
+
+### A finding says WHERE it is, and clicking it goes there
+
+*"1 possible duplicate bill"* left a staff member to find it among 1,600
+lines, which is the work this module exists to remove. Every finding now
+carries **month · row · party** and its own sentence naming the other side
+(*"Sales bill 1 is also on Lateswori Supplier — Bhadra, row 1"*), the Bill
+cell itself turns red, and clicking the finding switches to that month,
+scrolls to the row, flashes it and puts the cursor in the cell
+(`spbEnGoToRow`). The row number is counted **exactly the way the month view
+lists rows** (`spbEnRowLabel` — undated rows appear in every month), so it
+matches the grid's own `#` column. Missing sales bill numbers are named too
+(`5, 9–11`) rather than counted; a jump of 50+ is read as a new series, not a
+gap.
+
+`spbEnGoToRow` captures the row OBJECT before re-rendering, never its index —
+`spbEnRenderRows()` compacts inert rows out of the array, so an index taken
+beforehand can point at a different bill by the time the grid is redrawn.
+
+**The cache stamps what it was built from** (`spbEnDups()` records section and
+row-array identity). The duplicate rules being opposites makes a stale cache
+worse than a stale number: sales findings read while the purchase sheet is on
+screen would flag every supplier sharing a bill number. Caught by the harness,
+and now structurally impossible however the accessor is reached.
+
+### Keyboard navigation (2026-08-29, user ask — only Tab worked)
+
+Enter and ↓ move down the column, ↑ up, ← → across; the edge stops rather than
+wrapping, as Excel does, and moving down off the end opens the next row.
+Leaving a cell commits it, so autofill and validation have run before the next
+cell is reached.
+
+The rule that makes one key set serve both jobs: **← and → move a cell only
+when the caret has nowhere left to travel** — at the very start, at the very
+end, or when the **whole value is selected**, which is how a cell just arrowed
+into sits. Without that last case the arrows died at the first cell holding
+anything, since landing on a cell selects its text. A caret placed inside a
+word still edits text.
+
+Two bugs this surfaced, both real:
+
+- **An open autocomplete survived a re-render**, holding a reference to a
+  detached input — and it swallows the arrow keys while it believes it is
+  open, which is how the whole grid appeared to have no keyboard navigation.
+  `spbEnRenderRows()` now hides it.
+- **The "this VAT was auto-filled" flag does not survive a draft reload**
+  (drafts store the typed columns, not internal state), so after reopening a
+  book, correcting a taxable left yesterday's VAT sitting beside it. Derived-
+  ness is now read from the FIGURES as well as the flag: a VAT that is exactly
+  13% of the amount being replaced was plainly derived from it and follows the
+  correction. A hand-typed VAT is still never touched — it is flagged instead.
+
+### Data Entry is the FIRST tab, and the landing section (2026-08-29, user ask)
+
+Typing the book in the app is how a book starts now; uploading a spreadsheet
+is the fallback. `SPB_SECTION_TABS.unshift(...)`, and `spbLedgerReset()` returns
+to `SPB_SECTION_TABS[0].key` rather than a hardcoded `'import'`, so the order
+follows whichever parts of Autobooks have registered. `spbInit()` re-shows the
+current section on every tab open, so its `onShow` runs against the fiscal
+year just built rather than the empty selector it was last drawn with.

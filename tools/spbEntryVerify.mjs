@@ -67,11 +67,17 @@ function loadModules() {
       blankRow: spbEnBlankRow,
       rowEmpty: spbEnRowEmpty,
       sectionAmountKeys: spbSectionAmountKeys,
-      setRows(rows) { spbEnRows = rows; },
+      setRows(rows) { spbEnRows = rows; spbEnInvalidate(); },
       rows() { return spbEnRows; },
       apply() { spbEnApplyBook(); return { data: spbData, book: spbBook, groups: spbGroups }; },
       seedFromBook() { spbEnRows = { sales: [], purchase: [] }; spbEnSeedFromBook(); return spbEnRows; },
       rowIssues(section, idx) { spbEnSection = section; return spbEnRowIssues(idx); },
+      billKey: spbEnBillKey,
+      atStart: spbEnCaretAtStart,
+      atEnd: spbEnCaretAtEnd,
+      dupMap: spbEnDupMap,
+      dupFindings: spbEnDupFindings,
+      rowLabel: spbEnRowLabel,
       clearData() { spbData = null; spbBook = null; spbGroups = null; spbVr = null; },
     };
   `;
@@ -211,6 +217,84 @@ check('a VAT off 13% warns with the expected figure',
 check('an unreadable date is an error', en.rowIssues('sales', 3).some(x => x.k === 'date' && x.level === 'err'), true);
 check('a date outside the F.Y. warns', en.rowIssues('sales', 4).some(x => x.k === 'date' && x.level === 'warn'), true);
 check('a clean row raises nothing', en.rowIssues('sales', 0).length, 0);
+
+console.log('\n── Duplicate bill numbers — opposite rules per register ──');
+// The firm's own rule: a SALES bill number is the firm's invoice number and
+// runs once for the whole year, whoever the customer is; a PURCHASE bill
+// number is written by the supplier, so two suppliers sharing one is normal.
+const mk = (date, bill, party, taxable) => ({
+  ...en.blankRow(), date, bill, party, pan: '', taxable: String(taxable), vat: '',
+});
+const dupRows = [
+  mk('2082.04.01', '1', 'Hanuman Supplier', 1000),
+  mk('2082.04.02', '2', 'Hanuman Supplier', 2000),
+  mk('2082.05.01', '1', 'Lateswori Supplier', 3000),   // sales: clash · purchase: fine
+  mk('2082.05.02', '3', 'Hanuman Supplier', 4000),
+];
+const salesDup = en.dupFindings(dupRows, 'sales', FY);
+const purDup = en.dupFindings(dupRows, 'purchase', FY);
+check('SALES: one bill no. on two parties is flagged', salesDup.size, 2);
+check('SALES: the flag is an error, not a hint', salesDup.get(0).level, 'err');
+check('SALES: the message names the other party', /Lateswori Supplier/.test(salesDup.get(0).msg), true);
+check('SALES: the message names the month and row', /Bhadra, row 1/.test(salesDup.get(0).msg), true);
+check('PURCHASE: two suppliers sharing bill no. 1 is NOT flagged', purDup.size, 0);
+
+const sameSupplier = [
+  mk('2082.04.01', '7', 'Hanuman Supplier', 1000),
+  mk('2082.04.09', '7', 'Hanuman Supplier', 5000),
+];
+check('PURCHASE: the SAME supplier billing 7 twice is flagged', en.dupFindings(sameSupplier, 'purchase', FY).size, 2);
+check('PURCHASE: same-supplier repeat warns rather than errors',
+  en.dupFindings(sameSupplier, 'purchase', FY).get(0).level, 'warn');
+check('SALES: same party, same bill, same amount reads as entered twice',
+  /entered twice/.test(en.dupFindings([mk('2082.04.01', '9', 'A', 500), mk('2082.04.02', '9', 'A', 500)], 'sales', FY).get(0).msg), true);
+check('SALES: same bill, different amount is named as a reused number',
+  /used again/.test(en.dupFindings([mk('2082.04.01', '9', 'A', 500), mk('2082.04.02', '9', 'A', 700)], 'sales', FY).get(0).msg), true);
+check('a differing amount no longer hides a clash (the old key included it)',
+  en.dupFindings([mk('2082.04.01', '4', 'A', 100), mk('2082.04.02', '4', 'B', 999)], 'sales', FY).size, 2);
+check('blank bill numbers are never duplicates of each other',
+  en.dupFindings([mk('2082.04.01', '', 'A', 100), mk('2082.04.02', '', 'B', 100)], 'sales', FY).size, 0);
+check('"0012" and "12" are read as one bill number', en.billKey('0012'), en.billKey('12'));
+check('a prefix keeps two series apart', en.billKey('A/1') === en.billKey('B/1'), false);
+check('inert rows (date/bill only) never raise a duplicate',
+  en.dupFindings([mk('2082.04.01', '5', 'A', 100), { ...en.blankRow(), date: '2082.04.02', bill: '5' }], 'sales', FY).size, 0);
+
+console.log('\n── Row labels (what the finding points at) ──');
+const lblRows = [
+  mk('2082.04.01', '1', 'A', 1), mk('2082.05.01', '2', 'B', 1),
+  mk('2082.05.02', '3', 'C', 1), mk('2082.04.02', '4', 'D', 1),
+];
+check('a row is labelled by its own month', en.rowLabel(lblRows, 1, FY).month, 'Bhadra');
+check('the row number counts within that month', en.rowLabel(lblRows, 2, FY).n, 2);
+check('a second Shrawan row is Shrawan row 2', en.rowLabel(lblRows, 3, FY).n, 2);
+check('an undated row is labelled as such', en.rowLabel([mk('', '1', 'A', 1)], 0, FY).month, 'no date');
+
+console.log('\n── Duplicates reach the row itself ──');
+en.setRows({ sales: dupRows, purchase: dupRows });
+check('the Bill cell carries the duplicate finding',
+  en.rowIssues('sales', 0).some(x => x.k === 'bill' && x.level === 'err'), true);
+// The regression that matters: the sales findings were just cached, and the
+// purchase sheet must not be handed them — the two rules are opposites, so a
+// stale cache would flag every supplier who shares a bill number.
+check('switching to Purchase does not inherit the Sales duplicate ruling',
+  en.rowIssues('purchase', 0).some(x => x.k === 'bill'), false);
+check('and switching back still flags Sales',
+  en.rowIssues('sales', 0).some(x => x.k === 'bill'), true);
+
+console.log('\n── Arrow keys: navigate vs edit text ──');
+// ← and → move a cell only when the caret has nowhere left to travel — or
+// when the whole value is selected, which is how a cell just arrowed into
+// sits (Excel moves straight out of such a cell).
+const cell = (value, ss, se) => ({ value, selectionStart: ss, selectionEnd: se });
+check('caret at the very start navigates left', en.atStart(cell('12345', 0, 0)), true);
+check('caret mid-text does NOT navigate left', en.atStart(cell('12345', 2, 2)), false);
+check('caret at the very end navigates right', en.atEnd(cell('12345', 5, 5)), true);
+check('caret mid-text does NOT navigate right', en.atEnd(cell('12345', 3, 3)), false);
+check('a fully-selected cell navigates left', en.atStart(cell('12345', 0, 5)), true);
+check('a fully-selected cell navigates right', en.atEnd(cell('12345', 0, 5)), true);
+check('a partial selection does not navigate', en.atEnd(cell('12345', 1, 3)), false);
+check('an empty cell navigates either way',
+  en.atStart(cell('', 0, 0)) && en.atEnd(cell('', 0, 0)), true);
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

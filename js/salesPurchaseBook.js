@@ -156,6 +156,10 @@ function spbInit() {
   // saved-book card was last drawn at page load when the selector was still
   // empty. Redraw it, or it sits on "choose a fiscal year" after one is set.
   if (typeof spbRenderBookCard === 'function') spbRenderBookCard();
+  // Re-show the current section on every open, so its onShow runs against the
+  // fiscal year that was just built rather than the empty selector it was last
+  // drawn with (the data-entry sheet keys its rows on client + FY).
+  if (typeof spbShowSection === 'function') spbShowSection(spbSection);
 }
 
 // ════════════════════════════════════════════
