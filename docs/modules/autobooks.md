@@ -1053,3 +1053,61 @@ the code is a no-op against a database that has not received it.
   off to Depreciation.
 - **Excel output** — *"Remove Total After Party name"*, and Details/Classify/
   omiited/Reco sheets in his layout.
+
+### Classify → Annexure-13 (2026-08-30)
+
+His "Classify" sheet is what fills the annexure, and he wrote the mapping out:
+
+| Classification | Side | Annexure-13 bucket |
+|---|---|---|
+| Goods *(default)* | Sales | Good Sales |
+| Service | Sales | Service Sales |
+| Goods *(default)* | Purchase | Good Purchase — Others |
+| **Assets** | Purchase | **Good Purchase — Capital** |
+| Expenses | Purchase | Good Purchase — Others |
+
+Read by `SPB_ANN13_BUCKET_OF`, one table serving both the Classify card and
+the annexure so the screen and the filing cannot disagree. **Service purchase
+stays available** even though none of his three values reaches it — dropping it
+would make a service purchase unreportable, and the annexure has a bucket for
+it.
+
+**This makes Assets a second source of the Capital axis**, which §15 previously
+said was derived from the book's Capital Purchase column alone. Both now feed
+it, and the column WINS where it exists: a bill stating which rupees were
+capital is a fact, and finer-grained than a party-level judgement. Assets is
+what answers the same question for a book with no capital column, which is
+most of them — and then the whole line is capital. Never both, or the same
+rupees file twice. Verified live: a Goods party carrying a 150,000 capital
+column on 600,000 taxable splits 150,000 Capital / 450,000 Others, while an
+Assets party's 400,000 goes wholly to Capital with nil in Others.
+
+The **Classify card** is a folded `<details>` at the top of Annexure-13 rather
+than an eighth tab, and lists **every** party on both sides — his sheet does,
+and the annexure's own table shows only the qualifying tier by default, so a
+sub-lakh party would otherwise be unclassifiable. Parties with no usable PAN
+are listed read-only with the reason: they cannot reach the annexure at all,
+and offering a picker there would be a dead end. Choosing Assets or Expenses
+reveals the sub-classification he asks for beside it — the SLM depreciation
+class (offered from `DEP_SLM_CLASSES`) or the expense head — as a datalist
+combo, so the vocabulary is offered without refusing a head it doesn't carry.
+Changing away from Assets/Expenses **clears the note**: a depreciation class
+left on a party now classified as Goods reads as a live instruction.
+
+`classify` supersedes `ann13_category`, which only ever held the sales pair;
+rows saved before this still answer through the old column, and writes keep it
+in step so a rollback of the migration leaves Goods/Service working.
+
+### Omitted Bills — what is still missing, by party
+
+His `omiited` sheet is one row per party whose confirmation differs from the
+books, tax-free and taxable halves, with a "+" expanding to bill-wise detail.
+In his workbook that gap **is** the omitted figure, because he types no bills;
+here the bills are real rows with dates that print in the register after the
+Ashadh total. So the two meet, and the screen gains the number his sheet
+cannot show: the gap **after** the bills already entered — what is still left
+to find.
+
+Verified live: a customer confirming 560,000 against books of 500,000 lists
+as `Alpha Traders · 60,000.00 · —`, and entering that 60,000 bill drops the
+panel to *"Every party with a confirmation agrees with the books"*.

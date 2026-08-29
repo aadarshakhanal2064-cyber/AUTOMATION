@@ -35,11 +35,62 @@
 //    Others, which is correct.
 //
 //  Sales has no capital dimension — the annexure has no ServiceSalesCapital.
-const SPB_ANN13_KINDS = [
-  { value: 'goods',   label: 'Goods' },
-  { value: 'service', label: 'Service' },
-];
-const SPB_ANN13_DEFAULT = 'goods';   // -> GoodSales / GoodPurchaseOthers
+//  AMENDED 2026-08-30 to the CA's "Classify" sheet, which the firm asked the
+//  app to follow. He classifies a party rather than a bucket, and states the
+//  mapping himself:
+//
+//    "Sales should auto fill Sales in Ann-13"
+//    "Service should auto fill Service in Ann-13"
+//    "Goods should auto fill Goods Purchase others in Ann-13"
+//    "Assets should auto fill Goods Purchase Capital in Ann-13"
+//    "Expenses should auto fill Goods Purchase others in Ann-13"
+//
+//  So Assets is a THIRD source of the Capital axis, beside the book's own
+//  Capital Purchase column — which is why that axis is no longer purely
+//  derived. The column still wins where it exists (a bill saying which rupees
+//  were capital is fact, and finer-grained than a party-level judgement);
+//  Assets is what answers the same question for a book that has no such
+//  column, which is most of them.
+//
+//  Service PURCHASE stays available even though his three values never reach
+//  it: dropping it would make a service purchase unreportable, and the
+//  annexure has a bucket for it.
+const SPB_ANN13_KINDS = {
+  sales: [
+    { value: 'goods',   label: 'Goods' },
+    { value: 'service', label: 'Service' },
+  ],
+  purchase: [
+    { value: 'goods',    label: 'Goods' },
+    { value: 'service',  label: 'Service' },
+    { value: 'assets',   label: 'Assets' },
+    { value: 'expenses', label: 'Expenses' },
+  ],
+};
+const SPB_ANN13_DEFAULT = 'goods';   // "By Default it should Good Sales" / "Goods Purchase"
+
+// Which bucket a classification fills, per side. One table, read by both the
+// annexure and the Classify card, so the screen and the filing can't disagree.
+const SPB_ANN13_BUCKET_OF = {
+  sales:    { goods: 'GoodSales', service: 'ServiceSales' },
+  purchase: { goods: 'GoodPurchaseOthers', service: 'ServicePurchaseOthers',
+              assets: 'GoodPurchaseCapital', expenses: 'GoodPurchaseOthers' },
+};
+
+// The sub-classification his sheet asks for beside the choice.
+//  Assets   → "Class of Assets as in Depreciation as per SLM"
+//  Expenses → the head it belongs under ("Insurance/Audit fee", "Repair &
+//             Maintenances" are his own examples)
+function spbAnnNoteSpec(kind) {
+  if (kind === 'assets') {
+    return { label: 'Depreciation class (SLM)', placeholder: 'e.g. Furniture & Fixture',
+             options: (window.DEP_SLM_CLASSES || []).map(c => c.label || c.name || c.key).filter(Boolean) };
+  }
+  if (kind === 'expenses') {
+    return { label: 'Expense head', placeholder: 'e.g. Repair & Maintenances', options: [] };
+  }
+  return null;
+}
 
 const SPB_ANN13_BUCKETS = [
   { key: 'ServicePurchaseCapital', label: 'Service Purchase — Capital' },
@@ -51,14 +102,20 @@ const SPB_ANN13_BUCKETS = [
 ];
 
 let spbAnnIncludeBelow = false;
+let spbAnnClassifyOpen = false;   // his Classify sheet, folded until wanted
 let spbAnnSearch = '';
 let spbAnnRows = [];
 let spbAnnExcluded = [];
 
 function spbAnnStatus(html, type) { showStatus(html, type, 'spb-ann-status'); }
 
-function spbAnnKind(r) {
-  return r && r.ann13 === 'service' ? 'service' : SPB_ANN13_DEFAULT;
+// A party's classification, defaulting the way he defaults it. Values the
+// section doesn't offer (an 'assets' left on a sales row by a section switch)
+// fall back rather than filing into a bucket that side has no column for.
+function spbAnnKind(r, section) {
+  const v = r && r.classify;
+  const allowed = (SPB_ANN13_KINDS[section] || SPB_ANN13_KINDS.sales).map(k => k.value);
+  return allowed.includes(v) ? v : SPB_ANN13_DEFAULT;
 }
 
 // ── The model ───────────────────────────────────────────────────────────────
@@ -112,14 +169,26 @@ function spbAnn13Build() {
       // Capital is a slice OF taxable, not an addition to it (§ Capital is
       // entered separately but filed inside Taxable Purchase) — so Others is
       // the remainder, never the whole.
-      const kind = spbAnnKind(r) === 'service' ? 'Service' : 'Good';
+      const kind = spbAnnKind(r, key);
       if (key === 'sales') {
-        a[kind + 'Sales'] += r.taxable;
+        a[SPB_ANN13_BUCKET_OF.sales[kind]] += r.taxable;
       } else {
-        const cap = Math.min(r.capital || 0, r.taxable);
+        // Capital has two sources now. The book's own column is a fact about
+        // the BILL and stays finer-grained, so it wins where it exists;
+        // classifying the party as Assets is what answers the same question
+        // for a book with no capital column, and then the whole line is
+        // capital. Never both — that would report the same rupees twice.
+        const fromColumn = Math.min(r.capital || 0, r.taxable);
+        const cap = kind === 'assets' ? r.taxable : fromColumn;
         a.purchaseCapital += cap;
-        a[kind + 'PurchaseCapital'] += cap;
-        a[kind + 'PurchaseOthers'] += r.taxable - cap;
+        const bucket = SPB_ANN13_BUCKET_OF.purchase[kind];
+        if (kind === 'assets') {
+          a.GoodPurchaseCapital += cap;
+        } else {
+          // A service/goods party may still carry capital bills.
+          a[bucket.replace('Others', 'Capital')] += cap;
+          a[bucket] += r.taxable - cap;
+        }
       }
     });
   });
@@ -145,6 +214,71 @@ function spbAnn13Build() {
   return { rows, excluded };
 }
 
+// ── The Classify card ───────────────────────────────────────────────────────
+// His Classify sheet: every party on both sides, each with the choice that
+// decides its annexure bucket. Keyed by PAN (a classification writes every
+// party key under it), so parties without a usable PAN are listed read-only
+// with the reason — they cannot reach the annexure at all, and pretending they
+// can classify would be a dead end.
+function spbRenderAnn13Classify() {
+  const host = document.getElementById('spb-ann-classify-body');
+  if (!host) return;
+  let total = 0, done = 0, html = '';
+
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    const rows = ((spbGroups && spbGroups[key]) || spbOmitted.some(x => x.section === key))
+      ? spbConfirmRows(key) : [];
+    if (!rows.length) return;
+    html += `<h4 class="spb-ann-cl-h">${escHtml(label)}</h4>
+      <table class="client-table spb-ann-cl-table"><thead><tr>
+        <th>Party Name</th><th>PAN</th><th style="text-align:right;">Total</th>
+        <th>Remarks</th><th>Detail</th></tr></thead><tbody>`;
+    let tier = null;
+    rows.forEach(r => {
+      if (r.tier !== tier) {
+        tier = r.tier;
+        if (tier === 'minor') {
+          html += `<tr class="spb-ann-cl-tier"><td colspan="5">Less than 1 lakhs</td></tr>`;
+        }
+      }
+      const pan = spbNormPan(r.pan);
+      const usable = spbIsValidPan(pan);
+      const kind = spbAnnKind(r, key);
+      const spec = spbAnnNoteSpec(kind);
+      total++;
+      if (r.classify) done++;
+      const amount = r.taxable + r.taxfree;
+      html += `<tr>
+        <td>${escHtml(r.name)}</td>
+        <td>${escHtml(r.pan || '')}</td>
+        <td style="text-align:right;">${spbFmt(amount)}</td>
+        <td>${usable ? `<select class="spb-ann-kind" onchange="spbAnnSetKind('${escHtml(pan)}', '${key}', this.value)">
+              ${SPB_ANN13_KINDS[key].map(o => `<option value="${o.value}"${o.value === kind ? ' selected' : ''}>${escHtml(o.label)}</option>`).join('')}
+            </select>` : '<span class="spb-ann-cl-na">no usable PAN</span>'}</td>
+        <td>${usable && spec ? spbAnnNoteInput(pan, key, r, spec) : ''}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  });
+
+  host.innerHTML = html || '<p class="log-empty">No parties yet.</p>';
+  const c = document.getElementById('spb-ann-classify-count');
+  if (c) c.textContent = total ? `— ${done} of ${total} set, the rest defaulting to Goods` : '';
+}
+
+function spbAnnNoteInput(pan, section, r, spec) {
+  const listId = `spb-ann-nl-${section}-${pan}`;
+  const opts = (spec.options || []).map(o => `<option value="${escHtml(o)}"></option>`).join('');
+  // A datalist combo, not a select: the vocabulary is offered but a head this
+  // list doesn't carry still has to be typeable (the bbPopulateExpenseNames
+  // idiom, CLAUDE.md §15).
+  return `<input type="text" class="spb-cf-in spb-ann-cl-note" list="${listId}"
+      value="${escHtml(r.classifyNote || '')}" placeholder="${escHtml(spec.placeholder)}"
+      title="${escHtml(spec.label)}"
+      onchange="spbAnnSetNote('${escHtml(pan)}', '${section}', this.value)" />` +
+    (opts ? `<datalist id="${listId}">${opts}</datalist>` : '');
+}
+
 function spbAnnVisible() {
   const q = spbAnnSearch.trim().toUpperCase();
   return spbAnnRows.filter(a =>
@@ -166,32 +300,66 @@ function spbAnnTotals(rows) {
 // Stored per (book, section, party) in autobooks_parties.ann13_category. One
 // PAN can cover several party keys (a merge not yet applied, or two spellings),
 // so setting a category writes every row under that PAN on that side.
-async function spbAnnSetKind(pan, section, value) {
-  const a = spbAnnRows.find(x => x.pan === pan);
-  if (!a || !a[section + 'Rows'].length || !spbBookId) return;
-  const keys = spbConfirmRows(section).filter(r => spbNormPan(r.pan) === pan).map(r => ({ key: r.key, name: r.name }));
-  try {
-    for (const k of keys) {
-      const led = spbLedgerParties[section + '|' + k.key];
-      if (led && led.id) {
-        const { error } = await window.sb.from('autobooks_parties')
-          .update({ ann13_category: value }).eq('id', led.id);
-        if (error) throw error;
-        led.ann13_category = value;
-      } else {
-        const { data, error } = await window.sb.from('autobooks_parties').insert({
-          book_id: spbBookId, section, party_key: k.key, party_name: k.name,
-          pan, ann13_category: value,
-          updated_by: (window.currentUser && window.currentUser.email) || null,
-        }).select().limit(1);
-        if (error) throw error;
-        if (data && data[0]) spbLedgerParties[section + '|' + k.key] = data[0];
-      }
+// `patch` is the column set to write — {classify} from the picker,
+// {classify_note} from the note beside it. `ann13_category` is kept in step so
+// a rollback of the 2026-08-30 migration leaves the sales pair still working.
+async function spbAnnWriteParties(keys, section, patch) {
+  for (const k of keys) {
+    const led = spbLedgerParties[section + '|' + k.key];
+    if (led && led.id) {
+      const { error } = await window.sb.from('autobooks_parties').update(patch).eq('id', led.id);
+      if (error) throw error;
+      Object.assign(led, patch);
+    } else {
+      const { data, error } = await window.sb.from('autobooks_parties').insert({
+        book_id: spbBookId, section, party_key: k.key, party_name: k.name,
+        pan: k.pan || null, ...patch,
+        updated_by: (window.currentUser && window.currentUser.email) || null,
+      }).select().limit(1);
+      if (error) throw error;
+      if (data && data[0]) spbLedgerParties[section + '|' + k.key] = data[0];
     }
-    spbRenderAnn13Table();
+  }
+}
+
+// One PAN can cover several party keys (a merge not yet applied, or two
+// spellings), so a classification set here writes every row under that PAN on
+// that side — otherwise the annexure line and its parties disagree.
+function spbAnnPartyKeys(section, pan) {
+  return spbConfirmRows(section)
+    .filter(r => spbNormPan(r.pan) === spbNormPan(pan))
+    .map(r => ({ key: r.key, name: r.name, pan: spbNormPan(r.pan) }));
+}
+
+async function spbAnnSetKind(pan, section, value) {
+  if (!spbBookId) return;
+  const keys = spbAnnPartyKeys(section, pan);
+  if (!keys.length) return;
+  try {
+    const patch = { classify: value, ann13_category: value === 'service' ? 'service' : 'goods' };
+    // Changing away from Assets/Expenses drops the note with it — a
+    // depreciation class left on a party now classified as Goods would be read
+    // by the next person as a live instruction.
+    if (!spbAnnNoteSpec(value)) patch.classify_note = null;
+    await spbAnnWriteParties(keys, section, patch);
+    spbRenderAnn13();
   } catch (err) {
-    console.error('[Autobooks] annexure category save failed', err);
-    spbAnnStatus('❌ Could not save that category: ' + escHtml(friendlyDbError(err)), 'error');
+    console.error('[Autobooks] classification save failed', err);
+    spbAnnStatus('❌ Could not save that classification: ' + escHtml(friendlyDbError(err)), 'error');
+  }
+}
+
+async function spbAnnSetNote(pan, section, raw) {
+  if (!spbBookId) return;
+  const keys = spbAnnPartyKeys(section, pan);
+  if (!keys.length) return;
+  const value = String(raw || '').trim() || null;
+  try {
+    await spbAnnWriteParties(keys, section, { classify_note: value });
+    spbRenderAnn13Classify();
+  } catch (err) {
+    console.error('[Autobooks] classification note save failed', err);
+    spbAnnStatus('❌ Could not save that note: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -329,7 +497,18 @@ function spbRenderAnn13() {
       <button class="btn btn-outline btn-sm" onclick="spbExportAnn13('excel')">Export Excel</button>
     </div>
     <div id="spb-ann-status"></div>
+    <details class="spb-ann-classify" id="spb-ann-classify-wrap"${spbAnnClassifyOpen ? ' open' : ''}
+             ontoggle="spbAnnClassifyOpen=this.open;">
+      <summary>Classify parties <span id="spb-ann-classify-count"></span></summary>
+      <p class="spb-ann-classify-note">What each party supplies or is sold, which is what fills the annexure's
+        buckets. <strong>Goods</strong> is the default on both sides. On purchases, <strong>Assets</strong>
+        files the line as <em>Goods Purchase — Capital</em> and asks which depreciation class it belongs to;
+        <strong>Expenses</strong> files as <em>Goods Purchase — Others</em> and asks for the head. Every
+        party is listed here, including those below Rs ${spbFmt(SPB_CONFIRM_TIER)}.</p>
+      <div id="spb-ann-classify-body"></div>
+    </details>
     <div id="spb-ann-table"></div>`;
+  spbRenderAnn13Classify();
   spbRenderAnn13Table();
 }
 
@@ -385,9 +564,9 @@ function spbRenderAnn13Table() {
     const sel = (section) => {
       const list = a[section + 'Rows'];
       if (!list.length) return '<span style="color:var(--text-muted);">—</span>';
-      const cur = spbAnnKind(list[0]);
+      const cur = spbAnnKind(list[0], section);
       return `<select class="spb-ann-kind" onchange="spbAnnSetKind('${escHtml(a.pan)}', '${section}', this.value)">
-        ${SPB_ANN13_KINDS.map(k => `<option value="${k.value}"${k.value === cur ? ' selected' : ''}>${escHtml(k.label)}</option>`).join('')}
+        ${SPB_ANN13_KINDS[section].map(k => `<option value="${k.value}"${k.value === cur ? ' selected' : ''}>${escHtml(k.label)}</option>`).join('')}
       </select>`;
     };
     const cap = a.purchaseCapital;

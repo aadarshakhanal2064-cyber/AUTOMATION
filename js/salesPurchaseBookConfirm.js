@@ -102,6 +102,11 @@ function spbConfirmRows(section) {
     r.closing = led.confirmed_closing != null ? Number(led.confirmed_closing) : null;
     r.remarks = led.remarks || '';
     r.ann13 = led.ann13_category || null;
+    // The CA's Classify sheet. `classify` supersedes `ann13_category`, which
+    // held only the sales pair; a row saved before 2026-08-30 still answers
+    // through the old column so nothing has to be re-classified.
+    r.classify = led.classify || led.ann13_category || null;
+    r.classifyNote = led.classify_note || '';
 
     // A confirmation that hasn't arrived is NOT a confirmed zero. Keeping the
     // two apart is what stops an unanswered party being reported as agreed.

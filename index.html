@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608300100">
+<link rel="stylesheet" href="css/styles.css?v=202608300200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2269,6 +2269,16 @@ function cropLoginLogoIcon(img) {
 
       <!-- ── SECTION: OMITTED BILLS ── -->
       <div id="spb-sec-omitted" style="display:none;">
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Still unexplained, by party</div>
+              <div class="card-desc">Where each party's signed confirmation still disagrees with the register <em>after</em> the omitted bills already entered. A positive figure is trade the party reports and the books don't — a bill still to find. Enter it below and the figure falls to nil.</div>
+            </div>
+          </div>
+          <div id="spb-omitted-gaps"></div>
+        </div>
+
         <div class="card" style="margin-top:20px;">
           <div class="card-header">
             <div>
@@ -4964,13 +4974,13 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/companyProfile.js?v=202608290900"></script>
 <script defer src="js/companySecretary.js?v=202608290900"></script>
 <script defer src="js/companyRegistration.js?v=202608290900"></script>
-<script defer src="js/salesPurchaseBook.js?v=202608300100"></script>
+<script defer src="js/salesPurchaseBook.js?v=202608300200"></script>
 <!-- Autobooks, part two: persistence + the on-screen register. Must load AFTER
      salesPurchaseBook.js — it reads and writes that file's module state. -->
-<script defer src="js/salesPurchaseBookLedger.js?v=202608300100"></script>
+<script defer src="js/salesPurchaseBookLedger.js?v=202608300200"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
-<script defer src="js/salesPurchaseBookConfirm.js?v=202608300100"></script>
-<script defer src="js/salesPurchaseBookAnnexure.js?v=202608212500"></script>
+<script defer src="js/salesPurchaseBookConfirm.js?v=202608300200"></script>
+<script defer src="js/salesPurchaseBookAnnexure.js?v=202608300200"></script>
 <script defer src="js/salesPurchaseBookReco.js?v=202608300100"></script>
 <script defer src="js/salesPurchaseBookVatReturn.js?v=202608212500"></script>
 <!-- The in-app data-entry sheet. LAST of the Autobooks block: it splices its

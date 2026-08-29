@@ -1356,7 +1356,58 @@ function spbOmFormHtml() {
   </div>`;
 }
 
+// ── Which parties still need a bill (the CA's "omiited" sheet) ──────────────
+// His sheet lists one row per party whose confirmation differs from the books,
+// with the tax-free and taxable halves of that gap and a "+" that expands to
+// the bill-wise detail. In his workbook the gap IS the omitted figure, because
+// he types no bills at all; here the bills are real rows with dates that print
+// in the register, so the two meet: the gap says WHAT IS STILL MISSING, the
+// bills entered against that party close it, and the remainder is what is left
+// to find. That remainder is the number this screen exists to drive to nil —
+// and it is the one thing his sheet cannot show, because there is nothing to
+// subtract from.
+function spbOmGapRows(section) {
+  const rows = (typeof spbConfirmRows === 'function' ? spbConfirmRows(section) : [])
+    .filter(r => r.hasConfirmation && Math.abs(r.diff) > 0.005);
+  return rows.map(r => ({
+    key: r.key, name: r.name, pan: r.pan,
+    gap: r.diff,                       // confirmation − books, INCLUDING bills already entered
+    entered: r.omTaxable + r.omTaxfree,
+    count: r.omCount,
+  })).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+}
+
+function spbRenderOmittedGaps() {
+  const el = document.getElementById('spb-omitted-gaps');
+  if (!el) return;
+  if (!spbBookId || typeof spbConfirmRows !== 'function') { el.innerHTML = ''; return; }
+  let html = '';
+  SPB_SECTIONS.forEach(({ key, label }) => {
+    const rows = spbOmGapRows(key);
+    if (!rows.length) return;
+    const total = rows.reduce((a, r) => a + r.gap, 0);
+    html += `<h4 class="spb-om-gap-h">${escHtml(label)} — parties whose confirmation still disagrees</h4>
+      <table class="client-table spb-om-gap-table"><thead><tr>
+        <th>Party Name</th><th>Pan No.</th>
+        <th style="text-align:right;">Still unexplained</th>
+        <th style="text-align:right;">Bills entered</th>
+      </tr></thead><tbody>`;
+    rows.forEach(r => {
+      html += `<tr>
+        <td>${escHtml(r.name)}</td>
+        <td>${escHtml(r.pan || '')}</td>
+        <td style="text-align:right; font-weight:600; color:${r.gap > 0 ? 'var(--red-dk)' : 'var(--text-main)'};">${spbFmt(r.gap)}</td>
+        <td style="text-align:right; color:var(--text-muted);">${r.count ? `${r.count} · ${spbFmt(r.entered)}` : '—'}</td>
+      </tr>`;
+    });
+    html += `<tr class="spb-om-gap-tot"><td colspan="2">Total still unexplained</td>
+      <td style="text-align:right;">${spbFmt(total)}</td><td></td></tr></tbody></table>`;
+  });
+  el.innerHTML = html || `<p class="log-empty" style="padding:18px;">Every party with a confirmation agrees with the books — nothing is outstanding.</p>`;
+}
+
 function spbRenderOmittedTable() {
+  spbRenderOmittedGaps();
   const el = document.getElementById('spb-omitted-body');
   if (!el) return;
   if (!spbBookId) {
