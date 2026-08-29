@@ -3065,8 +3065,8 @@ function cropLoginLogoIcon(img) {
           <div class="card-header">
             <div class="card-title" style="font-size:14px;">Review</div>
             <div style="display:flex; gap:8px;">
-              <button class="btn btn-outline btn-sm" onclick="psPrint()">Print / PDF</button>
-              <button class="btn btn-primary btn-sm" onclick="psDownloadExcel()">Download Excel</button>
+              <button class="btn btn-outline btn-sm" id="ps-btn-print" onclick="psPrint()">Print / PDF</button>
+              <button class="btn btn-primary btn-sm" id="ps-btn-excel" onclick="psDownloadExcel()">Download Excel</button>
             </div>
           </div>
           <div id="ps-review"></div>
@@ -3278,8 +3278,8 @@ function cropLoginLogoIcon(img) {
           <div class="card-header">
             <div class="card-title" style="font-size:14px;">Review</div>
             <div style="display:flex; gap:8px;">
-              <button class="btn btn-outline btn-sm" onclick="asPrint()">Print / PDF</button>
-              <button class="btn btn-primary btn-sm" onclick="asDownloadExcel()">Download Excel</button>
+              <button class="btn btn-outline btn-sm" id="as-btn-print" onclick="asPrint()">Print / PDF</button>
+              <button class="btn btn-primary btn-sm" id="as-btn-excel" onclick="asDownloadExcel()">Download Excel</button>
             </div>
           </div>
           <div id="as-review"></div>
@@ -4944,10 +4944,10 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/finStatementEngine.js?v=202608291600"></script>
 <script defer src="js/finStatementExport.js?v=202608281500"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
-<script defer src="js/provisionalStatementEngine.js?v=202608292100"></script>
-<script defer src="js/provisionalStatement.js?v=202608281500"></script>
+<script defer src="js/provisionalStatementEngine.js?v=202608292300"></script>
+<script defer src="js/provisionalStatement.js?v=202608292300"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608292200"></script>
+<script defer src="js/auditedStatement.js?v=202608292300"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

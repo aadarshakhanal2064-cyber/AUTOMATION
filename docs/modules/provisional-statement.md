@@ -283,6 +283,64 @@ everywhere else.
 
 ---
 
+## 2.8 Blocking figures — when a statement cannot be issued
+
+*(2026-08-29, user decision. Applies to BOTH clones — the clone rule, §15.)*
+
+Purchases and Trade Receivables are the two figures the see-saws solve for,
+and **neither may print negative**. Nobody bought a negative quantity of goods,
+and a negative debtor is a creditor — so a statement carrying one is not a
+statement that can be issued.
+
+The engine raises both as `level: 'error'` (they used to be warnings):
+
+| Case | Where |
+|---|---|
+| Purchases solves negative against a held profit | `solveFor: 'purchases'` branch |
+| Purchases typed negative | `solveFor: 'pbt'` branch (already an error) |
+| Closing Stock solves negative | `solveFor: 'closingStock'` branch |
+| Trade Receivables plugs negative | the `balanceVia: 'receivables'` plug |
+
+Both modules then refuse to produce output: `asBlockingIssues()` /
+`psBlockingIssues()` filter the errors, `xxSetOutputEnabled(false)` disables
+**Print / PDF** and **Download Excel** from `xxRenderReview()`, a red banner
+above the Review tables names each figure and its amount, and
+`xxGuardOutput(action)` refuses the click as well — so re-enabling a button
+from the console changes nothing.
+
+**Clamping to zero was the obvious alternative and is wrong.** Forcing the
+figure positive pushes the difference somewhere nobody named and prints a
+statement that foots while being untrue — the exact opposite of the rule the
+proof rows, Final Account's Net Difference and the reconciliation layer all
+follow. The preparer fixes the *inputs*.
+
+**Saving is deliberately still allowed.** A half-finished working paper is
+worth keeping; an unissuable statement is not worth printing.
+
+`tools/psVerify.mjs` covers all of it: both cases raise an error, neither is
+*also* raised as a warning, and — the regression that actually matters — the
+reference workbook, a real issuable year, raises no blocking error at all. A
+guard that fired on good data would block every statement the firm produces.
+
+## 2.9 VAT is ticked from the client directory
+
+*(2026-08-29, user ask — "it should automatically be opened without needing to
+checkmark". Audited Statement's client scope.)*
+
+`asCy.vatRegistered` is set from **`clients.tax_registration_type === 'VAT'`**
+(case-insensitive) when a client is selected, so a VAT-registered client's
+Position and Amount fields are present without anyone ticking the box.
+
+- It is **`tax_registration_type`**, the client's own registration — *not*
+  `vat_status`, which is whether the firm files their monthly return. The two
+  are deliberately different facts (§15).
+- **Assigned unconditionally**, so a PAN-only client can never inherit the
+  previous client's tick (§9).
+- `asSetVat()` now stamps `asTypedOver.vatRegistered`, so a box someone
+  unticks by hand is never re-ticked — neither by this prefill nor by the
+  Autobooks source load, which has always set it when a VAT position was
+  found. That guard was missing before and was a latent bug.
+
 ## 3. Empty account heads are removed
 
 Like Projection, a head carrying **no value in either year** is not printed. The

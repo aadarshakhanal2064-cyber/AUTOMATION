@@ -249,6 +249,16 @@ const asScope = WorkflowEngine.createClientScope({
     asTaxRule.returnType = rt || NepalTax.DEFAULT_RETURN_TYPE;
     asTaxRule.fromClient = it.it_return_type || null;
 
+    // A VAT-registered client's VAT line prints, so the box is ticked from
+    // the directory rather than by hand (user ask 2026-08-29) and the VAT
+    // fields are open on arrival. **`tax_registration_type` is the client's
+    // own registration — NOT `vat_status`, which is whether the firm files
+    // their monthly return; the two are deliberately different facts (§15).**
+    // Assigned unconditionally, so a PAN-only client can never inherit the
+    // previous client's tick (§9).
+    asCy.vatRegistered =
+      String(it.tax_registration_type || '').trim().toUpperCase() === 'VAT';
+
     asLoadDepreciation();
     asLoadSources();
     asStatus(`Client loaded: ${it.name}`, 'success');
@@ -414,6 +424,50 @@ function asIssuesHtml(issues) {
   return `<div style="margin-top:12px; display:grid; gap:6px;">` + issues.map(i =>
     `<div class="status-box ${i.level === 'error' ? 'status-error' : 'status-info'}" style="margin:0;">${escHtml(i.msg)}</div>`
   ).join('') + `</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BLOCKING FIGURES — what stops a statement being issued
+//
+//  Purchases and Trade Receivables are the two balancing figures, and
+//  neither can legitimately print negative: nobody bought a negative
+//  quantity of goods, and a negative debtor is a creditor. When the
+//  arithmetic produces one the INPUTS are wrong, so the engine raises
+//  `level: 'error'` and output generation refuses (user decision
+//  2026-08-29). Saving is deliberately still allowed — a half-finished
+//  working paper is worth keeping; an unissuable statement is not worth
+//  printing.
+//
+//  Deliberately NOT clamped to zero. Forcing the figure positive would push
+//  the difference somewhere nobody named and print a statement that foots
+//  while being untrue — the exact opposite of the rule every proof row in
+//  this module already follows (§15).
+// ════════════════════════════════════════════════════════════════
+
+function asBlockingIssues() {
+  return ((asResult && asResult.issues) || []).filter(i => i.level === 'error');
+}
+
+// True when output may be produced; otherwise names the reason and refuses.
+function asGuardOutput(action) {
+  const blocking = asBlockingIssues();
+  if (!blocking.length) return true;
+  asStatus(`Cannot ${action} — ${blocking[0].msg}`
+    + (blocking.length > 1 ? ` (and ${blocking.length - 1} more.)` : ''), 'error');
+  return false;
+}
+
+// The Review header's two output buttons follow the same verdict, so the
+// refusal is visible before it is clicked rather than only after.
+function asSetOutputEnabled(on) {
+  ['as-btn-print', 'as-btn-excel'].forEach(id => {
+    const b = asEl(id);
+    if (!b) return;
+    b.disabled = !on;
+    b.title = on ? '' : 'Purchases or Trade Receivables is negative — this statement cannot be issued as drawn.';
+    b.style.opacity = on ? '' : '0.45';
+    b.style.cursor = on ? '' : 'not-allowed';
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1361,6 +1415,10 @@ function asTdsSet(k, v) {
 
 function asSetVat(on) {
   asCy.vatRegistered = !!on;
+  // Claimed by hand, so neither the directory prefill nor a later Autobooks
+  // load may quietly tick it back on — the same contract every other sourced
+  // figure follows.
+  asTypedOver.vatRegistered = true;
   if (!on) { delete asCy.vatReceivable; delete asCy.vatPayable; asVatSide = null; }
   asRun();
   asRenderTax();
@@ -1978,7 +2036,16 @@ function asRenderReview() {
   if (!host || !asResult) return;
   const r = asResult;
   const row = (l, v, strong) => `<tr${strong ? ' style="font-weight:600;"' : ''}><td>${l}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(v)}</td></tr>`;
+  const blocking = asBlockingIssues();
+  asSetOutputEnabled(blocking.length === 0);
   host.innerHTML = `
+    ${blocking.length ? `<div class="status-box status-error" style="margin:0 0 14px;">
+      <strong>This statement cannot be generated.</strong>
+      A balancing figure has come out negative, so Print / PDF and Download Excel are disabled until it is fixed.
+      <ul style="margin:8px 0 0; padding-left:18px;">
+        ${blocking.map(i => `<li style="margin-bottom:4px;">${escHtml(i.msg)}</li>`).join('')}
+      </ul>
+    </div>` : ''}
     <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:20px;">
       <div><table class="client-table"><tbody>
         ${row('Total Income', r.income.totalIncome, true)}
@@ -2025,6 +2092,7 @@ function asRenderPreview() {
 
 async function asDownloadExcel() {
   if (!asReport) { asStatus('Nothing to export yet.', 'error'); return; }
+  if (!asGuardOutput('export the workbook')) return;
   try {
     await LibLoader.ensure('exceljs');
     const wb = fsxWriteWorkbook(asReport, ExcelJS);
@@ -2043,6 +2111,7 @@ async function asDownloadExcel() {
 
 function asPrint() {
   if (!asReport) { asStatus('Nothing to print yet.', 'error'); return; }
+  if (!asGuardOutput('print this statement')) return;
   const w = window.open('', '_blank');
   w.document.write(fsxReportHtmlDoc(asReport, { title: asEl('as-company').value || 'Audited Statement' }));
   w.document.close();

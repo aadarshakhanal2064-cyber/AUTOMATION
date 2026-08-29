@@ -473,8 +473,12 @@ const ProvisionalStatementEngine = (() => {
       materialsTotal = totalIncome - pbt - nonMaterialExpenses;
       purchases = materialsTotal - (stockCharge - closingStock);
       solvedFor = 'purchases';
+      // BLOCKING, not a warning (user decision 2026-08-29). A business cannot
+      // have bought a negative quantity of goods, so a statement carrying one
+      // is not a statement that can be issued — `level: 'error'` is what the
+      // modules refuse to generate output on.
       if (purchases < 0) {
-        warn(`Purchases solves to a negative figure (${purchases.toFixed(2)}) at that profit. The target is unreachable with this year's sales, stock and expenses — lower the profit, or check Closing Stock.`);
+        err(`Purchases solves to a negative figure (${purchases.toFixed(2)}) at that profit. The target is unreachable with this year's sales, stock and expenses — lower the profit, or check Closing Stock.`);
       }
     } else if (opt.solveFor === 'closingStock' && pbtHeld && !stockFromSchedule) {
       // Third end of the same equation (user ask 2026-08-22): hold the
@@ -749,8 +753,11 @@ const ProvisionalStatementEngine = (() => {
     if (Math.abs(balanceGap) > 0.5) {
       warn(`Total Assets and Total Equity & Liabilities differ by ${balanceGap.toFixed(2)}. Nothing has been plugged — check Trade Receivables, Trade Payables, Cash and the loan balances.`);
     }
+    // BLOCKING for the same reason as negative purchases: a negative debtor
+    // balance is a creditor, so the plug has stopped meaning what the line
+    // says it means and the balance sheet is not issuable as drawn.
     if (plugReceivables && tradeReceivables < 0) {
-      warn(`Trade Receivables balances to a negative figure (${tradeReceivables.toFixed(2)}). The profit is higher than the assets can carry — check Cash, Closing Stock and the loan balances, or lower the profit.`);
+      err(`Trade Receivables balances to a negative figure (${tradeReceivables.toFixed(2)}). The profit is higher than the assets can carry — check Cash, Closing Stock and the loan balances, or lower the profit.`);
     }
 
     // ════════════════════════════════════════════════

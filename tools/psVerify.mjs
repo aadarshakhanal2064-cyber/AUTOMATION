@@ -487,6 +487,47 @@ eq('extra  payable sits inside the 3.9 total',       nk.balance.totalPayables, 1
 eq('extra  receivable line lands in note 3.3',       nk.balance.receivableLines.find(l => l.name === 'Deposits').amount, 7000);
 eq('extra  receivable sits inside the 3.3 total',    nk.balance.receivables, 200000 + 7000 + nk.balance.receivableLines.find(l => l.key === 'advanceTax').amount);
 
+// ════════════════════════════════════════════════════════════════
+//  BLOCKING FIGURES — a negative balancing figure must be an ERROR
+//
+//  Purchases and Trade Receivables are the two figures the see-saws solve
+//  for, and neither can legitimately print negative: nobody bought a
+//  negative quantity of goods, and a negative debtor is a creditor. Both
+//  modules refuse to generate output while any issue carries level 'error'
+//  (user decision 2026-08-29), so DEMOTING either of these back to a warning
+//  would silently re-open the door to issuing an unissuable statement — the
+//  failure would be invisible without this block.
+// ════════════════════════════════════════════════════════════════
+
+const hasError = (r, re) => r.issues.some(i => i.level === 'error' && re.test(i.msg));
+const hasWarn  = (r, re) => r.issues.some(i => i.level === 'warn'  && re.test(i.msg));
+const okv = (label, cond) => { cond ? pass++ : fail++; results.push({ ok: !!cond, label, got: cond ? 'yes' : 'no', want: 'yes', diff: 0 }); };
+
+// A profit target far above what the year's sales can carry drives the
+// purchases solve negative.
+const negPur = Engine.derive({
+  py: { sales: 1000000, purchases: 600000, closingStock: 0, otherExpenses: [], ppeClasses: [] },
+  cy: { sales: 1000000, pbtTarget: 5000000, closingStock: 0 },
+  options: { taxProfile: 'corporate', solveFor: 'purchases', balanceVia: 'none' },
+});
+okv('block  negative Purchases is an ERROR, not a warning', hasError(negPur, /Purchases solves to a negative/));
+okv('block  ...and is not ALSO raised as a warning',        !hasWarn(negPur, /Purchases solves to a negative/));
+
+// Cash far beyond what the capital and liabilities can fund: with
+// receivables plugging the balance sheet, the plug goes negative.
+const negRecv = Engine.derive({
+  py: { sales: 1000000, purchases: 900000, closingStock: 0, otherExpenses: [], ppeClasses: [],
+        receivables: 0, inventories: 0, payables: 0, cash: 0, shareCapital: 0, reserves: 0 },
+  cy: { sales: 1000000, purchases: 900000, closingStock: 0, cash: 5000000, tradePayables: 0 },
+  options: { taxProfile: 'corporate', solveFor: 'pbt', balanceVia: 'receivables' },
+});
+okv('block  negative Trade Receivables is an ERROR', hasError(negRecv, /Trade Receivables balances to a negative/));
+
+// And the reference workbook itself — a real, issuable year — must raise
+// neither. This is the regression that matters: a guard that fires on good
+// data would block every statement the firm produces.
+okv('block  the reference workbook raises NO blocking error', out.issues.every(i => i.level !== 'error'));
+
 // ── report ──
 const W = 56;
 console.log('\n  PROVISIONAL STATEMENT ENGINE — replay of');

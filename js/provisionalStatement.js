@@ -367,6 +367,47 @@ function psRenderPySummary() {
     ${psIssuesHtml(psPyIssues)}`;
 }
 
+// ════════════════════════════════════════════════════════════════
+//  BLOCKING FIGURES — what stops a statement being issued
+//
+//  Kept byte-parallel with asBlockingIssues / asGuardOutput per the clone
+//  rule (CLAUDE.md §15). Purchases and Trade Receivables are the two
+//  balancing figures and neither can legitimately print negative: nobody
+//  bought a negative quantity of goods, and a negative debtor is a creditor.
+//  The engine raises level 'error' on either, and output generation refuses
+//  (user decision 2026-08-29). Saving is still allowed — a half-finished
+//  working paper is worth keeping; an unissuable statement is not worth
+//  printing. Deliberately NOT clamped to zero: forcing the figure positive
+//  would push the difference somewhere nobody named and print a statement
+//  that foots while being untrue.
+// ════════════════════════════════════════════════════════════════
+
+function psBlockingIssues() {
+  return ((psResult && psResult.issues) || []).filter(i => i.level === 'error');
+}
+
+// True when output may be produced; otherwise names the reason and refuses.
+function psGuardOutput(action) {
+  const blocking = psBlockingIssues();
+  if (!blocking.length) return true;
+  psStatus('Cannot ' + action + ' — ' + blocking[0].msg
+    + (blocking.length > 1 ? ' (and ' + (blocking.length - 1) + ' more.)' : ''), 'error');
+  return false;
+}
+
+// The Review header's two output buttons follow the same verdict, so the
+// refusal is visible before it is clicked rather than only after.
+function psSetOutputEnabled(on) {
+  ['ps-btn-print', 'ps-btn-excel'].forEach(id => {
+    const b = psEl(id);
+    if (!b) return;
+    b.disabled = !on;
+    b.title = on ? '' : 'Purchases or Trade Receivables is negative — this statement cannot be issued as drawn.';
+    b.style.opacity = on ? '' : '0.45';
+    b.style.cursor = on ? '' : 'not-allowed';
+  });
+}
+
 function psIssuesHtml(issues) {
   if (!issues || !issues.length) return '';
   return `<div style="margin-top:12px; display:grid; gap:6px;">` + issues.map(i =>
@@ -1803,7 +1844,16 @@ function psRenderReview() {
   if (!host || !psResult) return;
   const r = psResult;
   const row = (l, v, strong) => `<tr${strong ? ' style="font-weight:600;"' : ''}><td>${l}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(v)}</td></tr>`;
+  const blocking = psBlockingIssues();
+  psSetOutputEnabled(blocking.length === 0);
   host.innerHTML = `
+    ${blocking.length ? `<div class="status-box status-error" style="margin:0 0 14px;">
+      <strong>This statement cannot be generated.</strong>
+      A balancing figure has come out negative, so Print / PDF and Download Excel are disabled until it is fixed.
+      <ul style="margin:8px 0 0; padding-left:18px;">
+        ${blocking.map(i => `<li style="margin-bottom:4px;">${escHtml(i.msg)}</li>`).join('')}
+      </ul>
+    </div>` : ''}
     <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:20px;">
       <div><table class="client-table"><tbody>
         ${row('Total Income', r.income.totalIncome, true)}
@@ -1850,6 +1900,7 @@ function psRenderPreview() {
 
 async function psDownloadExcel() {
   if (!psReport) { psStatus('Nothing to export yet.', 'error'); return; }
+  if (!psGuardOutput('export the workbook')) return;
   try {
     await LibLoader.ensure('exceljs');
     const wb = fsxWriteWorkbook(psReport, ExcelJS);
@@ -1868,6 +1919,7 @@ async function psDownloadExcel() {
 
 function psPrint() {
   if (!psReport) { psStatus('Nothing to print yet.', 'error'); return; }
+  if (!psGuardOutput('print this statement')) return;
   const w = window.open('', '_blank');
   w.document.write(fsxReportHtmlDoc(psReport, { title: psEl('ps-company').value || 'Provisional Statement' }));
   w.document.close();
