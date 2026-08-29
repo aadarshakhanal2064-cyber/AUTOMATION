@@ -449,6 +449,52 @@ standing on the balance sheet.
 A trial balance that **does not foot is reported, never refused**: the figures
 are still read and the banner says so, with both totals and the difference.
 
+## 2.12 A trial balance is the authority for the P&L
+
+*(2026-08-30, user decision. Applies only when a TB has been imported.)*
+
+Without a trial balance every expense head grows off last year (+5%) — that is
+what a provisional set is. **With one, that is wrong.** A trial balance lists
+every ledger balance the client actually has, so a head it does not carry was
+not incurred: last year's Printing & Stationery must not reappear in the
+current column at 34,650 when no ledger supports it.
+
+On import, therefore, every P&L line the TB did not supply becomes
+`{rule: 'typed', typed: 0}`, and the import panel names each head it silenced.
+
+- **The comparative column is untouched.** Last year really did carry that
+  head; dropping it would misstate a year already signed.
+- **P&L only.** Zeroing an unrecognised balance-sheet figure would break the
+  balance sheet loudly, and the complaint is specifically about expenses
+  growing themselves.
+- **A head already typed a non-zero figure is left alone** — the preparer's
+  own entry outranks the import, as everywhere else in this module.
+
+## 2.13 The Trial Balance page
+
+*(2026-08-30, user ask. Printed only when a TB was imported; first sheet in
+the set, on screen and in Excel.)*
+
+It reprints the trial balance as read, and adds the two things the client's own
+sheet does not have:
+
+- **totals it never draws** — per section, per block, and the two grand totals
+  either side of the trial, with the difference;
+- **a `Taken by` column naming where each figure went** — `SFP — Trade and
+  Other Receivables (note 3.3)`, `3.1 PPE — vehicles`, `SOI — Bank Charges`,
+  `Sch-PL note 3.15, under its own name`.
+
+That column is the point of the page. Once the figures are sitting in the other
+eight sheets nobody can reconstruct which ledger balance became which statement
+line — which is exactly what a reviewer checking a provisional set against the
+ledger is doing by hand. The map lives in `TrialBalanceReader.DESTINATION`,
+beside the section list, because it is a fact about the **reading**, not about
+the printing.
+
+Sections whose lines split across different statement lines (finance cost,
+revenue, loans, PPE) carry a per-LINE destination instead, via
+`LINE_DESTINATION`.
+
 ## 3. Empty account heads are removed
 
 Like Projection, a head carrying **no value in either year** is not printed. The

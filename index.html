@@ -3107,15 +3107,9 @@ function cropLoginLogoIcon(img) {
         <div class="card" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title" style="font-size:14px;">Preview</div>
-            <div class="rep-view-toggle" id="ps-sheet-tabs">
-              <button class="rep-view-btn active" data-sheet="SFP" onclick="psShowSheet('SFP')">SFP</button>
-              <button class="rep-view-btn" data-sheet="SOI" onclick="psShowSheet('SOI')">SOI</button>
-              <button class="rep-view-btn" data-sheet="SOCE" onclick="psShowSheet('SOCE')">SOCE</button>
-              <button class="rep-view-btn" data-sheet="SOCF" onclick="psShowSheet('SOCF')">SOCF</button>
-              <button class="rep-view-btn" data-sheet="PPE" onclick="psShowSheet('PPE')">3.1 PPE</button>
-              <button class="rep-view-btn" data-sheet="SchBS" onclick="psShowSheet('SchBS')">Sch-BS</button>
-              <button class="rep-view-btn" data-sheet="SchPL" onclick="psShowSheet('SchPL')">Sch-PL</button>
-            </div>
+            <!-- Built from the report by psRenderSheetTabs(): a hardcoded list is
+                 how the COI sheet ended up printable but unopenable. -->
+            <div class="rep-view-toggle" id="ps-sheet-tabs"></div>
           </div>
           <div id="ps-preview" style="overflow-x:auto;"></div>
         </div>
@@ -3330,15 +3324,9 @@ function cropLoginLogoIcon(img) {
         <div class="card" style="margin-top:20px;">
           <div class="card-header">
             <div class="card-title" style="font-size:14px;">Preview</div>
-            <div class="rep-view-toggle" id="as-sheet-tabs">
-              <button class="rep-view-btn active" data-sheet="SFP" onclick="asShowSheet('SFP')">SFP</button>
-              <button class="rep-view-btn" data-sheet="SOI" onclick="asShowSheet('SOI')">SOI</button>
-              <button class="rep-view-btn" data-sheet="SOCE" onclick="asShowSheet('SOCE')">SOCE</button>
-              <button class="rep-view-btn" data-sheet="SOCF" onclick="asShowSheet('SOCF')">SOCF</button>
-              <button class="rep-view-btn" data-sheet="PPE" onclick="asShowSheet('PPE')">3.1 PPE</button>
-              <button class="rep-view-btn" data-sheet="SchBS" onclick="asShowSheet('SchBS')">Sch-BS</button>
-              <button class="rep-view-btn" data-sheet="SchPL" onclick="asShowSheet('SchPL')">Sch-PL</button>
-            </div>
+            <!-- Built from the report by asRenderSheetTabs(): a hardcoded list is
+                 how the COI sheet ended up printable but unopenable. -->
+            <div class="rep-view-toggle" id="as-sheet-tabs"></div>
           </div>
           <div id="as-preview" style="overflow-x:auto;"></div>
         </div>
@@ -4932,8 +4920,8 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/reportExport.js?v=202608212300"></script>
 <script defer src="js/core/workbookReader.js?v=202608291800"></script>
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
-<script defer src="js/core/nepalTax.js?v=202608300300"></script>
-<script defer src="js/core/trialBalanceReader.js?v=202608300300"></script>
+<script defer src="js/core/nepalTax.js?v=202608300600"></script>
+<script defer src="js/core/trialBalanceReader.js?v=202608300600"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
 <script defer src="js/core/documentStore.js?v=202608261400"></script>
 <!-- The password gate on Financial Management. The GATE is here; the LOCK
@@ -4979,12 +4967,12 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/projection.js?v=202608291800"></script>
 <script defer src="js/projectionExport.js?v=202608291800"></script>
 <script defer src="js/finStatementEngine.js?v=202608291600"></script>
-<script defer src="js/finStatementExport.js?v=202608300300"></script>
+<script defer src="js/finStatementExport.js?v=202608300600"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608300300"></script>
-<script defer src="js/provisionalStatement.js?v=202608300500"></script>
+<script defer src="js/provisionalStatement.js?v=202608300600"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608300500"></script>
+<script defer src="js/auditedStatement.js?v=202608300600"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

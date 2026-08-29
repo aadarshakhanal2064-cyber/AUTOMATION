@@ -211,7 +211,7 @@ const psScope = WorkflowEngine.createClientScope({
     psExtraPay = []; psExtraRecv = [];
     psTaxOpen = 'adv'; psVatSide = null; psCoiTouched = null;
     psCoiAdds = []; psCoiLess = [];
-    psTbSummary = null; psTbSrc = {};
+    psTbSummary = null; psTbSrc = {}; psTbReport = null; psTbZeroed = [];
     { const t = psEl('ps-tb-file'); if (t) t.value = ''; }
     psRenderTbSummary();
     psTaxRule = psDefaultTaxRule();
@@ -429,11 +429,15 @@ let psTbSummary = null;   // {filled, issues, check, sheetName} of the last impo
 // by psSourceOf(), which is what gives each imported box its badge AND makes
 // typing into it claim the figure against the next import.
 let psTbSrc = {};
+// The parsed trial balance as a printable page (TrialBalanceReader.toReport),
+// and the list of expense heads it silenced. Null until one is imported.
+let psTbReport = null;
+let psTbZeroed = [];
 
 async function psHandleTbFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  psStatus('Reading the trial balance\u2026', 'searching');
+  psStatus('Reading the trial balance…', 'searching');
   try {
     await LibLoader.ensure('xlsx');
     const buf = await file.arrayBuffer();
@@ -442,11 +446,12 @@ async function psHandleTbFile(input) {
     if (!parsed.ok) {
       psTbSummary = { filled: [], issues: parsed.issues, check: null, sheetName: null };
       psRenderTbSummary();
-      psStatus('That workbook could not be read as a trial balance \u2014 see below.', 'error');
+      psStatus('That workbook could not be read as a trial balance — see below.', 'error');
       return;
     }
     const f = TrialBalanceReader.toFigures(parsed);
     const wrote = psApplyTb(f);
+    psTbReport = TrialBalanceReader.toReport(parsed);
     psTbSummary = { filled: wrote, issues: parsed.issues, check: parsed.check, sheetName: parsed.sheetName };
 
     psRenderTbSummary();
@@ -459,7 +464,7 @@ async function psHandleTbFile(input) {
       module: 'provisionalStatement', clientName: psEl('ps-company').value, status: 'success',
       detail: { sheet: parsed.sheetName, figures: wrote.length, foots: parsed.check.foots },
     });
-    psStatus(`Trial balance read \u2014 ${wrote.length} figures filled. Each one is listed below and can be typed over.`,
+    psStatus(`Trial balance read — ${wrote.length} figures filled. Each one is listed below and can be typed over.`,
              parsed.check.foots ? 'success' : 'error');
   } catch (e) {
     psStatus('Could not read that workbook: ' + e.message, 'error');
@@ -486,7 +491,7 @@ function psApplyTb(f) {
     put(k, v, named ? named.label : k);
   }
 
-  // The four loan groups replace whatever is there \u2014 a trial balance is the
+  // The four loan groups replace whatever is there — a trial balance is the
   // whole facility list at the year end, so merging would leave a facility
   // the client has since repaid standing on the balance sheet.
   if (f.loans && (f.loans.st.length + f.loans.lt.length + f.loans.pwc.length + f.loans.hp.length)) {
@@ -496,7 +501,7 @@ function psApplyTb(f) {
   }
 
   // PPE: the TB carries closing cost per class, which seeds the 3.1 grid's
-  // ADDITIONS column only where the grid already knows the class \u2014 the
+  // ADDITIONS column only where the grid already knows the class — the
   // opening column is last year's carrying amount and is not the TB's to say.
   if (f.ppe && f.ppe.length) {
     wrote.push({ label: 'PPE classes recognised (' + f.ppe.map(p => p.type).join(', ') + ')',
@@ -504,9 +509,9 @@ function psApplyTb(f) {
   }
 
   // TDS withholdings the TB states are facts off the ledger, so they win over
-  // the engine's derived percentages \u2014 but only where not already typed.
+  // the engine's derived percentages — but only where not already typed.
   for (const [k, v] of Object.entries(f.tds || {})) {
-    if (psTds[k] == null || psTds[k] === '') { psTds[k] = v; wrote.push({ label: 'TDS \u2014 ' + k, amount: v }); }
+    if (psTds[k] == null || psTds[k] === '') { psTds[k] = v; wrote.push({ label: 'TDS — ' + k, amount: v }); }
   }
 
   // Prepayments and the like become note-3.3 lines rather than a lump.
@@ -521,7 +526,7 @@ function psApplyTb(f) {
 
   // Other expenses: fill THIS year's amount on a line last year already had,
   // matched on the head's spelling; anything new is added as its own line.
-  // The rules grid then shows them typed rather than grown, which is right \u2014
+  // The rules grid then shows them typed rather than grown, which is right —
   // a figure off the ledger is not an estimate.
   if (f.otherExpenses && f.otherExpenses.length) {
     let n = 0;
@@ -552,8 +557,60 @@ function psApplyTb(f) {
     wrote.push({ label: 'Direct cost lines (' + f.directExtra.length + ')', amount: f.directExtra.reduce((t, l) => t + l.amount, 0) });
   }
 
+  // ── the trial balance is the AUTHORITY for the profit and loss ──
+  //
+  //  Without a TB, every expense head grows off last year (+5%), which is
+  //  what a provisional set is. WITH one, that is wrong: a trial balance
+  //  lists every ledger balance the client actually has, so a head it does
+  //  NOT carry was not incurred this year. Left alone, last year's Printing
+  //  & Stationery would reappear in the current column at +5% — a figure
+  //  nobody incurred and no ledger supports (user decision 2026-08-30).
+  //
+  //  So every P&L line the TB did not supply is set to nil. The COMPARATIVE
+  //  column is untouched: last year really did carry that head, and dropping
+  //  it would misstate the year already signed.
+  //
+  //  Deliberately P&L only. A balance-sheet figure the reader failed to
+  //  recognise would break the balance sheet loudly if zeroed, and the
+  //  complaint here is specifically about expenses growing themselves.
+  psTbZeroed = [];
+  const supplied = new Set();
+  for (const l of (f.otherExpenses || [])) supplied.add(TrialBalanceReader.key(l.name));
+  for (const l of (f.directExtra || [])) supplied.add(TrialBalanceReader.key(l.name));
+
+  // Prior-year other-expense heads the TB is silent on.
+  for (const [i, e] of (psPy && psPy.otherItems || []).entries()) {
+    const k = e.key || ('other' + i);
+    if (supplied.has(TrialBalanceReader.key(e.name))) continue;
+    if (psRules[k] && psRules[k].rule === 'typed' && psNum(psRules[k].typed)) continue;
+    psRules[k] = { rule: 'typed', typed: 0 };
+    psTbZeroed.push(e.name);
+  }
+  // The two named direct costs, and the P&L figures that live in psCy.
+  const govern = [
+    ['labour', 'Labour Charges'], ['freight', 'Clearing & Freight Expenses'],
+  ];
+  for (const [k, name] of govern) {
+    if (f.cy[k] != null) continue;
+    if (psRules[k] && psRules[k].rule === 'typed' && psNum(psRules[k].typed)) continue;
+    psRules[k] = { rule: 'typed', typed: 0 };
+    psTbZeroed.push(name);
+  }
+  const governCy = [
+    ['otherIncome', 'Commissions & Incentives'], ['interestIncome', 'Interest Income'],
+    ['salary', 'Salary Expenses'], ['otherContrib', 'Other Contributions'],
+    ['interestOD', 'Interest on OD/CC/Short term'], ['interestTerm', 'Interest on Term/HP/PWC'],
+    ['bankCharges', 'Bank Charges'],
+  ];
+  for (const [k, name] of governCy) {
+    if (f.cy[k] != null || psTypedOver[k]) continue;
+    if (psNum(psCy[k]) === 0) { psCy[k] = 0; continue; }
+    psCy[k] = 0;
+    psTbZeroed.push(name);
+  }
+
   // Purchases came off the ledger, so the see-saw must hold THEM and let
-  // profit fall out \u2014 otherwise the balancing solve overwrites the very
+  // profit fall out — otherwise the balancing solve overwrites the very
   // figure that was just imported. Same rule psApplySources() follows.
   if (!psTypedOver.pbtTarget && psCy.purchases != null) psSolveFor = 'pbt';
   return wrote;
@@ -578,7 +635,11 @@ function psRenderTbSummary() {
       <thead><tr><th>Filled from the trial balance</th><th style="text-align:right; width:170px;">Amount</th></tr></thead>
       <tbody>${s.filled.map(x => `<tr><td>${escHtml(x.label)}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(x.amount)}</td></tr>`).join('')}</tbody>
     </table></div>
-    <div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Every one of these is editable below &mdash; typing over a figure claims it, and a later re-import leaves it alone.</div>` : ''}`;
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Every one of these is editable below &mdash; typing over a figure claims it, and a later re-import leaves it alone.</div>` : ''}
+    ${psTbZeroed.length ? `<div class="status-box status-info" style="margin:10px 0 0;">
+      <strong>${psTbZeroed.length} expense line${psTbZeroed.length === 1 ? '' : 's'} set to nil</strong> &mdash; the trial balance does not carry ${psTbZeroed.length === 1 ? 'it' : 'them'}, so nothing is charged this year. Last year&rsquo;s figures stay in the comparative column.
+      <div style="margin-top:5px;">${psTbZeroed.map(n => escHtml(n)).join(' &middot; ')}</div>
+    </div>` : ''}`;
 }
 
 function psRenderPySummary() {
@@ -2058,6 +2119,9 @@ function psToOut(r) {
       profit: r.soce.profit, capital: r.soce.capital, dividend: r.soce.dividend,
     },
     ppe: r.ppe,
+    // The trial balance travels to the export layer as its own page, so the
+    // workbook carries the audit trail between ledger and statement.
+    tb: psTbReport,
     coi: {
       pbt: r.coi.pbt, depSlm: r.coi.accountingDep, depIncomeTax: r.coi.itDep,
       bfLoss: r.coi.bfLoss, taxableProfit: r.coi.taxableProfit,
@@ -2392,14 +2456,30 @@ function psRenderReview() {
 
 function psShowSheet(key) {
   psSheetKey = key;
-  document.querySelectorAll('#ps-sheet-tabs .rep-view-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.sheet === key));
+  psRenderSheetTabs();
   psRenderPreview();
+}
+
+// The tab strip is BUILT from the report, never hardcoded. It used to be a
+// fixed list of seven buttons in index.html, so when the COI sheet came back
+// (2026-08-30) it printed and exported correctly and could not be opened on
+// screen — the tab for it simply did not exist. Anything fsxBuildReport
+// emits is now reachable.
+function psRenderSheetTabs() {
+  const host = psEl('ps-sheet-tabs');
+  if (!host) return;
+  const sheets = (psReport && psReport.sheets) || [];
+  if (!sheets.length) return;
+  if (!sheets.some(s => s.key === psSheetKey)) psSheetKey = sheets[0].key;
+  host.innerHTML = sheets.map(s =>
+    `<button class="rep-view-btn${s.key === psSheetKey ? ' active' : ''}" data-sheet="${escHtml(s.key)}"
+             onclick="psShowSheet('${escHtml(s.key)}')">${escHtml(s.name)}</button>`).join('');
 }
 
 function psRenderPreview() {
   const host = psEl('ps-preview');
   if (!host || !psReport) return;
+  psRenderSheetTabs();
   const sh = psReport.sheets.find(s => s.key === psSheetKey) || psReport.sheets[0];
   host.innerHTML = fsxPreviewHtml(sh, psReport.meta);
 }

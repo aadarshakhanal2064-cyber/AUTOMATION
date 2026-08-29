@@ -41,6 +41,9 @@ const FSX_NUMFMT0 = '[>=10000000]#\\,##\\,##\\,##0;[>=100000]#\\,##\\,##0;#,##0'
 // 3.1 PPE) whose columns are categories rather than years.
 const FSX_GEOM = {
   COI:   { label: 'A', cy: 'F' },
+  // The Trial Balance page: A label, then Detail / Total / Taken by. A
+  // matrix geometry because the third column is TEXT, not a second year.
+  TB:    { label: 'A', first: 'C', step: 2 },
   SFP:   { label: 'B', note: 'D', cy: 'F', py: 'H' },
   SOI:   { label: 'B', note: 'D', cy: 'F', py: 'H' },
   SOCE:  { label: 'B', note: 'D', cols: ['F', 'H', 'J', 'L', 'N'] },
@@ -191,6 +194,51 @@ function fsxBuildReport(out) {
   const pyHead = m.asAtPy || 'Comparative';
   const yrHead = m.yearEndedCy || cyHead;
   const yrHeadPy = m.yearEndedPy || pyHead;
+
+  // ── TB: the trial balance, as read, with the totals it does not carry ──
+  //
+  //  The firm's own TB sheet has section subtotals but no block totals and
+  //  no grand total ("total of investments", "total of expenses" — user ask
+  //  2026-08-30), so they are added here. Every figure the statements took
+  //  is named in a third column: this page is the audit trail between the
+  //  client's ledger and the statement, which is exactly what nobody can
+  //  reconstruct once the figures are sitting in the other seven sheets.
+  //
+  //  Printed only when a trial balance was actually imported.
+  const tb = out.tb;
+  if (tb && tb.blocks && tb.blocks.length) {
+    const tbRows = [];
+    let grandDr = 0, grandCr = 0;
+    for (const blk of tb.blocks) {
+      tbRows.push(R(blk.title, [], 'head'));
+      let blockTotal = 0;
+      for (const sec of blk.sections) {
+        // The section's own heading carries its subtotal, so a section with
+        // no detail lines still reads as a figure rather than an empty row.
+        tbRows.push(R(sec.title, [null, sec.total, sec.takenBy || ''], sec.lines.length ? 'sub' : 'item'));
+        for (const l of sec.lines) tbRows.push(R('    ' + l.name, [l.amount, null, l.takenBy || ''], 'item'));
+        if (sec.lines.length) tbRows.push(R('    Total ' + sec.shortTitle, [null, sec.total, ''], 'tot'));
+        blockTotal += sec.total;
+      }
+      tbRows.push(R('Total ' + blk.title, [null, blockTotal, ''], 'tot'));
+      tbRows.push(B());
+      if (blk.side === 'dr') grandDr += blockTotal; else grandCr += blockTotal;
+    }
+    tbRows.push(R('Total of Assets & Expenses', [null, grandDr, ''], 'grand'));
+    tbRows.push(R('Total of Revenue, Equity & Liabilities', [null, grandCr, ''], 'grand'));
+    tbRows.push(R('Difference in Trial', [null, grandDr - grandCr, ''], 'grand'));
+    tbRows.push(B());
+    tbRows.push(R(Math.abs(grandDr - grandCr) <= 0.5
+      ? 'The trial balance foots. Every figure above that the statements use is named in the last column.'
+      : 'THE TRIAL BALANCE DOES NOT FOOT — the difference above is unexplained. The figures have still been carried through.', [], 'note'));
+
+    sheets.push({
+      key: 'TB', name: 'Trial Balance', geom: FSX_GEOM.TB, matrix: true,
+      title: 'TRIAL BALANCE', subtitle: m.asAtLine, noHeaderBand: false,
+      cols: [{ h1: '', h2: 'Detail' }, { h1: '', h2: 'Total' }, { h1: '', h2: 'Taken by' }],
+      rows: tbRows,
+    });
+  }
 
   // ── COI: Return of Income (the tax computation) ──
   // A provisional set is seven sheets — SFP, SOI, SOCE, SOCF, 3.1 PPE, Sch-BS,
