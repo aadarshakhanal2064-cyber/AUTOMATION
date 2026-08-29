@@ -2067,7 +2067,13 @@ function spbSheetDetails(wb, name, groups, summaryName, subRow, L) {
   ordered.forEach((g, i) => {
     const r = i + 2, sr = subRow[g.key];
     ws.getCell(`A${r}`).value = i + 1;
-    ws.getCell(`B${r}`).value = g.display + ' Total';
+    // The party's NAME, not "<name> Total" — the CA's own note on his Classify
+    // sheet ("Remove Total After Party name", 2026-08-30). On the Details sheet
+    // one row IS one party, so the suffix said nothing; and because his Classify
+    // and omiited sheets both read their names from here, the word travelled
+    // into every downstream sheet. The Summary sheet keeps its "<name> Total"
+    // subtotal line, which follows that party's transaction rows and means it.
+    ws.getCell(`B${r}`).value = g.display;
     if (g.pan) ws.getCell(`C${r}`).value = g.pan;
     L.amounts.forEach((k, j) => {
       const c = ws.getCell(`${letter(j)}${r}`);
