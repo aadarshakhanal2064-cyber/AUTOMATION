@@ -100,24 +100,33 @@ and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 
 #### 2.3a Both clones charge by the CA's D-1 / D-2 / D-3 rule sheet
 
-*(2026-08-29, user asks — the CA supplied the rule sheet; later the same day
-it was copied to Provisional and the return type became automatic. The
-fallback above now serves only records saved before the card existed.)*
+*(2026-08-29, user asks — the CA supplied the rule sheet, and it was copied
+to Provisional the same day. The fallback above now serves only records
+saved before the card existed.)*
 
-**The return type is AUTO by default, and the picker SHOWS the resolved
-D-1/D-2/D-3 — never the word "Auto"** (user ask 2026-08-30, refining the
-previous day's Auto option). `NepalTax.autoReturnType()` is the statute as a
-decision tree — not a proprietorship → D-3; turnover ≤ 30 lakh → D-1; ≤ 1
-crore **and taxable income ≤ 10 lakh** → D-2; else D-3 — resolved on every
-recalculation, with the deciding threshold printed on the card. The income
-gate matters: sec 4(4Ka) bars turnover tax above Rs 10,00,000 of taxable
-income, and ignoring it would file the wrong return for exactly the clients
-where the two charges differ most. The picker follows the app's derived
--figure idiom: the select displays the resolved type with an **auto** badge,
-changing it claims it as a manual choice (honoured, with warnings where it
-disagrees with the Act), and **↺ hands the decision back to the figures**.
-The directory's `it_return_type` is context only, flagged when it disagrees
-with what the figures resolve to.
+**The return type is CHOSEN, and the choice LOCKS the figures**
+(user decision 2026-08-30, replacing the previous day's automatic
+selection). `compute()` honours whatever is picked and falls to
+`DEFAULT_RETURN_TYPE` when unset; the picker is seeded from
+`clients.it_return_type` (`'D1/D2'` names both and so decides nothing).
+`autoReturnType()` survives only as a suggestion helper, quoted inside a
+breach message to name the type that would fit.
+
+**`NepalTax.LIMITS` is the lock:**
+
+| Type | Turnover ceiling | Taxable-income ceiling |
+|---|---|---|
+| D-1 | Rs 30,00,000 | Rs 3,00,000 |
+| D-2 | Rs 1,00,00,000 | Rs 10,00,000 |
+| D-3 | none | none |
+
+D-1 and D-2 are natural-person returns, so a company or partnership
+choosing one is blocked outright. A breach is `level: 'error'`, so **output
+is refused** by the same guard §2.8 describes: Print/PDF and Download Excel
+disable, the Review banner names it, and the card's eligibility table marks
+the offending row `over` with the ceiling beside it. Exactly ON a ceiling
+is inside it; one rupee past is not. Nothing is clamped and the type is
+never switched behind the preparer — both would misstate what is filed.
 
 The rule set lives in **`js/core/nepalTax.js`** (CLAUDE.md §4) and is picked in
 the **Income Tax Rule** card, which prints the workings rather than asserting a
@@ -190,9 +199,10 @@ D-2 return above the Rs 1 crore turnover ceiling or the Rs 10,00,000 taxable
 the D-2 range, a service election the Act bars for consultancy professions.
 Same rule as Final Account's Net Difference and the statement's proof rows.
 
-**Prefill.** Selecting a client resets the picker to auto and stores the
-directory's `it_return_type` for the caption (`'D1/D2'` shows as "names
-both"). The figures, not the directory, decide the rule.
+**Prefill.** Selecting a client seeds the picker from the directory's
+`it_return_type` and keeps the raw value for the caption (`'D1/D2'` shows as
+"names both" and falls to the default). The caption flags a directory value
+that is not what is selected.
 
 **The workbook is formatted like the preview** (same-day user ask): amounts
 in lakh/crore grouping via the conditional `FSX_NUMFMT` (proven in real

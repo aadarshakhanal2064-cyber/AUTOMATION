@@ -77,6 +77,8 @@ const NepalTax = (() => {
   // ════════════════════════════════════════════════════════════════
 
   const D1_TURNOVER_CEIL = 3000000;
+  // Sec 4(4) is open only while net income stays under this too.
+  const D1_INCOME_CEIL = 300000;
 
   // ════════════════════════════════════════════════════════════════
   //  D-2 — turnover tax, sec 4(4Ka) / Schedule 1 sec 17
@@ -194,6 +196,27 @@ const NepalTax = (() => {
 
   const ladder = key => LADDERS[key] || LADDERS[DEFAULT_FILING];
 
+  // ════════════════════════════════════════════════════════════════
+  //  ELIGIBILITY LIMITS — what each return type may carry
+  //
+  //  Choosing a return type is choosing a band, and the band is the Act's,
+  //  not a preference: a D-1 return cannot report Rs 40,00,000 of sales and
+  //  a D-2 return cannot report Rs 15,00,000 of profit. So the limits are
+  //  ENFORCED rather than suggested (user decision 2026-08-30) — a breach is
+  //  a blocking issue and the statement modules refuse to generate output on
+  //  it, exactly as they do for a negative balancing figure.
+  //
+  //  `null` means no ceiling. D-3 is the unbounded case, which is why it is
+  //  where every client that outgrows the other two lands.
+  // ════════════════════════════════════════════════════════════════
+
+  const LIMITS = {
+    D1: { turnoverMax: D1_TURNOVER_CEIL, profitMax: D1_INCOME_CEIL },
+    D2: { turnoverMax: D2_TURNOVER_CEIL, profitMax: D2_INCOME_CEIL },
+    D3: { turnoverMax: null,             profitMax: null },
+  };
+  const limitsFor = key => LIMITS[key] || LIMITS.D3;
+
   // The three return types, as data so the picker and the harness read one
   // list. `entityBased` is what tells the caller whether the charge moves
   // with profit at all — a D-1/D-2 figure does not, which is why it exports
@@ -230,11 +253,19 @@ const NepalTax = (() => {
     if (opt.entity !== 'proprietorship') {
       return { returnType: 'D3', reason: 'not a proprietorship — sec 4(4)/(4Ka) are open to natural persons only' };
     }
-    if (t <= D1_TURNOVER_CEIL) {
+    if (t <= D1_TURNOVER_CEIL && p <= D1_INCOME_CEIL) {
       return { returnType: 'D1', reason: `turnover ${fmt(t)} is within the ${fmt(D1_TURNOVER_CEIL)} presumptive ceiling` };
     }
     if (t <= D2_TURNOVER_CEIL && p <= D2_INCOME_CEIL) {
-      return { returnType: 'D2', reason: `turnover ${fmt(t)} is between ${fmt(D2_TURNOVER_FLOOR)} and ${fmt(D2_TURNOVER_CEIL)}` };
+      // Two ways to land here: inside the turnover band, or under it but
+      // earning too much for D-1. Say which, or the reason misdescribes the
+      // figures it is reporting on.
+      return {
+        returnType: 'D2',
+        reason: t > D1_TURNOVER_CEIL
+          ? `turnover ${fmt(t)} is between ${fmt(D2_TURNOVER_FLOOR)} and ${fmt(D2_TURNOVER_CEIL)}`
+          : `taxable income ${fmt(p)} is above the ${fmt(D1_INCOME_CEIL)} ceiling a D-1 return allows`,
+      };
     }
     if (t <= D2_TURNOVER_CEIL) {
       return { returnType: 'D3', reason: `taxable income ${fmt(p)} is above the ${fmt(D2_INCOME_CEIL)} ceiling sec 4(4Ka) allows, so turnover tax is barred` };
@@ -331,26 +362,41 @@ const NepalTax = (() => {
     // type from the figures; a named type is the preparer's explicit choice
     // and is honoured even where the Act suggests otherwise — the warnings
     // below say so rather than overruling.
-    let rt, auto = null;
-    if (RETURN_TYPES.some(r => r.key === opt.returnType)) {
-      rt = opt.returnType;
-    } else {
-      auto = autoReturnType({ entity: opt.entity, turnover, taxableProfit });
-      rt = auto.returnType;
-    }
+    // The return type is the PREPARER'S CHOICE and is never overridden by the
+    // figures (user decision 2026-08-30, replacing the automatic selection
+    // that shipped the day before). What the figures do instead is decide
+    // whether the choice is TENABLE: see the eligibility check below.
+    const rt = RETURN_TYPES.some(r => r.key === opt.returnType)
+      ? opt.returnType : DEFAULT_RETURN_TYPE;
     const warnings = [];
+    // Blocking issues — a breach of the chosen type's own eligibility band.
+    // Kept separate from `warnings` because the callers treat them
+    // differently: a warning is a note on the statement, a breach stops it
+    // being issued at all.
+    const blocking = [];
+    {
+      const lim = limitsFor(rt);
+      const fits = autoReturnType({ entity: opt.entity, turnover, taxableProfit });
+      const alt = fits.returnType === rt ? '' : ` ${fits.returnType} fits these figures.`;
+      if (lim.turnoverMax != null && turnover > lim.turnoverMax) {
+        blocking.push(`A ${rt} return may not report turnover above ${fmt(lim.turnoverMax)}, and the accounts show ${fmt(turnover)}.${alt}`);
+      }
+      if (lim.profitMax != null && taxableProfit > lim.profitMax) {
+        blocking.push(`A ${rt} return may not report taxable income above ${fmt(lim.profitMax)}, and the accounts show ${fmt(taxableProfit)}.${alt}`);
+      }
+      if ((rt === 'D1' || rt === 'D2') && opt.entity !== 'proprietorship') {
+        blocking.push(`${rt} is open to a resident natural person only — sec 4(4) and 4(4Ka) are not available to a company or partnership firm.`);
+      }
+    }
 
     if (rt === 'D1') {
       const loc = location(opt.location);
-      if (turnover > D1_TURNOVER_CEIL) {
-        warnings.push(`Turnover of ${fmt(turnover)} is above the ${fmt(D1_TURNOVER_CEIL)} ceiling for a D-1 return — sec 4(4Ka) turnover tax (D-2) applies from there.`);
-      }
       return {
-        returnType: rt, base: 'turnover', rate: null, auto,
+        returnType: rt, base: 'turnover', rate: null, limits: limitsFor(rt),
         tax: rs(loc.presumptive),
         label: `D-1 presumptive — ${loc.label}`,
         workings: [{ label: `${loc.label} — flat charge`, base: null, rate: null, amount: loc.presumptive }],
-        warnings,
+        warnings, blocking,
       };
     }
 
@@ -359,21 +405,15 @@ const NepalTax = (() => {
       if (turnover < D2_TURNOVER_FLOOR) {
         warnings.push(`Turnover of ${fmt(turnover)} is below the ${fmt(D2_TURNOVER_FLOOR)} floor for a D-2 return — a D-1 presumptive return applies below that.`);
       }
-      if (turnover > D2_TURNOVER_CEIL) {
-        warnings.push(`Turnover of ${fmt(turnover)} is above the ${fmt(D2_TURNOVER_CEIL)} ceiling for a D-2 return — tax is charged on taxable profit (D-3) from there.`);
-      }
-      if (taxableProfit > D2_INCOME_CEIL) {
-        warnings.push(`Sec 4(4Ka) is also barred above ${fmt(D2_INCOME_CEIL)} of taxable income, and the accounts show ${fmt(taxableProfit)}.`);
-      }
       if (nat.key === 'service') {
         warnings.push(`Turnover tax is not open to a natural person supplying consultancy or expert services (${D2_SERVICE_EXCLUDED}).`);
       }
       const r = turnoverTax(turnover, nat.key, opt.location);
       return {
-        returnType: rt, base: 'turnover', rate: null, auto,
+        returnType: rt, base: 'turnover', rate: null, limits: limitsFor(rt),
         tax: rs(r.tax),
         label: `D-2 turnover tax — ${nat.label}, ${location(opt.location).label}`,
-        workings: r.workings, warnings,
+        workings: r.workings, warnings, blocking,
       };
     }
 
@@ -393,27 +433,28 @@ const NepalTax = (() => {
       const lad = ladder(opt.filing);
       const r = ladderTax(charged, opt.filing, special);
       return {
-        returnType: rt, base: 'profit', rate: null, auto,
+        returnType: rt, base: 'profit', rate: null, limits: limitsFor(rt),
         tax: rs(r.tax),
         label: `D-3 proprietorship — ${lad.label} slabs${special ? ', special industry' : ''}`,
-        workings: r.workings, warnings,
+        workings: r.workings, warnings, blocking,
       };
     }
 
     const rate = special ? ENTITY_RATES.special : ENTITY_RATES.normal;
     return {
-      returnType: rt, base: 'profit', rate, auto,
+      returnType: rt, base: 'profit', rate, limits: limitsFor(rt),
       tax: rs(charged * rate),
       label: `D-3 ${entity === 'partnership' ? 'partnership firm' : 'company'} — ${pct(rate)} of taxable profit`
              + (special ? ' (special industry)' : ''),
       workings: [{ label: `Taxable profit @ ${pct(rate)}`, base: charged, rate, amount: charged * rate }],
-      warnings,
+      warnings, blocking,
     };
   }
 
   return {
     FISCAL_YEAR, LOCATIONS, RETURN_TYPES, D2_NATURES, LADDERS, ENTITY_RATES,
-    D1_TURNOVER_CEIL, D2_TURNOVER_FLOOR, D2_TURNOVER_CEIL, D2_INCOME_CEIL,
+    D1_TURNOVER_CEIL, D1_INCOME_CEIL, D2_TURNOVER_FLOOR, D2_TURNOVER_CEIL, D2_INCOME_CEIL,
+    LIMITS, limitsFor,
     DEFAULT_RETURN_TYPE, DEFAULT_LOCATION, DEFAULT_D2_NATURE, DEFAULT_FILING,
     compute, ladderTax, turnoverTax, autoReturnType, returnTypeFromClient, fmt, pct,
   };

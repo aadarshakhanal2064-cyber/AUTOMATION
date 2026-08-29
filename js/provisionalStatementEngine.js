@@ -550,6 +550,10 @@ const ProvisionalStatementEngine = (() => {
       // A rule that disagrees with the figures is a finding about the inputs,
       // shown and never silently corrected (§15, the proof-row rule).
       taxDetail.warnings.forEach(w => warn(w));
+      // A BREACH of the chosen return type's own eligibility band is not a
+      // note -- the return cannot carry these figures at all, so it blocks
+      // output exactly as a negative balancing figure does.
+      (taxDetail.blocking || []).forEach(m => err(m));
     } else if (profile === 'progressive') {
       tax = progressiveTax(Math.max(0, taxableProfit));
       taxRule = 'Proprietorship — progressive slabs';

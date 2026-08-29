@@ -73,17 +73,17 @@ let psTaxOpen = 'adv';       // 'adv' | 'tds' | 'vat' | 'coi' | ''
 // when it closes, so anything read back off the elements would revert the
 // moment the preparer collapsed the card.
 //
-// `returnType` defaults to 'auto' (user ask 2026-08-29: "choose the d1 d2
-// d3 automatically according to the revenue") — the Act itself decides which
-// return applies from the entity, the turnover and the taxable income, so
-// `NepalTax.autoReturnType()` resolves it on every recalculation and the
-// screen shows which rule was chosen and the threshold that chose it.
-// Picking a named type is an explicit override and is honoured; 'auto' is
-// one click away to hand the decision back.
+// `returnType` is CHOSEN by the preparer and never inferred from the figures
+// (user decision 2026-08-30, replacing the automatic selection that shipped
+// the day before). The choice is not cosmetic: each type carries the Act's
+// own eligibility band, and figures outside it BLOCK the statement being
+// issued — `NepalTax.LIMITS`, enforced in the engine. It is seeded from the
+// client's `it_return_type` where that names one type, since the directory
+// records which return the firm actually files.
 let psTaxRule = psDefaultTaxRule();
 function psDefaultTaxRule() {
   return {
-    returnType: 'auto',
+    returnType: NepalTax.DEFAULT_RETURN_TYPE,
     location: NepalTax.DEFAULT_LOCATION,        // 'municipality'
     d2Nature: NepalTax.DEFAULT_D2_NATURE,       // 'goods'
     filing: NepalTax.DEFAULT_FILING,            // 'couple' — the CA sheet's ladder
@@ -234,12 +234,13 @@ const psScope = WorkflowEngine.createClientScope({
       : profile === 'partnership' ? 'partnership' : 'private';
     psOnEntityChange();
 
-    // The return type stays on 'auto' — the Act decides it from the figures
-    // (user ask 2026-08-29), so the directory's `it_return_type` is shown as
-    // context in the caption rather than driving the choice. Where the two
-    // disagree, the figures win by default and the caption makes the
-    // disagreement visible instead of silent.
-    psTaxRule.returnType = 'auto';
+    // Seed the return type from the directory, which records which return the
+    // firm files for this client. ASSIGN unconditionally (§9) so a client with
+    // nothing on file cannot inherit the previous one's type. `'D1/D2'` names
+    // both and so decides nothing (§15) — it falls to the default and the
+    // caption says so.
+    psTaxRule.returnType = NepalTax.returnTypeFromClient(it.it_return_type)
+      || NepalTax.DEFAULT_RETURN_TYPE;
     psTaxRule.fromClient = it.it_return_type || null;
 
     // A VAT-registered client's VAT line prints, so the box is ticked from
@@ -1184,23 +1185,13 @@ function psRenderTaxRule() {
   // what is traded, and a D-3 charge by the entity, whether it is a special
   // industry and — for a proprietor — whether the assessment is joint.
   //
-  // On 'auto' (the default) the effective rule is whatever the Act resolved
-  // from the figures — `detail.returnType` — and the caption states the
-  // threshold that decided it. The conditional fields key off the EFFECTIVE
-  // type, not the picker value, so an auto-resolved D-2 still offers its
-  // location and nature.
   //
   // The workings are printed rather than summarised on purpose. A tax figure
   // that just appears is a figure nobody can check against a return; the
   // sheet's own "Example" column exists for the same reason.
-  const isAuto = psTaxRule.returnType === 'auto';
   const ent = psEntity();
   const detail = r && r.tax ? r.tax.detail : null;
-  // Before the first derive there is no result to resolve against, so auto
-  // previews what the tree would say with nothing typed yet.
-  const rt = isAuto
-    ? (detail ? detail.returnType : NepalTax.autoReturnType({ entity: ent, turnover: 0, taxableProfit: 0 }).returnType)
-    : psTaxRule.returnType;
+  const rt = psTaxRule.returnType;
 
   const pick = (label, field, list, value, keyOf, labelOf) => `
     <div class="form-group" style="margin:0;"><label>${label}</label>
@@ -1208,19 +1199,16 @@ function psRenderTaxRule() {
         ${list.map(o => `<option value="${escHtml(keyOf(o))}"${keyOf(o) === value ? ' selected' : ''}>${escHtml(labelOf(o))}</option>`).join('')}
       </select></div>`;
 
-  // The picker SHOWS the resolved D-1/D-2/D-3, never the word "Auto" (user
-  // ask 2026-08-30) — the same idiom as every derived figure in the app: the
-  // value on display IS the answer, a badge says the figures chose it,
-  // changing it claims it as a manual choice, and ↺ hands it back.
+  // The return type is CHOSEN, never inferred (user decision 2026-08-30,
+  // replacing the previous day's automatic selection). What the choice does
+  // is impose the Act's own band on the figures — see the eligibility panel
+  // below, which is the whole point of choosing.
   const typePicker = `
     <div class="form-group" style="margin:0;">
-      <label>Type of IT Return ${isAuto ? '<span class="log-badge badge-info" style="font-size:10px;">auto</span>' : ''}</label>
-      <div style="display:flex; gap:6px; align-items:center;">
-        <select onchange="psTaxRuleSet('returnType', this.value)" style="flex:1;">
-          ${NepalTax.RETURN_TYPES.map(o => `<option value="${escHtml(o.key)}"${o.key === rt ? ' selected' : ''}>${escHtml(o.label)}</option>`).join('')}
-        </select>
-        ${isAuto ? '' : `<button class="btn btn-outline btn-sm" title="Back to automatic — the figures decide" onclick="psTaxRuleSet('returnType','auto')">&#8634;</button>`}
-      </div>
+      <label>Type of IT Return</label>
+      <select onchange="psTaxRuleSet('returnType', this.value)">
+        ${NepalTax.RETURN_TYPES.map(o => `<option value="${escHtml(o.key)}"${o.key === rt ? ' selected' : ''}>${escHtml(o.label)}</option>`).join('')}
+      </select>
     </div>`;
   const ruleFields = [
     typePicker,
@@ -1236,13 +1224,37 @@ function psRenderTaxRule() {
       : '',
   ].filter(Boolean).join('');
 
-  // Why auto landed where it did — shown right under the picker so the
-  // choice is checkable, not asserted.
-  const autoNote = isAuto && detail && detail.auto
-    ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">
-         Chosen automatically &mdash; ${escHtml(detail.auto.reason)}.
+  // ── the eligibility panel ──
+  //
+  // Choosing a return type is choosing a band, so the band is shown with
+  // this year's figures measured against it, live. A breach is already a
+  // BLOCKING issue in the engine (output is refused), and this is where the
+  // preparer sees which ceiling was crossed and by how much rather than
+  // discovering it at the Print button.
+  const lim = NepalTax.limitsFor(rt);
+  const capRow = (label, value, cap) => {
+    if (cap == null) return `<tr><td>${label}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(value)}</td><td style="text-align:right; color:var(--text-muted);">no limit</td><td></td></tr>`;
+    const over = value > cap;
+    return `<tr>
+      <td>${label}</td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums;${over ? ' color:var(--red-dk); font-weight:600;' : ''}">${psFmt(value)}</td>
+      <td style="text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${NepalTax.fmt(cap)}</td>
+      <td style="text-align:right; width:70px;">${over
+        ? '<span class="log-badge badge-error" style="font-size:10px;">over</span>'
+        : '<span class="log-badge badge-sent" style="font-size:10px;">ok</span>'}</td>
+    </tr>`;
+  };
+  const autoNote = (lim.turnoverMax == null && lim.profitMax == null)
+    ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:10px;">
+         A ${escHtml(rt)} return carries no turnover or income ceiling &mdash; it is where a client that outgrows ${detail && detail.returnType === 'D3' ? 'D-1 and D-2' : 'the other two'} lands.
        </div>`
-    : '';
+    : `<div class="table-wrap" style="margin-top:12px; max-width:520px;"><table class="client-table">
+         <thead><tr><th>${escHtml(rt)} may report at most</th><th style="text-align:right;">This year</th><th style="text-align:right;">Ceiling</th><th></th></tr></thead>
+         <tbody>
+           ${capRow('Sales / turnover', r ? r.income.revenueOps : 0, lim.turnoverMax)}
+           ${capRow('Taxable income', r ? r.tax.base : 0, lim.profitMax)}
+         </tbody>
+       </table></div>`;
 
   const workRows = (detail ? detail.workings : []).map(w => `<tr>
       <td>${escHtml(w.label)}</td>
@@ -1256,8 +1268,8 @@ function psRenderTaxRule() {
   const dirRt = NepalTax.returnTypeFromClient(psTaxRule.fromClient);
   const dirNote = psTaxRule.fromClient ? `<div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
       The client directory records this client's IT return type as <strong>${escHtml(psTaxRule.fromClient)}</strong>${
-        dirRt ? (isAuto && detail && dirRt !== detail.returnType
-          ? ` — <span style="color:var(--amber-dk, #8a6100);">which disagrees with the ${escHtml(detail.returnType)} the figures resolve to; check the turnover or the directory</span>` : '')
+        dirRt ? (dirRt !== rt
+          ? ` — <span style="color:var(--amber-dk, #8a6100);">which is not the ${escHtml(rt)} selected above</span>` : '')
         : ' (which names both)'}.
     </div>` : '';
 
@@ -1619,13 +1631,8 @@ function psCollectInput() {
       // The CA's D-1 / D-2 / D-3 rule set. `entity` rides along because the
       // D-3 branch needs to tell a company from a proprietor, and the engine
       // supplies turnover and taxable profit itself. Passing this is what
-      // switches the engine off its two-way fallback basis. 'auto' becomes
-      // an ABSENT returnType, which is compute()'s cue to resolve it from
-      // the figures.
-      taxRule: Object.assign({}, psTaxRule, {
-        entity: psEntity(),
-        returnType: psTaxRule.returnType === 'auto' ? null : psTaxRule.returnType,
-      }),
+      // switches the engine off its two-way fallback basis.
+      taxRule: Object.assign({}, psTaxRule, { entity: psEntity() }),
       balanceVia: psPlugReceivables ? 'receivables' : 'none',
       useCoi: psUseCoi(),
       // 'purchases' means the typed PBT is held and purchases balances to it.
@@ -2033,7 +2040,7 @@ function psRenderReconcile() {
   psReconcile = rec;
 
   const badge = c => c.ok
-    ? '<span class="log-badge badge-success" style="font-size:10px;">reconciled</span>'
+    ? '<span class="log-badge badge-sent" style="font-size:10px;">reconciled</span>'
     : (c.level === 'review'
       ? '<span class="log-badge badge-warning" style="font-size:10px;">for review</span>'
       : '<span class="log-badge badge-error" style="font-size:10px;">not balancing</span>');

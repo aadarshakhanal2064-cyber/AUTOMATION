@@ -272,15 +272,15 @@ for (const filing of ['couple', 'individual']) {
 
 section('Structure — warnings fire where rule and figures disagree');
 
-ok('D-1 above the 30-lakh ceiling warns',
-   T.compute({ returnType: 'D1', location: 'metro', turnover: 3500000 }).warnings.length > 0);
+ok('D-1 above the 30-lakh ceiling BLOCKS',
+   T.compute({ returnType: 'D1', entity: 'proprietorship', location: 'metro', turnover: 3500000 }).blocking.length > 0);
 ok('D-2 below the 30-lakh floor warns',
    T.compute({ returnType: 'D2', d2Nature: 'goods', location: 'metro', turnover: 2000000 }).warnings.length > 0);
-ok('D-2 above the 1-crore ceiling warns',
-   T.compute({ returnType: 'D2', d2Nature: 'goods', location: 'metro', turnover: 12000000 }).warnings.length > 0);
-ok('D-2 above the 10-lakh income ceiling warns',
-   T.compute({ returnType: 'D2', d2Nature: 'goods', location: 'metro', turnover: 6000000, taxableProfit: 1500000 })
-    .warnings.some(w => /taxable income/.test(w)));
+ok('D-2 above the 1-crore ceiling BLOCKS',
+   T.compute({ returnType: 'D2', entity: 'proprietorship', d2Nature: 'goods', location: 'metro', turnover: 12000000 }).blocking.length > 0);
+ok('D-2 above the 10-lakh income ceiling BLOCKS',
+   T.compute({ returnType: 'D2', entity: 'proprietorship', d2Nature: 'goods', location: 'metro', turnover: 6000000, taxableProfit: 1500000 })
+    .blocking.some(w => /taxable income/.test(w)));
 ok('D-2 service names the excluded professions',
    T.compute({ returnType: 'D2', d2Nature: 'service', location: 'metro', turnover: 6000000 })
     .warnings.some(w => /auditor/.test(w)));
@@ -309,7 +309,7 @@ eq("'D-01' → D1", T.returnTypeFromClient('D-01') === 'D1', true);
 ok("'D1/D2' resolves to nothing", T.returnTypeFromClient('D1/D2') === null);
 ok('an unset return type resolves to nothing', T.returnTypeFromClient(null) === null);
 
-section('Auto return-type selection — the Act decides from the figures');
+section('autoReturnType — the suggestion helper (compute no longer uses it)');
 
 // The decision tree is statute, not heuristics: entity, then the 30-lakh
 // presumptive ceiling, then the 1-crore / 10-lakh-income turnover-tax gate.
@@ -326,11 +326,52 @@ ok('auto · proprietor at 1 crore + 1 → D3',       auto('proprietorship', 1000
 // so a fat-margin firm inside the turnover range still files D-3.
 ok('auto · 80 lakh turnover but 15 lakh income → D3', auto('proprietorship', 8000000, 1500000).returnType === 'D3');
 ok('auto · every answer names its reason', ['private','proprietorship'].every(e => [1000000, 5000000, 20000000].every(t => !!auto(e, t, 500000).reason)));
-// compute() with no returnType resolves through the same tree and says so.
-const autoC = T.compute({ entity: 'proprietorship', location: 'municipality', turnover: 2550000, taxableProfit: 200000 });
-ok("compute · unset returnType auto-resolves (25.5 lakh → D1, Rs 4,000)", autoC.returnType === 'D1' && autoC.tax === 4000 && !!autoC.auto);
+// autoReturnType() is a SUGGESTION helper only (it names the type that fits
+// when a chosen one is breached). compute() never resolves through it: the
+// return type is the preparer's, and an unset one falls to the default.
+const unsetC = T.compute({ entity: 'proprietorship', location: 'municipality', turnover: 2550000, taxableProfit: 200000 });
+ok('compute · an unset returnType falls to the default, never to auto', unsetC.returnType === T.DEFAULT_RETURN_TYPE);
 const manC = T.compute({ returnType: 'D3', entity: 'proprietorship', turnover: 2550000, taxableProfit: 200000 });
-ok('compute · an explicit choice is honoured, not auto-overridden', manC.returnType === 'D3' && manC.auto === null);
+ok('compute · an explicit choice is honoured whatever the figures say', manC.returnType === 'D3');
+const smallD1 = T.compute({ returnType: 'D1', entity: 'proprietorship', location: 'municipality', turnover: 2550000, taxableProfit: 200000 });
+ok('compute · a D-1 within both ceilings is clean (Rs 4,000, nothing blocking)',
+   smallD1.tax === 4000 && smallD1.blocking.length === 0);
+
+section('Eligibility limits — the chosen type locks the figures');
+
+// The limits ARE the Act's bands, exposed so a screen can show them.
+eq('D1 turnover ceiling', T.limitsFor('D1').turnoverMax, 3000000);
+eq('D1 income ceiling',   T.limitsFor('D1').profitMax,    300000);
+eq('D2 turnover ceiling', T.limitsFor('D2').turnoverMax, 10000000);
+eq('D2 income ceiling',   T.limitsFor('D2').profitMax,   1000000);
+ok('D3 has no ceilings', T.limitsFor('D3').turnoverMax === null && T.limitsFor('D3').profitMax === null);
+
+const P1 = (o) => T.compute(Object.assign({ entity: 'proprietorship', location: 'municipality' }, o));
+// Exactly ON a ceiling is inside it; one rupee past is not.
+ok('D1 · turnover exactly 30 lakh is allowed', P1({ returnType: 'D1', turnover: 3000000, taxableProfit: 100000 }).blocking.length === 0);
+ok('D1 · turnover 30 lakh + 1 blocks',          P1({ returnType: 'D1', turnover: 3000001, taxableProfit: 100000 }).blocking.length === 1);
+ok('D1 · profit exactly 3 lakh is allowed',     P1({ returnType: 'D1', turnover: 2000000, taxableProfit: 300000 }).blocking.length === 0);
+ok('D1 · profit 3 lakh + 1 blocks',             P1({ returnType: 'D1', turnover: 2000000, taxableProfit: 300001 }).blocking.length === 1);
+ok('D2 · turnover exactly 1 crore is allowed',  P1({ returnType: 'D2', turnover: 10000000, taxableProfit: 500000 }).blocking.length === 0);
+ok('D2 · turnover 1 crore + 1 blocks',          P1({ returnType: 'D2', turnover: 10000001, taxableProfit: 500000 }).blocking.length === 1);
+ok('D2 · profit exactly 10 lakh is allowed',    P1({ returnType: 'D2', turnover: 6000000, taxableProfit: 1000000 }).blocking.length === 0);
+ok('D2 · profit 10 lakh + 1 blocks',            P1({ returnType: 'D2', turnover: 6000000, taxableProfit: 1000001 }).blocking.length === 1);
+// Both breached at once names both, so the preparer fixes both.
+ok('D1 · turnover AND profit breached names both',
+   P1({ returnType: 'D1', turnover: 4000000, taxableProfit: 500000 }).blocking.length === 2);
+// A breach names the type that would fit.
+ok('a breach names the type that fits',
+   P1({ returnType: 'D1', turnover: 4000000, taxableProfit: 500000 }).blocking.every(m => /D2 fits/.test(m)));
+// D-3 never blocks on size — it is the unbounded case.
+ok('D3 · no figure blocks it',
+   T.compute({ returnType: 'D3', entity: 'private', turnover: 900000000, taxableProfit: 500000000 }).blocking.length === 0);
+// D-1/D-2 are natural-person returns; a company choosing one is blocked.
+ok('D1 · a company is blocked outright',
+   T.compute({ returnType: 'D1', entity: 'private', location: 'metro', turnover: 1000000, taxableProfit: 100000 })
+    .blocking.some(m => /natural person/.test(m)));
+ok('D2 · a partnership is blocked outright',
+   T.compute({ returnType: 'D2', entity: 'partnership', location: 'metro', turnover: 6000000, taxableProfit: 500000 })
+    .blocking.some(m => /natural person/.test(m)));
 
 section('Structure — workings add back to the charge');
 for (const o of [
