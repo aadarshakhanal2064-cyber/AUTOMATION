@@ -1111,3 +1111,30 @@ to find.
 Verified live: a customer confirming 560,000 against books of 500,000 lists
 as `Alpha Traders · 60,000.00 · —`, and entering that 60,000 bill drops the
 panel to *"Every party with a confirmation agrees with the books"*.
+
+### "Check an Excel file here" — the raw file straight into the sheet (2026-08-30)
+
+The user's ask in one line: *import my Excel file into Data Entry so I can
+recognize the mistakes in my raw entry*. `spbEnImportFile()` on the Data Entry
+toolbar reads a workbook with the importer's own sheet classification and
+header detection, then maps rows into the grid via **`spbEnRowsFromSheet()` —
+deliberately NOT `spbParseRows`**: the parser exists to produce a clean book,
+so it *excludes* a row whose date it cannot read and silently reads a text
+amount as zero — exactly the rows a mistake hunt is looking for. Here every
+live row lands verbatim and the grid's validation puts the red on it; only
+no-data rows and embedded month subtotals are dropped, both counted in the
+status line. Readable dates normalize (row-above context, as typing does);
+unreadable ones stay raw and flag. `spbRaw` is never set, so this path and the
+Import pipeline cannot mix — the help text names the split: Import cleans and
+converts, this shows the dirt.
+
+Proven against the CA's real client file (staged temporarily for the dev
+server and deleted — never committed, §1 rule 7): 143 sales / 48 purchase rows
+landed, totals tie his Details grand totals to the paisa (7,046,647.65 +
+113,000 free · 6,833,416.74), 11 month-total lines skipped per sheet — and it
+immediately surfaced a real finding his workbook doesn't show: **sales bill
+nos. 66, 117 and 140 are missing from the client's own sequence.** Purchase
+correctly reports clean (different suppliers sharing a bill number is normal
+there). Harness: 20 new assertions in `tools/spbEntryVerify.mjs` (105 total),
+including the design's key split — the applied BOOK excludes the unreadable
+row while the GRID keeps all rows for fixing.

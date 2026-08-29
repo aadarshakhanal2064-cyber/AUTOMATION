@@ -103,6 +103,52 @@ function spbEnNextBill(bill) {
   return m[1] + (m[2].length > next.length ? next.padStart(m[2].length, '0') : next);
 }
 
+// ── Excel → grid rows ───────────────────────────────────────────────────────
+// The user's raw spreadsheet, loaded into the sheet AS TYPED so its mistakes
+// can be seen and fixed here (2026-08-30, user ask). This is deliberately NOT
+// spbParseRows: the parser is built to produce a clean book, so it EXCLUDES a
+// row whose date it cannot read and silently reads a text amount as zero —
+// exactly the rows a mistake hunt is looking for. Here every live row lands in
+// the grid verbatim, and the grid's own validation puts the red on it.
+//
+// Only two kinds of row are dropped, and both are counted, never silent:
+// rows with no data at all (formula leftovers), and the embedded month
+// subtotal rows ("Total Of Shrawan") — the client's own arithmetic, not bills.
+//
+// A readable date is normalized to the canonical form (with the row above as
+// context, the same as typing); an unreadable one is kept raw and flags red.
+// A zero amount renders blank the way seeding does — but only when the cell
+// really is a number: text typed into an amount column ("here", seen in a real
+// book) is kept so it can be seen and fixed.
+function spbEnRowsFromSheet(rows, headerInfo, fyStartYear) {
+  const { row: hRow, col } = headerInfo;
+  const amountCols = SPB_AMOUNT_KEYS.map(k => col[k]).filter(c => c != null);
+  const out = [];
+  let subtotals = 0, blanks = 0, prevDate = '';
+  for (let i = hRow + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    if (!spbRowIsLive(r, col, amountCols)) { blanks++; continue; }
+    const cell = k => col[k] != null && r[col[k]] != null ? String(r[col[k]]).trim() : '';
+    const dateRaw = NepaliLocale.toEnglishDigits(cell('date'));
+    const party = cell('party');
+    const looksDate = SPB_DATE_RE.test(dateRaw) || spbMonthFromText(dateRaw) != null;
+    if (!looksDate && /total|जम्मा/i.test(party)) { subtotals++; continue; }
+    const row = spbEnBlankRow();
+    const d = spbEnNormDate(dateRaw, fyStartYear, prevDate);
+    row.date = d.error ? dateRaw : d.value;
+    if (!d.error && d.value) prevDate = d.value;
+    row.bill = cell('bill');
+    row.party = party;
+    row.pan = spbNormPan(cell('pan'));
+    SPB_AMOUNT_KEYS.forEach(k => {
+      const v = cell(k);
+      row[k] = (v !== '' && /^[\d.,\s-]+$/.test(v) && spbNum(v) === 0) ? '' : v;
+    });
+    out.push(row);
+  }
+  return { rows: out, subtotals, blanks };
+}
+
 // ── Duplicate bill numbers — the rule is OPPOSITE on the two registers ──────
 // This is not a shared test with a different label on it; the two registers
 // number bills from different ends of the transaction:
@@ -664,6 +710,10 @@ function spbRenderEntry() {
       <div class="spb-en-tools">
         ${extraToggle}
         ${hasBookRows ? `<button class="btn btn-outline btn-sm" onclick="spbEnLoadFromBook()">Load the ${escHtml(spbEnSection)} register into the sheet</button>` : ''}
+        <input type="file" id="spb-en-file" accept=".xlsx,.xls,.ods,.csv" style="display:none;" onchange="spbEnImportFile(this)" />
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('spb-en-file').click()"
+          title="Load a raw Excel book into this sheet exactly as typed — every mistake in it gets flagged here, row by row">
+          Check an Excel file here</button>
         <button class="btn btn-outline btn-sm" onclick="spbEnClearSheet()">Clear this sheet</button>
         ${fullBtns}
       </div>
@@ -681,7 +731,10 @@ function spbRenderEntry() {
       column — a new row appears as you reach the end; ← and → keep editing the text while your cursor is
       inside a word.
       Everything autosaves as a draft on this computer — <strong>Save book to database</strong> (Import tab)
-      makes it permanent and opens the Register, Confirmation and Annexure screens.</p>`;
+      makes it permanent and opens the Register, Parties and Annexure screens.
+      <strong>Check an Excel file here</strong> loads a raw book into the sheet exactly as typed, so every
+      date, PAN, VAT and bill-number mistake in the file gets flagged row by row — the Import tab, by
+      contrast, is the clean-and-convert pipeline with Data Doctor.</p>`;
 
   spbEnRenderRows();
   spbEnRenderSummary();
@@ -1315,6 +1368,76 @@ function spbEnClearSheet() {
   spbEnApplyBook();
   spbEnScheduleDraft();
   spbRenderEntry();
+}
+
+// ── Import an Excel file straight into the sheet ────────────────────────────
+// The mistake-hunting flow: the raw file lands in the grid as typed, and the
+// grid's validation — bad dates, PAN conflicts, VAT off 13%, duplicate bill
+// numbers with month/row/party locations — does the finding. Distinct from the
+// Import tab on purpose: that pipeline produces a CLEAN book via Data Doctor;
+// this one shows the dirt. spbRaw is never set, so the two paths cannot mix.
+async function spbEnImportFile(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  spbEnStatus(`⏳ Reading ${escHtml(file.name)}…`, 'searching');
+  try {
+    await LibLoader.ensure('xlsx');
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const found = {};
+    const notes = [];
+    wb.SheetNames.forEach(sn => {
+      let kind = spbClassifySheet(sn);
+      // Single-sheet exports often carry a generic sheet name — the file name
+      // decides (the spbHandleFiles rule).
+      if (!kind && wb.SheetNames.length === 1) kind = spbClassifySheet(file.name);
+      if (!kind || found[kind]) return;
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: null });
+      const header = spbFindHeader(rows);
+      if (!header) {
+        notes.push(`"${escHtml(sn)}" looks like a ${kind} sheet but its columns weren't recognized — for a non-standard layout, upload it on the Import tab and assign the columns there.`);
+        return;
+      }
+      found[kind] = spbEnRowsFromSheet(rows, header, spbFyStartYear());
+    });
+    if (!found.sales && !found.purchase) {
+      spbEnStatus('❌ No Sales or Purchase sheet recognized in that file' +
+        (notes.length ? ' — ' + notes.join(' ') : ` (sheets: ${escHtml(wb.SheetNames.join(', '))}).`), 'error');
+      return;
+    }
+    const replacing = SPB_SECTIONS.filter(s =>
+      found[s.key] && (spbEnRows[s.key] || []).some(r => !spbEnRowInert(r)));
+    if (replacing.length && !confirm(
+      `Replace the ${replacing.map(s => s.label).join(' and ')} rows already on the sheet with the file's rows?\n\n` +
+      'Rows already saved to the database stay saved until the next Save.')) {
+      spbEnStatus('ℹ️ Import cancelled — the sheet is unchanged.', 'info');
+      return;
+    }
+    SPB_SECTIONS.forEach(({ key }) => { if (found[key]) spbEnRows[key] = found[key].rows; });
+    if (!found[spbEnSection]) spbEnSection = found.sales ? 'sales' : 'purchase';
+    spbEnDirty = true;
+    spbEnInvalidate();
+    spbEnMonth = spbEnDefaultMonth();
+    spbEnShowExtra = spbEnRows.purchase.some(r =>
+      ['imp', 'impVat', 'cap', 'capVat'].some(k => String(r[k] || '').trim() !== ''));
+    spbEnApplyBook();
+    spbEnScheduleDraft();
+    spbRenderEntry();
+    const parts = SPB_SECTIONS.filter(s => found[s.key])
+      .map(s => `${s.label}: ${found[s.key].rows.length.toLocaleString('en-US')} rows` +
+        (found[s.key].subtotals ? ` (${found[s.key].subtotals} month-total lines skipped)` : ''));
+    spbEnStatus(`✅ Loaded into the sheet — ${parts.join(' · ')}.` +
+      (notes.length ? ' ' + notes.join(' ') : '') +
+      ' Anything flagged below is exactly as it reads in the file.', 'success');
+    AuditLog.record('spb_entry_imported', {
+      module: 'salesPurchaseBook', clientName: spbVal('spb-company'), recordRef: spbBookId,
+      detail: { fiscalYear: spbVal('spb-fy'), file: file.name,
+        rows: SPB_SECTIONS.reduce((a, s) => a + (found[s.key] ? found[s.key].rows.length : 0), 0) },
+    });
+  } catch (err) {
+    console.error('[Autobooks] sheet import failed', err);
+    spbEnStatus('❌ Could not read that file: ' + escHtml(err && err.message ? err.message : String(err)), 'error');
+  }
 }
 
 // The one-way door out of an uploaded file: its corrected rows become the

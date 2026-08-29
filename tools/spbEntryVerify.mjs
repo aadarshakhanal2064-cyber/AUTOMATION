@@ -73,6 +73,7 @@ function loadModules() {
       seedFromBook() { spbEnRows = { sales: [], purchase: [] }; spbEnSeedFromBook(); return spbEnRows; },
       rowIssues(section, idx) { spbEnSection = section; return spbEnRowIssues(idx); },
       billKey: spbEnBillKey,
+      rowsFromSheet: spbEnRowsFromSheet,
       atStart: spbEnCaretAtStart,
       atEnd: spbEnCaretAtEnd,
       dupMap: spbEnDupMap,
@@ -280,6 +281,45 @@ check('switching to Purchase does not inherit the Sales duplicate ruling',
   en.rowIssues('purchase', 0).some(x => x.k === 'bill'), false);
 check('and switching back still flags Sales',
   en.rowIssues('sales', 0).some(x => x.k === 'bill'), true);
+
+console.log('\n── Excel file → grid rows (the mistake-hunting import) ──');
+// Deliberately NOT spbParseRows: the parser excludes what it cannot read,
+// and those rows are exactly what this import exists to show.
+const sheetHeader = { row: 1, col: { date: 0, bill: 1, party: 2, pan: 3, taxfree: 4, taxable: 5, vat: 6 } };
+const sheetRows = [
+  ['Some Client Pvt. Ltd.', null, null, null, null, null, null],       // title line above the header
+  ['Date', 'Bill No.', 'Party Name', 'Pan No.', 'Tax Free', 'Taxable Amount', 'Vat'],
+  ['2082.4.1', '1', 'Khudra Sales', null, 0, 15300, 1989],
+  ['garbage-date', '2', 'Khudra Sales', null, 0, 10200, 1326],         // must SURVIVE, raw
+  [null, null, 'Total Of Shrawan', null, 0, 25500, 3315],              // embedded subtotal — skipped
+  ['bhadra', '3', 'Om Fiber Glass', '६०८८६९३४२', 0, 5000, null],       // month name + Devanagari PAN
+  [null, null, null, null, 0, 0, 0],                                   // formula leftover — skipped
+  ['2082.05.09', '4', 'Shrestha Hardware', '30185437', 0, 'here', 650], // 8-digit PAN + text amount
+];
+const imp = en.rowsFromSheet(sheetRows, sheetHeader, FY);
+check('every live data row lands in the grid', imp.rows.length, 4);
+check('the embedded month subtotal is skipped and counted', imp.subtotals, 1);
+check('the formula leftover is skipped as blank', imp.blanks, 1);
+check('a readable date is normalized', imp.rows[0].date, '2082.04.01');
+check('an unreadable date is kept RAW for the grid to flag', imp.rows[1].date, 'garbage-date');
+check('a month-name date resolves with the year from the F.Y.', imp.rows[2].date, '2082.05.01');
+check('a Devanagari PAN is normalized to digits', imp.rows[2].pan, '608869342');
+check('a malformed PAN is kept for the grid to flag', imp.rows[3].pan, '30185437');
+check('text typed into an amount column is kept visible', imp.rows[3].taxable, 'here');
+check('a genuine zero renders blank, the seeding rule', imp.rows[0].taxfree, '');
+check('amounts keep their figures as strings', imp.rows[0].taxable, '15300');
+check('a blank VAT stays blank (the apply pass fills it)', imp.rows[2].vat, '');
+
+console.log('\n── Imported rows through the real pipeline ──');
+en.clearData();
+en.setRows({ sales: imp.rows, purchase: [] });
+const impOut = en.apply();
+// The parser drops the garbage-date row and reads 'here' as 0 — the BOOK is
+// clean while the GRID still shows both mistakes. That split is the design.
+check('the clean book excludes only the unreadable-date row', impOut.data.sales.txns.length, 3);
+check('…and reports it', impOut.data.sales.stats.badDates.length, 1);
+check('the text amount reads as 0 in the book and is reported', impOut.data.sales.stats.nonNumeric.length, 1);
+check('the grid still holds all 4 rows for fixing', en.rows().sales.length, 4);
 
 console.log('\n── Arrow keys: navigate vs edit text ──');
 // ← and → move a cell only when the caret has nowhere left to travel — or
