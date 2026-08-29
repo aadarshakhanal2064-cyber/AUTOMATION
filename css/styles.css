@@ -2121,6 +2121,147 @@ input[type=number]::-webkit-inner-spin-button{ -webkit-appearance: none; margin:
   color: var(--text-muted);
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   TRIAL BALANCE  (`tbs-`)  — the two-pane workbench
+
+   No new visual language (§9): every colour, radius and size below is an
+   existing token. What is new is only the LAYOUT — two dense ledger tables
+   side by side, which no other screen in the app has needed.
+
+   The grid collapses to one column under 1180px rather than at a device
+   breakpoint: two tables of figures stop being readable well before a
+   tablet's width, and the panes are equally usable stacked.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.tbs-split {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px; align-items: start;
+}
+@media (max-width: 1180px) { .tbs-split { grid-template-columns: minmax(0, 1fr); } }
+
+.tbs-pane {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--white); overflow: hidden;
+}
+.tbs-pane-title {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-page-alt); font-weight: 700; font-size: var(--fs-sm);
+  color: var(--brand-navy); letter-spacing: .01em;
+}
+
+/* ── the balance chip: ONE number, shown never forced ── */
+.tbs-balance {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 14px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+}
+.tbs-balance.ok  { background: var(--green-bg); border-color: var(--green-border); color: var(--green-dk); }
+.tbs-balance.bad { background: var(--red-bg);   border-color: var(--red-border);   color: var(--red-dk); }
+.tbs-bal-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+
+.tbs-issues { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+.tbs-issues li {
+  padding: 8px 12px; border-radius: var(--radius); font-size: var(--fs-sm);
+  border: 1px solid var(--border); background: var(--bg-page-alt); color: var(--text-main);
+}
+.tbs-iss-error { background: var(--red-bg);    border-color: var(--red-border);    color: var(--red-dk); }
+.tbs-iss-warn  { background: var(--yellow-bg); border-color: var(--yellow-border); color: var(--yellow-dk); }
+.tbs-iss-info  { background: var(--blue-bg);   border-color: var(--border);        color: var(--blue-dk); }
+
+/* ── the tables ──
+   Tabular numerals everywhere digits stack (§9), and a fixed row height so
+   the two panes' rules line up across the gap when they are side by side. */
+.tbs-table {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+}
+.tbs-table th {
+  padding: 8px 10px; text-align: left; font-weight: 600; font-size: var(--fs-xs);
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--border); background: var(--bg-page-alt);
+  position: sticky; top: 0; z-index: 1;
+}
+.tbs-table td { padding: 3px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+.tbs-table .tbs-n, .tbs-table th.tbs-n { text-align: right; white-space: nowrap; }
+
+.tbs-blk td {
+  padding-top: 12px; font-weight: 700; color: var(--brand-navy);
+  background: var(--bg-page-alt); border-bottom: 1px solid var(--border);
+}
+.tbs-sec td { font-weight: 600; color: var(--text-main); }
+.tbs-sec-lab { padding-left: 10px; }
+.tbs-sec-tot { color: var(--brand-navy); font-weight: 700; }
+.tbs-line-lab { padding-left: 24px !important; }
+.tbs-subtot td { font-weight: 600; color: var(--text-muted); padding-left: 24px; }
+.tbs-grand td {
+  font-weight: 700; color: var(--brand-navy);
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.tbs-diff td { border-bottom: 3px double var(--border); }
+
+/* An adjustment line is a figure the app put there, not the preparer — it is
+   marked so, because an adjustment nobody notices is the failure mode this
+   whole design exists to avoid. */
+.tbs-adj { background: var(--amber-bg); }
+.tbs-adj .tbs-in-name { color: var(--amber-dk); font-style: italic; }
+
+.tbs-in {
+  width: 100%; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text-main);
+  font-family: var(--font-ui); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.tbs-table .tbs-n .tbs-in { text-align: right; }
+.tbs-in:hover  { border-color: var(--border); background: var(--white); }
+.tbs-in:focus  { border-color: var(--accent-blue); background: var(--white); outline: none; }
+.tbs-in-name   { text-align: left; }
+.tbs-in-side   { width: auto; min-width: 108px; border-color: var(--border); background: var(--white); }
+.tbs-in-tax    { width: auto; min-width: 240px; border-color: var(--border); background: var(--white); }
+
+.tbs-sec-act { width: 34px; text-align: right; padding-left: 0 !important; padding-right: 4px !important; }
+.tbs-mini {
+  border: 1px solid var(--border); background: var(--white); color: var(--text-muted);
+  border-radius: 6px; padding: 1px 6px; font-size: var(--fs-xs); cursor: pointer;
+  font-family: var(--font-ui); white-space: nowrap;
+  transition: var(--trans-ctrl);
+}
+.tbs-mini:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
+.tbs-mini-del:hover { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+
+.tbs-note-row td { background: var(--bg-page-alt); padding: 8px 10px 8px 24px; }
+.tbs-inline-lab { font-size: var(--fs-sm); color: var(--text-muted); margin-right: 8px; }
+.tbs-hint { font-size: var(--fs-xs); color: var(--text-muted); }
+.tbs-note-row .tbs-hint { display: block; margin-top: 4px; }
+
+/* ── the statement pane ── */
+.tbs-st-head { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); background: var(--bg-page-alt); }
+.tbs-st-title { font-weight: 700; color: var(--brand-navy); font-size: var(--fs-sm); }
+.tbs-st-sub { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
+.tbs-st-note { width: 46px; text-align: center; color: var(--text-faint); font-size: var(--fs-xs); }
+.tbs-st-head-row td { font-weight: 700; }
+.tbs-st-table .tbs-st-head td { padding-top: 12px; font-weight: 700; color: var(--brand-navy); }
+.tbs-st-sub td:first-child { padding-left: 20px; font-weight: 600; color: var(--text-main); }
+.tbs-st-item .tbs-st-lab { padding-left: 28px; }
+.tbs-st-tot td {
+  font-weight: 700; color: var(--brand-navy); border-top: 1px solid var(--border);
+}
+.tbs-st-grand td {
+  font-weight: 700; color: var(--brand-navy);
+  border-top: 1px solid var(--border); border-bottom: 3px double var(--border);
+}
+.tbs-st-blank td { height: 8px; border-bottom: 0; }
+/* A derived row carries no box at all, so there is nothing to click and be
+   refused by — the refusal is the absence. */
+.tbs-st-derived .tbs-n { padding-right: 18px; }
+
+.tbs-writeback {
+  margin: 0 14px 10px; padding: 8px 12px;
+  border: 1px solid var(--yellow-border); background: var(--yellow-bg);
+  border-radius: var(--radius); font-size: var(--fs-xs); color: var(--yellow-dk);
+}
+.tbs-st-hint { padding: 0 14px 14px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

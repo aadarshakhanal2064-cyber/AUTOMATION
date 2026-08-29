@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608300200">
+<link rel="stylesheet" href="css/styles.css?v=202608310100">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -174,6 +174,7 @@ function cropLoginLogoIcon(img) {
       <div class="topbar-dropdown-menu" id="topbar-auto-menu">
         <button class="topbar-dropdown-item" onclick="openModule('finStatement')">Audited Statement</button>
         <button class="topbar-dropdown-item" onclick="openModule('provisionalStatement')">Provisional Statement</button>
+        <button class="topbar-dropdown-item" onclick="openModule('trialBalance')">Trial Balance</button>
         <button class="topbar-dropdown-item" onclick="openModule('projection')">Projection Report</button>
         <button class="topbar-dropdown-item" onclick="openModule('depreciation')">Depreciation</button>
         <button class="topbar-dropdown-item" onclick="openModule('confirmationLetters')">Confirmation</button>
@@ -3357,6 +3358,91 @@ function cropLoginLogoIcon(img) {
       </div>
     </div>
 
+    <!-- ── TAB: TRIAL BALANCE (Automation Hub dropdown) ──
+         Two panes over ONE set of numbers: the ledger on the left, the
+         statement it makes on the right, both typeable. The model and the
+         reasoning behind it are js/core/trialBalanceModel.js. -->
+    <div id="tab-trialBalance-panel" class="tab-panel">
+      <div class="page-header">
+        <div class="ph-text">
+          <div class="breadcrumb"><span>Automation Hub</span><span>&rsaquo;</span><span class="current">Trial Balance</span></div>
+          <h2 class="page-title">Trial Balance</h2>
+          <p class="page-subtitle">Type the trial balance in the firm&rsquo;s own layout and the balance sheet and income statement draw themselves off it &mdash; and typing on either statement writes straight back to the ledger.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" onclick="tbsResetSheet()">Clear Sheet</button>
+          <button class="btn btn-outline" onclick="tbsOpenSavedDrawer()">Saved Sheets</button>
+          <button class="btn btn-primary" onclick="tbsSaveToDb(this)">Save to Database</button>
+        </div>
+      </div>
+
+      <div id="tbs-status-area"></div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title" style="font-size:14px;">Client &amp; Basics</div></div>
+        <div class="form-grid">
+          <div class="form-group" style="position:relative;">
+            <label>Client</label>
+            <input type="text" id="tbs-client-search" placeholder="Name or PAN&hellip;" autocomplete="off" />
+            <div class="autocomplete-list" id="tbs-client-autocomplete"></div>
+          </div>
+          <div class="form-group"><label>Company Name</label><input type="text" id="tbs-company" oninput="tbsRecalc(true)" /></div>
+          <div class="form-group"><label>PAN</label><input type="text" id="tbs-pan" /></div>
+          <div class="form-group"><label>Address</label><input type="text" id="tbs-address" oninput="tbsRecalc(true)" /></div>
+          <div class="form-group"><label>Fiscal Year</label><select id="tbs-fy" onchange="tbsOnFyChange()"></select></div>
+          <div class="form-group">
+            <!-- Drives the capital head on BOTH the ledger and the balance
+                 sheet, so the two can never disagree (CLAUDE.md &sect;15). -->
+            <label>Entity Type</label>
+            <select id="tbs-entity" onchange="tbsRecalc(true)">
+              <option value="private">Private Limited Company</option>
+              <option value="partnership">Partnership Firm</option>
+              <option value="proprietorship">Proprietorship</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>A.D. Date <span style="font-weight:400; color:var(--text-muted);">&mdash; printed in brackets</span></label>
+            <input type="text" id="tbs-ad-date" placeholder="e.g. 16th July 2026" oninput="tbsRecalc(true)" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header">
+          <div class="card-title" style="font-size:14px;">Trial Balance &rlarr; Statements</div>
+          <div class="rep-view-toggle">
+            <button id="tbs-pane-SFP" class="rep-view-btn active" onclick="tbsShowPane('SFP')">Balance Sheet</button>
+            <button id="tbs-pane-SOI" class="rep-view-btn" onclick="tbsShowPane('SOI')">Income Statement</button>
+          </div>
+        </div>
+        <div id="tbs-balance" class="tbs-balance ok"></div>
+        <div id="tbs-issues"></div>
+        <div class="tbs-split">
+          <div class="tbs-pane">
+            <div class="tbs-pane-title">Trial Balance</div>
+            <div id="tbs-ledger"></div>
+          </div>
+          <div class="tbs-pane">
+            <div id="tbs-statement"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header">
+          <div class="card-title" style="font-size:14px;">Preview</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <!-- Built from the report by tbsRenderSheetTabs(); a hardcoded list
+                 is how the Audited Statement's COI sheet became unopenable. -->
+            <div class="rep-view-toggle" id="tbs-sheet-tabs"></div>
+            <button class="btn btn-outline btn-sm" onclick="tbsPrint()">Print / PDF</button>
+            <button class="btn btn-primary btn-sm" onclick="tbsDownloadExcel()">Download Excel</button>
+          </div>
+        </div>
+        <div id="tbs-preview" style="overflow-x:auto;"></div>
+      </div>
+    </div>
+
     <!-- ── TAB: CLIENTS ── -->
     <div id="tab-clients-panel" class="tab-panel">
       <div class="page-header">
@@ -4928,13 +5014,13 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608300500"></script>
+<script defer src="js/config.js?v=202608310100"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
 <script defer src="js/core/libLoader.js?v=202608212300"></script>
 <script defer src="js/core/keyboard.js?v=202608212500"></script>
-<script defer src="js/core/commandPalette.js?v=202608291200"></script>
+<script defer src="js/core/commandPalette.js?v=202608310100"></script>
 <script defer src="js/core/nepaliLocale.js?v=202608241700"></script>
 <script defer src="js/core/documentEngine.js?v=202608241600"></script>
 <script defer src="js/core/searchEngine.js?v=202608212500"></script>
@@ -4945,7 +5031,8 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/workbookReader.js?v=202608291800"></script>
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
 <script defer src="js/core/nepalTax.js?v=202608300600"></script>
-<script defer src="js/core/trialBalanceReader.js?v=202608300700"></script>
+<script defer src="js/core/trialBalanceReader.js?v=202608310100"></script>
+<script defer src="js/core/trialBalanceModel.js?v=202608310100"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
 <script defer src="js/core/documentStore.js?v=202608261400"></script>
 <!-- The password gate on Financial Management. The GATE is here; the LOCK
@@ -4956,7 +5043,7 @@ function cropLoginLogoIcon(img) {
 <!-- Fills the firm-identity globals config.js now declares empty. Must load
      before auth.js, which calls OrgIdentity.load() during the boot sequence. -->
 <script defer src="js/core/orgIdentity.js?v=202608261400"></script>
-<script defer src="js/tabs.js?v=202608291200"></script>
+<script defer src="js/tabs.js?v=202608310100"></script>
 <script defer src="js/dashboard.js?v=202608181500"></script>
 <!-- js/registrar.js (the moduleComingSoon stub holder) was removed 2026-08-20:
      Company Registration was the last stub, and it is a real module now. -->
@@ -4995,12 +5082,13 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/projection.js?v=202608291800"></script>
 <script defer src="js/projectionExport.js?v=202608291800"></script>
 <script defer src="js/finStatementEngine.js?v=202608291600"></script>
-<script defer src="js/finStatementExport.js?v=202608300700"></script>
+<script defer src="js/finStatementExport.js?v=202608310100"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
 <script defer src="js/provisionalStatementEngine.js?v=202608300300"></script>
 <script defer src="js/provisionalStatement.js?v=202608300600"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
 <script defer src="js/auditedStatement.js?v=202608300600"></script>
+<script defer src="js/trialBalanceSheet.js?v=202608310100"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

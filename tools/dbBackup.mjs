@@ -72,6 +72,9 @@ export const TABLE_ORDER = [
   // Saved Provisional Statement workings (2026-08-22) — FKs organizations
   // and clients, both replayed above.
   'provisional_statements',
+  // The Trial Balance module's typed ledgers (2026-08-30). FKs organizations
+  // and clients, both replayed above.
+  'trial_balances',
   'saved_documents',
   'service_memos',
   'service_memo_fee_skips',

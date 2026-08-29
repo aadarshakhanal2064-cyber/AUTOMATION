@@ -37,6 +37,7 @@ window.CommandPalette = (function () {
     { label: 'Final Account',              hint: 'Financial Management',  go: () => openModule('finalAccount') },
     { label: 'Audited Statement',          hint: 'Automation Hub',        go: () => openModule('finStatement') },
     { label: 'Provisional Statement',      hint: 'Automation Hub',        go: () => openModule('provisionalStatement') },
+    { label: 'Trial Balance',              hint: 'Automation Hub',        go: () => openModule('trialBalance') },
     { label: 'Projection Report',          hint: 'Automation Hub',        go: () => openModule('projection') },
     { label: 'Depreciation',               hint: 'Automation Hub',        go: () => openModule('depreciation') },
     { label: 'Confirmation Letters',       hint: 'Automation Hub',        go: () => openModule('confirmationLetters') },

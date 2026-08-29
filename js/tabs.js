@@ -96,6 +96,7 @@ const MODULE_INITS = {
   finalAccount:        () => faInit(),
   projection:          () => pjInit(),
   finStatement:        () => asInit(),
+  trialBalance:        () => tbsInit(),
   provisionalStatement:() => psInit(),
   depreciation:        () => depInit(),
   confirmationLetters: () => clInit(),
