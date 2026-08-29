@@ -108,6 +108,12 @@ let asVatSide = null;
 // dataset flag: the checkbox unrenders with its collapsed section, and an
 // override stored on the element would silently revert to the automatic rule.
 let asCoiTouched = null;
+// The COI's two hand-entered blocks: {name, amount} lines added back as
+// disallowed expenses, and taken out as non-taxable income. Module state
+// rather than DOM for the same reason asCoiTouched is — both unrender with
+// the section they live in.
+let asCoiAdds = [];
+let asCoiLess = [];
 // Trade receivables absorbs the balance by default, the way the Audited engine
 // already works (§15). Untick it to type receivables and have any residual
 // reported instead of absorbed.
@@ -213,6 +219,10 @@ const asScope = WorkflowEngine.createClientScope({
     asStock = [];
     asExtraPay = []; asExtraRecv = [];
     asTaxOpen = 'adv'; asVatSide = null; asCoiTouched = null;
+    asCoiAdds = []; asCoiLess = [];
+    asTbSummary = null; asTbSrc = {};
+    { const t = asEl('as-tb-file'); if (t) t.value = ''; }
+    asRenderTbSummary();
     asTaxRule = asDefaultTaxRule();
     asSolveFor = 'purchases'; asPlugReceivables = true;
     asSavedId = null;
@@ -336,6 +346,13 @@ function asApplySources() {
 // Where a figure came from, for the caption under its box.
 function asSourceOf(k) {
   if (asTypedOver[k]) return null;
+  // The trial balance is a source like any other, and registering it as one
+  // is what makes the contract work: a sourced box CLAIMS itself the moment
+  // it is typed into (asFigureInput), so a later re-import leaves the typed
+  // figure alone. Without this an import would silently overwrite the
+  // preparer's own work — the one thing every source in this module promises
+  // not to do.
+  if (asTbSrc[k]) return asTbSrc[k];
   if (!asSrc && !asItDep) return null;
   if (k === 'sales' && asSrc) return asSrc.revenue;
   if (k === 'purchases' && asSrc) return asSrc.purchases;
@@ -350,6 +367,8 @@ function asReleaseTyped(k) {
   delete asTypedOver[k];
   delete asCy[k];
   asApplySources();
+  // Hand it back to the trial balance too, if that is where it came from.
+  if (asTbSrc[k] && asCy[k] == null) asCy[k] = asTbSrc[k].value;
   asRenderFigures();
   asRun();
 }
@@ -398,6 +417,176 @@ async function asHandlePyFile(input) {
   } catch (e) {
     asStatus('Could not read that workbook: ' + e.message, 'error');
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TRIAL BALANCE — this year's figures, read rather than typed
+//
+//  The prior-year upload above supplies LAST year. This one supplies THIS
+//  year, off the trial balance the firm already prepares — which is laid out
+//  in the statements' own vocabulary precisely so it can (js/core/
+//  trialBalanceReader.js). Two uploads, two years, one statement.
+//
+//  It follows the same contract as every other source in this module: a
+//  figure the preparer has already typed is NEVER overwritten (asTypedOver),
+//  and everything it did write is listed on screen. Nothing lands silently.
+// ════════════════════════════════════════════════════════════════
+
+let asTbSummary = null;   // {filled, issues, check, sheetName} of the last import
+// Per-figure provenance from the trial balance: {key: {source, value}}. Read
+// by asSourceOf(), which is what gives each imported box its badge AND makes
+// typing into it claim the figure against the next import.
+let asTbSrc = {};
+
+async function asHandleTbFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  asStatus('Reading the trial balance\u2026', 'searching');
+  try {
+    await LibLoader.ensure('xlsx');
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const parsed = TrialBalanceReader.parse(wb, XLSX);
+    if (!parsed.ok) {
+      asTbSummary = { filled: [], issues: parsed.issues, check: null, sheetName: null };
+      asRenderTbSummary();
+      asStatus('That workbook could not be read as a trial balance \u2014 see below.', 'error');
+      return;
+    }
+    const f = TrialBalanceReader.toFigures(parsed);
+    const wrote = asApplyTb(f);
+    asTbSummary = { filled: wrote, issues: parsed.issues, check: parsed.check, sheetName: parsed.sheetName };
+
+    asRenderTbSummary();
+    asRenderFigures();
+    asRenderLoans();
+    asRenderRules();
+    asRenderTax();
+    asRun();
+    AuditLog.record('audited_tb_imported', {
+      module: 'finStatement', clientName: asEl('as-company').value, status: 'success',
+      detail: { sheet: parsed.sheetName, figures: wrote.length, foots: parsed.check.foots },
+    });
+    asStatus(`Trial balance read \u2014 ${wrote.length} figures filled. Each one is listed below and can be typed over.`,
+             parsed.check.foots ? 'success' : 'error');
+  } catch (e) {
+    asStatus('Could not read that workbook: ' + e.message, 'error');
+  }
+}
+
+// Write the parsed figures into module state, skipping anything claimed.
+// Returns what it actually wrote, so the screen reports rather than asserts.
+function asApplyTb(f) {
+  const wrote = [];
+  const put = (k, v, label) => {
+    if (v == null) return;
+    const amount = Math.round(v * 100) / 100;
+    // Provenance is recorded even for a figure the preparer has claimed, so
+    // the ↺ on that box can still hand it back to the trial balance.
+    asTbSrc[k] = { source: 'Trial balance — ' + label, value: amount };
+    if (asTypedOver[k]) return;
+    asCy[k] = amount;
+    wrote.push({ label: label, amount: amount });
+  };
+  for (const [k, v] of Object.entries(f.cy)) {
+    if (k === 'vatRegistered') { if (!asTypedOver.vatRegistered) asCy.vatRegistered = true; continue; }
+    const named = f.filled.find(x => Math.abs(x.amount - v) < 0.005);
+    put(k, v, named ? named.label : k);
+  }
+
+  // The four loan groups replace whatever is there \u2014 a trial balance is the
+  // whole facility list at the year end, so merging would leave a facility
+  // the client has since repaid standing on the balance sheet.
+  if (f.loans && (f.loans.st.length + f.loans.lt.length + f.loans.pwc.length + f.loans.hp.length)) {
+    asLoans = { st: f.loans.st.slice(), lt: f.loans.lt.slice(), pwc: f.loans.pwc.slice(), hp: f.loans.hp.slice() };
+    wrote.push({ label: 'Loans & Borrowings (' + (f.loans.st.length + f.loans.lt.length + f.loans.pwc.length + f.loans.hp.length) + ' facilities)',
+                 amount: [...f.loans.st, ...f.loans.lt, ...f.loans.pwc, ...f.loans.hp].reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // PPE: the TB carries closing cost per class, which seeds the 3.1 grid's
+  // ADDITIONS column only where the grid already knows the class \u2014 the
+  // opening column is last year's carrying amount and is not the TB's to say.
+  if (f.ppe && f.ppe.length) {
+    wrote.push({ label: 'PPE classes recognised (' + f.ppe.map(p => p.type).join(', ') + ')',
+                 amount: f.ppe.reduce((t, p) => t + p.opening, 0) });
+  }
+
+  // TDS withholdings the TB states are facts off the ledger, so they win over
+  // the engine's derived percentages \u2014 but only where not already typed.
+  for (const [k, v] of Object.entries(f.tds || {})) {
+    if (asTds[k] == null || asTds[k] === '') { asTds[k] = v; wrote.push({ label: 'TDS \u2014 ' + k, amount: v }); }
+  }
+
+  // Prepayments and the like become note-3.3 lines rather than a lump.
+  if (f.extraRecv && f.extraRecv.length && !asExtraRecv.some(l => asNum(l.amount))) {
+    for (const l of f.extraRecv) {
+      const hit = asExtraRecv.find(x => TrialBalanceReader.key(x.name) === TrialBalanceReader.key(l.name));
+      if (hit) hit.amount = l.amount;
+      else asExtraRecv.push({ name: l.name, pyName: '', py: 0, amount: l.amount });
+    }
+    wrote.push({ label: 'Note 3.3 lines (' + f.extraRecv.length + ')', amount: f.extraRecv.reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // Other expenses: fill THIS year's amount on a line last year already had,
+  // matched on the head's spelling; anything new is added as its own line.
+  // The rules grid then shows them typed rather than grown, which is right \u2014
+  // a figure off the ledger is not an estimate.
+  if (f.otherExpenses && f.otherExpenses.length) {
+    let n = 0;
+    for (const l of f.otherExpenses) {
+      const k = ProvisionalStatementEngine.headKeyFor(l.name)
+        || (asPy && (asPy.otherItems || []).find(o => TrialBalanceReader.key(o.name) === TrialBalanceReader.key(l.name)) ? null : null);
+      const pyLine = asPy && (asPy.otherItems || []).find(o => TrialBalanceReader.key(o.name) === TrialBalanceReader.key(l.name));
+      const key = k || (pyLine && (pyLine.key || ProvisionalStatementEngine.headKeyFor(pyLine.name)));
+      if (key) { asRules[key] = { rule: 'typed', typed: l.amount }; n++; }
+      else if (!asCustom.some(c => TrialBalanceReader.key(c.name) === TrialBalanceReader.key(l.name))) {
+        const ck = 'tb' + asCustom.length;
+        asCustom.push({ key: ck, name: l.name });
+        asRules[ck] = { rule: 'typed', typed: l.amount };
+        n++;
+      }
+    }
+    if (n) wrote.push({ label: 'Other expense lines (' + n + ')', amount: f.otherExpenses.reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // A direct cost that is neither freight nor labour keeps its own line.
+  if (f.directExtra && f.directExtra.length) {
+    for (const l of f.directExtra) {
+      if (asDirectCustom.some(c => TrialBalanceReader.key(c.name) === TrialBalanceReader.key(l.name))) continue;
+      const ck = 'tbd' + asDirectCustom.length;
+      asDirectCustom.push({ key: ck, name: l.name });
+      asRules[ck] = { rule: 'typed', typed: l.amount };
+    }
+    wrote.push({ label: 'Direct cost lines (' + f.directExtra.length + ')', amount: f.directExtra.reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // Purchases came off the ledger, so the see-saw must hold THEM and let
+  // profit fall out \u2014 otherwise the balancing solve overwrites the very
+  // figure that was just imported. Same rule asApplySources() follows.
+  if (!asTypedOver.pbtTarget && asCy.purchases != null) asSolveFor = 'pbt';
+  return wrote;
+}
+
+function asRenderTbSummary() {
+  const box = asEl('as-tb-summary');
+  if (!box) return;
+  const s = asTbSummary;
+  if (!s) { box.innerHTML = ''; return; }
+  const errs = (s.issues || []).filter(i => i.level === 'error');
+  const warns = (s.issues || []).filter(i => i.level !== 'error');
+  box.innerHTML = `
+    ${errs.map(i => `<div class="status-box status-error" style="margin:0 0 8px;">${escHtml(i.msg)}</div>`).join('')}
+    ${s.check ? `<div class="status-box ${s.check.foots ? 'status-success' : 'status-error'}" style="margin:0 0 8px;">
+      <strong>${s.check.foots ? 'The trial balance foots.' : 'The trial balance does not foot.'}</strong>
+      Debits ${asFmt(s.check.debits)} against credits ${asFmt(s.check.credits)}${s.check.foots ? '' : ` &mdash; a difference of ${asFmt(s.check.difference)}`}.
+      ${s.sheetName ? `Read from sheet &ldquo;${escHtml(s.sheetName)}&rdquo;.` : ''}
+    </div>` : ''}
+    ${warns.map(i => `<div class="status-box status-info" style="margin:0 0 8px;">${escHtml(i.msg)}</div>`).join('')}
+    ${(s.filled || []).length ? `<div class="table-wrap" style="max-width:560px;"><table class="client-table">
+      <thead><tr><th>Filled from the trial balance</th><th style="text-align:right; width:170px;">Amount</th></tr></thead>
+      <tbody>${s.filled.map(x => `<tr><td>${escHtml(x.label)}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(x.amount)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Every one of these is editable below &mdash; typing over a figure claims it, and a later re-import leaves it alone.</div>` : ''}`;
 }
 
 function asRenderPySummary() {
@@ -1164,14 +1353,70 @@ function asRenderTax() {
     ? `${side === 'receivable' ? 'Receivable' : 'Payable'} ${asFmt(asNum(asCy[sideKey]))}`
     : 'Not registered';
 
-  // (The Computation of Income section was removed 2026-08-28 by user
-  // decision — tax always charges straight off accounting profit. The engine
-  // still implements the COI bridge and tools/psVerify.mjs still proves it,
-  // so restoring the section is a UI change only.)
+  // ── COI — the bridge from accounting profit to taxable income (restored
+  //    2026-08-30 by user ask, now carrying the firm's own disallowed and
+  //    non-taxable blocks). Shown whenever it is on, so the tax figure can be
+  //    traced rather than trusted.
+  const coiOn = asUseCoi();
+  const itSrc = asSourceOf('itDepreciation');
+  const c = r ? r.coi : null;
+  const coiLines = (kind, list, heading) => `
+    <div style="margin-top:14px;">
+      <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:6px;">${heading}</div>
+      ${list.length ? `<div class="table-wrap" style="max-width:520px;"><table class="client-table"><tbody>
+        ${list.map((l, i) => `<tr>
+          <td><input type="text" value="${escHtml(l.name || '')}" placeholder="Particulars"
+                     onchange="asCoiSet('${kind}',${i},'name',this.value)" style="width:100%;" /></td>
+          <td style="width:170px;"><input type="number" step="0.01" value="${l.amount == null ? '' : l.amount}"
+                     onchange="asCoiSet('${kind}',${i},'amount',this.value)" style="width:160px; text-align:right;" /></td>
+          <td style="width:36px;"><button class="btn btn-outline btn-sm" onclick="asCoiRemove('${kind}',${i})">&#10005;</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>` : ''}
+      <div style="margin-top:6px;"><button class="btn btn-outline btn-sm" onclick="asCoiAdd('${kind}')">+ Add line</button></div>
+    </div>`;
+
+  const coiBody = `
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500;">
+      <input type="checkbox" ${coiOn ? 'checked' : ''} style="width:auto;" onchange="asSetUseCoi(this.checked)" />
+      Compute tax through a Computation of Income (adds the COI sheet)
+    </label>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">
+      ${itSrc ? escHtml(itSrc.source) + (itSrc.stale ? ' &mdash; no schedule for this year yet, so last year&rsquo;s is used' : '')
+              : 'No Income-Tax depreciation schedule found for this client. Without one the bridge deducts nothing.'}
+    </div>
+    ${coiOn ? `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;">
+      <div class="form-group" style="margin:0;">
+        <label>Depreciation per Income Tax Act ${itSrc ? asSrcBadge() : ''}</label>
+        <input type="number" step="0.01" value="${asCy.itDepreciation == null ? '' : asCy.itDepreciation}"
+               oninput="asFigureInput('itDepreciation', this.value)" onchange="asRenderTax()" />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Brought-forward loss</label>
+        <input type="number" step="0.01" value="${asCy.broughtForwardLoss == null ? '' : asCy.broughtForwardLoss}"
+               oninput="asFigureInput('broughtForwardLoss', this.value)" onchange="asRenderTax()" />
+        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Enter as a positive figure; it reduces taxable income.</div>
+      </div>
+    </div>
+    ${coiLines('add', asCoiAdds, 'Add: Expenses Disallowed')}
+    ${coiLines('less', asCoiLess, 'Less: Income not Taxable')}
+    ${c ? `<div class="table-wrap" style="margin-top:16px; max-width:520px;"><table class="client-table"><tbody>
+        <tr><td>Net profit as per Income Statement</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(c.pbt)}</td></tr>
+        ${(c.disallowed || []).map(l => `<tr><td style="padding-left:18px;">${escHtml(l.name || 'Disallowed expense')}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(l.amount)}</td></tr>`).join('')}
+        <tr><td>Add: Depreciation per Accounting Standard</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(c.accountingDep)}</td></tr>
+        ${(c.nonTaxable || []).map(l => `<tr><td style="padding-left:18px;">${escHtml(l.name || 'Income not taxable')}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(-Math.abs(l.amount))}</td></tr>`).join('')}
+        <tr><td>Less: Depreciation per Income Tax Act</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(-c.itDep)}</td></tr>
+        <tr><td>Add: Previous year Loss</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(-c.bfLoss)}</td></tr>
+        <tr style="font-weight:600;"><td>Total taxable income</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(c.taxableProfit)}</td></tr>
+        <tr style="font-weight:600;"><td>Provision for tax</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${asFmt(c.tax)}</td></tr>
+      </tbody></table></div>` : ''}` : ''}`;
+  const coiSummary = coiOn ? (c ? `Taxable ${asFmt(c.taxableProfit)}` : 'On') : 'Off &mdash; charged on accounting profit';
+
   host.innerHTML =
     section('adv', 'Advance Tax', advSummary, advBody)
     + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
-    + section('vat', 'VAT', vatSummary, vatBody);
+    + section('vat', 'VAT', vatSummary, vatBody)
+    + section('coi', 'Computation of Income', coiSummary, coiBody);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1587,11 +1832,39 @@ function asInterestInput(k, v) { asFigureInput(k, v); }
 // collapsed accordion section, and a DOM flag would silently revert the
 // preparer's choice to the automatic rule.
 function asUseCoi() {
-  // The Computation of Income was removed 2026-08-28 by user decision — tax
-  // always charges straight off accounting profit and no COI sheet prints.
-  // The engine keeps the bridge (psVerify proves it); flipping this back on
-  // is the whole restore.
-  return false;
+  // Restored 2026-08-30 by user ask, now carrying the firm's own fuller
+  // format (the disallowed / non-taxable blocks). On when there is something
+  // to bridge: an Income-Tax depreciation schedule, or a hand-entered
+  // adjustment. The checkbox overrides either way once touched.
+  if (asCoiTouched != null) return asCoiTouched;
+  return !!(asItDep || asNum(asCy.itDepreciation) || asNum(asCy.broughtForwardLoss)
+            || asCoiAdds.length || asCoiLess.length);
+}
+
+function asSetUseCoi(on) {
+  asCoiTouched = !!on;
+  asRun();
+  asRenderTax();
+}
+
+// ── the two hand-entered COI blocks ──
+// Expenses the Act disallows are added back; income it does not tax is taken
+// out. Both are lists the preparer types — the firm's own sheet marks these
+// rows "Add MM" against "Auto" on the two depreciation rows, and nothing in
+// the accounts can tell us which expense the Act disallows.
+function asCoiAdd(kind) {
+  (kind === 'less' ? asCoiLess : asCoiAdds).push({ name: '', amount: null });
+  asRun(); asRenderTax();
+}
+function asCoiRemove(kind, i) {
+  (kind === 'less' ? asCoiLess : asCoiAdds).splice(i, 1);
+  asRun(); asRenderTax();
+}
+function asCoiSet(kind, i, field, v) {
+  const l = (kind === 'less' ? asCoiLess : asCoiAdds)[i];
+  if (!l) return;
+  l[field] = field === 'name' ? v : (v === '' ? null : asNum(v));
+  asRun();
 }
 
 function asCollectInput() {
@@ -1629,6 +1902,8 @@ function asCollectInput() {
       loansC: asLoans.st,
       tds: asTds,
       stockLines: asStock,
+      coiDisallowed: asCoiAdds,
+      coiNonTaxable: asCoiLess,
       extraPayables: asExtraPay.map((l, i) => ({
         key: 'xpay' + i, name: l.name, pyName: l.pyName, py: asNum(l.py), amount: asNum(l.amount),
       })),
@@ -1798,6 +2073,9 @@ function asToOut(r) {
     coi: {
       pbt: r.coi.pbt, depSlm: r.coi.accountingDep, depIncomeTax: r.coi.itDep,
       bfLoss: r.coi.bfLoss, taxableProfit: r.coi.taxableProfit,
+      // The two hand-entered blocks travel too, or the printed COI would show
+      // a Total Taxable income its own visible rows cannot add up to.
+      disallowed: r.coi.disallowed, nonTaxable: r.coi.nonTaxable,
       tax: r.tax.total, rule: r.tax.rule,
     },
     // The WHOLE parsePriorYear output travels to the export layer, not just
@@ -1832,6 +2110,7 @@ function asCollectSaveState() {
     stock: asStock, extraPay: asExtraPay, extraRecv: asExtraRecv,
     typedOver: asTypedOver,
     vatSide: asVatSide, coiTouched: asCoiTouched, taxRule: asTaxRule,
+    coiAdds: asCoiAdds, coiLess: asCoiLess,
     solveFor: asSolveFor, plugReceivables: asPlugReceivables,
     depSource: asDepSource,
     ui: {
@@ -2015,6 +2294,7 @@ async function asLoadSaved(id) {
     asSeedExtraLines();
     asTypedOver = inp.typedOver || {};
     asVatSide = inp.vatSide || null; asCoiTouched = inp.coiTouched != null ? inp.coiTouched : null;
+    asCoiAdds = inp.coiAdds || []; asCoiLess = inp.coiLess || [];
     // Merged over the defaults rather than assigned, so a record saved before
     // a field existed gains it instead of restoring `undefined` into a select.
     asTaxRule = Object.assign(asDefaultTaxRule(), inp.taxRule || {});

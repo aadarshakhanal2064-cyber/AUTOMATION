@@ -99,6 +99,12 @@ let psVatSide = null;
 // dataset flag: the checkbox unrenders with its collapsed section, and an
 // override stored on the element would silently revert to the automatic rule.
 let psCoiTouched = null;
+// The COI's two hand-entered blocks: {name, amount} lines added back as
+// disallowed expenses, and taken out as non-taxable income. Module state
+// rather than DOM for the same reason psCoiTouched is — both unrender with
+// the section they live in.
+let psCoiAdds = [];
+let psCoiLess = [];
 // Trade receivables absorbs the balance by default, the way the Audited engine
 // already works (§15). Untick it to type receivables and have any residual
 // reported instead of absorbed.
@@ -204,6 +210,10 @@ const psScope = WorkflowEngine.createClientScope({
     psStock = [];
     psExtraPay = []; psExtraRecv = [];
     psTaxOpen = 'adv'; psVatSide = null; psCoiTouched = null;
+    psCoiAdds = []; psCoiLess = [];
+    psTbSummary = null; psTbSrc = {};
+    { const t = psEl('ps-tb-file'); if (t) t.value = ''; }
+    psRenderTbSummary();
     psTaxRule = psDefaultTaxRule();
     psSolveFor = 'purchases'; psPlugReceivables = true;
     psSavedId = null;
@@ -328,6 +338,13 @@ function psApplySources() {
 // Where a figure came from, for the caption under its box.
 function psSourceOf(k) {
   if (psTypedOver[k]) return null;
+  // The trial balance is a source like any other, and registering it as one
+  // is what makes the contract work: a sourced box CLAIMS itself the moment
+  // it is typed into (psFigureInput), so a later re-import leaves the typed
+  // figure alone. Without this an import would silently overwrite the
+  // preparer's own work — the one thing every source in this module promises
+  // not to do.
+  if (psTbSrc[k]) return psTbSrc[k];
   if (!psSrc && !psItDep) return null;
   if (k === 'sales' && psSrc) return psSrc.revenue;
   if (k === 'purchases' && psSrc) return psSrc.purchases;
@@ -342,6 +359,8 @@ function psReleaseTyped(k) {
   delete psTypedOver[k];
   delete psCy[k];
   psApplySources();
+  // Hand it back to the trial balance too, if that is where it came from.
+  if (psTbSrc[k] && psCy[k] == null) psCy[k] = psTbSrc[k].value;
   psRenderFigures();
   psRun();
 }
@@ -390,6 +409,176 @@ async function psHandlePyFile(input) {
   } catch (e) {
     psStatus('Could not read that workbook: ' + e.message, 'error');
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TRIAL BALANCE — this year's figures, read rather than typed
+//
+//  The prior-year upload above supplies LAST year. This one supplies THIS
+//  year, off the trial balance the firm already prepares — which is laid out
+//  in the statements' own vocabulary precisely so it can (js/core/
+//  trialBalanceReader.js). Two uploads, two years, one statement.
+//
+//  It follows the same contract as every other source in this module: a
+//  figure the preparer has already typed is NEVER overwritten (psTypedOver),
+//  and everything it did write is listed on screen. Nothing lands silently.
+// ════════════════════════════════════════════════════════════════
+
+let psTbSummary = null;   // {filled, issues, check, sheetName} of the last import
+// Per-figure provenance from the trial balance: {key: {source, value}}. Read
+// by psSourceOf(), which is what gives each imported box its badge AND makes
+// typing into it claim the figure against the next import.
+let psTbSrc = {};
+
+async function psHandleTbFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  psStatus('Reading the trial balance\u2026', 'searching');
+  try {
+    await LibLoader.ensure('xlsx');
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const parsed = TrialBalanceReader.parse(wb, XLSX);
+    if (!parsed.ok) {
+      psTbSummary = { filled: [], issues: parsed.issues, check: null, sheetName: null };
+      psRenderTbSummary();
+      psStatus('That workbook could not be read as a trial balance \u2014 see below.', 'error');
+      return;
+    }
+    const f = TrialBalanceReader.toFigures(parsed);
+    const wrote = psApplyTb(f);
+    psTbSummary = { filled: wrote, issues: parsed.issues, check: parsed.check, sheetName: parsed.sheetName };
+
+    psRenderTbSummary();
+    psRenderFigures();
+    psRenderLoans();
+    psRenderRules();
+    psRenderTax();
+    psRun();
+    AuditLog.record('provisional_tb_imported', {
+      module: 'provisionalStatement', clientName: psEl('ps-company').value, status: 'success',
+      detail: { sheet: parsed.sheetName, figures: wrote.length, foots: parsed.check.foots },
+    });
+    psStatus(`Trial balance read \u2014 ${wrote.length} figures filled. Each one is listed below and can be typed over.`,
+             parsed.check.foots ? 'success' : 'error');
+  } catch (e) {
+    psStatus('Could not read that workbook: ' + e.message, 'error');
+  }
+}
+
+// Write the parsed figures into module state, skipping anything claimed.
+// Returns what it actually wrote, so the screen reports rather than asserts.
+function psApplyTb(f) {
+  const wrote = [];
+  const put = (k, v, label) => {
+    if (v == null) return;
+    const amount = Math.round(v * 100) / 100;
+    // Provenance is recorded even for a figure the preparer has claimed, so
+    // the ↺ on that box can still hand it back to the trial balance.
+    psTbSrc[k] = { source: 'Trial balance — ' + label, value: amount };
+    if (psTypedOver[k]) return;
+    psCy[k] = amount;
+    wrote.push({ label: label, amount: amount });
+  };
+  for (const [k, v] of Object.entries(f.cy)) {
+    if (k === 'vatRegistered') { if (!psTypedOver.vatRegistered) psCy.vatRegistered = true; continue; }
+    const named = f.filled.find(x => Math.abs(x.amount - v) < 0.005);
+    put(k, v, named ? named.label : k);
+  }
+
+  // The four loan groups replace whatever is there \u2014 a trial balance is the
+  // whole facility list at the year end, so merging would leave a facility
+  // the client has since repaid standing on the balance sheet.
+  if (f.loans && (f.loans.st.length + f.loans.lt.length + f.loans.pwc.length + f.loans.hp.length)) {
+    psLoans = { st: f.loans.st.slice(), lt: f.loans.lt.slice(), pwc: f.loans.pwc.slice(), hp: f.loans.hp.slice() };
+    wrote.push({ label: 'Loans & Borrowings (' + (f.loans.st.length + f.loans.lt.length + f.loans.pwc.length + f.loans.hp.length) + ' facilities)',
+                 amount: [...f.loans.st, ...f.loans.lt, ...f.loans.pwc, ...f.loans.hp].reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // PPE: the TB carries closing cost per class, which seeds the 3.1 grid's
+  // ADDITIONS column only where the grid already knows the class \u2014 the
+  // opening column is last year's carrying amount and is not the TB's to say.
+  if (f.ppe && f.ppe.length) {
+    wrote.push({ label: 'PPE classes recognised (' + f.ppe.map(p => p.type).join(', ') + ')',
+                 amount: f.ppe.reduce((t, p) => t + p.opening, 0) });
+  }
+
+  // TDS withholdings the TB states are facts off the ledger, so they win over
+  // the engine's derived percentages \u2014 but only where not already typed.
+  for (const [k, v] of Object.entries(f.tds || {})) {
+    if (psTds[k] == null || psTds[k] === '') { psTds[k] = v; wrote.push({ label: 'TDS \u2014 ' + k, amount: v }); }
+  }
+
+  // Prepayments and the like become note-3.3 lines rather than a lump.
+  if (f.extraRecv && f.extraRecv.length && !psExtraRecv.some(l => psNum(l.amount))) {
+    for (const l of f.extraRecv) {
+      const hit = psExtraRecv.find(x => TrialBalanceReader.key(x.name) === TrialBalanceReader.key(l.name));
+      if (hit) hit.amount = l.amount;
+      else psExtraRecv.push({ name: l.name, pyName: '', py: 0, amount: l.amount });
+    }
+    wrote.push({ label: 'Note 3.3 lines (' + f.extraRecv.length + ')', amount: f.extraRecv.reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // Other expenses: fill THIS year's amount on a line last year already had,
+  // matched on the head's spelling; anything new is added as its own line.
+  // The rules grid then shows them typed rather than grown, which is right \u2014
+  // a figure off the ledger is not an estimate.
+  if (f.otherExpenses && f.otherExpenses.length) {
+    let n = 0;
+    for (const l of f.otherExpenses) {
+      const k = ProvisionalStatementEngine.headKeyFor(l.name)
+        || (psPy && (psPy.otherItems || []).find(o => TrialBalanceReader.key(o.name) === TrialBalanceReader.key(l.name)) ? null : null);
+      const pyLine = psPy && (psPy.otherItems || []).find(o => TrialBalanceReader.key(o.name) === TrialBalanceReader.key(l.name));
+      const key = k || (pyLine && (pyLine.key || ProvisionalStatementEngine.headKeyFor(pyLine.name)));
+      if (key) { psRules[key] = { rule: 'typed', typed: l.amount }; n++; }
+      else if (!psCustom.some(c => TrialBalanceReader.key(c.name) === TrialBalanceReader.key(l.name))) {
+        const ck = 'tb' + psCustom.length;
+        psCustom.push({ key: ck, name: l.name });
+        psRules[ck] = { rule: 'typed', typed: l.amount };
+        n++;
+      }
+    }
+    if (n) wrote.push({ label: 'Other expense lines (' + n + ')', amount: f.otherExpenses.reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // A direct cost that is neither freight nor labour keeps its own line.
+  if (f.directExtra && f.directExtra.length) {
+    for (const l of f.directExtra) {
+      if (psDirectCustom.some(c => TrialBalanceReader.key(c.name) === TrialBalanceReader.key(l.name))) continue;
+      const ck = 'tbd' + psDirectCustom.length;
+      psDirectCustom.push({ key: ck, name: l.name });
+      psRules[ck] = { rule: 'typed', typed: l.amount };
+    }
+    wrote.push({ label: 'Direct cost lines (' + f.directExtra.length + ')', amount: f.directExtra.reduce((t, l) => t + l.amount, 0) });
+  }
+
+  // Purchases came off the ledger, so the see-saw must hold THEM and let
+  // profit fall out \u2014 otherwise the balancing solve overwrites the very
+  // figure that was just imported. Same rule psApplySources() follows.
+  if (!psTypedOver.pbtTarget && psCy.purchases != null) psSolveFor = 'pbt';
+  return wrote;
+}
+
+function psRenderTbSummary() {
+  const box = psEl('ps-tb-summary');
+  if (!box) return;
+  const s = psTbSummary;
+  if (!s) { box.innerHTML = ''; return; }
+  const errs = (s.issues || []).filter(i => i.level === 'error');
+  const warns = (s.issues || []).filter(i => i.level !== 'error');
+  box.innerHTML = `
+    ${errs.map(i => `<div class="status-box status-error" style="margin:0 0 8px;">${escHtml(i.msg)}</div>`).join('')}
+    ${s.check ? `<div class="status-box ${s.check.foots ? 'status-success' : 'status-error'}" style="margin:0 0 8px;">
+      <strong>${s.check.foots ? 'The trial balance foots.' : 'The trial balance does not foot.'}</strong>
+      Debits ${psFmt(s.check.debits)} against credits ${psFmt(s.check.credits)}${s.check.foots ? '' : ` &mdash; a difference of ${psFmt(s.check.difference)}`}.
+      ${s.sheetName ? `Read from sheet &ldquo;${escHtml(s.sheetName)}&rdquo;.` : ''}
+    </div>` : ''}
+    ${warns.map(i => `<div class="status-box status-info" style="margin:0 0 8px;">${escHtml(i.msg)}</div>`).join('')}
+    ${(s.filled || []).length ? `<div class="table-wrap" style="max-width:560px;"><table class="client-table">
+      <thead><tr><th>Filled from the trial balance</th><th style="text-align:right; width:170px;">Amount</th></tr></thead>
+      <tbody>${s.filled.map(x => `<tr><td>${escHtml(x.label)}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(x.amount)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:8px;">Every one of these is editable below &mdash; typing over a figure claims it, and a later re-import leaves it alone.</div>` : ''}`;
 }
 
 function psRenderPySummary() {
@@ -1152,14 +1341,70 @@ function psRenderTax() {
     ? `${side === 'receivable' ? 'Receivable' : 'Payable'} ${psFmt(psNum(psCy[sideKey]))}`
     : 'Not registered';
 
-  // (The Computation of Income section was removed 2026-08-28 by user
-  // decision — tax always charges straight off accounting profit. The engine
-  // still implements the COI bridge and tools/psVerify.mjs still proves it,
-  // so restoring the section is a UI change only.)
+  // ── COI — the bridge from accounting profit to taxable income (restored
+  //    2026-08-30 by user ask, now carrying the firm's own disallowed and
+  //    non-taxable blocks). Shown whenever it is on, so the tax figure can be
+  //    traced rather than trusted.
+  const coiOn = psUseCoi();
+  const itSrc = psSourceOf('itDepreciation');
+  const c = r ? r.coi : null;
+  const coiLines = (kind, list, heading) => `
+    <div style="margin-top:14px;">
+      <div style="font-size:12.5px; font-weight:600; color:var(--brand-navy); margin-bottom:6px;">${heading}</div>
+      ${list.length ? `<div class="table-wrap" style="max-width:520px;"><table class="client-table"><tbody>
+        ${list.map((l, i) => `<tr>
+          <td><input type="text" value="${escHtml(l.name || '')}" placeholder="Particulars"
+                     onchange="psCoiSet('${kind}',${i},'name',this.value)" style="width:100%;" /></td>
+          <td style="width:170px;"><input type="number" step="0.01" value="${l.amount == null ? '' : l.amount}"
+                     onchange="psCoiSet('${kind}',${i},'amount',this.value)" style="width:160px; text-align:right;" /></td>
+          <td style="width:36px;"><button class="btn btn-outline btn-sm" onclick="psCoiRemove('${kind}',${i})">&#10005;</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>` : ''}
+      <div style="margin-top:6px;"><button class="btn btn-outline btn-sm" onclick="psCoiAdd('${kind}')">+ Add line</button></div>
+    </div>`;
+
+  const coiBody = `
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500;">
+      <input type="checkbox" ${coiOn ? 'checked' : ''} style="width:auto;" onchange="psSetUseCoi(this.checked)" />
+      Compute tax through a Computation of Income (adds the COI sheet)
+    </label>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:6px;">
+      ${itSrc ? escHtml(itSrc.source) + (itSrc.stale ? ' &mdash; no schedule for this year yet, so last year&rsquo;s is used' : '')
+              : 'No Income-Tax depreciation schedule found for this client. Without one the bridge deducts nothing.'}
+    </div>
+    ${coiOn ? `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:12px;">
+      <div class="form-group" style="margin:0;">
+        <label>Depreciation per Income Tax Act ${itSrc ? psSrcBadge() : ''}</label>
+        <input type="number" step="0.01" value="${psCy.itDepreciation == null ? '' : psCy.itDepreciation}"
+               oninput="psFigureInput('itDepreciation', this.value)" onchange="psRenderTax()" />
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Brought-forward loss</label>
+        <input type="number" step="0.01" value="${psCy.broughtForwardLoss == null ? '' : psCy.broughtForwardLoss}"
+               oninput="psFigureInput('broughtForwardLoss', this.value)" onchange="psRenderTax()" />
+        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Enter as a positive figure; it reduces taxable income.</div>
+      </div>
+    </div>
+    ${coiLines('add', psCoiAdds, 'Add: Expenses Disallowed')}
+    ${coiLines('less', psCoiLess, 'Less: Income not Taxable')}
+    ${c ? `<div class="table-wrap" style="margin-top:16px; max-width:520px;"><table class="client-table"><tbody>
+        <tr><td>Net profit as per Income Statement</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(c.pbt)}</td></tr>
+        ${(c.disallowed || []).map(l => `<tr><td style="padding-left:18px;">${escHtml(l.name || 'Disallowed expense')}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(l.amount)}</td></tr>`).join('')}
+        <tr><td>Add: Depreciation per Accounting Standard</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(c.accountingDep)}</td></tr>
+        ${(c.nonTaxable || []).map(l => `<tr><td style="padding-left:18px;">${escHtml(l.name || 'Income not taxable')}</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(-Math.abs(l.amount))}</td></tr>`).join('')}
+        <tr><td>Less: Depreciation per Income Tax Act</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(-c.itDep)}</td></tr>
+        <tr><td>Add: Previous year Loss</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(-c.bfLoss)}</td></tr>
+        <tr style="font-weight:600;"><td>Total taxable income</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(c.taxableProfit)}</td></tr>
+        <tr style="font-weight:600;"><td>Provision for tax</td><td style="text-align:right; font-variant-numeric:tabular-nums;">${psFmt(c.tax)}</td></tr>
+      </tbody></table></div>` : ''}` : ''}`;
+  const coiSummary = coiOn ? (c ? `Taxable ${psFmt(c.taxableProfit)}` : 'On') : 'Off &mdash; charged on accounting profit';
+
   host.innerHTML =
     section('adv', 'Advance Tax', advSummary, advBody)
     + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
-    + section('vat', 'VAT', vatSummary, vatBody);
+    + section('vat', 'VAT', vatSummary, vatBody)
+    + section('coi', 'Computation of Income', coiSummary, coiBody);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1575,11 +1820,39 @@ function psInterestInput(k, v) { psFigureInput(k, v); }
 // collapsed accordion section, and a DOM flag would silently revert the
 // preparer's choice to the automatic rule.
 function psUseCoi() {
-  // The Computation of Income was removed 2026-08-28 by user decision — tax
-  // always charges straight off accounting profit and no COI sheet prints.
-  // The engine keeps the bridge (psVerify proves it); flipping this back on
-  // is the whole restore.
-  return false;
+  // Restored 2026-08-30 by user ask, now carrying the firm's own fuller
+  // format (the disallowed / non-taxable blocks). On when there is something
+  // to bridge: an Income-Tax depreciation schedule, or a hand-entered
+  // adjustment. The checkbox overrides either way once touched.
+  if (psCoiTouched != null) return psCoiTouched;
+  return !!(psItDep || psNum(psCy.itDepreciation) || psNum(psCy.broughtForwardLoss)
+            || psCoiAdds.length || psCoiLess.length);
+}
+
+function psSetUseCoi(on) {
+  psCoiTouched = !!on;
+  psRun();
+  psRenderTax();
+}
+
+// ── the two hand-entered COI blocks ──
+// Expenses the Act disallows are added back; income it does not tax is taken
+// out. Both are lists the preparer types — the firm's own sheet marks these
+// rows "Add MM" against "Auto" on the two depreciation rows, and nothing in
+// the accounts can tell us which expense the Act disallows.
+function psCoiAdd(kind) {
+  (kind === 'less' ? psCoiLess : psCoiAdds).push({ name: '', amount: null });
+  psRun(); psRenderTax();
+}
+function psCoiRemove(kind, i) {
+  (kind === 'less' ? psCoiLess : psCoiAdds).splice(i, 1);
+  psRun(); psRenderTax();
+}
+function psCoiSet(kind, i, field, v) {
+  const l = (kind === 'less' ? psCoiLess : psCoiAdds)[i];
+  if (!l) return;
+  l[field] = field === 'name' ? v : (v === '' ? null : psNum(v));
+  psRun();
 }
 
 function psCollectInput() {
@@ -1617,6 +1890,8 @@ function psCollectInput() {
       loansC: psLoans.st,
       tds: psTds,
       stockLines: psStock,
+      coiDisallowed: psCoiAdds,
+      coiNonTaxable: psCoiLess,
       extraPayables: psExtraPay.map((l, i) => ({
         key: 'xpay' + i, name: l.name, pyName: l.pyName, py: psNum(l.py), amount: psNum(l.amount),
       })),
@@ -1786,6 +2061,9 @@ function psToOut(r) {
     coi: {
       pbt: r.coi.pbt, depSlm: r.coi.accountingDep, depIncomeTax: r.coi.itDep,
       bfLoss: r.coi.bfLoss, taxableProfit: r.coi.taxableProfit,
+      // The two hand-entered blocks travel too, or the printed COI would show
+      // a Total Taxable income its own visible rows cannot add up to.
+      disallowed: r.coi.disallowed, nonTaxable: r.coi.nonTaxable,
       tax: r.tax.total, rule: r.tax.rule,
     },
     // The WHOLE parsePriorYear output travels to the export layer, not just
@@ -1820,6 +2098,7 @@ function psCollectSaveState() {
     stock: psStock, extraPay: psExtraPay, extraRecv: psExtraRecv,
     typedOver: psTypedOver,
     vatSide: psVatSide, coiTouched: psCoiTouched, taxRule: psTaxRule,
+    coiAdds: psCoiAdds, coiLess: psCoiLess,
     solveFor: psSolveFor, plugReceivables: psPlugReceivables,
     depSource: psDepSource,
     ui: {
@@ -1994,6 +2273,7 @@ async function psLoadSaved(id) {
     psSeedExtraLines();
     psTypedOver = inp.typedOver || {};
     psVatSide = inp.vatSide || null; psCoiTouched = inp.coiTouched != null ? inp.coiTouched : null;
+    psCoiAdds = inp.coiAdds || []; psCoiLess = inp.coiLess || [];
     // Merged over the defaults rather than assigned, so a record saved before
     // a field existed gains it instead of restoring `undefined` into a select.
     psTaxRule = Object.assign(psDefaultTaxRule(), inp.taxRule || {});

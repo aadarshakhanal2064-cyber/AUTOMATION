@@ -198,6 +198,9 @@ function fsxBuildReport(out) {
   // return, not to the statements. Audited sets keep it, so it is opted out of
   // rather than deleted.
   const coi = out.coi || {};
+  // Keyed once so the row and the total's xsum cannot drift apart.
+  const coiAdds = (coi.disallowed || []).map((l, i) => ({ k: 'coiAdd' + i, label: l.name || 'Disallowed expense', amount: l.amount }));
+  const coiLess = (coi.nonTaxable || []).map((l, i) => ({ k: 'coiLess' + i, label: l.name || 'Income not taxable', amount: l.amount }));
   if (!m.omitCoi) sheets.push({
     key: 'COI', name: 'COI', geom: FSX_GEOM.COI,
     title: 'RETURN OF INCOME', noHeaderBand: true,
@@ -214,14 +217,28 @@ function fsxBuildReport(out) {
       B(),
       R('Income From Business', [], 'sub'),
       R('Net Profit as per Income Statement', [coi.pbt], 'item', { k: 'pbt', xf: ({ X }) => X('SOI', 'pbt') }),
+      // The two hand-entered blocks, each printed only when it carries a line
+      // — the firm's own sheet has no empty "Add:" heading standing over
+      // nothing, and an empty block would read as a claim that nothing was
+      // disallowed rather than that nobody looked.
+      ...(coiAdds.length ? [R('Add: Expenses Disallowed', [], 'sub')] : []),
+      ...coiAdds.map(l => R(l.label, [l.amount], 'item', { k: l.k })),
       R('Add: Depreciation as per Accounting Standard', [coi.depSlm], 'item', { k: 'depSlm' }),
+      ...(coiLess.length ? [R('Less: Income not Taxable', [], 'sub')] : []),
+      // Held as a negative so the column adds straight down, the same way the
+      // brought-forward loss row below does.
+      ...coiLess.map(l => R(l.label, [-Math.abs(l.amount)], 'item', { k: l.k })),
       R('Less: Depreciation as per Income tax Act,2058', [-Math.abs(coi.depIncomeTax || 0)], 'item', { k: 'depIt' }),
       // The firm's own COI carries this row and ours did not. Their label says
       // "Add" and the cell holds a negative, because a brought-forward loss
       // reduces taxable income — kept exactly that way so the printed sheet
       // reads like theirs.
       R('Add: Previous year Loss', [-Math.abs(coi.bfLoss || 0)], 'item', { k: 'bfLoss' }),
-      R('Total Taxable income', [coi.taxableProfit], 'tot', { k: 'taxable', xsum: ['pbt', 'depSlm', 'depIt', 'bfLoss'] }),
+      R('Total Taxable income', [coi.taxableProfit], 'tot', { k: 'taxable',
+        // Every row above is signed to add straight down, so the total is a
+        // plain sum of them — which is what makes the exported sheet re-foot
+        // in Excel when a figure is edited there.
+        xsum: ['pbt', ...coiAdds.map(l => l.k), 'depSlm', ...coiLess.map(l => l.k), 'depIt', 'bfLoss'] }),
       B(),
       R('Provision for Tax', [coi.tax], 'grand', { k: 'tax' }),
       B(),

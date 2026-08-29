@@ -2979,6 +2979,16 @@ function cropLoginLogoIcon(img) {
           <input type="file" id="ps-py-file" accept=".xlsx,.xls,.ods" onchange="psHandlePyFile(this)" />
           <div id="ps-py-summary" style="margin-top:16px;"></div>
         </div>
+
+        <!-- The second of the two imports: last year comes from the statement
+             workbook above, THIS year from the trial balance the firm already
+             prepares. Both are optional and either can be typed over. -->
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Current-Year Trial Balance <span class="log-badge badge-blue" style="font-size:10px;">optional</span></div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload this year&rsquo;s trial balance and the figures below fill themselves &mdash; revenue, purchases, expenses head by head, receivables, payables, loans by facility, PPE by class, the TDS balances and the VAT position. It reads the firm&rsquo;s own TB layout (A. Assets &middot; B. Expenses &middot; C. Revenue &middot; Equity and Liabilities), checks that the trial foots, and lists every figure it filled. Anything you type afterwards is yours &mdash; a re-import leaves it alone.</p>
+          <input type="file" id="ps-tb-file" accept=".xlsx,.xls,.ods" onchange="psHandleTbFile(this)" />
+          <div id="ps-tb-summary" style="margin-top:16px;"></div>
+        </div>
       </div>
 
       <!-- Step 2 -->
@@ -3191,6 +3201,16 @@ function cropLoginLogoIcon(img) {
           <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload last year&rsquo;s statement workbook (SFP &middot; SOI &middot; Sch-PL &middot; Sch-BS &middot; 3.1 PPE). Its figures become this year&rsquo;s comparative column and the base every derived line grows from.</p>
           <input type="file" id="as-py-file" accept=".xlsx,.xls,.ods" onchange="asHandlePyFile(this)" />
           <div id="as-py-summary" style="margin-top:16px;"></div>
+        </div>
+
+        <!-- The second of the two imports: last year comes from the statement
+             workbook above, THIS year from the trial balance the firm already
+             prepares. Both are optional and either can be typed over. -->
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header"><div class="card-title" style="font-size:14px;">Current-Year Trial Balance <span class="log-badge badge-blue" style="font-size:10px;">optional</span></div></div>
+          <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">Upload this year&rsquo;s trial balance and the figures below fill themselves &mdash; revenue, purchases, expenses head by head, receivables, payables, loans by facility, PPE by class, the TDS balances and the VAT position. It reads the firm&rsquo;s own TB layout (A. Assets &middot; B. Expenses &middot; C. Revenue &middot; Equity and Liabilities), checks that the trial foots, and lists every figure it filled. Anything you type afterwards is yours &mdash; a re-import leaves it alone.</p>
+          <input type="file" id="as-tb-file" accept=".xlsx,.xls,.ods" onchange="asHandleTbFile(this)" />
+          <div id="as-tb-summary" style="margin-top:16px;"></div>
         </div>
       </div>
 
@@ -4896,7 +4916,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" integrity="sha384-gb+8dgIcSEcX2zwyEPEEKZiwD8km3OTz47IVU3CXdP/pYz4fRAdb9pJdlHW8VvM0" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 
-<script defer src="js/config.js?v=202608291800"></script>
+<script defer src="js/config.js?v=202608300500"></script>
 <script defer src="js/utils.js?v=202608212500"></script>
 <script defer src="js/core/moduleRegistry.js?v=202608110900"></script>
 <script defer src="js/core/statusBox.js?v=202608212200"></script>
@@ -4912,7 +4932,8 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/core/reportExport.js?v=202608212300"></script>
 <script defer src="js/core/workbookReader.js?v=202608291800"></script>
 <script defer src="js/core/engineMath.js?v=202608022300"></script>
-<script defer src="js/core/nepalTax.js?v=202608300200"></script>
+<script defer src="js/core/nepalTax.js?v=202608300300"></script>
+<script defer src="js/core/trialBalanceReader.js?v=202608300300"></script>
 <script defer src="js/core/dataCache.js?v=202608182300"></script>
 <script defer src="js/core/documentStore.js?v=202608261400"></script>
 <!-- The password gate on Financial Management. The GATE is here; the LOCK
@@ -4958,12 +4979,12 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/projection.js?v=202608291800"></script>
 <script defer src="js/projectionExport.js?v=202608291800"></script>
 <script defer src="js/finStatementEngine.js?v=202608291600"></script>
-<script defer src="js/finStatementExport.js?v=202608300000"></script>
+<script defer src="js/finStatementExport.js?v=202608300300"></script>
 <script defer src="js/provisionalSources.js?v=202608201100"></script>
-<script defer src="js/provisionalStatementEngine.js?v=202608300200"></script>
-<script defer src="js/provisionalStatement.js?v=202608300200"></script>
+<script defer src="js/provisionalStatementEngine.js?v=202608300300"></script>
+<script defer src="js/provisionalStatement.js?v=202608300500"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608300200"></script>
+<script defer src="js/auditedStatement.js?v=202608300500"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

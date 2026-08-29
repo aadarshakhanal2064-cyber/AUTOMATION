@@ -517,8 +517,21 @@ const ProvisionalStatementEngine = (() => {
     const itDep = num(cy.itDepreciation);
     const bfLoss = num(cy.broughtForwardLoss);
     const useCoi = !!opt.useCoi;
+    // The firm's own COI carries two hand-entered blocks either side of the
+    // depreciation bridge, and without them the sheet cannot reproduce a real
+    // return: expenses the Act disallows are ADDED BACK (a VAT credit written
+    // off, a donation, a penalty), and income the Act does not tax is TAKEN
+    // OUT (dividend already taxed at source). Their own sheet marks these rows
+    // "Add MM" -- entered by hand -- against "Auto" on the two depreciation
+    // rows, which is exactly the split implemented here: these are lists the
+    // preparer types, nothing derives them.
+    const coiLine = l => ({ name: String((l && l.name) || '').trim(), amount: num(l && l.amount) });
+    const coiDisallowed = (cy.coiDisallowed || []).map(coiLine).filter(l => l.name || l.amount);
+    const coiNonTaxable = (cy.coiNonTaxable || []).map(coiLine).filter(l => l.name || l.amount);
+    const disallowedTotal = coiDisallowed.reduce((t, l) => t + l.amount, 0);
+    const nonTaxableTotal = coiNonTaxable.reduce((t, l) => t + l.amount, 0);
     const taxableProfit = useCoi
-      ? pbt + depreciation - itDep - bfLoss
+      ? pbt + disallowedTotal + depreciation - itDep - nonTaxableTotal - bfLoss
       : pbt;
     if (useCoi && !itDep) {
       warn('The Computation of Income is on but no Income-Tax depreciation was found, so the bridge adds back accounting depreciation and deducts nothing. Check the client has a saved Income-Tax depreciation schedule.');
@@ -896,7 +909,10 @@ const ProvisionalStatementEngine = (() => {
         tax,
         rule: taxRule,
         // The bridge must reproduce the taxable figure the tax was charged on.
-        bridgeOk: !useCoi || Math.abs((pbt + depreciation - itDep - bfLoss) - taxableProfit) < 0.005,
+        disallowed: coiDisallowed, disallowedTotal,
+        nonTaxable: coiNonTaxable, nonTaxableTotal,
+        bridgeOk: !useCoi || Math.abs(
+          (pbt + disallowedTotal + depreciation - itDep - nonTaxableTotal - bfLoss) - taxableProfit) < 0.005,
       },
       tds: { salary: tdsSalary, rent: tdsRent, incentive: tdsIncentive, wages: tdsWages, auditFee: tdsAuditFee, freight: tdsFreight },
       vat: { registered: vatRegistered, receivable: vatReceivable, payable: vatPayable },

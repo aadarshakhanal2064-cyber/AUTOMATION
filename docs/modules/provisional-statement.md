@@ -221,12 +221,9 @@ into a select.
 which already matched it exactly. Nothing was changed there, and the Audited
 Statement carries no signature block of its own.
 
-> **The Computation of Income was removed from the UI 2026-08-28 by user
-> decision** — tax always charges straight off accounting profit, no COI
-> sheet prints, and the Tax card's accordion is three sections (Advance Tax ·
-> TDS · VAT). The ENGINE keeps the full COI bridge and `tools/psVerify.mjs`
-> keeps proving it: `psUseCoi()`/`asUseCoi()` returning `false` is the whole
-> removal, and flipping it back is the whole restore.
+> **The Computation of Income is BACK** (2026-08-30, user ask — reversing
+> the 2026-08-28 removal, which had switched it off in BOTH clones rather
+> than just Provisional). See §2.10 for the format it now prints.
 
 > **Audit Fee and Rent are recognised by NAME, never by caller key**
 > (2026-08-28, `ProvisionalStatementEngine.headKeyFor()`). The prior-year
@@ -373,6 +370,84 @@ Position and Amount fields are present without anyone ticking the box.
   unticks by hand is never re-ticked — neither by this prefill nor by the
   Autobooks source load, which has always set it when a VAT position was
   found. That guard was missing before and was a latent bug.
+
+## 2.10 The Computation of Income — the firm's own fuller format
+
+*(2026-08-30, user ask. Both clones.)*
+
+The bridge from accounting profit to taxable income, and the eighth sheet:
+
+```
+  Net Profit as per Income Statement
+  Add: Expenses Disallowed          ← typed list  (VAT credit written off, donation)
+  Add: Depreciation as per Accounting Standard
+  Less: Income not Taxable          ← typed list  (dividend taxed at source)
+  Less: Depreciation as per Income tax Act, 2058
+  Add: Previous year Loss           ← printed negative, as their sheet does
+  Total Taxable income
+  Provision for Tax
+```
+
+The two **typed lists** are what the earlier version lacked. The firm's own
+sheet marks those rows **"Add MM"** against **"Auto"** on the two depreciation
+rows — exactly the split implemented here: nothing in the accounts can tell us
+which expense the Act disallows, so they are entered by hand.
+
+Three rules that are not cosmetic:
+
+- **A block prints only when it carries a line.** An empty "Add: Expenses
+  Disallowed" heading would read as a claim that nothing was disallowed,
+  rather than that nobody looked.
+- **Non-taxable rows are held negative**, like the brought-forward loss, so the
+  column adds straight down.
+- **`Total Taxable income` is an `xsum` over every visible row** — which is what
+  makes the exported sheet re-foot in Excel when a figure is edited there. The
+  keys are built once (`coiAdds`/`coiLess` in `fsxBuildReport`) so the rows and
+  the total cannot drift apart.
+
+COI switches on when there is something to bridge — an Income-Tax depreciation
+schedule, or any hand-entered adjustment — and the checkbox overrides either
+way once touched (`xxCoiTouched`).
+
+## 2.11 Importing this year from the trial balance
+
+*(2026-08-30, user ask. Both clones. Engine: `js/core/trialBalanceReader.js`,
+CLAUDE.md §4.)*
+
+Step 1 now carries **two** uploads: the prior-year statement workbook supplies
+LAST year, and the trial balance supplies THIS year. Both optional, both
+editable afterwards.
+
+What it fills: revenue, purchases, direct costs (clearing & freight split out,
+anything else kept as its own line), salary, the three finance-cost lines by
+facility, every other-expense head **in the client's own spelling**, closing
+stock, trade receivables and payables, cash, VAT, advance tax, share capital,
+the four loan groups, PPE by depreciation class, the TDS balances and the
+note-3.3 prepayment lines.
+
+**The source contract is the whole point.** The TB registers as a *source* per
+figure (`xxTbSrc`), so:
+
+| Behaviour | Mechanism |
+|---|---|
+| a box shows where its figure came from | provenance badge + caption |
+| typing into it **claims** it | `xxTypedOver[k] = true` |
+| a later re-import **leaves it alone** | claimed keys are skipped |
+| ↺ hands it back | restored from `xxTbSrc[k].value` |
+
+Registering it as a source is what makes that work. Before it did, an import
+silently overwrote the preparer's own typing — the one thing every source in
+this module promises not to do.
+
+Two further rules: **purchases off the ledger flip the see-saw to
+`solveFor: 'pbt'`** (otherwise the balancing solve overwrites the figure just
+imported — the same rule `xxApplySources()` follows for Autobooks), and the
+**four loan groups are REPLACED, not merged** — a trial balance is the whole
+facility list at the year end, so merging would leave a repaid facility
+standing on the balance sheet.
+
+A trial balance that **does not foot is reported, never refused**: the figures
+are still read and the banner says so, with both totals and the difference.
 
 ## 3. Empty account heads are removed
 

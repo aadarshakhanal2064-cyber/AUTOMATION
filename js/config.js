@@ -733,6 +733,7 @@ window.ACTIVITY_EVENT_LABELS = {
   finstatement_generated: 'Financial statement generated', finstatement_saved: 'Financial statement saved',
   finstatement_printed: 'Financial statement printed', finstatement_py_parsed: 'Prior-year statement parsed',
   provisional_py_parsed: 'Provisional — prior-year statement read',
+  provisional_tb_imported: 'Provisional — trial balance imported',
   provisional_excel_generated: 'Provisional statement generated',
   provisional_saved: 'Provisional statement saved',
   provisional_deleted: 'Saved provisional statement deleted',
@@ -740,6 +741,7 @@ window.ACTIVITY_EVENT_LABELS = {
   // 2026-08-22) — its events mirror the provisional set. The finstatement_* labels
   // above stay for the OLD audited module's historical rows.
   audited_py_parsed: 'Audited — prior-year statement read',
+  audited_tb_imported: 'Audited — trial balance imported',
   audited_excel_generated: 'Audited statement generated',
   audited_saved: 'Audited statement saved',
   audited_deleted: 'Saved audited statement deleted',
