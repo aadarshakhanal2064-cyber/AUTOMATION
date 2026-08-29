@@ -23,7 +23,8 @@ const ProjectionEngine = (() => {
     ? require('./core/workbookReader')
     : window.WorkbookReader;
 
-  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, HEADS } = WR;
+  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, HEADS,
+          entityFromCapitalLabel } = WR;
 
   // ───────────────────────── the parser ─────────────────────────
 
@@ -71,6 +72,9 @@ const ProjectionEngine = (() => {
       provisionsNC: 0,
       inventory: { opening: 0, closing: 0 },
       shareCapital: 0,
+      // 'proprietorship' | 'partnership' | null — what the capital line's own
+      // wording says the entity is. Null means the file didn't declare one.
+      declaredEntity: null,
       reserves: 0,
       retainedOpening: null, // Note 3.7 "Opening" — the P&L's "profit upto last year"
       dividendPaid: null,    // Note 3.7 "Less: Drawing/Dividend"
@@ -156,6 +160,15 @@ const ProjectionEngine = (() => {
     model.cash                = sfpVal(HEADS.cash, 'Cash and Cash Equivalents', true);
     model.currentAssetsTotal  = sfpVal(HEADS.totalCA, 'Total Current Assets', true);
     model.shareCapital        = sfpVal(HEADS.capital, 'Share Capital', true);
+    // The capital line's WORDING declares the entity: only a proprietorship
+    // says "Proprietors Capital". The report then names that entity's own
+    // capital instead of a company's "Paid-up Share Capital" without anyone
+    // having to set an org type by hand — and without contradicting the very
+    // statement it is projecting. Null when the file doesn't say (the firm's
+    // older template printed "Share Capital" for every entity), which leaves
+    // whatever the user or the client record chose exactly as it was.
+    model.declaredEntity      = entityFromCapitalLabel(
+      (labelValue(gS, HEADS.capital, hS.labelCol, hS.valCol, hS.row + 1) || {}).label);
     model.reserves            = sfpVal(HEADS.reserves, 'Reserves', true);
     // First "Provisions" row on the liabilities side = the non-current one.
     model.provisionsNC        = sfpVal(HEADS.provisions, 'Provisions (non-current)', false);

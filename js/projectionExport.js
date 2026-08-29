@@ -80,10 +80,17 @@ const PJX_DEP_COLS = ['Opening', 'Additional', 'Sales', 'Total', 'Dep Rate %', '
 // Organization-specific terminology (master BS F-column rules): a report
 // never shows "Director/Partner/Proprietor" together — only the term for
 // the client's own organization type.
+// A firm with no shares has no "Paid-up Share Capital" and no "1. Share
+// Capital" heading (user ask 2026-08-28, seeing both on a proprietorship's
+// report). The capital wording matches what the statement modules print for
+// the same entity — "Proprietors Capital" / "Partners Capital" — so the
+// projection and the statement it was built from name the figure identically.
 function pjxTerms(orgType) {
-  const t = orgType === 'partnership' ? { capital: 'Registered Capital', person: 'Partner' }
-    : orgType === 'proprietorship' ? { capital: 'Registered Capital', person: 'Proprietor' }
-    : { capital: 'Paid-up Share Capital', person: 'Director' };
+  const t = orgType === 'partnership'
+    ? { capital: 'Partners Capital', person: 'Partner', capHead: '1. Capital' }
+    : orgType === 'proprietorship'
+      ? { capital: 'Proprietors Capital', person: 'Proprietor', capHead: '1. Capital' }
+      : { capital: 'Paid-up Share Capital', person: 'Director', capHead: '1. Share Capital' };
   return {
     ...t,
     capRow: `a. ${t.capital}`,
@@ -280,7 +287,7 @@ function pjxBuildReport() {
     cols: withAud(audColAsAt, yearCols(y => pjAsAt(y))),
     rows: renumber(prune([
       { k: 'srcLabel', label: PJX_BS_L.srcLabel, vals: [], kind: 'sec' },
-      { k: 'capLabel', label: PJX_BS_L.capLabel, vals: [], kind: 'sec' },
+      { k: 'capLabel', label: T.capHead || PJX_BS_L.capLabel, vals: [], kind: 'sec' },
       { k: 'cap', label: T.capRow, vals: withAud(m.shareCapital, v(x => x.bs.shareCapital)), kind: 'item' },
       { k: 'addl', label: T.addlRow, vals: withAud(null, v(x => x.bs.additionalCapital)), kind: 'item', zeroable: true },
       { k: 'reserve', label: PJX_BS_L.reserve, vals: withAud(m.reserves, v(x => x.bs.reserves)), kind: 'item',

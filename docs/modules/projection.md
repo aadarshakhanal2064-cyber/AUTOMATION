@@ -247,6 +247,45 @@ Excel cross-sheet formula changed together or the sheet drifts:
   column omitted `longTermLoan` entirely (where hire purchase also sits) and
   counted `directorLending`, which is related-party, not a bank.
 
+### The statement declares its own entity (2026-08-28)
+
+A firm with no shares was being handed a **"1. Share Capital"** heading and a
+**"a. Paid-up Share Capital"** row, because `pj-org-type` is only ever set from
+a **directory client's** `entity_type` — so an upload for a client who was
+never picked from the list (or whose entity type is blank) left it on the
+company default.
+
+The uploaded statement already answers the question. Since 2026-08-28 the
+statement modules print the capital line in the entity's own words, so
+`parseStatement` reads that **wording** (not just the figure) through
+`WorkbookReader.entityFromCapitalLabel()` and publishes `model.declaredEntity`;
+`pjHandleFile()` applies it to `pj-org-type`. A report can no longer contradict
+the statement it was built from.
+
+**The rule is deliberately asymmetric — silence is not evidence.** Only
+"Proprietors/Partners Capital" declares anything; plain **"Share Capital"
+returns null and changes nothing**, because the firm's older template printed
+that head for every entity including proprietorships, so treating it as a
+declaration would relabel a real company's report off a stale file. A file that
+says nothing leaves whatever the user or the client record chose.
+
+`pjxTerms()` then prints **"1. Capital" / "a. Proprietors Capital" /
+"b. Proprietor Additional Capital"** (and the Partners equivalents), matching
+what the statement modules print for the same entity so the projection and its
+source statement name the figure identically — and matching back through
+`HEADS.capital`, so next year's upload of this report's own source still reads.
+A company is untouched: "1. Share Capital" / "a. Paid-up Share Capital" /
+"b. Director Additional Capital".
+
+**This also moves figures**, because `pjOrgTypeChanged()` couples the org type
+to the tax profile: a proprietorship detected from its statement now taxes on
+**progressive slabs** rather than the 25% corporate rate it silently got
+before. That is the app's own existing rule finally reaching a case it was
+missing, not a new one.
+
+Proven by `node tools/headsVerify.mjs` (the entity-declaration matrix and the
+report wording, asserted against the shipped `pjxTerms` source).
+
 ### Signature clearance (2026-08-11)
 
 Staff sign the printed report by hand and the signatures ran back over the last

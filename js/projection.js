@@ -518,6 +518,18 @@ async function pjHandleFile(input) {
     }
     // Prefill assumptions from the detected statement
     if (!pjEl('pj-company').value) pjEl('pj-company').value = model.company.name;
+    // The statement DECLARES its entity through the wording of its capital
+    // line, and the report is built from that statement — so it must not go
+    // on calling a proprietor's capital "Paid-up Share Capital" just because
+    // nobody set the org type (it is only ever set from a directory client,
+    // so an upload without one left it at the company default). Only an
+    // unambiguous wording declares: a file that says plain "Share Capital"
+    // returns null and changes nothing, because the firm's older template
+    // printed that head for every entity.
+    if (model.declaredEntity && pjEl('pj-org-type').value !== model.declaredEntity) {
+      pjEl('pj-org-type').value = model.declaredEntity;
+      pjOrgTypeChanged();
+    }
     // The base year is the firm's choice, not the workbook's — an upload only
     // fills it when the user has cleared it, never overwrites what is there.
     if (!pjEl('pj-base-fy').value.trim()) pjEl('pj-base-fy').value = PJ_BASE_FY_DEFAULT;

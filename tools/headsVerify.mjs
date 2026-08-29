@@ -137,6 +137,67 @@ ok('the 3.6 single-line capital row is readable',
   ["Proprietor's/Partner's Capital", 'Proprietors Capital', 'Partners Capital']
     .every(s => HEADS.capital.test(norm(s))));
 
+// ── 2b. the entity a statement DECLARES through its capital wording ───────
+// Only an unambiguous wording counts. "Share Capital" must stay null: the
+// firm's older template printed it for proprietorships too, so treating it
+// as a declaration would relabel a real company's report off a stale file.
+console.log('\n  2b. ENTITY DECLARED BY THE CAPITAL LINE\n');
+const ENTITY = [
+  ['Proprietors Capital', 'proprietorship'],
+  ["Proprietor's Capital", 'proprietorship'],
+  ['Proprietor Capital', 'proprietorship'],
+  ['Partners Capital', 'partnership'],
+  ["Partners' Capital", 'partnership'],
+  ['Partner Capital', 'partnership'],
+  ['Share Capital', null],
+  ['Paid-up Share Capital', null],
+  ['Capital', null],
+  ['', null],
+  [null, null],
+];
+for (const [label, want] of ENTITY) {
+  const got = WR.entityFromCapitalLabel(label);
+  ok(`"${label == null ? '(none)' : label}" declares ${want === null ? 'nothing' : want}`,
+    got === want, `got ${got}`);
+}
+
+// ── 2c. the wording the projection report then prints ─────────────────────
+// A firm with no shares must not be handed a "Paid-up Share Capital" row or
+// a "1. Share Capital" heading.
+console.log('\n  2c. PROJECTION REPORT CAPITAL WORDING\n');
+{
+  const PX = fs.readFileSync(path.join(ROOT, 'js', 'projectionExport.js'), 'utf8');
+  // pjxTerms is module-private; evaluate just that function against the file
+  // so the harness proves the shipped source, not a copy of it.
+  const src = PX.match(/function pjxTerms\(orgType\)[\s\S]*?\n}/);
+  ok('pjxTerms() found in projectionExport.js', !!src);
+  if (src) {
+    // eslint-disable-next-line no-new-func
+    const pjxTerms = new Function(`${src[0]}; return pjxTerms;`)();
+    const prop = pjxTerms('proprietorship');
+    const part = pjxTerms('partnership');
+    const pvt = pjxTerms('private');
+    ok('proprietorship capital row names the proprietor',
+      /proprietor/i.test(prop.capRow) && !/share/i.test(prop.capRow), prop.capRow);
+    ok('proprietorship heading drops "Share"', !/share/i.test(prop.capHead), prop.capHead);
+    ok('proprietorship additional-capital row names the proprietor',
+      /proprietor/i.test(prop.addlRow), prop.addlRow);
+    ok('partnership capital row names the partner',
+      /partner/i.test(part.capRow) && !/share/i.test(part.capRow), part.capRow);
+    ok('partnership heading drops "Share"', !/share/i.test(part.capHead), part.capHead);
+    ok('a company still reads "Paid-up Share Capital"',
+      /paid-up share capital/i.test(pvt.capRow), pvt.capRow);
+    ok('a company still heads the section "1. Share Capital"',
+      /^1\. Share Capital$/.test(pvt.capHead), pvt.capHead);
+    ok('a company still names the director', /director/i.test(pvt.addlRow), pvt.addlRow);
+    // Round trip: whatever the projection prints as its capital row must
+    // still be readable as a capital head next year.
+    for (const t of [prop, part, pvt]) {
+      ok(`"${t.capital}" is readable back by HEADS.capital`, HEADS.capital.test(norm(t.capital)));
+    }
+  }
+}
+
 // ── 3. the real corpus (skipped when absent) ──────────────────────────────
 function unzip(file) {
   const buf = fs.readFileSync(file);

@@ -137,11 +137,35 @@ const WorkbookReader = (() => {
   }
 
   // Read the value on the first row at/after `from` whose label matches `re`.
+  // `label` is the matched text as written. Callers that only want the figure
+  // ignore it; the ones that need to know HOW a head was spelled (the entity
+  // detector below) would otherwise have to re-walk the grid to find out.
   function labelValue(g, re, labelCol, valCol, from = 0, until = Infinity) {
     for (let r = from; r < Math.min(g.length, until); r++) {
       const row = g[r]; if (!row) continue;
-      if (re.test(norm(row[labelCol]))) return { row: r, value: num(row[valCol]) };
+      if (re.test(norm(row[labelCol]))) {
+        return { row: r, value: num(row[valCol]), label: String(row[labelCol] == null ? '' : row[labelCol]).trim() };
+      }
     }
+    return null;
+  }
+
+  // What the capital line's WORDING says about the entity. A statement that
+  // reads "Proprietors Capital" can only belong to a proprietorship, so the
+  // document itself is the most reliable declaration of entity type available
+  // to a module reading it — better than a client record that may be blank or
+  // spelled unexpectedly.
+  //
+  // Deliberately ASYMMETRIC: "Share Capital" returns null rather than
+  // 'company', because the firm's older template printed that head for every
+  // entity, proprietorships included. Only the entity-specific wordings — the
+  // ones this app has printed since 2026-08-28 — are treated as declarations.
+  // Silence is not evidence.
+  function entityFromCapitalLabel(label) {
+    const n = norm(label);
+    if (!n) return null;
+    if (/\bproprietor'?s?'?\b/.test(n)) return 'proprietorship';
+    if (/\bpartner'?s?'?\b/.test(n)) return 'partnership';
     return null;
   }
 
@@ -166,7 +190,8 @@ const WorkbookReader = (() => {
     return { ...h, titleRow: t, endRow: ends.length ? Math.min(...ends) : h.row + 30 };
   }
 
-  return { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection, HEADS };
+  return { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection,
+           HEADS, entityFromCapitalLabel };
 })();
 
 // Browser: global (matches the app's no-module architecture). Node: export
