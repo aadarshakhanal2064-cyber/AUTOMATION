@@ -71,7 +71,9 @@ let asReconcile = null;      // last ProvisionalReconcile.run() output
 // Tax card accordion — one section open at a time (user ask 2026-08-21).
 // Safe to re-render on toggle: every figure in the panel lives in asCy /
 // asTds, not the DOM, so a collapsed section loses nothing.
-let asTaxOpen = 'rule';      // 'rule' | 'adv' | 'tds' | 'vat' | 'coi' | ''
+let asTaxOpen = 'adv';       // 'adv' | 'tds' | 'vat' | 'coi' | ''
+                             // (no 'rule' — the Income Tax Rule is its own
+                             // card at the top of step 2, not an accordion)
 // The income-tax rule this statement's charge is computed by — the firm's
 // CA's own D-1 / D-2 / D-3 sheet, as data in js/core/nepalTax.js.
 //
@@ -207,7 +209,7 @@ const asScope = WorkflowEngine.createClientScope({
     asSrc = null; asItDep = null; asTypedOver = {};
     asStock = [];
     asExtraPay = []; asExtraRecv = [];
-    asTaxOpen = 'rule'; asVatSide = null; asCoiTouched = null;
+    asTaxOpen = 'adv'; asVatSide = null; asCoiTouched = null;
     asTaxRule = asDefaultTaxRule();
     asSolveFor = 'purchases'; asPlugReceivables = true;
     asSavedId = null;
@@ -1002,6 +1004,13 @@ function asSetVatSide(side) {
 }
 
 function asRenderTax() {
+  // The rule card is its own card at the top of step 2 (user ask 2026-08-29 —
+  // the rule decides the basis, so it is chosen before any figure is typed).
+  // Rendered BEFORE the caret guard below, deliberately: it carries no text
+  // input of its own, so it can always refresh, and its header summary is the
+  // running tax charge — which would otherwise sit stale while somebody types
+  // into Advance Tax.
+  asRenderTaxRule();
   const host = asEl('as-tax');
   if (!host) return;
   // Same caret rule as asRenderInterest: the Advance Tax and VAT boxes fire
@@ -1098,8 +1107,33 @@ function asRenderTax() {
     ? `${side === 'receivable' ? 'Receivable' : 'Payable'} ${asFmt(asNum(asCy[sideKey]))}`
     : 'Not registered';
 
-  // ── Income Tax Rule ──
-  //
+  // (The Computation of Income section was removed 2026-08-28 by user
+  // decision — tax always charges straight off accounting profit. The engine
+  // still implements the COI bridge and tools/psVerify.mjs still proves it,
+  // so restoring the section is a UI change only.)
+  host.innerHTML =
+    section('adv', 'Advance Tax', advSummary, advBody)
+    + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
+    + section('vat', 'VAT', vatSummary, vatBody);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INCOME TAX RULE — its own card, first in step 2
+//
+//  Moved out of the Tax card 2026-08-29 (user ask). It belongs above the
+//  figures rather than below them because it decides the BASIS: on a D-1 or
+//  D-2 return the charge never looks at profit at all, so which figures
+//  matter is settled here before any of them is typed.
+//
+//  The card header carries the running charge, so the answer stays visible
+//  while the preparer is further down the page.
+// ════════════════════════════════════════════════════════════════
+
+function asRenderTaxRule() {
+  const host = asEl('as-tax-rule');
+  if (!host) return;
+  const r = asResult;
+
   // The firm's CA's own D-1 / D-2 / D-3 sheet, made into a picker. Only the
   // fields the chosen rule actually reads are shown: a D-1 charge is decided
   // by the municipality alone, a D-2 charge by the municipality and what is
@@ -1171,19 +1205,13 @@ function asRenderTax() {
       Rates are those for F.Y. ${escHtml(NepalTax.FISCAL_YEAR)}, per the firm&rsquo;s tax rule sheet.
     </div>`;
 
-  const ruleSummary = detail
-    ? `${asFmt(detail.tax)} &middot; ${escHtml(detail.label)}`
-    : escHtml(rt);
-
-  // (The Computation of Income section was removed 2026-08-28 by user
-  // decision — tax always charges straight off accounting profit. The engine
-  // still implements the COI bridge and tools/psVerify.mjs still proves it,
-  // so restoring the section is a UI change only.)
-  host.innerHTML =
-    section('rule', 'Income Tax Rule', ruleSummary, ruleBody)
-    + section('adv', 'Advance Tax', advSummary, advBody)
-    + section('tds', 'TDS Withholdings', tdsSummary, tdsBody)
-    + section('vat', 'VAT', vatSummary, vatBody);
+  host.innerHTML = ruleBody;
+  const sum = asEl('as-tax-rule-summary');
+  if (sum) {
+    sum.innerHTML = detail
+      ? `${asFmt(detail.tax)} &middot; ${escHtml(detail.label)}`
+      : escHtml(rt);
+  }
 }
 
 // A rule field changed: recompute, then redraw the panel so the fields the

@@ -3180,7 +3180,19 @@ function cropLoginLogoIcon(img) {
 
       <!-- Step 2 -->
       <div id="as-section-figures" style="display:none;">
+        <!-- The tax rule comes FIRST because it decides the basis: on a D-1
+             or D-2 return the charge never reads profit, so which figures
+             matter is settled before any of them is typed. -->
         <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
+            <div class="card-title" style="font-size:14px;">Income Tax Rule</div>
+            <div id="as-tax-rule-summary" style="font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; text-align:right;"></div>
+          </div>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">The D-1 / D-2 / D-3 rule this statement&rsquo;s tax is charged by, and the workings behind it. Only the fields the chosen rule actually reads are shown.</p>
+          <div id="as-tax-rule"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Loans &amp; Borrowings</div></div>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every facility and what it costs, in one place &mdash; the balances feed note 3.8 and the interest feeds note 3.14.</p>
           <div style="display:grid; grid-template-columns:1fr; gap:16px;">
@@ -3233,7 +3245,7 @@ function cropLoginLogoIcon(img) {
 
         <div class="card" style="margin-top:20px;">
           <div class="card-header"><div class="card-title" style="font-size:14px;">Tax, TDS &amp; VAT</div></div>
-          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;"><strong>Income Tax Rule</strong> is the D-1 / D-2 / D-3 rule the charge is computed by, and it shows its own workings. Every figure below it is derived from the accounts by default and shown greyed &mdash; type over any of them when you have the challan, and a typed figure stops being a live formula in the exported workbook, because it came off a deposit slip rather than out of the accounts.</p>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 12px;">Every figure here is derived from the accounts by default and shown greyed. Type over any of them when you have the challan &mdash; a typed figure stops being a live formula in the exported workbook, because it came off a deposit slip rather than out of the accounts. <em>The tax charge itself is set at the top of this step, under Income Tax Rule.</em></p>
           <div id="as-tax"></div>
         </div>
 
@@ -4935,7 +4947,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/provisionalStatementEngine.js?v=202608292100"></script>
 <script defer src="js/provisionalStatement.js?v=202608281500"></script>
 <script defer src="js/provisionalReconcile.js?v=202608201100"></script>
-<script defer src="js/auditedStatement.js?v=202608292100"></script>
+<script defer src="js/auditedStatement.js?v=202608292200"></script>
 <script defer src="js/fileManagement.js?v=202608212500"></script>
 <script defer src="js/auditReportFinalization.js?v=202608212500"></script>
 <script defer src="js/auditChecklist.js?v=202608212500"></script>

@@ -104,9 +104,17 @@ and `a)`–`f)` with it — `fsxBuildReport`'s `hasIncentive` decides.
 sheet. Audited Statement only; Provisional keeps the fallback above.)*
 
 The rule set lives in **`js/core/nepalTax.js`** (CLAUDE.md §4) and is picked in
-the Tax card's new first accordion section, **Income Tax Rule**, which prints
-the workings rather than asserting a figure — the CA's sheet has an "Example"
-column for the same reason.
+the **Income Tax Rule** card, which prints the workings rather than asserting a
+figure — the CA's sheet has an "Example" column for the same reason.
+
+**That card is the FIRST card in step 2, above Loans, Figures and Rules**
+(user ask 2026-08-29; it was briefly the Tax card's first accordion section).
+It sits there because it decides the *basis*: on a D-1 or D-2 return the charge
+never reads profit at all, so which figures matter is settled before any of
+them is typed. Its card header carries the running charge, so the answer stays
+visible while the preparer works further down the page. `asRenderTaxRule()`
+renders it and is called from `asRenderTax()` **before** that function's caret
+guard — the rule card holds no text input of its own, so it can always refresh.
 
 **Why it is an engine and not two more constants.** Two of the three rules do
 not read profit at all. A D-1 charge is a flat figure decided by the client's
