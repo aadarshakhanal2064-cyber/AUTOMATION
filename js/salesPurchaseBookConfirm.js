@@ -534,8 +534,9 @@ function spbConfirmStatementHtml(r) {
   }
   html += line('VAT', r.vat);
   html += line('Total as per Books', r.total, { bold: true });
+  html += line('Tax Free Amount as per Confirmation', r.confirmedFree);
   html += line('Taxable Amount as per Confirmation', r.confirmed);
-  html += line('Difference (Books − Confirmation)', r.diff,
+  html += line('Difference (Confirmation − Books)', r.diff,
     { bold: true, color: r.status === 'flag' ? 'var(--red-dk)' : (r.status === 'ok' ? 'var(--green-dk)' : '') });
   html += line('Closing Balance', r.closing);
   html += `</tbody></table>`;
@@ -614,7 +615,8 @@ function spbConfirmExportModel() {
   if (anyOmitted) columns.push({ label: 'Omitted', align: 'r', num: true, w: 10 });
   columns.push(
     { label: 'Taxable — Total', align: 'r', num: true, w: 12 },
-    { label: 'As Per Confirmation', align: 'r', num: true, w: 12 },
+    { label: 'As per Confirmation Tax Free', align: 'r', num: true, w: 12 },
+    { label: 'As Per Confirmation Taxable', align: 'r', num: true, w: 12 },
     { label: 'Difference', align: 'r', num: true, w: 11 },
     { label: 'Closing Balance', align: 'r', num: true, w: 11 },
     { label: 'Status', align: 'l', w: 9 });
@@ -628,26 +630,26 @@ function spbConfirmExportModel() {
     mine.forEach((r, i) => {
       const cells = [i + 1, r.name, r.pan, r.opening, r.taxfree, r.bookTaxable];
       if (anyOmitted) cells.push(r.omCount ? r.omTaxable : null);
-      cells.push(r.taxable, r.confirmed, r.diff, r.closing, SPB_CONFIRM_STATUS[r.status].label);
+      cells.push(r.taxable, r.confirmedFree, r.confirmed, r.diff, r.closing, SPB_CONFIRM_STATUS[r.status].label);
       rows.push({ cells });
     });
     const t = spbCfTotals(mine);
     const tc = ['', 'Total — ' + title, '', t.opening, t.taxfree, t.bookTaxable];
     if (anyOmitted) tc.push(t.omTaxable);
-    tc.push(t.taxable, t.confirmed, t.diff, t.closing, '');
+    tc.push(t.taxable, t.confirmedFree, t.confirmed, t.diff, t.closing, '');
     rows.push({ cells: tc, style: 'total' });
   });
   const all = spbCfTotals(visible);
-  const gc = ['', 'Grand Total — both tiers', '', all.opening, all.taxfree, all.bookTaxable];
+  const gc = ['', 'Grand Total', '', all.opening, all.taxfree, all.bookTaxable];
   if (anyOmitted) gc.push(all.omTaxable);
-  gc.push(all.taxable, all.confirmed, all.diff, all.closing, '');
+  gc.push(all.taxable, all.confirmedFree, all.confirmed, all.diff, all.closing, '');
   rows.push({ cells: gc, style: 'grand' });
 
   return {
-    title: 'Confirmation Reconciliation — ' + spbCfSectionLabel(),
+    title: spbCfSectionLabel() + ' Details',
     subtitleLines: [
       spbVal('spb-company') + (spbVal('spb-pan') ? '  ·  PAN ' + spbVal('spb-pan') : ''),
-      'F.Y. ' + spbVal('spb-fy') + '  ·  Difference = Books − Confirmation',
+      'F.Y. ' + spbVal('spb-fy') + '  ·  Difference = Confirmation − Books',
       `Matched within Rs ${spbFmt(SPB_CONFIRM_TOLERANCE)}; anything beyond is reported as a difference.`,
     ],
     columns, rows, landscape: true,
