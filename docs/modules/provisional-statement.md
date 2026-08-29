@@ -680,9 +680,13 @@ and the entity wording (`psEntity()`/`asEntity()`; the legacy stored values
 - **Read-back tolerance**: the generated file is next year's upload, so
   `parsePriorYear` accepts every spelling the app now prints — the SFP/SOCE
   capital regexes take "Proprietors/Proprietor's/Partners/Partner's Capital"
-  and the SOCF drawing row takes "Drawings". Proven by the scratchpad
-  `cap36Check` harness (21 checks against a real proprietorship file:
-  wording per entity, typed/fallback amounts, round-trip re-parse).
+  and the SOCF drawing row takes "Drawings". Since 2026-08-29 those patterns
+  live in **`WorkbookReader.HEADS`, the shared account-head vocabulary**, and
+  Projection Report matches the identical table — the day-one gap was exactly
+  that: Projection still matched /share capital/ alone and read a nil capital
+  off a proprietorship file this module had generated. A new spelling goes in
+  `HEADS`, and `node tools/headsVerify.mjs` proves the matrix, the write-read
+  round trip and (with `CORPUS=`) a sweep over real files.
 
 Fourth round (user: "consume less of the page, no format change"): base font
 11.5px, tighter cell padding and header spacing, the Notes column 40px, and

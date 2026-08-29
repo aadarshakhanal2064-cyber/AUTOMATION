@@ -23,7 +23,7 @@ const ProjectionEngine = (() => {
     ? require('./core/workbookReader')
     : window.WorkbookReader;
 
-  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue } = WR;
+  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, HEADS } = WR;
 
   // ───────────────────────── the parser ─────────────────────────
 
@@ -139,21 +139,27 @@ const ProjectionEngine = (() => {
       return hit.value;
     };
 
-    model.ppeTotal            = sfpVal(/property.*plant|plant and equipment/, 'Property, Plant and Equipment', true);
+    // Heads come from the SHARED vocabulary (js/core/workbookReader.js), not
+    // from regexes kept here: a head one parser learns has to be visible to
+    // the other, or this app cannot read a file it generated itself. That is
+    // exactly how "Proprietors Capital" — which the Provisional module now
+    // prints for a proprietorship — read as a nil capital here and failed the
+    // upload outright, while the statement reader beside it read it fine.
+    model.ppeTotal            = sfpVal(HEADS.ppe, 'Property, Plant and Equipment', true);
     // Non-current side items — usually zero for these clients, but needed for
     // the year-1 cash-flow tie (the projected BS carries no such rows, so any
     // audited balance must be shown as liquidated in CF investing).
-    model.investmentsNC       = sfpVal(/^investment/, 'Investments (non-current)', false);
-    model.otherReceivablesNC  = sfpVal(/^other receivable/, 'Other Receivables (non-current)', false);
-    model.inventory.closing   = sfpVal(/inventor/, 'Inventories', true);
-    model.debtors             = sfpVal(/trade and other receivable|trade & other receivable/, 'Trade and Other Receivables', true);
-    model.cash                = sfpVal(/cash and cash|cash & cash/, 'Cash and Cash Equivalents', true);
-    model.currentAssetsTotal  = sfpVal(/total current assets/, 'Total Current Assets', true);
-    model.shareCapital        = sfpVal(/share capital/, 'Share Capital', true);
-    model.reserves            = sfpVal(/^reserve/, 'Reserves', true);
+    model.investmentsNC       = sfpVal(HEADS.investments, 'Investments (non-current)', false);
+    model.otherReceivablesNC  = sfpVal(HEADS.otherReceivablesNC, 'Other Receivables (non-current)', false);
+    model.inventory.closing   = sfpVal(HEADS.inventories, 'Inventories', true);
+    model.debtors             = sfpVal(HEADS.receivables, 'Trade and Other Receivables', true);
+    model.cash                = sfpVal(HEADS.cash, 'Cash and Cash Equivalents', true);
+    model.currentAssetsTotal  = sfpVal(HEADS.totalCA, 'Total Current Assets', true);
+    model.shareCapital        = sfpVal(HEADS.capital, 'Share Capital', true);
+    model.reserves            = sfpVal(HEADS.reserves, 'Reserves', true);
     // First "Provisions" row on the liabilities side = the non-current one.
-    model.provisionsNC        = sfpVal(/^provision/, 'Provisions (non-current)', false);
-    model.currentLiabilitiesTotal = sfpVal(/total current liabilit/, 'Total Current Liabilities', true);
+    model.provisionsNC        = sfpVal(HEADS.provisions, 'Provisions (non-current)', false);
+    model.currentLiabilitiesTotal = sfpVal(HEADS.totalCL, 'Total Current Liabilities', true);
 
     // Loans split — the SFP is the AUTHORITY, not Note 3.8's row labels.
     // The statement carries two rows both labelled "Loans and Borrowings", one
@@ -165,7 +171,7 @@ const ProjectionEngine = (() => {
     // Loan AND left out of Short Term Loan — the comparison column's Sources
     // exceeded its Uses by exactly that amount.
     {
-      const loanRe = /loans? (and|&) borrowing/;
+      const loanRe = HEADS.loans;
       const grab = (headRe, endRe) => {
         const head = findRowIdx(gS, headRe, hS.row + 1, hS.labelCol);
         if (head === -1) return null;

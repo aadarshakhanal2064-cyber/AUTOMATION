@@ -26,7 +26,7 @@ const FinStatementEngine = (() => {
     ? require('./core/engineMath')
     : window.EngineMath;
 
-  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection } = WR;
+  const { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection, HEADS } = WR;
 
   // ───────────────────────── constants ─────────────────────────
 
@@ -235,23 +235,24 @@ const FinStatementEngine = (() => {
       return hit.value;
     };
 
-    py.sfp.ppe                  = sVal(/property.*plant|plant and equipment/, true, 'Property, Plant and Equipment');
-    py.sfp.otherReceivablesNC   = sVal(/^other receivable/, false);
-    py.sfp.totalNCA             = sVal(/total non-?current assets/, false);
-    py.sfp.inventories          = sVal(/inventor/, true, 'Inventories');
-    py.sfp.receivables          = sVal(/trade (and|&) other receivable/, true, 'Trade & Other Receivables');
-    py.sfp.cash                 = sVal(/cash (and|&) cash/, true, 'Cash and Cash Equivalents');
-    py.sfp.totalCA              = sVal(/total current assets/, false);
-    py.sfp.totalAssets          = sVal(/^total assets/, false);
-    // The generated statements word this line by entity ("Proprietors
-    // Capital" / "Partners Capital" since 2026-08-28), and next year's
-    // preparer uploads exactly that file — so the read must accept every
-    // spelling the app itself prints, apostrophes included.
-    py.sfp.shareCapital         = sVal(/share capital|(proprietor|partner)'?s'? capital|^capital$/, true, 'Share Capital');
-    py.sfp.reserves             = sVal(/^reserve/, true, 'Reserves');
-    py.sfp.totalEquity          = sVal(/total equity$/, false);
-    py.sfp.payables             = sVal(/trade (and|&) other payable/, false);
-    py.sfp.totalCL              = sVal(/total current liabilit/, false);
+    // Heads come from the SHARED vocabulary (js/core/workbookReader.js) so
+    // this reader and Projection Report's cannot drift apart — including on
+    // the entity-worded capital line ("Proprietors Capital" / "Partners
+    // Capital"), which the statement modules have printed since 2026-08-28
+    // and which next year's preparer uploads straight back in.
+    py.sfp.ppe                  = sVal(HEADS.ppe, true, 'Property, Plant and Equipment');
+    py.sfp.otherReceivablesNC   = sVal(HEADS.otherReceivablesNC, false);
+    py.sfp.totalNCA             = sVal(HEADS.totalNCA, false);
+    py.sfp.inventories          = sVal(HEADS.inventories, true, 'Inventories');
+    py.sfp.receivables          = sVal(HEADS.receivables, true, 'Trade & Other Receivables');
+    py.sfp.cash                 = sVal(HEADS.cash, true, 'Cash and Cash Equivalents');
+    py.sfp.totalCA              = sVal(HEADS.totalCA, false);
+    py.sfp.totalAssets          = sVal(HEADS.totalAssets, false);
+    py.sfp.shareCapital         = sVal(HEADS.capital, true, 'Share Capital');
+    py.sfp.reserves             = sVal(HEADS.reserves, true, 'Reserves');
+    py.sfp.totalEquity          = sVal(HEADS.totalEquity, false);
+    py.sfp.payables             = sVal(HEADS.payables, false);
+    py.sfp.totalCL              = sVal(HEADS.totalCL, false);
 
     // Investments, Loans and Borrowings and Provisions each appear TWICE — once
     // under non-current, once under current — so they are taken in document
@@ -259,9 +260,9 @@ const FinStatementEngine = (() => {
     const loanRows = [], provRows = [], investRows = [];
     for (let r = hS.row + 1; r < gS.length; r++) {
       const lab = norm((gS[r] || [])[hS.labelCol]);
-      if (/loans and borrowing|loans & borrowing/.test(lab)) loanRows.push(num(gS[r][colS]));
-      if (/^provision/.test(lab)) provRows.push(num(gS[r][colS]));
-      if (/^investment/.test(lab)) investRows.push(num(gS[r][colS]));
+      if (HEADS.loans.test(lab)) loanRows.push(num(gS[r][colS]));
+      if (HEADS.provisions.test(lab)) provRows.push(num(gS[r][colS]));
+      if (HEADS.investments.test(lab)) investRows.push(num(gS[r][colS]));
     }
     py.sfp.investmentsNC = investRows[0] || 0;
     py.sfp.investmentsC  = investRows[1] || 0;
@@ -404,7 +405,7 @@ const FinStatementEngine = (() => {
           capital: cVal(/proceeds from capital introduced/),
           nonCurrentBorrowings: cVal(/non-current borrowing/),
           currentBorrowings: cVal(/from current borrowing/),
-          drawing: cVal(/^drawings?$|^dividend paid$/),
+          drawing: cVal(HEADS.distribution),
           netFinancing: cVal(/net cash flows? from financing/),
           netIncrease: cVal(/net increase in cash/),
           openingCash: cVal(/cash & cash equivalents at the beginning|cash and cash equivalents at the beginning/),
@@ -536,7 +537,7 @@ const FinStatementEngine = (() => {
         const labelCol = gE[hdr].findIndex(v => norm(v) === 'particulars');
         const colFor = (re) => gE[hdr].findIndex((v, c) => c > labelCol && re.test(norm(v)));
         const g = (re) => { const c = colFor(re); return c === -1 ? 0 : num(gE[closing][c]); };
-        py.equity.shareCapital  = g(/share capital|(proprietor|partner)'?s'? capital|^capital$/);
+        py.equity.shareCapital  = g(HEADS.capital);
         py.equity.sharePremium  = g(/premium/);
         py.equity.retained      = g(/retained/);
         py.equity.otherReserves = g(/other reserve/);

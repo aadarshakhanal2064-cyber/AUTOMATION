@@ -27,6 +27,47 @@ const WorkbookReader = (() => {
 
   const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
 
+  // ── the shared account-head vocabulary ──
+  // Every engine that reads this workbook family matches the SAME spellings.
+  // It lives here because the alternative has now failed twice in the same
+  // way: each parser carried its own regex, and a head one of them learned
+  // stayed invisible to the other. Most recently the Provisional module began
+  // printing "Proprietors Capital" (an entity's own word for its capital,
+  // 2026-08-28) and Projection Report — still matching /share capital/ alone
+  // — read a nil capital off a file THIS APP GENERATED and refused the
+  // upload. The app must be able to read back everything it writes, so a new
+  // head goes in this table, never in a caller.
+  //
+  // Matched against norm()'d labels: lowercased, whitespace-collapsed. Keep
+  // them anchored enough to stay unambiguous within a section — `capital`
+  // demands a qualifier ("share"/"proprietors"/"partners"/…) or the bare word
+  // alone, so it can never catch "Capital Work in Progress" on the asset side
+  // or "Permanent Working Capital Loan" in note 3.8.
+  const HEADS = {
+    // Assets
+    ppe:                /property.*plant|plant and equipment/,
+    investments:        /^investment/,
+    otherReceivablesNC: /^other receivable/,
+    inventories:        /inventor/,
+    receivables:        /trade\s*(and|&)\s*other receivable/,
+    cash:               /cash\s*(and|&)\s*cash/,
+    totalNCA:           /total non-?current assets/,
+    totalCA:            /total current assets/,
+    totalAssets:        /^total assets/,
+    // Equity
+    capital:            /\b(share|proprietor'?s?'?|partner'?s?'?|promoter'?s?'?|owner'?s?'?)\s+capital\b|^capital(\s+account)?$/,
+    reserves:           /^reserve/,
+    totalEquity:        /total equity$/,
+    // Liabilities
+    loans:              /loans?\s*(and|&)\s*borrowing/,
+    payables:           /trade\s*(and|&)\s*other payable/,
+    provisions:         /^provision/,
+    totalCL:            /total current liabilit/,
+    // Equity-movement rows (SOCE / SOCF), which follow the entity's own word
+    // the same way the capital line does.
+    distribution:       /^drawings?$|^dividend paid$/,
+  };
+
   // Convert a SheetJS worksheet into a dense 2D array of cell values
   // (computed/cached values — SheetJS resolves formula caches into .v).
   function grid(ws, XLSX) {
@@ -125,7 +166,7 @@ const WorkbookReader = (() => {
     return { ...h, titleRow: t, endRow: ends.length ? Math.min(...ends) : h.row + 30 };
   }
 
-  return { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection };
+  return { num, norm, grid, findSheet, findRowIdx, findHeader, labelValue, noteSection, HEADS };
 })();
 
 // Browser: global (matches the app's no-module architecture). Node: export
