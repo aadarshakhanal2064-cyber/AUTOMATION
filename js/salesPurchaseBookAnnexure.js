@@ -35,6 +35,7 @@
 //    Others, which is correct.
 //
 //  Sales has no capital dimension — the annexure has no ServiceSalesCapital.
+//
 //  AMENDED 2026-08-30 to the CA's "Classify" sheet, which the firm asked the
 //  app to follow. He classifies a party rather than a bucket, and states the
 //  mapping himself:
@@ -102,12 +103,14 @@ const SPB_ANN13_BUCKETS = [
 ];
 
 let spbAnnIncludeBelow = false;
-let spbAnnClassifyOpen = false;   // his Classify sheet, folded until wanted
 let spbAnnSearch = '';
 let spbAnnRows = [];
 let spbAnnExcluded = [];
 
 function spbAnnStatus(html, type) { showStatus(html, type, 'spb-ann-status'); }
+// Classify is its own section now, so its failures have to report on ITS
+// screen — the annexure's status box is on a panel the user isn't looking at.
+function spbClassifyStatus(html, type) { showStatus(html, type, 'spb-classify-status'); }
 
 // A party's classification, defaulting the way he defaults it. Values the
 // section doesn't offer (an 'assets' left on a sales row by a section switch)
@@ -214,15 +217,26 @@ function spbAnn13Build() {
   return { rows, excluded };
 }
 
-// ── The Classify card ───────────────────────────────────────────────────────
-// His Classify sheet: every party on both sides, each with the choice that
-// decides its annexure bucket. Keyed by PAN (a classification writes every
-// party key under it), so parties without a usable PAN are listed read-only
-// with the reason — they cannot reach the annexure at all, and pretending they
-// can classify would be a dead end.
-function spbRenderAnn13Classify() {
-  const host = document.getElementById('spb-ann-classify-body');
+// ── The Classify section ────────────────────────────────────────────────────
+// His Classify sheet, and a step of its own (2026-08-30, user ask: "i want
+// classify in the middle of annexure 13 and reconciliation"). It sits between
+// them because that is where it falls in the work: the annexure shows what
+// will be filed, classifying decides which bucket each party lands in, and the
+// reconciliation closes the year. It was briefly a folded card inside
+// Annexure-13 — wrong, because a classification is its own piece of work and
+// the annexure lists only the qualifying tier while this lists everyone.
+//
+// Keyed by PAN (a classification writes every party key under it), so parties
+// without a usable PAN are listed read-only with the reason — they cannot
+// reach the annexure at all, and offering a picker there is a dead end.
+function spbRenderClassify() {
+  const host = document.getElementById('spb-classify-body');
   if (!host) return;
+  if (!spbBookId) { host.innerHTML = spbSaveGateHtml('Party classifications are'); return; }
+  if (!spbGroups || (!spbGroups.sales && !spbGroups.purchase)) {
+    host.innerHTML = '<p class="log-empty">No parties yet — import a book first.</p>';
+    return;
+  }
   let total = 0, done = 0, html = '';
 
   SPB_SECTIONS.forEach(({ key, label }) => {
@@ -261,9 +275,14 @@ function spbRenderAnn13Classify() {
     html += `</tbody></table>`;
   });
 
-  host.innerHTML = html || '<p class="log-empty">No parties yet.</p>';
-  const c = document.getElementById('spb-ann-classify-count');
-  if (c) c.textContent = total ? `— ${done} of ${total} set, the rest defaulting to Goods` : '';
+  // The count leads, because "how much of this is done" is the question a
+  // classification pass actually has — and an unset party is not blank, it is
+  // filing as Goods, which the caption has to say out loud.
+  const caption = total
+    ? `<p class="spb-cl-count">${done} of ${total} parties classified` +
+      (done < total ? ` — the remaining ${total - done} file as <strong>Goods</strong>.` : '.') + '</p>'
+    : '';
+  host.innerHTML = caption + (html || '<p class="log-empty">No parties yet.</p>');
 }
 
 function spbAnnNoteInput(pan, section, r, spec) {
@@ -342,10 +361,13 @@ async function spbAnnSetKind(pan, section, value) {
     // by the next person as a live instruction.
     if (!spbAnnNoteSpec(value)) patch.classify_note = null;
     await spbAnnWriteParties(keys, section, patch);
-    spbRenderAnn13();
+    // Both screens carry this picker, and only one of them is on screen —
+    // redraw that one. The other rebuilds from the same rows when it is next
+    // opened, so they cannot fall out of step.
+    if (spbSection === 'classify') spbRenderClassify(); else spbRenderAnn13();
   } catch (err) {
     console.error('[Autobooks] classification save failed', err);
-    spbAnnStatus('❌ Could not save that classification: ' + escHtml(friendlyDbError(err)), 'error');
+    spbClassifyStatus('❌ Could not save that classification: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -356,10 +378,10 @@ async function spbAnnSetNote(pan, section, raw) {
   const value = String(raw || '').trim() || null;
   try {
     await spbAnnWriteParties(keys, section, { classify_note: value });
-    spbRenderAnn13Classify();
+    spbRenderClassify();
   } catch (err) {
     console.error('[Autobooks] classification note save failed', err);
-    spbAnnStatus('❌ Could not save that note: ' + escHtml(friendlyDbError(err)), 'error');
+    spbClassifyStatus('❌ Could not save that note: ' + escHtml(friendlyDbError(err)), 'error');
   }
 }
 
@@ -497,18 +519,7 @@ function spbRenderAnn13() {
       <button class="btn btn-outline btn-sm" onclick="spbExportAnn13('excel')">Export Excel</button>
     </div>
     <div id="spb-ann-status"></div>
-    <details class="spb-ann-classify" id="spb-ann-classify-wrap"${spbAnnClassifyOpen ? ' open' : ''}
-             ontoggle="spbAnnClassifyOpen=this.open;">
-      <summary>Classify parties <span id="spb-ann-classify-count"></span></summary>
-      <p class="spb-ann-classify-note">What each party supplies or is sold, which is what fills the annexure's
-        buckets. <strong>Goods</strong> is the default on both sides. On purchases, <strong>Assets</strong>
-        files the line as <em>Goods Purchase — Capital</em> and asks which depreciation class it belongs to;
-        <strong>Expenses</strong> files as <em>Goods Purchase — Others</em> and asks for the head. Every
-        party is listed here, including those below Rs ${spbFmt(SPB_CONFIRM_TIER)}.</p>
-      <div id="spb-ann-classify-body"></div>
-    </details>
     <div id="spb-ann-table"></div>`;
-  spbRenderAnn13Classify();
   spbRenderAnn13Table();
 }
 
@@ -681,4 +692,9 @@ async function spbExportAnn13(kind) {
 
 // ── Registration ──
 SPB_SECTION_TABS.push({ key: 'ann13', label: 'Annexure-13', panel: 'spb-sec-ann13', onShow: 'spbRenderAnn13' });
+// Between Annexure-13 and Reconciliation (2026-08-30, user ask). Registered
+// here rather than in its own file because it shares this module's row model;
+// salesPurchaseBookReco.js loads AFTER this one, so pushing both in order is
+// what puts Reconciliation last.
+SPB_SECTION_TABS.push({ key: 'classify', label: 'Classify', panel: 'spb-sec-classify', onShow: 'spbRenderClassify' });
 spbRenderSectionNav();

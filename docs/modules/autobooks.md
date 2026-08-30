@@ -1066,7 +1066,7 @@ His "Classify" sheet is what fills the annexure, and he wrote the mapping out:
 | **Assets** | Purchase | **Good Purchase — Capital** |
 | Expenses | Purchase | Good Purchase — Others |
 
-Read by `SPB_ANN13_BUCKET_OF`, one table serving both the Classify card and
+Read by `SPB_ANN13_BUCKET_OF`, one table serving both the Classify section and
 the annexure so the screen and the filing cannot disagree. **Service purchase
 stays available** even though none of his three values reaches it — dropping it
 would make a service purchase unreportable, and the annexure has a bucket for
@@ -1082,8 +1082,7 @@ rupees file twice. Verified live: a Goods party carrying a 150,000 capital
 column on 600,000 taxable splits 150,000 Capital / 450,000 Others, while an
 Assets party's 400,000 goes wholly to Capital with nil in Others.
 
-The **Classify card** is a folded `<details>` at the top of Annexure-13 rather
-than an eighth tab, and lists **every** party on both sides — his sheet does,
+The **Classify section** sits between Annexure-13 and Reconciliation (moved there 2026-08-30 on the user's ask; it was briefly a folded card inside Annexure-13) and lists **every** party on both sides — his sheet does,
 and the annexure's own table shows only the qualifying tier by default, so a
 sub-lakh party would otherwise be unclassifiable. Parties with no usable PAN
 are listed read-only with the reason: they cannot reach the annexure at all,

@@ -52,7 +52,7 @@
      Weight 300 dropped: nothing in the app uses it. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css" integrity="sha384-p6hY5g6BjbrEVoCLwj4gZMkotMaHdQrPkd4S0vRpErDxL9/kvjyaUIq/S9RAPQfL" crossorigin="anonymous">
-<link rel="stylesheet" href="css/styles.css?v=202608310100">
+<link rel="stylesheet" href="css/styles.css?v=202608310200">
 <script>
 // Must run before any <img onerror> below can fire — a failed image load
 // resolves almost instantly, well before js/utils.js (loaded at the very
@@ -2320,10 +2320,24 @@ function cropLoginLogoIcon(img) {
           <div class="card-header">
             <div>
               <div class="card-title" style="font-size:14px;">Annexure-13</div>
-              <div class="card-desc">One row per PAN, combining what was bought from and sold to that party — a party can be both. Only parties transacting Rs 1,00,000 or more on either side are listed, which is what the &ge;/&lt; 1 lakh tiering is for. Choose <strong>Goods</strong> or <strong>Service</strong> per side; the Capital / Others split is taken from the book's own Capital Purchase column rather than asked for, since that is a fact about the bill, not the party.</div>
+              <div class="card-desc">One row per PAN, combining what was bought from and sold to that party — a party can be both. Only parties transacting Rs 1,00,000 or more on either side are listed, which is what the &ge;/&lt; 1 lakh tiering is for. Which bucket each party fills is set on the <strong>Classify</strong> tab; the Capital / Others split also reads the book's own Capital Purchase column, since that is a fact about the bill rather than the party.</div>
             </div>
           </div>
           <div id="spb-ann-body"></div>
+        </div>
+      </div>
+
+      <!-- ── SECTION: CLASSIFY ── -->
+      <div id="spb-sec-classify" style="display:none;">
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="font-size:14px;">Classify parties</div>
+              <div class="card-desc">What each party supplies, or is sold — the step that fills Annexure-13. <strong>Goods</strong> is the default on both sides. On purchases, <strong>Assets</strong> files the line as <em>Good Purchase — Capital</em> and asks which depreciation class it belongs to; <strong>Expenses</strong> files as <em>Good Purchase — Others</em> and asks for the head. Every party is listed, including those below Rs 1,00,000, because a classification is a fact about the party whether or not this year's trade reaches the annexure.</div>
+            </div>
+          </div>
+          <div id="spb-classify-status"></div>
+          <div id="spb-classify-body"></div>
         </div>
       </div>
 
@@ -5067,7 +5081,7 @@ function cropLoginLogoIcon(img) {
 <script defer src="js/salesPurchaseBookLedger.js?v=202608300200"></script>
 <!-- The confirmation ledger registers its own section tab, so it loads after the ledger. -->
 <script defer src="js/salesPurchaseBookConfirm.js?v=202608300200"></script>
-<script defer src="js/salesPurchaseBookAnnexure.js?v=202608300200"></script>
+<script defer src="js/salesPurchaseBookAnnexure.js?v=202608300700"></script>
 <script defer src="js/salesPurchaseBookReco.js?v=202608300600"></script>
 <script defer src="js/salesPurchaseBookVatReturn.js?v=202608212500"></script>
 <!-- The in-app data-entry sheet. LAST of the Autobooks block: it splices its
