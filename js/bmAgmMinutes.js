@@ -400,7 +400,8 @@ async function generateBmAgmMinutes() {
 // Deliberately unconditional (2026-08-23, user ask) — preview and print/
 // download must work from a blank or partial form, not just a complete one,
 // so staff can see the template's shape before every field is typed up.
-// bmRefreshPreview's own `!window.docx` guard is what covers "not ready yet".
+// bmRefreshPreview awaits the docx-preview library itself, so "not ready
+// yet" resolves rather than silently doing nothing (see the note there).
 function bmPreviewReady() {
   return true;
 }
@@ -426,7 +427,25 @@ function bmFitPagesToSheet(container) {
 async function bmRefreshPreview(isCurrent) {
   const placeholder = document.getElementById('bm-preview-placeholder');
   const root = document.getElementById('bm-preview-root');
-  if (!placeholder || !root || !window.docx) return;
+  if (!placeholder || !root) return;
+
+  // WAIT for docx-preview rather than bailing out when it hasn't loaded yet
+  // (fixed 2026-08-29, user-reported: "when I type, the change doesn't
+  // reflect live — I have to refresh"). This used to early-return on
+  // `!window.docx`, which is a silent no-op: nothing re-schedules the
+  // render, so the preview stayed blank or stale until a page reload warmed
+  // the library. Since Stage 4 these five heavy vendors load on demand
+  // (js/core/libLoader.js) and auth.js only PREFETCHES them at boot-idle, so
+  // "not loaded yet" is a real state on the first seconds of a session — and
+  // a debounced render is exactly what lands in that window. previewWordAsHtml
+  // ensures it too, so normally this is an already-resolved no-op.
+  try {
+    await LibLoader.ensure('docxpreview');
+  } catch (err) {
+    console.error('BM/AGM preview: docx-preview failed to load:', err);
+    return;
+  }
+  if (!isCurrent()) return;
 
   const { data } = bmBuildData();
 
@@ -732,19 +751,17 @@ function bmResetForm() {
   // the document that was just cleared off the screen
   bmSavedId = null;
   panel.querySelectorAll('input[type="text"]').forEach(el => { el.value = ''; });
-  // A cleared form derives again: the Date of Audit from the fiscal year
-  // below, and the other three from that date.
-  Object.keys(BM_DERIVED_DATE_OFFSETS).concat(BM_AUDIT_DATE_ID).forEach(id => {
+  // A cleared form derives the whole chain again from the fiscal year below.
+  BM_CHAIN_IDS.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.dataset.auto = '1';
   });
   document.getElementById('bm-termYears').value = '4';
   document.getElementById('bm-fiscalYear').value = window.FY_DEFAULT_START + '-' + String((window.FY_DEFAULT_START + 1) % 100).padStart(2, '0');
-  // Seeded here rather than left blank, so a fresh form already carries the
-  // audit date and the three dates derived from it (this runs on every open
-  // of the sub-tab — REGD_INITS, js/tabs.js).
-  bmApplyAuditDate();
-  bmApplyDerivedDates();
+  // Seeded here rather than left blank, so a fresh form already carries all
+  // five dates (this runs on every open of the sub-tab — REGD_INITS,
+  // js/tabs.js).
+  bmApplyDateChain('fy');
   document.getElementById('bm-auditorFirm').value = '';
   bmRenderFirmTrigger();
   bmClearExtraShareholders();
@@ -778,25 +795,17 @@ function bmOnFormChanged(e) {
   // draft and completion indicator all see the filled dates in the same
   // pass rather than one keystroke behind.
   const id = e && e.target && e.target.id;
-  // Changing the fiscal year re-fills the Date of Audit (unless the user has
-  // claimed it), and the three dates that hang off that date follow in the
-  // same pass — neither assignment fires an event of its own.
-  if (id === 'bm-fiscalYear') { bmApplyAuditDate(); bmApplyDerivedDates(); }
-  // Editing a derived field hands it to the user for good. Any event landing
-  // here IS a user edit: the places that write these fields
-  // (bmApplyDerivedDates, bmApplyAuditDate, bmApplyState) assign .value
-  // directly, which fires nothing — so a field only un-owns itself when
-  // somebody types in it. A future programmatic writer must keep to that
-  // rule or set data-auto itself.
-  else if (id === BM_AUDIT_DATE_ID) {
-    const el = document.getElementById(id);
-    if (el) el.dataset.auto = '0';
-    bmApplyDerivedDates();
-  }
-  else if (id in BM_DERIVED_DATE_OFFSETS) {
-    const el = document.getElementById(id);
-    if (el) el.dataset.auto = '0';
-  }
+  // Re-run the date chain from whatever just changed, downward (see the
+  // chain diagram above bmApplyDateChain). Editing any field in it hands
+  // that field to the user for good: an event landing here IS a user edit,
+  // because every programmatic writer (bmApplyDateChain, bmApplyState)
+  // assigns .value directly, which fires nothing. A future programmatic
+  // writer must keep to that rule or set data-auto itself.
+  const claim = () => { const el = document.getElementById(id); if (el) el.dataset.auto = '0'; };
+  if (id === 'bm-fiscalYear') bmApplyDateChain('fy');
+  else if (id === BM_AUDIT_REPORT_ID) { claim(); bmApplyDateChain('auditReport'); }
+  else if (id === BM_BOARD_DATE_ID) { claim(); bmApplyDateChain('boardMeeting'); }
+  else if (id in BM_DERIVED_DATE_OFFSETS) claim();
   bmSyncBoardChangedAvailability();
   if (bmIsPreviewOpen()) bmSchedulePreviewRefresh();
   bmScheduleAutosave();
@@ -809,16 +818,30 @@ function bmSetZoom(level) { bmZoom.set(level); }
 function bmZoomIn() { bmZoom.zoomIn(); }
 function bmZoomOut() { bmZoom.zoomOut(); }
 
-// ── Dates derived from the board-meeting date (user ask, 2026-08-24) ──
+// ══ THE DATE CHAIN ══════════════════════════════════════════════════════
 //
-// The Date of Board Meeting is the ONE date typed by hand; the AGM, the
-// registrar letters and the board-change meeting follow from it at a fixed
-// offset the firm always uses. Each stays a normal editable field — this
-// fills a default, it does not own the value.
+// Only ONE date is typed in the normal case — the Date of Audit Report —
+// and even that arrives pre-filled from the fiscal year. Everything else
+// falls out of it in the order the work actually happens:
 //
-// Offsets in days from the board-meeting date. Kept as one table rather than
-// three literals so the convention is stated in a single place and changing
-// it is a one-line edit rather than a hunt through the fill logic.
+//   fiscal year ──► Audit Report ──+1──► Board Meeting ──┬──+1──► AGM
+//                                                        ├──+1──► Registrar Letters
+//                                                        └──+2──► Board Change Meeting
+//
+// (2026-08-24 introduced the board-meeting → three-dates half; 2026-08-29
+// added the fiscal-year → audit-report → board-meeting half in front of it,
+// user ask: "I should only have to fill date of audit report".)
+//
+// EVERY field in the chain stays an ordinary editable input. Each carries
+// the `data-auto` ownership flag (the idiom Company Registration's founder-
+// share split uses): a generated value is marked "1", and typing in the
+// field drops it to "0" FOR GOOD, so nothing upstream can silently re-date
+// a document somebody dated deliberately — the same class of rule as §9's
+// "always assign" client-switch trap, on fields that end up on a
+// government filing.
+
+// Offsets in days FROM THE BOARD-MEETING DATE. One table rather than three
+// literals so the convention is stated in a single place.
 const BM_DERIVED_DATE_OFFSETS = {
   'bm-agmDate': 1,
   'bm-letterDate': 1,
@@ -826,80 +849,94 @@ const BM_DERIVED_DATE_OFFSETS = {
   'bm-boardChangeDate': 2,
 };
 
-// ── The Date of Audit itself now derives from the fiscal year ──
-//
-// 2026-08-29, user ask: selecting F.Y. 2082-83 should fill 2083/04/01, and
-// 2081-82 should fill 2082/04/01. That is Shrawan 1 of the year the fiscal
-// year ENDS in — the first day after the year under audit closes — so it is
-// one rule rather than a per-year table, and a fiscal year the dropdown
-// gains later needs no new mapping.
-//
-// This field was previously "the ONE date typed by hand" that the AGM,
-// registrar-letter and board-change dates all hung off (the offsets above).
-// It still is, in the sense that matters: this only fills a DEFAULT, and it
-// carries the same `data-auto` ownership flag as the three dates it feeds —
-// type in it once and the fiscal year stops rewriting it, for good. Without
-// that, changing the year late in a filing would silently re-date a
-// document somebody had already dated deliberately.
-const BM_AUDIT_DATE_ID = 'bm-bmDate';
+// The two links added 2026-08-29, in front of the table above.
+const BM_AUDIT_REPORT_ID = 'bm-auditReportDate';
+const BM_BOARD_DATE_ID = 'bm-bmDate';
+const BM_BOARD_AFTER_AUDIT_DAYS = 1;
 
-// "2082-83" -> "2083/04/01". Slash separators, matching the field's own
-// placeholder and what bmParseBsDate/bmApplyDerivedDates already accept.
-function bmAuditDateFromFy(fyValue) {
+// Every field the chain writes, upstream first — the list `data-auto` is
+// reset and serialised over, so adding a link means adding it here once.
+const BM_CHAIN_IDS = [BM_AUDIT_REPORT_ID, BM_BOARD_DATE_ID].concat(Object.keys(BM_DERIVED_DATE_OFFSETS));
+
+// "2082-83" -> "2083/04/01": Shrawan 1 of the year the fiscal year ENDS in,
+// i.e. the first day after the year under audit closes. One rule rather than
+// a per-year table, so a fiscal year the dropdown gains later needs no new
+// mapping. Slash separators, matching the field's own placeholder and what
+// bmParseBsDate already accepts.
+function bmAuditReportDateFromFy(fyValue) {
   const start = NepaliLocale.fyStartYear(fyValue);
   return start ? `${start + 1}/04/01` : '';
 }
 
-// Fills the Date of Audit from the currently selected fiscal year, unless
-// the user has claimed the field. Callers follow it with
-// bmApplyDerivedDates(), since assigning .value fires no event and the three
-// downstream dates would otherwise stay one change behind.
-function bmApplyAuditDate() {
-  const el = document.getElementById(BM_AUDIT_DATE_ID);
+// Writes one derived date, unless the user has claimed the field. Shared by
+// both halves of the chain so "respect data-auto, echo the source's own
+// separator, clear rather than go stale, re-validate" is stated once.
+//
+// The separator echo matters: the field accepts / - and . alike, and handing
+// somebody's own style back is less surprising than normalising it under
+// them. An unparseable or out-of-calendar source date CLEARS the target
+// rather than leaving a stale date from the previous entry standing under a
+// new one.
+function bmFillDerivedDate(id, sourceRaw, offsetDays) {
+  const el = document.getElementById(id);
   if (!el || el.dataset.auto === '0') return;
-  el.value = bmAuditDateFromFy((document.getElementById('bm-fiscalYear') || {}).value);
+  const sep = (String(sourceRaw).match(/[\/\-.]/) || ['/'])[0];
+  const parts = sourceRaw ? NepaliLocale.bsAddDays(sourceRaw, offsetDays) : null;
+  el.value = parts
+    ? [parts.year, String(parts.month).padStart(2, '0'), String(parts.day).padStart(2, '0')].join(sep)
+    : '';
   el.dataset.auto = '1';
-  bmValidateDateField(BM_AUDIT_DATE_ID);
+  bmValidateDateField(id);
 }
 
-// A derived field carries data-auto="1" while it still holds a generated
-// value, and drops to "0" the moment the user edits it themselves — the
-// `data-auto` idiom Company Registration's founder-share split already uses.
-// Without it, re-dating the board meeting would silently overwrite a date
-// somebody had deliberately typed, which on a registrar filing is the same
-// class of bug as the client-switch "always assign" rule (CLAUDE.md §9).
-function bmMarkDerivedDatesManual() {
-  // BM_AUDIT_DATE_ID included since 2026-08-29 for the same reason as the
-  // three offsets: a record saved before either derivation existed had every
-  // date typed by hand, and opening it must not let the fiscal year re-date
-  // a filing that already went out.
-  Object.keys(BM_DERIVED_DATE_OFFSETS).concat(BM_AUDIT_DATE_ID).forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.dataset.auto = '0';
-  });
+// ── Link 1: fiscal year -> Date of Audit Report ──
+function bmApplyAuditReportDate() {
+  const el = document.getElementById(BM_AUDIT_REPORT_ID);
+  if (!el || el.dataset.auto === '0') return;
+  el.value = bmAuditReportDateFromFy((document.getElementById('bm-fiscalYear') || {}).value);
+  el.dataset.auto = '1';
+  bmValidateDateField(BM_AUDIT_REPORT_ID);
 }
 
-// Called when the board-meeting date changes. Fills every derived date that
-// is still auto-owned, in the SAME separator the user typed (the field
-// accepts / - and . alike, and echoing their own style back is less
-// surprising than normalising it under them).
+// ── Link 2: Date of Audit Report -> Date of Board Meeting ──
+function bmApplyBoardDate() {
+  const src = document.getElementById(BM_AUDIT_REPORT_ID);
+  if (!src) return;
+  bmFillDerivedDate(BM_BOARD_DATE_ID, src.value.trim(), BM_BOARD_AFTER_AUDIT_DAYS);
+}
+
+// ── Link 3: Date of Board Meeting -> AGM / letters / board change ──
+// Day arithmetic is NepaliLocale.bsAddDays(), which walks the real calendar
+// table: a B.S. month is 29–32 days and the pattern differs per year, so
+// incrementing the day part would invent dates that do not exist (five of
+// the eleven tabulated years have a 32-day Ashadh). A date outside 2080–2090
+// fills nothing rather than guessing.
 function bmApplyDerivedDates() {
-  const src = document.getElementById('bm-bmDate');
+  const src = document.getElementById(BM_BOARD_DATE_ID);
   if (!src) return;
   const raw = src.value.trim();
-  const sep = (raw.match(/[\/\-.]/) || ['/'])[0];
-  Object.entries(BM_DERIVED_DATE_OFFSETS).forEach(([id, offset]) => {
+  Object.entries(BM_DERIVED_DATE_OFFSETS).forEach(([id, offset]) => bmFillDerivedDate(id, raw, offset));
+}
+
+// Re-runs the chain from one link downward. `from` is the field that just
+// changed; everything below it recomputes, everything above it is left
+// alone. Assigning .value fires no event, which is exactly why the whole
+// chain has to be walked in one pass rather than relying on each field's
+// own change handler.
+function bmApplyDateChain(from) {
+  if (from === 'fy') bmApplyAuditReportDate();
+  if (from === 'fy' || from === 'auditReport') bmApplyBoardDate();
+  bmApplyDerivedDates();
+}
+
+// Hands every field in the chain to the user, so nothing upstream rewrites
+// them. Used when restoring a record saved before the chain existed: its
+// dates were all typed by hand, and opening it must not re-date a filing
+// that already went out.
+function bmMarkDerivedDatesManual() {
+  BM_CHAIN_IDS.forEach(id => {
     const el = document.getElementById(id);
-    if (!el || el.dataset.auto === '0') return;
-    // An unparseable or out-of-calendar board date clears the derived
-    // fields rather than leaving a stale date from the previous entry
-    // standing under a new one.
-    const parts = raw ? NepaliLocale.bsAddDays(raw, offset) : null;
-    el.value = parts
-      ? [parts.year, String(parts.month).padStart(2, '0'), String(parts.day).padStart(2, '0')].join(sep)
-      : '';
-    el.dataset.auto = '1';
-    bmValidateDateField(id);
+    if (el) el.dataset.auto = '0';
   });
 }
 
@@ -936,11 +973,11 @@ function bmFormState() {
   // cautious answer ("all typed") — which quietly stops the board-meeting
   // date from driving the others again for the rest of that record's life.
   //
-  // The Date of Audit is in this list too (2026-08-29): it is now derived
-  // from the fiscal year, so it has exactly the same "generated or typed?"
-  // distinction to carry as the three dates hanging off it.
+  // Every field in the chain carries the flag, the Date of Audit Report and
+  // the Date of Board Meeting included (2026-08-29) — both are derived now,
+  // so both have the same "generated or typed?" distinction to preserve.
   const derivedAuto = {};
-  Object.keys(BM_DERIVED_DATE_OFFSETS).concat(BM_AUDIT_DATE_ID).forEach(id => {
+  BM_CHAIN_IDS.forEach(id => {
     const el = document.getElementById(id);
     if (el) derivedAuto[id] = el.dataset.auto === '0' ? '0' : '1';
   });

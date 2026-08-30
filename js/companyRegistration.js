@@ -424,7 +424,14 @@ function crShowPreviewPlaceholder() {
 async function crRefreshPreview(isCurrent) {
   const placeholder = document.getElementById('cr-preview-placeholder');
   const root = document.getElementById('cr-preview-root');
-  if (!placeholder || !root || !window.docx) return;
+  if (!placeholder || !root) return;
+  // See the note in js/bmAgmMinutes.js bmRefreshPreview: bailing out on
+  // `!window.docx` is a silent no-op that leaves the preview blank or stale
+  // until a page reload, because nothing re-schedules the render. Fixed
+  // 2026-08-29 across all four registrar preview modules.
+  try { await LibLoader.ensure('docxpreview'); }
+  catch (err) { console.error('Company Registration preview: docx-preview failed to load:', err); return; }
+  if (!isCurrent()) return;
   if (!crPreviewReady()) { crShowPreviewPlaceholder(); return; }
 
   const { variant, data } = crBuildData();

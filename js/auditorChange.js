@@ -252,7 +252,17 @@ function acShowPreviewPlaceholder() {
 async function acRefreshPreview(isCurrent) {
   const placeholder = document.getElementById('ac-preview-placeholder');
   const root = document.getElementById('ac-preview-root');
-  if (!placeholder || !root || !window.docx) return;
+  if (!placeholder || !root) return;
+  // Wait for docx-preview rather than bailing out on `!window.docx`, which
+  // is a silent no-op that leaves the preview blank or stale until a page
+  // reload (fixed 2026-08-29 across all four registrar preview modules —
+  // reported against BM/AGM). Since Stage 4 the library loads on demand and
+  // is only PREFETCHED at boot-idle, so "not loaded yet" is a real state in
+  // the first seconds of a session, which is exactly when a debounced render
+  // can land. Normally an already-resolved no-op.
+  try { await LibLoader.ensure('docxpreview'); }
+  catch (err) { console.error('Auditor Change preview: docx-preview failed to load:', err); return; }
+  if (!isCurrent()) return;
 
   const built = acBuildData();
 

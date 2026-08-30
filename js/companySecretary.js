@@ -337,7 +337,14 @@ function csShowPreviewPlaceholder() {
 async function csRefreshPreview(isCurrent) {
   const placeholder = document.getElementById('cs-preview-placeholder');
   const root = document.getElementById('cs-preview-root');
-  if (!placeholder || !root || !window.docx) return;
+  if (!placeholder || !root) return;
+  // See the note in js/bmAgmMinutes.js bmRefreshPreview: bailing out on
+  // `!window.docx` is a silent no-op that leaves the preview blank or stale
+  // until a page reload, because nothing re-schedules the render. Fixed
+  // 2026-08-29 across all four registrar preview modules.
+  try { await LibLoader.ensure('docxpreview'); }
+  catch (err) { console.error('Company Secretary preview: docx-preview failed to load:', err); return; }
+  if (!isCurrent()) return;
 
   const { data } = csBuildData();
 
