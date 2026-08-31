@@ -91,6 +91,9 @@ function loadModules() {
       clearUndo: () => spbEnClearUndo(),
       stacks: () => ({ undo: spbEnUndoStack.length, redo: spbEnRedoStack.length }),
       section(s) { if (s) spbEnSection = s; return spbEnSection; },
+      autofillPairs: (idxs) => spbEnAutofillPairs(idxs),
+      wakeSpare: (idx, k) => spbEnWakeSpare(idx, k),
+      rowInert: (r) => spbEnRowInert(r),
       clearData() { spbData = null; spbBook = null; spbGroups = null; spbVr = null; },
     };
   `;
@@ -389,6 +392,39 @@ console.log('\n── Bulk writes go through the same normalization as typing �
   check('an unreadable pasted date is kept raw for the red flag', rows.sales[1].date, 'garbage!!');
   en.writeCell(rows, 1, 'party', '  Hanuman ');
   check('a pasted party is stored as given (trim is the parser\'s job)', rows.sales[1].party, '  Hanuman ');
+}
+
+console.log('\n── Bulk writes behave like typing (2026-08-31 adversarial pass) ──');
+{
+  const mk = (over) => Object.assign(en.blankRow(), over);
+  en.section('sales');
+  let rows = { sales: [mk({})], purchase: [] };
+  en.writeCell(rows, 0, 'taxable', '१२३४');
+  check('a Devanagari amount folds to English on a bulk write', rows.sales[0].taxable, '1234');
+  en.writeCell(rows, 0, 'bill', '४५');
+  check('a Devanagari bill number folds too', rows.sales[0].bill, '45');
+  en.writeCell(rows, 0, 'party', 'श्री ट्रेडर्स १');
+  check('a party NAME keeps its script', rows.sales[0].party, 'श्री ट्रेडर्स १');
+  en.setRows({ sales: [
+    mk({ date: '2082.04.01', bill: '1', party: 'A', taxable: '5000' }),
+    mk({ date: '2082.04.02', bill: '2', party: 'B', taxable: '6000', vat: '111' }),
+    mk({ date: '2082.04.03', bill: '3', party: 'C', cap: '1000' }),
+    mk({}),
+  ], purchase: [] });
+  en.autofillPairs([0, 1, 2, 3]);
+  const s2 = en.rows().sales;
+  check('a blank VAT beside a pasted taxable completes at 13%', s2[0].vat, '650');
+  check('…stamped auto so a later base correction carries it', !!(s2[0]._auto && s2[0]._auto.vat), true);
+  check('a VAT the paste itself carried stays untouched', s2[1].vat, '111');
+  check('a capital purchase completes its own VAT column', s2[2].capVat, '130');
+  check('an inert row is not woken by the autofill', en.rowInert(s2[3]), true);
+  en.setRows({ sales: [
+    mk({ date: '2082.04.10', bill: '7', party: 'A', taxable: '100' }),
+    mk({ party: 'PICKED PARTY' }),
+  ], purchase: [] });
+  en.wakeSpare(1, 'party');
+  check('picking a party on a blank row carries the date in', en.rows().sales[1].date, '2082.04.10');
+  check('…and counts the sales bill on', en.rows().sales[1].bill, '8');
 }
 
 console.log('\n── Undo / redo: snapshots restore, redo forks correctly ──');

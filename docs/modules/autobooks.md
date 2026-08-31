@@ -809,7 +809,7 @@ CommandPalette precedent — prefix intent, not fuzzy matching, is what "k" →
 
 ### Verification — `node tools/spbEntryVerify.mjs`
 
-138 assertions, vm-loading the REAL core + ledger + entry files (the
+148 assertions, vm-loading the REAL core + ledger + entry files (the
 `spbVerify.mjs` pattern): date normalization (16 forms including Devanagari),
 bill sequencing, synthetic-sheet column inclusion, directory weighting and
 ranking, typed rows through the real pipeline (VAT fill, month grouping,
@@ -1021,6 +1021,42 @@ Same-day follow-ups (the user's second report):
   next-sales-bill seeding **at commit time**, gated on the row having been
   inert a moment before, so a live row whose date the user deliberately
   blanked is never re-filled. Spare rows carry no × delete button.
+
+### The adversarial pass (2026-08-31, user ask — "check urself, find bugs and fix")
+
+A full self-drive of the sheet in the browser — typing, picking, pasting,
+filling, sections, months, Devanagari, drafts — found five real bugs, each
+fixed the same day and pinned in the harness (148 assertions now):
+
+- **Enter did not pick the top suggestion.** The list opened with nothing
+  highlighted (`idx = -1`), so Enter fell through to "commit and move down" —
+  the signature *type kot, Enter* flow read as broken. The top hit now
+  arrives already highlighted; Escape still keeps a typed spelling.
+- **The list survived Tab/focus-move** and swallowed the next cell's arrow
+  keys — the detached-input class of bug again. A `focusout` on its input
+  now closes it (mouse picks are safe: they run on mousedown+preventDefault,
+  so the input never blurs for a pick).
+- **A pasted row's VAT stayed blank on the sheet while the parser filled it
+  at 13% in the book** — grid total 4,017 vs register 6,357 in the repro:
+  the sheet's own totals disagreeing with the register built from it. After
+  any bulk write (paste, drag-fill, Ctrl+D range), `spbEnAutofillPairs()`
+  completes each touched row's blank VAT exactly as typing does — `_auto`
+  stamped, PAN-only sales exempted, a VAT the operation itself carried (or
+  one already sitting there) never touched.
+- **Picking a party as the first act on a blank row skipped the
+  carry-forward** — no date, no bill, and the dateless row then silently
+  dropped out of the register. The wake-a-spare seeding is now
+  `spbEnWakeSpare()`, called from the typed-commit path AND the pick.
+- **Devanagari amounts read as text** (`१२३४` → no VAT autofill, a real
+  bill worth nil in the register). Every cell but the party name now folds
+  Devanagari digits to English on commit and on bulk write — dates already
+  folded inside `spbEnNormDate`; a party NAME keeps its script.
+
+Also confirmed working in the same pass: purchase-vs-sales duplicate rules
+live, PAN riding in from the typed directory, month pills and counts,
+located findings, register reflection of an edit, the draft round trip
+across a full reload, fill-handle bill series, and Ctrl+D now takes the
+keydown's own target rather than `document.activeElement` (robustness).
 
 ### Data Entry is the FIRST tab, and the landing section (2026-08-29, user ask)
 

@@ -1222,6 +1222,31 @@ function spbEnFlushApply() {
   spbEnRenderSummary();
 }
 
+// Waking a spare row wakes the carry-forward with it: the date rides in from
+// the row above and a SALES bill number counts on — the seeding the old
+// single trailing row got at render time, now at wake time so EVERY row of
+// the bank gets it. Only a row that was inert a moment ago: a live row whose
+// date the user deliberately blanked is never re-filled. Called from the
+// typed-commit path AND from the autocomplete pick — picking a party as the
+// first act on a blank row used to skip this entirely, and the dateless row
+// then silently dropped out of the register (found 2026-08-31).
+function spbEnWakeSpare(idx, k) {
+  const rows = spbEnSectionRows();
+  const r = rows[idx];
+  if (!r) return;
+  if (k !== 'date' && !String(r.date || '').trim()) {
+    const prev = spbEnPrevDated(idx);
+    if (prev) spbEnSetCell(idx, 'date', prev);
+  }
+  if (spbEnSection === 'sales' && k !== 'bill' && !String(r.bill || '').trim()) {
+    for (let i = idx - 1; i >= 0; i--) {
+      const b = String(rows[i].bill || '').trim();
+      if (b) { const nb = spbEnNextBill(b); if (nb) spbEnSetCell(idx, 'bill', nb); break; }
+      if (!spbEnRowInert(rows[i])) break;    // a live row with no bill ends the guess
+    }
+  }
+}
+
 // ── EVENTS — delegated once; rows are patched, never re-rendered mid-typing ─
 function spbEnOnChange(inp) {
   const idx = parseInt(inp.dataset.r, 10);
@@ -1230,6 +1255,16 @@ function spbEnOnChange(inp) {
   const r = rows[idx];
   if (!r) return;
   const prevVal = r[k];
+  // Devanagari digits fold to English in every cell but the party name —
+  // staff on a Nepali keyboard type १२३४ meaning 1234, and unfolded it read
+  // as a text amount: no VAT autofill, and a real bill worth nil in the
+  // register (found 2026-08-31). Dates already folded inside spbEnNormDate;
+  // this makes bills and amounts behave the same. A party NAME keeps its
+  // script — it is a name, not a figure.
+  if (k !== 'party') {
+    const folded = NepaliLocale.toEnglishDigits(inp.value);
+    if (folded !== inp.value) inp.value = folded;
+  }
   // Navigation commits synthetically (spbEnMove) and blur can then fire the
   // native change for the same value — an unchanged commit has nothing to do,
   // and doing the full pipeline for it is what made arrow travel expensive.
@@ -1239,24 +1274,7 @@ function spbEnOnChange(inp) {
   r[k] = inp.value;
   spbEnDirty = true;
 
-  // Waking a spare row wakes the carry-forward with it: the date rides in
-  // from the row above and a SALES bill number counts on — the seeding the
-  // old single trailing row got at render time, now at commit time so EVERY
-  // row of the bank gets it. Only a row that was inert a moment ago: a live
-  // row whose date the user deliberately blanked is never re-filled.
-  if (wasSpare) {
-    if (k !== 'date' && !String(r.date || '').trim()) {
-      const prev = spbEnPrevDated(idx);
-      if (prev) spbEnSetCell(idx, 'date', prev);
-    }
-    if (spbEnSection === 'sales' && k !== 'bill' && !String(r.bill || '').trim()) {
-      for (let i = idx - 1; i >= 0; i--) {
-        const b = String(rows[i].bill || '').trim();
-        if (b) { const nb = spbEnNextBill(b); if (nb) spbEnSetCell(idx, 'bill', nb); break; }
-        if (!spbEnRowInert(rows[i])) break;    // a live row with no bill ends the guess
-      }
-    }
-  }
+  if (wasSpare) spbEnWakeSpare(idx, k);
 
   if (k === 'date') {
     const prev = spbEnPrevDated(idx);
@@ -1333,6 +1351,32 @@ function spbEnSetCell(idx, k, v) {
   rows[idx][k] = v;
   const inp = document.querySelector(`#spb-en-row-${idx} input[data-k="${k}"]`);
   if (inp) inp.value = v;
+}
+
+// A paste or fill writes its cells without passing through the commit path,
+// which left a pasted row's VAT blank on the sheet while the parser filled it
+// at 13% in the book — the sheet's own totals row disagreeing with the
+// register built from it (grid 4,017 vs book 6,357 in the reproduction,
+// 2026-08-31). After a bulk write, every touched row completes its blank VAT
+// exactly as typing does: 13% of a non-zero base, `_auto`-stamped so a later
+// correction of the base carries it along, PAN-only sales exempted. A VAT the
+// operation itself wrote — or one already sitting there — is somebody's
+// number and stays.
+function spbEnAutofillPairs(indices) {
+  if (spbEnSection === 'sales' && spbIsPanOnly()) return;
+  const rows = spbEnSectionRows();
+  indices.forEach(idx => {
+    const r = rows[idx];
+    if (!r || spbEnRowInert(r)) return;
+    SPB_VAT_PAIRS.forEach(([base, vk]) => {
+      if (String(r[vk] || '').trim() !== '') return;
+      const b = spbNum(r[base]);
+      if (!b) return;
+      r._auto = r._auto || {};
+      r[vk] = String(Math.round(b * 0.13 * 100) / 100);
+      r._auto[vk] = true;
+    });
+  });
 }
 
 // Extend the spare bank in place — another chunk of blank rows appended to
@@ -1557,6 +1601,7 @@ function spbEnWriteCell(idx, k, v) {
   const r = rows[idx];
   if (!r) return;
   let val = String(v == null ? '' : v);
+  if (k !== 'party') val = NepaliLocale.toEnglishDigits(val);   // same fold as typing
   if (k === 'date' && val.trim() !== '') {
     const d = spbEnNormDate(val, spbFyStartYear(), spbEnPrevDated(idx));
     val = d.error ? val : d.value;
@@ -1639,7 +1684,7 @@ function spbEnClearRange(rc) {
 // Ctrl+D — Excel's fill-down, verbatim: the range's top row copies onto every
 // row below it (a single cell takes the cell above). Series live on the drag
 // handle, not here, exactly as in Excel.
-function spbEnFillDown() {
+function spbEnFillDown(fromInp) {
   if (spbEnSelActive()) {
     const rc = spbEnSelRect();
     if (rc.p2 > rc.p1) {
@@ -1647,17 +1692,20 @@ function spbEnFillDown() {
       const src = spbEnSectionRows()[spbEnView[rc.p1]];
       if (!src) return;
       const undoBefore = spbEnSnap(spbEnSection);
+      const touched = [];
       for (let p = rc.p1 + 1; p <= rc.p2; p++) {
+        touched.push(spbEnView[p]);
         for (let c = rc.c1; c <= rc.c2; c++) {
           spbEnWriteCell(spbEnView[p], cols[c].k, src[cols[c].k]);
         }
       }
+      spbEnAutofillPairs(touched);
       spbEnPushUndo(undoBefore);
       spbEnAfterBulkEdit();
       return;
     }
   }
-  const inp = document.activeElement;
+  const inp = fromInp || document.activeElement;
   if (!inp || !inp.classList || !inp.classList.contains('spb-en-in')) return;
   const at = spbEnPosOf(inp);
   if (!at || at.pos === 0) return;
@@ -1686,9 +1734,11 @@ function spbEnApplyFill(rc, nRows) {
   const cols = spbEnCols();
   const undoBefore = spbEnSnap(spbEnSection);
   const nSrc = rc.p2 - rc.p1 + 1;
+  const touched = [];
   for (let i = 1; i <= nRows; i++) {
     const idx = spbEnView[rc.p2 + i];
     if (idx == null) break;
+    touched.push(idx);
     for (let c = rc.c1; c <= rc.c2; c++) {
       const k = cols[c].k;
       const v = nSrc === 1
@@ -1697,6 +1747,7 @@ function spbEnApplyFill(rc, nRows) {
       spbEnWriteCell(idx, k, v);
     }
   }
+  spbEnAutofillPairs(touched);
   spbEnPushUndo(undoBefore);
   spbEnAfterBulkEdit();
 }
@@ -1722,6 +1773,7 @@ function spbEnOnPaste(e) {
   const cols = spbEnCols();
   const rows = spbEnSectionRows();
   const undoBefore = spbEnSnap(spbEnSection);
+  const touched = [];
   cells.forEach((line, i) => {
     let idx;
     const pos = start.pos + i;
@@ -1731,12 +1783,14 @@ function spbEnOnPaste(e) {
       rows.push(spbEnBlankRow());
       idx = rows.length - 1;
     }
+    touched.push(idx);
     line.forEach((v, j) => {
       const ci = start.ci + j;
       if (ci >= cols.length) return;
       spbEnWriteCell(idx, cols[ci].k, v);
     });
   });
+  spbEnAutofillPairs(touched);
   spbEnPushUndo(undoBefore);
   spbEnAfterBulkEdit();
   if (typeof showToast === 'function') {
@@ -1805,7 +1859,7 @@ function spbEnOnKeydown(e) {
   }
   if (mod && key === 'd') {
     e.preventDefault();
-    spbEnFillDown();
+    spbEnFillDown(inp);
     return;
   }
   if (mod && key === 'a') {
@@ -1910,9 +1964,13 @@ function spbEnAcShow(inp, items) {
     document.body.appendChild(el);
     spbEnAc.el = el;
   }
-  spbEnAc.items = items; spbEnAc.idx = -1; spbEnAc.input = inp;
-  el.innerHTML = items.map(it =>
-    `<div class="autocomplete-item"><strong>${escHtml(it.name)}</strong>` +
+  // The TOP hit arrives already highlighted, so Enter completes it — the
+  // signature "type kot, Enter" flow. It opened at -1 (nothing selected) and
+  // Enter fell through to "move down", which read as the pick not working
+  // (2026-08-31, adversarial pass). Escape still keeps a typed spelling.
+  spbEnAc.items = items; spbEnAc.idx = 0; spbEnAc.input = inp;
+  el.innerHTML = items.map((it, i) =>
+    `<div class="autocomplete-item${i === 0 ? ' selected' : ''}"><strong>${escHtml(it.name)}</strong>` +
     (it.pan ? `<span class="spb-en-ac-pan">PAN ${escHtml(it.pan)}</span>` : '') + '</div>').join('');
   el.querySelectorAll('.autocomplete-item').forEach((row, i) => {
     row.addEventListener('mousedown', ev => { ev.preventDefault(); spbEnAcPick(i); });
@@ -1935,12 +1993,14 @@ function spbEnAcPick(i) {
   const r = rows[idx];
   if (!r) return;
   const undoBefore = spbEnSnap(spbEnSection);
+  const wasSpare = spbEnRowInert(r);
   spbEnSetCell(idx, 'party', it.name);
   // The picked party's PAN fills a blank PAN. One the user already typed
   // differently stays — the conflict shows red instead of being overwritten,
   // the same only-fill-a-blank contract the carry-forward follows.
   if (it.pan && !String(r.pan || '').trim()) spbEnSetCell(idx, 'pan', it.pan);
   r.party = it.name;
+  if (wasSpare) spbEnWakeSpare(idx, 'party');
   spbEnPushUndo(undoBefore);
   spbEnDirty = true;
   spbEnInvalidate();
@@ -2125,6 +2185,12 @@ function spbEnAdoptImport() {
   const host = document.getElementById('spb-en-body');
   if (!host) return;
   host.addEventListener('input', e => { if (e.target.matches && e.target.matches('.spb-en-in')) spbEnOnInput(e.target); });
+  // Tab (or a click elsewhere) moves focus without a render, and a list left
+  // open for a departed input swallows the next cell's arrow keys — the same
+  // detached-input class of bug the render-time hide fixed. Picking by mouse
+  // is safe: the pick handler runs on mousedown with preventDefault, so the
+  // input never loses focus for a pick.
+  host.addEventListener('focusout', e => { if (spbEnAc.input === e.target) spbEnAcHide(); });
   host.addEventListener('change', e => { if (e.target.matches && e.target.matches('.spb-en-in')) spbEnOnChange(e.target); });
   host.addEventListener('keydown', spbEnOnKeydown, true);
   host.addEventListener('click', e => {
