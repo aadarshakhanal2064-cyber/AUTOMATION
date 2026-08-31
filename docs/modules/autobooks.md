@@ -809,7 +809,7 @@ CommandPalette precedent — prefix intent, not fuzzy matching, is what "k" →
 
 ### Verification — `node tools/spbEntryVerify.mjs`
 
-128 assertions, vm-loading the REAL core + ledger + entry files (the
+138 assertions, vm-loading the REAL core + ledger + entry files (the
 `spbVerify.mjs` pattern): date normalization (16 forms including Devanagari),
 bill sequencing, synthetic-sheet column inclusion, directory weighting and
 ranking, typed rows through the real pipeline (VAT fill, month grouping,
@@ -817,7 +817,7 @@ safeKey merging, capital-slice arithmetic, value-driven workbook columns), the
 book → sheet → book round trip, per-row validation (PAN conflict, VAT
 deviation, F.Y. window), the duplicate-bill rules, the Excel-import path, and
 (2026-08-31) the TSV interchange both ways, the header-row skip, the
-fill-handle series rules, and bulk writes normalizing like typing.
+fill-handle series rules, bulk writes normalizing like typing, and the undo/redo snapshot machinery.
 **Run it before and after touching the entry sheet or anything it feeds**,
 alongside `node tools/spbVerify.mjs` (still 36/36).
 Browser-verified 2026-08-29 against the dev server: suggestion pick, PAN-first
@@ -981,6 +981,31 @@ the findings pile buried the grid"), each of which was a real defect:
   whose book it is), and the explicit toggle also requests the BROWSER's
   fullscreen best-effort — only the click path, since the API needs a user
   gesture, so the sticky-pref auto-enter never tries.
+
+Same-day follow-ups (the user's second report):
+
+- **Ctrl+A is one press, always** — it selects the whole view outright. The
+  first version required the cell's text to already be whole-selected (native
+  text-select first, grid second), which is why "select all then Backspace"
+  read as broken: the first press only selected text and Backspace deleted a
+  character. Excel's Ctrl+A never means "the text in this cell".
+- **Undo/redo** (`spbEnUndo`/`spbEnRedo`, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, plus
+  ↶ ↷ toolbar buttons): every mutation — a cell commit with its autofills, a
+  paste, a fill, a range clear, a row delete, Clear sheet, an Excel import,
+  Load-from-book — pushes a before/after SNAPSHOT of the section's rows,
+  capped at 50. Snapshots, deliberately not per-cell deltas: the grid
+  compacts rows on every structural render, so a delta undone after a bulk
+  undo would re-insert a row beside its own clone. Cloning shares the strings
+  (immutable), so a 2,000-row snapshot is object overhead only (~10 ms per
+  commit at that size, imperceptible). A redo after a fresh edit is cleared
+  (history forks), an undo lands on the section the edit was made in, and a
+  client/identity switch clears both stacks — another client's history
+  replayed here would be the §9 cross-client leak.
+- **The grid runs (nearly) the full viewport** — `.spb-en-wrap` max-height is
+  `calc(100vh - 230px)` instead of the old 62vh box — and scrolls without
+  limit inside itself while the sticky header and the month's totals row stay
+  locked. Verified at the user's stated ceiling of 2,000 rows in one month:
+  326 ms structural render, 10 ms commit, 41 ms deferred apply.
 
 ### Data Entry is the FIRST tab, and the landing section (2026-08-29, user ask)
 

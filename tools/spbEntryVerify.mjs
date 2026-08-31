@@ -84,6 +84,13 @@ function loadModules() {
       headerRow: spbEnTsvHeaderRow,
       fillValue: spbEnFillValue,
       writeCell(rows, idx, k, v) { spbEnRows = rows; spbEnSection = 'sales'; spbEnWriteCell(idx, k, v); return spbEnRows; },
+      snap: (s) => spbEnSnap(s),
+      pushUndo: (b) => spbEnPushUndo(b),
+      undo: () => spbEnUndo(),
+      redo: () => spbEnRedo(),
+      clearUndo: () => spbEnClearUndo(),
+      stacks: () => ({ undo: spbEnUndoStack.length, redo: spbEnRedoStack.length }),
+      section(s) { if (s) spbEnSection = s; return spbEnSection; },
       clearData() { spbData = null; spbBook = null; spbGroups = null; spbVr = null; },
     };
   `;
@@ -382,6 +389,41 @@ console.log('\n── Bulk writes go through the same normalization as typing �
   check('an unreadable pasted date is kept raw for the red flag', rows.sales[1].date, 'garbage!!');
   en.writeCell(rows, 1, 'party', '  Hanuman ');
   check('a pasted party is stored as given (trim is the parser\'s job)', rows.sales[1].party, '  Hanuman ');
+}
+
+console.log('\n── Undo / redo: snapshots restore, redo forks correctly ──');
+{
+  const mk = (bill, taxable) => ({ ...en.blankRow(), date: '2082.04.01', bill, party: 'P', taxable });
+  en.clearUndo();
+  en.section('sales');
+  en.setRows({ sales: [mk('1', '100')], purchase: [] });
+  // edit 1: change the amount (snapshot before, mutate, push)
+  let before = en.snap('sales');
+  en.rows().sales[0].taxable = '999';
+  en.pushUndo(before);
+  // edit 2: add a row
+  before = en.snap('sales');
+  en.rows().sales.push(mk('2', '200'));
+  en.pushUndo(before);
+  check('two edits stack two undo steps', en.stacks().undo, 2);
+  en.undo();
+  check('undo removes the added row', en.rows().sales.length, 1);
+  check('…and keeps the earlier edit', en.rows().sales[0].taxable, '999');
+  en.undo();
+  check('a second undo restores the original amount', en.rows().sales[0].taxable, '100');
+  check('both steps now sit on the redo side', en.stacks().redo, 2);
+  en.redo();
+  check('redo re-applies the amount edit', en.rows().sales[0].taxable, '999');
+  en.redo();
+  check('redo re-adds the row', en.rows().sales.length, 2);
+  en.undo();
+  before = en.snap('sales');
+  en.rows().sales[0].party = 'Q';
+  en.pushUndo(before);
+  check('a fresh edit after undo forks history (redo cleared)', en.stacks().redo, 0);
+  check('undo on an empty stack is a safe no-op', (en.clearUndo(), en.undo(), en.rows().sales.length), 1);
+  check('history clones are independent of the live rows',
+    (() => { before = en.snap('sales'); en.rows().sales[0].party = 'MUTATED'; return before.rows[0].party; })(), 'Q');
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

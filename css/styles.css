@@ -679,7 +679,11 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-en-finding-more { font-size: 12px; color: var(--text-muted); padding: 2px 10px; }
 .spb-en-flash td { animation: spbEnFlash 1.5s ease; }
 @keyframes spbEnFlash { from { background: var(--blue-bg); } to { background: transparent; } }
-.spb-en-wrap { max-height: 62vh; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 10px; }
+/* The grid takes (nearly) the whole viewport below the toolbar and scrolls
+   inside itself without limit — a month runs to 2,000 rows — while the header
+   and the month's totals row stay locked (sticky thead/tfoot). 62vh was the
+   old cap and read as a small box on a big book. */
+.spb-en-wrap { max-height: calc(100vh - 230px); min-height: 340px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 10px; }
 .spb-en-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .spb-en-table thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-page-alt); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 8px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .spb-en-table tfoot td { position: sticky; bottom: 0; background: var(--bg-page-alt); border-top: 1px solid var(--border); font-weight: 700; color: var(--brand-navy); padding: 7px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }

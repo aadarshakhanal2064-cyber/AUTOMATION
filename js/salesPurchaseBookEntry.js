@@ -391,6 +391,8 @@ let spbEnFillRows = 0;           // rows below the selection the fill drag cover
 let spbEnIssuesOpen = false;     // the findings drawer (collapsed by default)
 let spbEnApplyTimer = null;      // the debounced whole-book recompute
 let spbEnApplyPending = false;
+let spbEnUndoStack = [];         // section snapshots, newest last (Ctrl+Z)
+let spbEnRedoStack = [];         // what undo stepped back over (Ctrl+Y)
 
 // Full screen is a sticky preference, not a per-visit toggle — the user asked
 // for the sheet to BE full screen like Excel, so once chosen it opens that
@@ -506,6 +508,7 @@ function spbEntryReset() {
   spbEnLastIdentity = spbEnIdentity;
   spbEnRows = { sales: [], purchase: [] };
   spbEnIdentity = null; spbEnDirty = false;
+  spbEnClearUndo();                // another client's history must not replay here
   spbEnPrior = []; spbEnPriorFor = null;
   if (spbSection === 'entry') spbRenderEntry();
 }
@@ -537,6 +540,7 @@ function spbEnSyncIdentity(force) {
   spbEnIdentity = key;
   spbEnLastIdentity = null;
   spbEnDirty = false;
+  spbEnClearUndo();                // the rows are about to be swapped underneath
 
   let draft = spbEnReadDraft(key);
 
@@ -800,6 +804,8 @@ function spbRenderEntry() {
       </div>
       <div class="spb-en-tools">
         ${extraToggle}
+        <button class="btn btn-outline btn-sm" onclick="spbEnUndo()" title="Undo the last change (Ctrl+Z)">↶ Undo</button>
+        <button class="btn btn-outline btn-sm" onclick="spbEnRedo()" title="Redo what was undone (Ctrl+Y)">↷ Redo</button>
         ${hasBookRows ? `<button class="btn btn-outline btn-sm" onclick="spbEnLoadFromBook()">Load the ${escHtml(spbEnSection)} register into the sheet</button>` : ''}
         <input type="file" id="spb-en-file" accept=".xlsx,.xls,.ods,.csv" style="display:none;" onchange="spbEnImportFile(this)" />
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('spb-en-file').click()"
@@ -1203,6 +1209,7 @@ function spbEnOnChange(inp) {
   // native change for the same value — an unchanged commit has nothing to do,
   // and doing the full pipeline for it is what made arrow travel expensive.
   if (String(prevVal == null ? '' : prevVal) === inp.value) return;
+  const undoBefore = spbEnSnap(spbEnSection);
   r[k] = inp.value;
   spbEnDirty = true;
 
@@ -1255,6 +1262,7 @@ function spbEnOnChange(inp) {
   }
 
   if (idx === rows.length - 1 && !spbEnRowInert(r)) spbEnAppendTrailing();
+  spbEnPushUndo(undoBefore);       // one commit (with its autofills) = one undo step
   spbEnInvalidate();
   spbEnValidateRow(idx);
   spbEnPatchTotals();
@@ -1298,7 +1306,9 @@ function spbEnAppendTrailing() {
 function spbEnDeleteRow(idx) {
   const rows = spbEnSectionRows();
   if (!rows[idx]) return;
+  const undoBefore = spbEnSnap(spbEnSection);
   rows.splice(idx, 1);
+  spbEnPushUndo(undoBefore);
   spbEnAfterBulkEdit();
 }
 
@@ -1309,6 +1319,68 @@ function spbEnAfterBulkEdit() {
   spbEnDirty = true;
   spbEnInvalidate();
   spbEnRenderRows();
+  spbEnScheduleApply();
+  spbEnScheduleDraft();
+}
+
+// ── UNDO / REDO (2026-08-31, user ask — "no revert or move forward") ───────
+// Every mutation records a SNAPSHOT of the section's rows, before and after.
+// Snapshots, not per-cell deltas, deliberately: a delta needs the row it
+// points at to still be in the array, and the grid compacts rows on every
+// structural render — a delta undone after a bulk undo would re-insert a row
+// beside its own clone. Cloning shares the strings (they're immutable), so a
+// 2,000-row snapshot is ~object overhead only; the stack is capped at 50.
+// A client/identity switch clears both stacks — another client's undo history
+// applied here would be cross-client data, the exact §9 leak.
+function spbEnSnap(section) {
+  return {
+    section,
+    rows: (spbEnRows[section] || []).map(r => ({ ...r, _auto: r._auto ? { ...r._auto } : undefined })),
+  };
+}
+
+function spbEnPushUndo(before) {
+  spbEnUndoStack.push({
+    section: before.section,
+    prev: before.rows,
+    next: spbEnSnap(before.section).rows,
+  });
+  if (spbEnUndoStack.length > 50) spbEnUndoStack.shift();
+  spbEnRedoStack.length = 0;       // a fresh edit forks history, as everywhere
+}
+
+function spbEnClearUndo() {
+  spbEnUndoStack.length = 0;
+  spbEnRedoStack.length = 0;
+}
+
+function spbEnUndo() {
+  const entry = spbEnUndoStack.pop();
+  if (!entry) {
+    if (typeof showToast === 'function') showToast('Nothing to undo.', 'info', 2000);
+    return;
+  }
+  spbEnRedoStack.push(entry);
+  spbEnApplyHistory(entry, 'prev');
+}
+
+function spbEnRedo() {
+  const entry = spbEnRedoStack.pop();
+  if (!entry) {
+    if (typeof showToast === 'function') showToast('Nothing to redo.', 'info', 2000);
+    return;
+  }
+  spbEnUndoStack.push(entry);
+  spbEnApplyHistory(entry, 'next');
+}
+
+function spbEnApplyHistory(entry, which) {
+  spbEnSection = entry.section;    // an undo lands where the edit was made
+  // Fresh clones, so the stack entry stays pristine however often it replays.
+  spbEnRows[entry.section] = entry[which].map(r => ({ ...r, _auto: r._auto ? { ...r._auto } : undefined }));
+  spbEnDirty = true;
+  spbEnInvalidate();
+  spbRenderEntry();                // pills/counts may have changed month
   spbEnScheduleApply();
   spbEnScheduleDraft();
 }
@@ -1501,11 +1573,13 @@ function spbEnCopyView() {
 function spbEnClearRange(rc) {
   const cols = spbEnCols();
   const rows = spbEnSectionRows();
+  const undoBefore = spbEnSnap(spbEnSection);
   for (let p = rc.p1; p <= rc.p2; p++) {
     const r = rows[spbEnView[p]];
     if (!r) continue;
     for (let c = rc.c1; c <= rc.c2; c++) r[cols[c].k] = '';
   }
+  spbEnPushUndo(undoBefore);
   spbEnAfterBulkEdit();
 }
 
@@ -1519,11 +1593,13 @@ function spbEnFillDown() {
       const cols = spbEnCols();
       const src = spbEnSectionRows()[spbEnView[rc.p1]];
       if (!src) return;
+      const undoBefore = spbEnSnap(spbEnSection);
       for (let p = rc.p1 + 1; p <= rc.p2; p++) {
         for (let c = rc.c1; c <= rc.c2; c++) {
           spbEnWriteCell(spbEnView[p], cols[c].k, src[cols[c].k]);
         }
       }
+      spbEnPushUndo(undoBefore);
       spbEnAfterBulkEdit();
       return;
     }
@@ -1555,6 +1631,7 @@ function spbEnPaintFillPreview(rc) {
 function spbEnApplyFill(rc, nRows) {
   const rows = spbEnSectionRows();
   const cols = spbEnCols();
+  const undoBefore = spbEnSnap(spbEnSection);
   const nSrc = rc.p2 - rc.p1 + 1;
   for (let i = 1; i <= nRows; i++) {
     const idx = spbEnView[rc.p2 + i];
@@ -1567,6 +1644,7 @@ function spbEnApplyFill(rc, nRows) {
       spbEnWriteCell(idx, k, v);
     }
   }
+  spbEnPushUndo(undoBefore);
   spbEnAfterBulkEdit();
 }
 
@@ -1590,6 +1668,7 @@ function spbEnOnPaste(e) {
   if (!start) return;
   const cols = spbEnCols();
   const rows = spbEnSectionRows();
+  const undoBefore = spbEnSnap(spbEnSection);
   cells.forEach((line, i) => {
     let idx;
     const pos = start.pos + i;
@@ -1605,6 +1684,7 @@ function spbEnOnPaste(e) {
       spbEnWriteCell(idx, cols[ci].k, v);
     });
   });
+  spbEnPushUndo(undoBefore);
   spbEnAfterBulkEdit();
   if (typeof showToast === 'function') {
     showToast(`Pasted ${cells.length} row${cells.length > 1 ? 's' : ''}.`, 'success', 2500);
@@ -1675,9 +1755,23 @@ function spbEnOnKeydown(e) {
     spbEnFillDown();
     return;
   }
-  if (mod && key === 'a' && (spbEnWholeSelected(inp) || !(inp.value || '').length)) {
+  if (mod && key === 'a') {
+    // One press, the whole view — Excel's Ctrl+A never means "the text in
+    // this cell", and requiring a second press is why select-all-then-
+    // Backspace read as broken (2026-08-31). Text inside a cell still
+    // selects with the mouse or Shift+Home/End.
     e.preventDefault();
     spbEnSelectAll();
+    return;
+  }
+  if (mod && key === 'z' && !e.shiftKey) {
+    e.preventDefault();            // the native single-input undo would fight the grid's
+    spbEnUndo();
+    return;
+  }
+  if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
+    e.preventDefault();
+    spbEnRedo();
     return;
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && spbEnSelActive()) {
@@ -1789,12 +1883,14 @@ function spbEnAcPick(i) {
   const rows = spbEnSectionRows();
   const r = rows[idx];
   if (!r) return;
+  const undoBefore = spbEnSnap(spbEnSection);
   spbEnSetCell(idx, 'party', it.name);
   // The picked party's PAN fills a blank PAN. One the user already typed
   // differently stays — the conflict shows red instead of being overwritten,
   // the same only-fill-a-blank contract the carry-forward follows.
   if (it.pan && !String(r.pan || '').trim()) spbEnSetCell(idx, 'pan', it.pan);
   r.party = it.name;
+  spbEnPushUndo(undoBefore);
   spbEnDirty = true;
   spbEnInvalidate();
   spbEnValidateRow(idx);
@@ -1861,8 +1957,10 @@ function spbEnToggleExtra(on) {
 
 function spbEnLoadFromBook() {
   if (!spbData || !spbData[spbEnSection]) return;
+  const undoBefore = spbEnSnap(spbEnSection);
   spbEnRows[spbEnSection] = [];
   spbEnSeedFromBook();
+  spbEnPushUndo(undoBefore);
   spbEnMonth = spbEnDefaultMonth();
   spbRenderEntry();
 }
@@ -1871,7 +1969,9 @@ function spbEnClearSheet() {
   const n = spbEnSectionRows().filter(r => !spbEnRowInert(r)).length;
   if (n && !confirm(`Clear all ${n} typed ${spbEnSection} row${n > 1 ? 's' : ''} from the sheet? ` +
     'Rows already saved to the database stay saved until the next Save.')) return;
+  const undoBefore = spbEnSnap(spbEnSection);
   spbEnRows[spbEnSection] = [];
+  spbEnPushUndo(undoBefore);
   spbEnDirty = true;
   spbEnInvalidate();
   spbEnApplyBook();
@@ -1922,7 +2022,12 @@ async function spbEnImportFile(input) {
       spbEnStatus('ℹ️ Import cancelled — the sheet is unchanged.', 'info');
       return;
     }
-    SPB_SECTIONS.forEach(({ key }) => { if (found[key]) spbEnRows[key] = found[key].rows; });
+    SPB_SECTIONS.forEach(({ key }) => {
+      if (!found[key]) return;
+      const undoBefore = spbEnSnap(key);
+      spbEnRows[key] = found[key].rows;
+      spbEnPushUndo(undoBefore);
+    });
     if (!found[spbEnSection]) spbEnSection = found.sales ? 'sales' : 'purchase';
     spbEnDirty = true;
     spbEnInvalidate();
