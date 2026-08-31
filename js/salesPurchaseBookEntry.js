@@ -468,7 +468,13 @@ function spbEnScheduleDraft() {
   spbEnDraftTimer = setTimeout(() => {
     try {
       const map = JSON.parse(localStorage.getItem(SPB_EN_DRAFT_KEY) || '{}');
-      map[spbEnIdentity || spbDraftId()] = { rows: spbEnRows, ts: Date.now() };
+      // The spare bank is typing surface, not data — sixty blank rows per
+      // draft would be pure localStorage waste (the reader filters them too).
+      const live = {};
+      SPB_SECTIONS.forEach(({ key }) => {
+        live[key] = (spbEnRows[key] || []).filter(r => !spbEnRowInert(r));
+      });
+      map[spbEnIdentity || spbDraftId()] = { rows: live, ts: Date.now() };
       const ids = Object.keys(map).sort((a, b) => map[b].ts - map[a].ts);
       ids.slice(20).forEach(id => delete map[id]);
       localStorage.setItem(SPB_EN_DRAFT_KEY, JSON.stringify(map));
@@ -897,24 +903,38 @@ function spbEnRenderRows() {
   spbEnView = spbEnComputeView();
   const cols = spbEnCols();
   const html = spbEnView.map((idx, n) => spbEnRowHtml(idx, n, cols));
-  // One trailing blank row, always — typing into it is how the next bill
-  // starts, the way a spreadsheet's next line is simply there.
-  const blankIdx = spbEnEnsureTrailingRow();
-  html.push(spbEnRowHtml(blankIdx, spbEnView.length, cols));
-  spbEnView.push(blankIdx);
+  // A BANK of blank rows below the data, not one trailing line (2026-08-31,
+  // user ask — the sheet ended at the last bill and left nowhere to drag,
+  // paste or click, while Excel's next 60 lines are simply there). The bank
+  // also makes the table taller than its box, which is what pins the sticky
+  // totals row to the bottom — the freeze-panes feel. Scrolling near the
+  // bottom extends the bank, so the rows are unlimited in practice.
+  spbEnEnsureSpares().forEach(idx => {
+    html.push(spbEnRowHtml(idx, spbEnView.length, cols));
+    spbEnView.push(idx);
+  });
   tbody.innerHTML = html.join('');
   spbEnView.forEach(i => spbEnValidateRow(i));
   spbEnPatchTotals();
 }
 
-// The trailing blank row lives in the array so indices stay stable while it
-// is being typed into.
-function spbEnEnsureTrailingRow() {
+// The spare rows live in the array so indices stay stable while they are
+// typed into; every structural render compacts the inert ones out first and
+// deals a fresh bank here. Only the FIRST spare is seeded (date + next sales
+// bill) — a bank of 60 pre-filled bill numbers would be data nobody typed;
+// the deeper spares get the same seeding at commit time instead.
+const SPB_EN_SPARE = 60;
+
+function spbEnEnsureSpares() {
   const rows = spbEnSectionRows();
-  if (!rows.length || !spbEnRowInert(rows[rows.length - 1])) {
-    rows.push(spbEnSeededBlank());
+  const idxs = [];
+  rows.push(spbEnSeededBlank());
+  idxs.push(rows.length - 1);
+  for (let i = 1; i < SPB_EN_SPARE; i++) {
+    rows.push(spbEnBlankRow());
+    idxs.push(rows.length - 1);
   }
-  return rows.length - 1;
+  return idxs;
 }
 
 // A fresh row already knows what barely changes bill to bill: the date rides
@@ -948,8 +968,13 @@ function spbEnRowHtml(idx, viewN, cols) {
       `data-r="${idx}" data-k="${c.k}" value="${escHtml(v)}" autocomplete="off" spellcheck="false"` +
       `${c.hint ? ` title="${escHtml(c.hint)}"` : ''}></td>`;
   }).join('');
-  return `<tr id="spb-en-row-${idx}"><td class="spb-en-num" id="spb-en-st-${idx}">${viewN + 1}</td>${cells}` +
-    `<td class="spb-en-td"><button type="button" class="spb-en-del" data-del="${idx}" title="Delete this row" tabindex="-1">×</button></td></tr>`;
+  // Spare rows carry no × — a column of sixty delete buttons on empty lines
+  // is noise, and deleting an empty row means nothing. The button appears
+  // with the next structural render once the row holds data.
+  const del = spbEnRowInert(r)
+    ? '<td class="spb-en-td"></td>'
+    : `<td class="spb-en-td"><button type="button" class="spb-en-del" data-del="${idx}" title="Delete this row" tabindex="-1">×</button></td>`;
+  return `<tr id="spb-en-row-${idx}"><td class="spb-en-num" id="spb-en-st-${idx}">${viewN + 1}</td>${cells}${del}</tr>`;
 }
 
 function spbEnPatchTotals() {
@@ -1210,8 +1235,28 @@ function spbEnOnChange(inp) {
   // and doing the full pipeline for it is what made arrow travel expensive.
   if (String(prevVal == null ? '' : prevVal) === inp.value) return;
   const undoBefore = spbEnSnap(spbEnSection);
+  const wasSpare = spbEnRowInert(r);   // before the commit wakes it
   r[k] = inp.value;
   spbEnDirty = true;
+
+  // Waking a spare row wakes the carry-forward with it: the date rides in
+  // from the row above and a SALES bill number counts on — the seeding the
+  // old single trailing row got at render time, now at commit time so EVERY
+  // row of the bank gets it. Only a row that was inert a moment ago: a live
+  // row whose date the user deliberately blanked is never re-filled.
+  if (wasSpare) {
+    if (k !== 'date' && !String(r.date || '').trim()) {
+      const prev = spbEnPrevDated(idx);
+      if (prev) spbEnSetCell(idx, 'date', prev);
+    }
+    if (spbEnSection === 'sales' && k !== 'bill' && !String(r.bill || '').trim()) {
+      for (let i = idx - 1; i >= 0; i--) {
+        const b = String(rows[i].bill || '').trim();
+        if (b) { const nb = spbEnNextBill(b); if (nb) spbEnSetCell(idx, 'bill', nb); break; }
+        if (!spbEnRowInert(rows[i])) break;    // a live row with no bill ends the guess
+      }
+    }
+  }
 
   if (k === 'date') {
     const prev = spbEnPrevDated(idx);
@@ -1261,7 +1306,7 @@ function spbEnOnChange(inp) {
     r._auto[k] = false;      // hand-typed VAT — the autofill lets go
   }
 
-  if (idx === rows.length - 1 && !spbEnRowInert(r)) spbEnAppendTrailing();
+  if (idx >= rows.length - 3) spbEnExtendSpares();   // never let the bank run out under the caret
   spbEnPushUndo(undoBefore);       // one commit (with its autofills) = one undo step
   spbEnInvalidate();
   spbEnValidateRow(idx);
@@ -1290,17 +1335,22 @@ function spbEnSetCell(idx, k, v) {
   if (inp) inp.value = v;
 }
 
-function spbEnAppendTrailing() {
+// Extend the spare bank in place — another chunk of blank rows appended to
+// the model, the DOM and the view, with no structural render (typing and
+// scrolling must never lose focus or scroll position). This is what makes
+// the rows unlimited: reach the bottom and there is always more sheet.
+function spbEnExtendSpares() {
   const rows = spbEnSectionRows();
-  rows.push(spbEnSeededBlank());
-  const idx = rows.length - 1;
   const tbody = document.getElementById('spb-en-tbody');
   if (!tbody) return;
-  const tr = document.createElement('tr');
-  tr.id = 'spb-en-row-' + idx;
-  tr.innerHTML = spbEnRowHtml(idx, spbEnView.length, spbEnCols()).replace(/^<tr[^>]*>|<\/tr>$/g, '');
-  tbody.appendChild(tr);
-  spbEnView.push(idx);
+  const cols = spbEnCols();
+  const frag = [];
+  for (let i = 0; i < SPB_EN_SPARE; i++) {
+    rows.push(spbEnBlankRow());
+    frag.push(spbEnRowHtml(rows.length - 1, spbEnView.length + i, cols));
+    spbEnView.push(rows.length - 1);
+  }
+  tbody.insertAdjacentHTML('beforeend', frag.join(''));
 }
 
 function spbEnDeleteRow(idx) {
@@ -1333,9 +1383,12 @@ function spbEnAfterBulkEdit() {
 // A client/identity switch clears both stacks — another client's undo history
 // applied here would be cross-client data, the exact §9 leak.
 function spbEnSnap(section) {
+  // Spare-bank rows are typing surface, not data — a snapshot keeps only the
+  // live rows, and the render after an undo deals a fresh bank anyway.
   return {
     section,
-    rows: (spbEnRows[section] || []).map(r => ({ ...r, _auto: r._auto ? { ...r._auto } : undefined })),
+    rows: (spbEnRows[section] || []).filter(r => !spbEnRowInert(r))
+      .map(r => ({ ...r, _auto: r._auto ? { ...r._auto } : undefined })),
   };
 }
 
@@ -1823,13 +1876,11 @@ function spbEnMove(inp, dRow, dCol) {
   let pos = spbEnView.indexOf(parseInt(inp.dataset.r, 10)) + dRow;
   if (pos < 0) return;
   if (pos >= spbEnView.length) {
-    // Moving down off the end opens the next row — unless the row already
-    // sitting there is the untouched blank one, or arrowing down would breed
-    // empty rows forever.
-    const last = spbEnSectionRows()[spbEnView[spbEnView.length - 1]];
-    if (!last || spbEnRowInert(last)) return;
-    spbEnAppendTrailing();
-    pos = spbEnView.length - 1;
+    // Off the end of the bank: deal more sheet, as Excel's ↓ always lands
+    // on a next row. Breeding rows is harmless now — spares are inert,
+    // compacted at every structural render, and never reach the parser.
+    spbEnExtendSpares();
+    if (pos >= spbEnView.length) return;
   }
   const next = document.querySelector(`#spb-en-row-${spbEnView[pos]} input[data-k="${cols[ci]}"]`);
   if (next) { next.focus(); next.select(); }
@@ -2155,8 +2206,16 @@ function spbEnAdoptImport() {
   // Paste through the native event — no clipboard permission needed, and a
   // block copied in Excel arrives exactly as its TSV.
   host.addEventListener('paste', spbEnOnPaste);
-  // A fixed-position dropdown must not float free of a scrolled cell.
-  host.addEventListener('scroll', spbEnAcHide, true);
+  // A fixed-position dropdown must not float free of a scrolled cell — and
+  // scrolling near the bottom of the grid deals more spare rows, which is
+  // what "unlimited" means in practice.
+  host.addEventListener('scroll', e => {
+    spbEnAcHide();
+    const w = e.target;
+    if (w && w.id === 'spb-en-wrap' && w.scrollHeight - w.scrollTop - w.clientHeight < 400) {
+      spbEnExtendSpares();
+    }
+  }, true);
   window.addEventListener('resize', spbEnAcHide);
   // Esc leaves full screen — but only once the autocomplete has had its turn
   // (its own Escape closes the list and stops propagation, the searchEngine

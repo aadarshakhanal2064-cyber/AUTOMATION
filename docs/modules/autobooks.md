@@ -1006,6 +1006,21 @@ Same-day follow-ups (the user's second report):
   limit inside itself while the sticky header and the month's totals row stay
   locked. Verified at the user's stated ceiling of 2,000 rows in one month:
   326 ms structural render, 10 ms commit, 41 ms deferred apply.
+- **A BANK of 60 spare rows below the data, not one trailing line** (third
+  report, same day — the sheet ended at the last bill and the totals row sat
+  right under it with dead space below, leaving nowhere to drag, paste or
+  click). `spbEnEnsureSpares()` deals the bank at every structural render
+  (compaction removes it first — spares are inert, so they never reach the
+  parser, totals, counts, drafts or undo snapshots); scrolling near the
+  bottom, arrowing off the end, or committing near the end extends it by
+  another 60 (`spbEnExtendSpares`, DOM-append, no re-render) — unlimited in
+  practice, and the bank is what keeps the table taller than its box so the
+  sticky totals row stays pinned bottom like Excel's freeze panes. Only the
+  FIRST spare is seeded at render (a bank of 60 pre-filled bill numbers would
+  be data nobody typed); the deeper spares get the same date-carry and
+  next-sales-bill seeding **at commit time**, gated on the row having been
+  inert a moment before, so a live row whose date the user deliberately
+  blanked is never re-filled. Spare rows carry no × delete button.
 
 ### Data Entry is the FIRST tab, and the landing section (2026-08-29, user ask)
 
