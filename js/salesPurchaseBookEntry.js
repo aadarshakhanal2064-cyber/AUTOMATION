@@ -55,6 +55,20 @@ function spbEnRowInert(r) {
     String(r[k] == null ? '' : r[k]).trim() === '');
 }
 
+// A row is KEPT — surviving compaction, drafts and undo snapshots — when the
+// USER put something in it, including a date/bill-only row they dragged or
+// typed ahead of the amounts (the Excel pre-numbering gesture). Machine-
+// seeded rows (`_seed`, stamped by spbEnSeededBlank) and fully blank spares
+// are typing surface and are dealt fresh every render. Found 2026-08-31:
+// dragging the bill number down the bank LOOKED like it worked, then the
+// next structural render compacted every filled row away, because inert
+// (= excluded from the parser, which stays right) was also the discard test.
+function spbEnRowKept(r) {
+  if (!spbEnRowInert(r)) return true;
+  if (spbEnRowEmpty(r)) return false;
+  return !r._seed;
+}
+
 // Date normalization — every form staff actually type, folded to the
 // importer's canonical YYYY.MM.DD. `prevDate` (the row above's normalized
 // date) is what lets a bare day number ("15") complete itself: books are
@@ -472,7 +486,7 @@ function spbEnScheduleDraft() {
       // draft would be pure localStorage waste (the reader filters them too).
       const live = {};
       SPB_SECTIONS.forEach(({ key }) => {
-        live[key] = (spbEnRows[key] || []).filter(r => !spbEnRowInert(r));
+        live[key] = (spbEnRows[key] || []).filter(spbEnRowKept);
       });
       map[spbEnIdentity || spbDraftId()] = { rows: live, ts: Date.now() };
       const ids = Object.keys(map).sort((a, b) => map[b].ts - map[a].ts);
@@ -873,8 +887,8 @@ function spbEnComputeView() {
   const fyStart = spbFyStartYear();
   const view = [];
   rows.forEach((r, i) => {
-    if (spbEnRowInert(r)) return;
-    if (spbEnMonth === -1) { view.push(i); return; }
+    if (!spbEnRowKept(r)) return;    // kept, not merely live — a pre-numbered
+    if (spbEnMonth === -1) { view.push(i); return; }   // row must stay visible
     const d = spbEnNormDate(r.date, fyStart);
     if (d.fi == null || d.fi === spbEnMonth) view.push(i);
   });
@@ -887,7 +901,7 @@ function spbEnRenderRows() {
   // Deletions and abandoned trailing rows leave empty rows in the array —
   // compact them here, where indices are about to be re-issued anyway. Never
   // done mid-typing: this runs only on structural renders.
-  spbEnRows[spbEnSection] = spbEnSectionRows().filter(r => !spbEnRowInert(r));
+  spbEnRows[spbEnSection] = spbEnSectionRows().filter(spbEnRowKept);
   // A structural render is exactly the moment the rows or the section may have
   // been swapped underneath the caches (section switch, client switch, draft
   // restore, seeding from a book) — so they are dropped here unconditionally
@@ -942,8 +956,9 @@ function spbEnEnsureSpares() {
 function spbEnSeededBlank() {
   const rows = spbEnSectionRows();
   const r = spbEnBlankRow();
+  r._seed = true;                  // machine values — discardable until the user writes
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (spbEnRowInert(rows[i])) continue;
+    if (!spbEnRowKept(rows[i])) continue;   // a user's pre-numbered row counts the bill on
     const fyStart = spbFyStartYear();
     const d = spbEnNormDate(rows[i].date, fyStart);
     if (spbEnMonth === -1 || d.fi == null || d.fi === spbEnMonth) {
@@ -971,9 +986,9 @@ function spbEnRowHtml(idx, viewN, cols) {
   // Spare rows carry no × — a column of sixty delete buttons on empty lines
   // is noise, and deleting an empty row means nothing. The button appears
   // with the next structural render once the row holds data.
-  const del = spbEnRowInert(r)
-    ? '<td class="spb-en-td"></td>'
-    : `<td class="spb-en-td"><button type="button" class="spb-en-del" data-del="${idx}" title="Delete this row" tabindex="-1">×</button></td>`;
+  const del = spbEnRowKept(r)
+    ? `<td class="spb-en-td"><button type="button" class="spb-en-del" data-del="${idx}" title="Delete this row" tabindex="-1">×</button></td>`
+    : '<td class="spb-en-td"></td>';
   return `<tr id="spb-en-row-${idx}"><td class="spb-en-num" id="spb-en-st-${idx}">${viewN + 1}</td>${cells}${del}</tr>`;
 }
 
@@ -1272,6 +1287,7 @@ function spbEnOnChange(inp) {
   const undoBefore = spbEnSnap(spbEnSection);
   const wasSpare = spbEnRowInert(r);   // before the commit wakes it
   r[k] = inp.value;
+  delete r._seed;                      // the user wrote here — the row is theirs now
   spbEnDirty = true;
 
   if (wasSpare) spbEnWakeSpare(idx, k);
@@ -1431,7 +1447,7 @@ function spbEnSnap(section) {
   // live rows, and the render after an undo deals a fresh bank anyway.
   return {
     section,
-    rows: (spbEnRows[section] || []).filter(r => !spbEnRowInert(r))
+    rows: (spbEnRows[section] || []).filter(spbEnRowKept)
       .map(r => ({ ...r, _auto: r._auto ? { ...r._auto } : undefined })),
   };
 }
@@ -1588,7 +1604,7 @@ function spbEnSelExtend(dRow, dCol, inp) {
 function spbEnSelectAll() {
   const rows = spbEnSectionRows();
   let last = spbEnView.length - 1;
-  while (last >= 0 && spbEnRowInert(rows[spbEnView[last]] || {})) last--;
+  while (last >= 0 && !spbEnRowKept(rows[spbEnView[last]] || {})) last--;
   if (last < 0) return;
   spbEnSel = { a: { pos: 0, ci: 0 }, h: { pos: last, ci: spbEnCols().length - 1 } };
   spbEnSelPaint();
@@ -1601,6 +1617,7 @@ function spbEnWriteCell(idx, k, v) {
   const r = rows[idx];
   if (!r) return;
   let val = String(v == null ? '' : v);
+  delete r._seed;                      // a paste or fill makes the row the user's
   if (k !== 'party') val = NepaliLocale.toEnglishDigits(val);   // same fold as typing
   if (k === 'date' && val.trim() !== '') {
     const d = spbEnNormDate(val, spbFyStartYear(), spbEnPrevDated(idx));
@@ -2077,7 +2094,7 @@ function spbEnLoadFromBook() {
 }
 
 function spbEnClearSheet() {
-  const n = spbEnSectionRows().filter(r => !spbEnRowInert(r)).length;
+  const n = spbEnSectionRows().filter(spbEnRowKept).length;
   if (n && !confirm(`Clear all ${n} typed ${spbEnSection} row${n > 1 ? 's' : ''} from the sheet? ` +
     'Rows already saved to the database stay saved until the next Save.')) return;
   const undoBefore = spbEnSnap(spbEnSection);

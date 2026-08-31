@@ -94,6 +94,7 @@ function loadModules() {
       autofillPairs: (idxs) => spbEnAutofillPairs(idxs),
       wakeSpare: (idx, k) => spbEnWakeSpare(idx, k),
       rowInert: (r) => spbEnRowInert(r),
+      rowKept: (r) => spbEnRowKept(r),
       clearData() { spbData = null; spbBook = null; spbGroups = null; spbVr = null; },
     };
   `;
@@ -425,6 +426,20 @@ console.log('\n── Bulk writes behave like typing (2026-08-31 adversarial pas
   en.wakeSpare(1, 'party');
   check('picking a party on a blank row carries the date in', en.rows().sales[1].date, '2082.04.10');
   check('…and counts the sales bill on', en.rows().sales[1].bill, '8');
+}
+
+console.log(String.fromCharCode(10) + '── Kept rows: pre-numbered lines survive, seeded ones are dealt fresh ──');
+{
+  const mk = (over) => Object.assign(en.blankRow(), over);
+  check('a row with real data is kept', en.rowKept(mk({ date: '2082.04.01', bill: '1', taxable: '5' })), true);
+  check('a user bill-only row is kept (the Excel pre-numbering gesture)', en.rowKept(mk({ bill: '7' })), true);
+  check('a user date-only row is kept', en.rowKept(mk({ date: '2082.04.01' })), true);
+  check('a machine-seeded date+bill row is not', en.rowKept(mk({ date: '2082.04.01', bill: '2', _seed: true })), false);
+  check('a fully blank spare is not', en.rowKept(mk({})), false);
+  const rows2 = { sales: [mk({ _seed: true })], purchase: [] };
+  en.writeCell(rows2, 0, 'bill', '9');
+  check('a bulk write makes the row the user own row', en.rowKept(rows2.sales[0]), true);
+  check('…but it still never reaches the parser without an amount', en.rowInert(rows2.sales[0]), true);
 }
 
 console.log('\n── Undo / redo: snapshots restore, redo forks correctly ──');

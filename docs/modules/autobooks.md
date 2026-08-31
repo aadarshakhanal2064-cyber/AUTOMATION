@@ -809,7 +809,7 @@ CommandPalette precedent — prefix intent, not fuzzy matching, is what "k" →
 
 ### Verification — `node tools/spbEntryVerify.mjs`
 
-148 assertions, vm-loading the REAL core + ledger + entry files (the
+155 assertions, vm-loading the REAL core + ledger + entry files (the
 `spbVerify.mjs` pattern): date normalization (16 forms including Devanagari),
 bill sequencing, synthetic-sheet column inclusion, directory weighting and
 ranking, typed rows through the real pipeline (VAT fill, month grouping,
@@ -1051,6 +1051,43 @@ fixed the same day and pinned in the harness (148 assertions now):
   bill worth nil in the register). Every cell but the party name now folds
   Devanagari digits to English on commit and on bulk write — dates already
   folded inside `spbEnNormDate`; a party NAME keeps its script.
+
+### Kept rows — the drag-the-bill-down fix (2026-08-31, second adversarial round)
+
+The user reported Ctrl+D and the fill handle "didn't work"; replaying the
+REAL event sequence (focusin → handle mousedown → mouseover → mouseup)
+reproduced it. The fill wrote bill numbers into the spare bank correctly —
+and the very next structural render silently destroyed them, because a
+date/bill-only row is *inert* and inert was also the COMPACTION test. The
+model looked right for milliseconds; the sheet then re-dealt fresh spares
+over it, and a first fix attempt left the rows alive in the model but
+invisible (the view filtered by inert too), so typing landed on fresh spares
+beside stranded data.
+
+The fix separates two questions the code had been answering with one test:
+
+- **`spbEnRowInert`** still answers "does the PARSER see it" — a date/bill-
+  only row is never a zero-amount bill in the register. Unchanged.
+- **`spbEnRowKept`** answers "does the SHEET keep it": any row with real
+  data, plus a date/bill-only row **the user wrote** (the Excel
+  pre-numbering gesture). Machine-seeded rows carry `_seed` (stamped by
+  `spbEnSeededBlank`, cleared by any typed commit or bulk write) and stay
+  discardable, so the dealt bank behaves exactly as before.
+
+Kept is now the test for compaction, the VIEW, drafts, undo snapshots, the
+select-all extent, the × delete button and the clear-sheet count; inert
+remains the test for the parser feed, totals, month-pill counts and the
+findings. The seeded first spare also counts its bill on from the last KEPT
+row, so dragging bills 2–5 down makes the next seed offer 6, not a
+duplicate 2. Verified with the real gesture end to end: drag survives the
+render, amounts typed into pre-numbered rows land on them (book bills
+1,2,3), Shift+click + Ctrl+D fills a range with the 13% autofill riding
+along, and a pre-numbered row survives the draft round trip.
+
+**Save to database, re-checked the same day:** the Save button is always in
+the toolbar (busy-button contract, unsaved dot), and `spbSaveBook` is
+select-then-insert-or-update on (client, fiscal year) — a re-save updates
+the same `autobooks_books` row; duplicates are structurally impossible.
 
 Also confirmed working in the same pass: purchase-vs-sales duplicate rules
 live, PAN riding in from the typed directory, month pills and counts,
