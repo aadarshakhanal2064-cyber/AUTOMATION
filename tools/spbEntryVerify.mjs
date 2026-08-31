@@ -79,6 +79,11 @@ function loadModules() {
       dupMap: spbEnDupMap,
       dupFindings: spbEnDupFindings,
       rowLabel: spbEnRowLabel,
+      tsv: spbEnTsv,
+      parseTsv: spbEnParseTsv,
+      headerRow: spbEnTsvHeaderRow,
+      fillValue: spbEnFillValue,
+      writeCell(rows, idx, k, v) { spbEnRows = rows; spbEnSection = 'sales'; spbEnWriteCell(idx, k, v); return spbEnRows; },
       clearData() { spbData = null; spbBook = null; spbGroups = null; spbVr = null; },
     };
   `;
@@ -335,6 +340,49 @@ check('a fully-selected cell navigates right', en.atEnd(cell('12345', 0, 5)), tr
 check('a partial selection does not navigate', en.atEnd(cell('12345', 1, 3)), false);
 check('an empty cell navigates either way',
   en.atStart(cell('', 0, 0)) && en.atEnd(cell('', 0, 0)), true);
+
+console.log('\n── Excel interchange: TSV both ways ──');
+// Copy writes the tab-separated form Excel itself uses; paste reads the same
+// form back, including Excel's \r\n line ends and its one trailing newline.
+check('a rectangle round-trips through TSV',
+  JSON.stringify(en.parseTsv(en.tsv([['2082.04.01', '1', 'HANUMAN'], ['2082.04.02', '2', 'LATESWORI']]))),
+  JSON.stringify([['2082.04.01', '1', 'HANUMAN'], ['2082.04.02', '2', 'LATESWORI']]));
+check('Excel\'s \\r\\n line ends parse', en.parseTsv('a\tb\r\nc\td').length, 2);
+check('Excel\'s trailing newline is framing, not a row', en.parseTsv('a\tb\nc\td\n').length, 2);
+check('a plain single value is NOT a block (native paste keeps it)', en.parseTsv('HANUMAN'), null);
+check('a single column of lines IS a block', en.parseTsv('100\n200\n300').length, 3);
+check('empty text is not a block', en.parseTsv(''), null);
+check('cells keep embedded spaces', en.parseTsv('a b\tc d')[0][1], 'c d');
+check('the Copy-view header row is recognized…', en.headerRow(['Date', 'Bill No.', 'Party Name']), true);
+check('…case-insensitively', en.headerRow(['date', 'bill no.']), true);
+check('a data row is not mistaken for a header', en.headerRow(['2082.04.01', '107']), false);
+check('an amount-first row is not a header', en.headerRow(['Date of supply', 'x']), false);
+
+console.log('\n── Fill values: bills count on, everything else copies ──');
+check('a bill number steps once per row', en.fillValue('107', 'bill', 3), '110');
+check('zero-padding survives the series', en.fillValue('0098', 'bill', 5), '0103');
+check('a prefixed bill keeps its prefix', en.fillValue('INV-45', 'bill', 2), 'INV-47');
+check('a non-numeric bill copies verbatim', en.fillValue('ABC', 'bill', 4), 'ABC');
+check('a date copies, never day-steps', en.fillValue('2082.04.15', 'date', 3), '2082.04.15');
+check('a party copies verbatim', en.fillValue('HANUMAN SUPPLIER', 'party', 2), 'HANUMAN SUPPLIER');
+check('an amount copies verbatim', en.fillValue('1,500.50', 'taxable', 9), '1,500.50');
+check('step 0 is the value itself', en.fillValue('107', 'bill', 0), '107');
+
+console.log('\n── Bulk writes go through the same normalization as typing ──');
+{
+  const rows = { sales: [
+    { date: '2082.04.10', bill: '1', party: 'A', pan: '', taxfree: '', taxable: '100', vat: '', imp: '', impVat: '', cap: '', capVat: '' },
+    { date: '', bill: '', party: '', pan: '', taxfree: '', taxable: '', vat: '', imp: '', impVat: '', cap: '', capVat: '' },
+  ], purchase: [] };
+  en.writeCell(rows, 1, 'date', '15');
+  check('a pasted bare day continues the row above', rows.sales[1].date, '2082.04.15');
+  en.writeCell(rows, 1, 'pan', ' ६०१२३४५६७ ');
+  check('a pasted PAN is normalized (Devanagari, whitespace)', rows.sales[1].pan, '601234567');
+  en.writeCell(rows, 1, 'date', 'garbage!!');
+  check('an unreadable pasted date is kept raw for the red flag', rows.sales[1].date, 'garbage!!');
+  en.writeCell(rows, 1, 'party', '  Hanuman ');
+  check('a pasted party is stored as given (trim is the parser\'s job)', rows.sales[1].party, '  Hanuman ');
+}
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

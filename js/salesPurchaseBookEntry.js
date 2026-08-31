@@ -103,6 +103,52 @@ function spbEnNextBill(bill) {
   return m[1] + (m[2].length > next.length ? next.padStart(m[2].length, '0') : next);
 }
 
+// ── Excel interchange — TSV both ways ───────────────────────────────────────
+// Copy puts a rectangle on the clipboard in the tab-separated form Excel
+// itself writes, so a selection pastes straight into a spreadsheet; paste
+// reads the same form back, so a block copied from Excel (or from another
+// month of this sheet) lands as rows. \r\n and one trailing newline are
+// Excel's framing, not data.
+function spbEnTsv(rowsOfCells) {
+  return rowsOfCells.map(r => r.join('\t')).join('\n');
+}
+
+// null = not a block — a plain single value should paste as ordinary text
+// into the focused input, never through the block machinery.
+function spbEnParseTsv(text) {
+  const t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  if (!t.includes('\t') && !t.includes('\n')) return null;
+  const lines = t.split('\n');
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  if (!lines.length) return null;
+  return lines.map(l => l.split('\t'));
+}
+
+// "Copy view" includes a header row so the paste into Excel is labelled;
+// pasting that same block BACK must not turn the labels into a bill row.
+function spbEnTsvHeaderRow(cells) {
+  const a = String(cells && cells[0] || '').trim().toLowerCase();
+  const b = String(cells && cells[1] || '').trim().toLowerCase();
+  return a === 'date' && /^bill/.test(b);
+}
+
+// What the fill handle writes `step` rows below the source: bill numbers
+// count on (the firm's sales sequence is why the handle exists — and Excel
+// itself increments), everything else copies verbatim. A B.S. date is
+// deliberately NOT day-stepped: walking a day past Ashadh 32 needs the
+// calendar table, and "many bills on one date" is the actual entry pattern.
+function spbEnFillValue(src, colKey, step) {
+  const v = String(src == null ? '' : src);
+  if (colKey !== 'bill' || step <= 0) return v;
+  let out = v;
+  for (let i = 0; i < step; i++) {
+    const n = spbEnNextBill(out);
+    if (!n) return v;
+    out = n;
+  }
+  return out;
+}
+
 // ── Excel → grid rows ───────────────────────────────────────────────────────
 // The user's raw spreadsheet, loaded into the sheet AS TYPED so its mistakes
 // can be seen and fixed here (2026-08-30, user ask). This is deliberately NOT
@@ -337,6 +383,14 @@ let spbEnPrior = [];             // prior-year autobooks_parties for this client
 let spbEnPriorFor = null;        // identity the prior fetch answered
 let spbEnDirty = false;          // sheet has been edited since load/seed
 let spbEnFull = false;           // the sheet covers the whole viewport
+let spbEnSel = null;             // {a:{pos,ci}, h:{pos,ci}} in VIEW coords, or null
+let spbEnPainted = [];           // inputs currently carrying the selection class
+let spbEnDrag = null;            // 'arm' | 'range' | 'fill' while a mouse drag is running
+let spbEnDragFrom = null;        // the input a potential drag-select started on
+let spbEnFillRows = 0;           // rows below the selection the fill drag covers
+let spbEnIssuesOpen = false;     // the findings drawer (collapsed by default)
+let spbEnApplyTimer = null;      // the debounced whole-book recompute
+let spbEnApplyPending = false;
 
 // Full screen is a sticky preference, not a per-visit toggle — the user asked
 // for the sheet to BE full screen like Excel, so once chosen it opens that
@@ -344,8 +398,21 @@ let spbEnFull = false;           // the sheet covers the whole viewport
 const SPB_EN_FULL_PREF = 'spbEntryFullscreen';
 
 function spbEnToggleFull(on) {
+  const was = spbEnFull;
   spbEnFull = on == null ? !spbEnFull : !!on;
   try { localStorage.setItem(SPB_EN_FULL_PREF, spbEnFull ? '1' : '0'); } catch (e) { /* best-effort */ }
+  // "More full screen" (2026-08-31, user ask): the explicit toggle also asks
+  // the BROWSER for fullscreen, so the tab chrome goes too. Best-effort — a
+  // refusal still leaves the viewport takeover, which is most of it. Only the
+  // click path may do this (the API needs a user gesture); the sticky-pref
+  // auto-enter at render must not try.
+  try {
+    if (spbEnFull && !was && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else if (!spbEnFull && was && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  } catch (e) { /* older engines throw synchronously — the card mode stands */ }
   spbRenderEntry();
 }
 
@@ -361,18 +428,31 @@ function spbEnApplyFullClass() {
   if (panel) panel.classList.toggle('spb-en-fullhost', spbEnFull);
 }
 
-// The save affordance inside full screen. spbSaveBook() reports into the
-// ledger status box, which lives on the Import tab and is invisible here —
-// mirror its outcome into a toast where the user actually is.
-async function spbEnSave() {
+// The sheet's own Save — always in the toolbar, not only in full screen
+// (2026-08-31: "I didn't see a save to database"). spbSaveBook() reports into
+// the ledger status box, which lives on the Import tab and is invisible here,
+// so its outcome is mirrored into a toast where the user actually is. Runs
+// through withBusyButton (the CLAUDE.md save contract) on top of
+// spbSaveBook's own in-flight guard — a double-click used to run two
+// delete-then-insert saves at once and double every bill line.
+async function spbEnSave(btn) {
+  spbEnFlushApply();               // a debounced edit must be in the book before it saves
   const why = spbSaveBlockedReason();
   if (why) { showToast(why, 'error', 6000); return; }
-  await spbSaveBook();
-  const box = document.getElementById('spb-ledger-status');
-  const msg = box ? box.textContent.trim() : '';
-  if (msg && typeof showToast === 'function') {
-    showToast(msg, box.className.includes('status-error') ? 'error' : 'success', 6000);
+  const run = async () => {
+    await spbSaveBook();
+    const box = document.getElementById('spb-ledger-status');
+    const msg = box ? box.textContent.trim() : '';
+    if (msg && typeof showToast === 'function') {
+      showToast(msg, box.className.includes('status-error') ? 'error' : 'success', 6000);
+    }
+  };
+  if (btn && window.WorkflowEngine && WorkflowEngine.withBusyButton) {
+    await WorkflowEngine.withBusyButton(btn, 'Saving…', run);
+  } else {
+    await run();
   }
+  spbRenderEntry();                // the toolbar's Unsaved badge clears
 }
 
 function spbEnStatus(html, type) { showStatus(html, type, 'spb-en-status'); }
@@ -532,6 +612,11 @@ function spbEnDefaultMonth() {
 // actually holds are touched: a purchase register loaded from the database
 // survives a sales register being typed beside it.
 function spbEnApplyBook() {
+  // A direct apply (import, clear, identity sync) supersedes any debounced
+  // one still waiting — without this the timer would re-run the whole
+  // recompute a beat later for nothing.
+  clearTimeout(spbEnApplyTimer);
+  spbEnApplyPending = false;
   const fyStart = spbFyStartYear();
   let touched = false;
   SPB_SECTIONS.forEach(({ key }) => {
@@ -696,8 +781,14 @@ function spbRenderEntry() {
   // lives on the Import tab.
   const ctxChip = spbEnFull && ident
     ? `<span class="spb-en-ctx">${escHtml(ident.client_name)} · F.Y. ${escHtml(ident.fiscal_year)}</span>` : '';
+  // Save lives HERE, always — not only in full screen. "I didn't see a save
+  // to database" is exactly what a save that lives on a different tab reads
+  // as. The amber dot is the book-card's Unsaved badge in one character.
+  const unsaved = (spbEnDirty || spbDirty) && spbData && SPB_SECTIONS.some(s => spbData[s.key]);
   const fullBtns =
-    (spbEnFull ? `<button class="btn btn-primary btn-sm" onclick="spbEnSave()">Save book</button>` : '') +
+    `<button class="btn btn-primary btn-sm" id="spb-en-save-btn" onclick="spbEnSave(this)" ` +
+    `title="${unsaved ? 'There are changes not yet saved to the database' : 'Store this book in the database'}">` +
+    `${spbBookId ? 'Save changes' : 'Save book'}${unsaved ? ' <span class="spb-en-dot">●</span>' : ''}</button>` +
     `<button class="btn btn-outline btn-sm" onclick="spbEnToggleFull()">` +
     `${spbEnFull ? 'Exit full screen (Esc)' : '⛶ Full screen'}</button>`;
 
@@ -714,6 +805,9 @@ function spbRenderEntry() {
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('spb-en-file').click()"
           title="Load a raw Excel book into this sheet exactly as typed — every mistake in it gets flagged here, row by row">
           Check an Excel file here</button>
+        <button class="btn btn-outline btn-sm" onclick="spbEnCopyView()"
+          title="Copy every row in the current view (with headers) — paste it into Excel, or into another month here">
+          Copy view</button>
         <button class="btn btn-outline btn-sm" onclick="spbEnClearSheet()">Clear this sheet</button>
         ${fullBtns}
       </div>
@@ -729,8 +823,11 @@ function spbRenderEntry() {
       Dates accept <strong>2082.04.15</strong>, a bare day (<strong>15</strong> continues the row above),
       or a month name. <strong>Arrow keys move between cells</strong> and <strong>Enter</strong> moves down a
       column — a new row appears as you reach the end; ← and → keep editing the text while your cursor is
-      inside a word.
-      Everything autosaves as a draft on this computer — <strong>Save book to database</strong> (Import tab)
+      inside a word. <strong>Shift+arrows or dragging selects a block</strong> — <strong>Ctrl+C</strong> copies
+      it (paste it into Excel or another month), <strong>Ctrl+V</strong> pastes a block copied from Excel,
+      <strong>Ctrl+D</strong> fills down, <strong>Delete</strong> clears it, and the small square on the
+      selection's corner drags a value down the column (bill numbers count on by themselves).
+      Everything autosaves as a draft on this computer — <strong>Save book</strong> (in the toolbar above)
       makes it permanent and opens the Register, Parties and Annexure screens.
       <strong>Check an Excel file here</strong> loads a raw book into the sheet exactly as typed, so every
       date, PAN, VAT and bill-number mistake in the file gets flagged row by row — the Import tab, by
@@ -787,8 +884,10 @@ function spbEnRenderRows() {
   // The dropdown holds a reference to the input it was opened from. A render
   // replaces every cell, so an open list would be left pointing at a detached
   // element — and it swallows the arrow keys while it thinks it is open, which
-  // is how the whole grid appeared to lose keyboard navigation.
+  // is how the whole grid appeared to lose keyboard navigation. The block
+  // selection is view-coordinate for the same reason and goes with it.
   spbEnAcHide();
+  spbEnSelClear();
   spbEnView = spbEnComputeView();
   const cols = spbEnCols();
   const html = spbEnView.map((idx, n) => spbEnRowHtml(idx, n, cols));
@@ -989,9 +1088,14 @@ function spbEnRenderSummary() {
   });
   const errs = found.filter(f => f.level === 'err').length;
   const warns = found.length - errs;
-  const SHOW = 12;
-  const shown = found.slice().sort((a, b) =>
-    (a.level === b.level ? a.idx - b.idx : a.level === 'err' ? -1 : 1)).slice(0, SHOW);
+  // The list is a DRAWER, closed by default (2026-08-31, user report: on a
+  // messy file the findings piled above the grid until — in full screen,
+  // where the card cannot scroll — the sheet itself was crushed out of
+  // reach). The chips still carry the counts; opening the drawer gives a
+  // bounded, scrolling list with every finding, not a truncated dozen.
+  const SHOW = 200;
+  const shown = spbEnIssuesOpen ? found.slice().sort((a, b) =>
+    (a.level === b.level ? a.idx - b.idx : a.level === 'err' ? -1 : 1)).slice(0, SHOW) : [];
   const findingHtml = shown.map(f => {
     const at = spbEnRowLabel(all, f.idx, fy);
     const party = String(all[f.idx].party || '').trim();
@@ -1022,14 +1126,23 @@ function spbEnRenderSummary() {
   }
   const chips = [];
   chips.push(`<span class="log-badge">${rows.length.toLocaleString('en-US')} bill line${rows.length > 1 ? 's' : ''}</span>`);
-  if (errs) chips.push(`<span class="log-badge badge-error">${errs} to fix</span>`);
-  if (warns) chips.push(`<span class="log-badge badge-yellow">${warns} to check</span>`);
+  if (errs) chips.push(`<span class="log-badge badge-error spb-en-chipbtn" onclick="spbEnToggleIssues()">${errs} to fix</span>`);
+  if (warns) chips.push(`<span class="log-badge badge-yellow spb-en-chipbtn" onclick="spbEnToggleIssues()">${warns} to check</span>`);
   if (!errs && !warns) chips.push('<span class="log-badge badge-sent">clean</span>');
+  if (found.length) {
+    chips.push(`<button type="button" class="spb-en-issues-toggle" onclick="spbEnToggleIssues()">` +
+      `${spbEnIssuesOpen ? 'Hide the list ▴' : 'Show the list ▾'}</button>`);
+  }
   el.innerHTML = `<div class="spb-en-summary">${chips.join(' ')}` +
     (notes.length ? `<span class="spb-en-notes">${notes.map(escHtml).join(' · ')}</span>` : '') + '</div>' +
     (findingHtml ? `<div class="spb-en-findings">${findingHtml}` +
       (moreN > 0 ? `<div class="spb-en-finding-more">and ${moreN} more — the ● beside a row number marks it in the grid</div>` : '') +
       '</div>' : '');
+}
+
+function spbEnToggleIssues() {
+  spbEnIssuesOpen = !spbEnIssuesOpen;
+  spbEnRenderSummary();
 }
 
 // Jump to the row a finding names. The row OBJECT is captured before the
@@ -1054,6 +1167,30 @@ function spbEnGoToRow(idx) {
   if (inp) { inp.focus(); inp.select(); }
 }
 
+// ── DEBOUNCED APPLY ─────────────────────────────────────────────────────────
+// spbEnApplyBook() re-parses and recomputes the ENTIRE book — on a real
+// client-year that is ~1,600 rows through spbParseRows + spbComputeBook +
+// spbComputeGroups, plus the Monthly grid render. Running it synchronously on
+// every cell commit made simply arrowing across the grid feel stuck. The
+// commit itself (model write, normalization, autofill, this row's validation,
+// the view totals) stays immediate; the whole-book recompute and the summary
+// sweep ride a short debounce, FLUSHED at every boundary where something else
+// reads the book: switching section tabs (spbShowSection is wrapped at boot),
+// switching sheet/month here, and Save. (State lives in the STATE block.)
+function spbEnScheduleApply() {
+  spbEnApplyPending = true;
+  clearTimeout(spbEnApplyTimer);
+  spbEnApplyTimer = setTimeout(spbEnFlushApply, 300);
+}
+
+function spbEnFlushApply() {
+  clearTimeout(spbEnApplyTimer);
+  if (!spbEnApplyPending) return;
+  spbEnApplyPending = false;
+  spbEnApplyBook();
+  spbEnRenderSummary();
+}
+
 // ── EVENTS — delegated once; rows are patched, never re-rendered mid-typing ─
 function spbEnOnChange(inp) {
   const idx = parseInt(inp.dataset.r, 10);
@@ -1062,6 +1199,10 @@ function spbEnOnChange(inp) {
   const r = rows[idx];
   if (!r) return;
   const prevVal = r[k];
+  // Navigation commits synthetically (spbEnMove) and blur can then fire the
+  // native change for the same value — an unchanged commit has nothing to do,
+  // and doing the full pipeline for it is what made arrow travel expensive.
+  if (String(prevVal == null ? '' : prevVal) === inp.value) return;
   r[k] = inp.value;
   spbEnDirty = true;
 
@@ -1116,9 +1257,8 @@ function spbEnOnChange(inp) {
   if (idx === rows.length - 1 && !spbEnRowInert(r)) spbEnAppendTrailing();
   spbEnInvalidate();
   spbEnValidateRow(idx);
-  spbEnApplyBook();
   spbEnPatchTotals();
-  spbEnRenderSummary();
+  spbEnScheduleApply();
   spbEnScheduleDraft();
 }
 
@@ -1159,12 +1299,327 @@ function spbEnDeleteRow(idx) {
   const rows = spbEnSectionRows();
   if (!rows[idx]) return;
   rows.splice(idx, 1);
+  spbEnAfterBulkEdit();
+}
+
+// The shared tail of every multi-cell operation (delete row, paste, fill,
+// clear-range, fill-down): one structural render, the book and summary behind
+// the debounce, the draft scheduled.
+function spbEnAfterBulkEdit() {
   spbEnDirty = true;
   spbEnInvalidate();
   spbEnRenderRows();
-  spbEnApplyBook();
-  spbEnRenderSummary();
+  spbEnScheduleApply();
   spbEnScheduleDraft();
+}
+
+// ── BLOCK SELECTION, COPY/PASTE, FILL — the Excel reflexes (2026-08-31) ─────
+// A rectangle of cells in VIEW coordinates (pos = index into spbEnView, ci =
+// column index): Shift+arrows or a mouse drag select it, Ctrl+C puts it on the
+// clipboard as the TSV Excel itself writes, Ctrl+V pastes a block back (from
+// Excel or from another month here), Ctrl+D fills down, Delete clears, and the
+// square handle on the selection's corner drags a value down the column. View
+// coordinates die with every structural render, so spbEnRenderRows clears the
+// selection the same way it hides the autocomplete.
+
+function spbEnPosOf(inp) {
+  const pos = spbEnView.indexOf(parseInt(inp.dataset.r, 10));
+  const ci = spbEnCols().findIndex(c => c.k === inp.dataset.k);
+  return pos >= 0 && ci >= 0 ? { pos, ci } : null;
+}
+
+function spbEnCellInput(pos, ci) {
+  const cols = spbEnCols();
+  if (pos < 0 || pos >= spbEnView.length || ci < 0 || ci >= cols.length) return null;
+  return document.querySelector(`#spb-en-row-${spbEnView[pos]} input[data-k="${cols[ci].k}"]`);
+}
+
+// A row's inputs in column order, one query per row — a select-all over a
+// whole-year view paints ~17,000 cells, and a per-cell selector there is a
+// visible stall.
+function spbEnRowInputs(pos) {
+  if (pos < 0 || pos >= spbEnView.length) return null;
+  const tr = document.getElementById('spb-en-row-' + spbEnView[pos]);
+  return tr ? tr.querySelectorAll('input.spb-en-in') : null;
+}
+
+function spbEnSelRect() {
+  if (!spbEnSel) return null;
+  return {
+    p1: Math.min(spbEnSel.a.pos, spbEnSel.h.pos), p2: Math.max(spbEnSel.a.pos, spbEnSel.h.pos),
+    c1: Math.min(spbEnSel.a.ci, spbEnSel.h.ci), c2: Math.max(spbEnSel.a.ci, spbEnSel.h.ci),
+  };
+}
+
+// A selection is only "active" once it covers more than one cell — a lone
+// focused cell paints no highlight (as Excel), only the fill handle.
+function spbEnSelActive() {
+  return !!spbEnSel && (spbEnSel.a.pos !== spbEnSel.h.pos || spbEnSel.a.ci !== spbEnSel.h.ci);
+}
+
+function spbEnSelClear() {
+  spbEnSel = null;
+  spbEnFillRows = 0;
+  spbEnPainted.forEach(el => el.classList.remove('spb-en-selc'));
+  spbEnPainted = [];
+  document.querySelectorAll('.spb-en-fillh').forEach(el => el.remove());
+  document.querySelectorAll('.spb-en-fillp').forEach(el => el.classList.remove('spb-en-fillp'));
+}
+
+function spbEnSelPaint() {
+  spbEnPainted.forEach(el => el.classList.remove('spb-en-selc'));
+  spbEnPainted = [];
+  document.querySelectorAll('.spb-en-fillh').forEach(el => el.remove());
+  const rc = spbEnSelRect();
+  if (!rc) return;
+  if (spbEnSelActive()) {
+    for (let p = rc.p1; p <= rc.p2; p++) {
+      const list = spbEnRowInputs(p);
+      if (!list) continue;
+      for (let c = rc.c1; c <= rc.c2 && c < list.length; c++) {
+        list[c].classList.add('spb-en-selc');
+        spbEnPainted.push(list[c]);
+      }
+    }
+  }
+  // The fill handle rides the rectangle's bottom-right corner (or the lone
+  // focused cell). It lives inside the td, so it scrolls with the grid.
+  const corner = spbEnCellInput(rc.p2, rc.c2);
+  const td = corner && corner.closest('td');
+  if (td) {
+    const h = document.createElement('div');
+    h.className = 'spb-en-fillh';
+    h.title = 'Drag down to fill — bill numbers count on by themselves';
+    td.appendChild(h);
+  }
+}
+
+function spbEnSelCollapseTo(inp) {
+  const at = spbEnPosOf(inp);
+  spbEnSel = at ? { a: at, h: { pos: at.pos, ci: at.ci } } : null;
+  spbEnSelPaint();
+}
+
+function spbEnSelExtend(dRow, dCol, inp) {
+  if (!spbEnSel) {
+    const at = spbEnPosOf(inp);
+    if (!at) return;
+    spbEnSel = { a: at, h: { pos: at.pos, ci: at.ci } };
+  }
+  const cols = spbEnCols();
+  spbEnSel.h = {
+    pos: Math.max(0, Math.min(spbEnView.length - 1, spbEnSel.h.pos + dRow)),
+    ci: Math.max(0, Math.min(cols.length - 1, spbEnSel.h.ci + dCol)),
+  };
+  spbEnSelPaint();
+}
+
+// Ctrl+A once selects the cell's own text (native); pressed again — or in an
+// empty cell — it grows to the whole view, the way Excel's Ctrl+A grows.
+function spbEnSelectAll() {
+  const rows = spbEnSectionRows();
+  let last = spbEnView.length - 1;
+  while (last >= 0 && spbEnRowInert(rows[spbEnView[last]] || {})) last--;
+  if (last < 0) return;
+  spbEnSel = { a: { pos: 0, ci: 0 }, h: { pos: last, ci: spbEnCols().length - 1 } };
+  spbEnSelPaint();
+}
+
+// One write path for every bulk operation, so paste and fill normalize a date
+// and a PAN exactly the way typing does.
+function spbEnWriteCell(idx, k, v) {
+  const rows = spbEnSectionRows();
+  const r = rows[idx];
+  if (!r) return;
+  let val = String(v == null ? '' : v);
+  if (k === 'date' && val.trim() !== '') {
+    const d = spbEnNormDate(val, spbFyStartYear(), spbEnPrevDated(idx));
+    val = d.error ? val : d.value;
+  } else if (k === 'pan') {
+    val = spbNormPan(val);
+  }
+  r[k] = val;
+}
+
+function spbEnClipboardWrite(text) {
+  const fallback = () => {
+    const keep = document.activeElement;
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* nothing left to try */ }
+    ta.remove();
+    if (keep && keep.focus) keep.focus();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+
+function spbEnCopyRect(rc) {
+  const cols = spbEnCols();
+  const rows = spbEnSectionRows();
+  const out = [];
+  for (let p = rc.p1; p <= rc.p2; p++) {
+    const r = rows[spbEnView[p]] || {};
+    const line = [];
+    for (let c = rc.c1; c <= rc.c2; c++) line.push(String(r[cols[c].k] == null ? '' : r[cols[c].k]));
+    out.push(line);
+  }
+  spbEnClipboardWrite(spbEnTsv(out));
+  if (typeof showToast === 'function') {
+    showToast(`Copied ${out.length} row${out.length > 1 ? 's' : ''} — paste into Excel or another month.`, 'success', 2500);
+  }
+}
+
+// Copy the whole current view (with headers) — the "take this month to Excel,
+// or to another month" ask, one click instead of a select-all.
+function spbEnCopyView() {
+  spbEnFlushApply();
+  const cols = spbEnCols();
+  const rows = spbEnSectionRows();
+  const out = [cols.map(c => c.label)];
+  spbEnView.forEach(i => {
+    const r = rows[i];
+    if (!r || spbEnRowInert(r)) return;
+    out.push(cols.map(c => String(r[c.k] == null ? '' : r[c.k])));
+  });
+  if (out.length === 1) {
+    if (typeof showToast === 'function') showToast('Nothing in this view to copy yet.', 'info', 3000);
+    return;
+  }
+  spbEnClipboardWrite(spbEnTsv(out));
+  if (typeof showToast === 'function') {
+    showToast(`Copied ${out.length - 1} row${out.length > 2 ? 's' : ''} with headers — paste into Excel, or pick another month and press Ctrl+V.`, 'success', 4500);
+  }
+}
+
+function spbEnClearRange(rc) {
+  const cols = spbEnCols();
+  const rows = spbEnSectionRows();
+  for (let p = rc.p1; p <= rc.p2; p++) {
+    const r = rows[spbEnView[p]];
+    if (!r) continue;
+    for (let c = rc.c1; c <= rc.c2; c++) r[cols[c].k] = '';
+  }
+  spbEnAfterBulkEdit();
+}
+
+// Ctrl+D — Excel's fill-down, verbatim: the range's top row copies onto every
+// row below it (a single cell takes the cell above). Series live on the drag
+// handle, not here, exactly as in Excel.
+function spbEnFillDown() {
+  if (spbEnSelActive()) {
+    const rc = spbEnSelRect();
+    if (rc.p2 > rc.p1) {
+      const cols = spbEnCols();
+      const src = spbEnSectionRows()[spbEnView[rc.p1]];
+      if (!src) return;
+      for (let p = rc.p1 + 1; p <= rc.p2; p++) {
+        for (let c = rc.c1; c <= rc.c2; c++) {
+          spbEnWriteCell(spbEnView[p], cols[c].k, src[cols[c].k]);
+        }
+      }
+      spbEnAfterBulkEdit();
+      return;
+    }
+  }
+  const inp = document.activeElement;
+  if (!inp || !inp.classList || !inp.classList.contains('spb-en-in')) return;
+  const at = spbEnPosOf(inp);
+  if (!at || at.pos === 0) return;
+  const above = spbEnSectionRows()[spbEnView[at.pos - 1]];
+  if (!above) return;
+  const v = String(above[inp.dataset.k] == null ? '' : above[inp.dataset.k]);
+  if (v === inp.value) return;
+  inp.value = v;
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function spbEnPaintFillPreview(rc) {
+  document.querySelectorAll('.spb-en-fillp').forEach(el => el.classList.remove('spb-en-fillp'));
+  for (let i = 1; i <= spbEnFillRows; i++) {
+    const list = spbEnRowInputs(rc.p2 + i);
+    if (!list) continue;
+    for (let c = rc.c1; c <= rc.c2 && c < list.length; c++) list[c].classList.add('spb-en-fillp');
+  }
+}
+
+// The drag handle's drop: one source row fills a series (bill numbers count
+// on via spbEnFillValue, everything else copies); a multi-row source cycles
+// its pattern verbatim, the way Excel repeats a dragged block.
+function spbEnApplyFill(rc, nRows) {
+  const rows = spbEnSectionRows();
+  const cols = spbEnCols();
+  const nSrc = rc.p2 - rc.p1 + 1;
+  for (let i = 1; i <= nRows; i++) {
+    const idx = spbEnView[rc.p2 + i];
+    if (idx == null) break;
+    for (let c = rc.c1; c <= rc.c2; c++) {
+      const k = cols[c].k;
+      const v = nSrc === 1
+        ? spbEnFillValue((rows[spbEnView[rc.p2]] || {})[k], k, i)
+        : String((rows[spbEnView[rc.p1 + ((i - 1) % nSrc)]] || {})[k] || '');
+      spbEnWriteCell(idx, k, v);
+    }
+  }
+  spbEnAfterBulkEdit();
+}
+
+// Paste — the native event, so it needs no clipboard permission. A block
+// (anything with a tab or newline in it) lands as rows starting at the
+// focused cell or the selection's corner; new rows are appended when the
+// block runs past the view. A plain single value stays native. The header
+// row "Copy view" writes is recognized and skipped on the way back in.
+function spbEnOnPaste(e) {
+  const inp = e.target;
+  if (!inp.classList || !inp.classList.contains('spb-en-in')) return;
+  const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+  const block = spbEnParseTsv(text);
+  if (!block) return;
+  e.preventDefault();
+  let cells = block;
+  if (cells.length && spbEnTsvHeaderRow(cells[0])) cells = cells.slice(1);
+  if (!cells.length) return;
+  const rc = spbEnSelActive() ? spbEnSelRect() : null;
+  const start = rc ? { pos: rc.p1, ci: rc.c1 } : spbEnPosOf(inp);
+  if (!start) return;
+  const cols = spbEnCols();
+  const rows = spbEnSectionRows();
+  cells.forEach((line, i) => {
+    let idx;
+    const pos = start.pos + i;
+    if (pos < spbEnView.length) {
+      idx = spbEnView[pos];
+    } else {
+      rows.push(spbEnBlankRow());
+      idx = rows.length - 1;
+    }
+    line.forEach((v, j) => {
+      const ci = start.ci + j;
+      if (ci >= cols.length) return;
+      spbEnWriteCell(idx, cols[ci].k, v);
+    });
+  });
+  spbEnAfterBulkEdit();
+  if (typeof showToast === 'function') {
+    showToast(`Pasted ${cells.length} row${cells.length > 1 ? 's' : ''}.`, 'success', 2500);
+  }
+}
+
+// Alt+↓ — open the party/PAN suggestions without typing, Excel's own
+// dropdown key. An empty cell offers the client's biggest parties first.
+function spbEnOpenSuggest(inp) {
+  if (!spbEnDirCache) spbEnDirCache = spbEnDirectory();
+  const q = inp.value.trim();
+  const items = inp.dataset.k === 'pan'
+    ? (q ? spbEnPanMatches(spbEnDirCache, q, true) : spbEnDirCache.filter(x => x.pan))
+    : (q ? spbEnSuggest(spbEnDirCache, q, 8) : spbEnDirCache);
+  spbEnAcShow(inp, items.slice(0, 8));
 }
 
 // ── Keyboard navigation — the spreadsheet reflexes ─────────────────────────
@@ -1201,6 +1656,47 @@ function spbEnOnKeydown(e) {
   const inp = e.target;
   if (!inp.classList || !inp.classList.contains('spb-en-in')) return;
   if (spbEnAcOpen()) { spbEnAcKey(e); return; }
+  const mod = e.ctrlKey || e.metaKey;
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (mod && key === 'c' && spbEnSelActive()) {
+    e.preventDefault();
+    spbEnCopyRect(spbEnSelRect());
+    return;
+  }
+  if (mod && key === 'x' && spbEnSelActive()) {
+    e.preventDefault();
+    const rc = spbEnSelRect();
+    spbEnCopyRect(rc);
+    spbEnClearRange(rc);
+    return;
+  }
+  if (mod && key === 'd') {
+    e.preventDefault();
+    spbEnFillDown();
+    return;
+  }
+  if (mod && key === 'a' && (spbEnWholeSelected(inp) || !(inp.value || '').length)) {
+    e.preventDefault();
+    spbEnSelectAll();
+    return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && spbEnSelActive()) {
+    e.preventDefault();
+    spbEnClearRange(spbEnSelRect());
+    return;
+  }
+  if (e.key === 'Escape' && spbEnSelActive()) {
+    // The selection goes first; full screen (the document-level listener
+    // behind this one) only on the next press.
+    e.stopPropagation();
+    spbEnSelClear();
+    return;
+  }
+  if (e.key === 'ArrowDown' && e.altKey && (inp.dataset.k === 'party' || inp.dataset.k === 'pan')) {
+    e.preventDefault();
+    spbEnOpenSuggest(inp);
+    return;
+  }
   let dRow = 0, dCol = 0;
   if (e.key === 'Enter' || e.key === 'ArrowDown') dRow = 1;
   else if (e.key === 'ArrowUp') dRow = -1;
@@ -1208,13 +1704,25 @@ function spbEnOnKeydown(e) {
   else if (e.key === 'ArrowRight' && spbEnCaretAtEnd(inp)) dCol = 1;
   else return;
   e.preventDefault();
+  // Shift extends the block instead of moving the active cell (Enter always
+  // moves — Shift+Enter has no block meaning here).
+  if (e.shiftKey && e.key !== 'Enter') {
+    spbEnSelExtend(dRow, dCol, inp);
+    return;
+  }
+  if (spbEnSelActive()) spbEnSelCollapseTo(inp);
   spbEnMove(inp, dRow, dCol);
 }
 
 function spbEnMove(inp, dRow, dCol) {
   // Leaving a cell commits it, so autofill and validation have run before the
-  // next cell is reached — the same order Enter has always followed.
-  inp.dispatchEvent(new Event('change', { bubbles: true }));
+  // next cell is reached — but only when the value actually changed. The old
+  // unconditional dispatch ran the full commit pipeline on every arrow press,
+  // which is where the grid's sluggishness lived.
+  const mRow = spbEnSectionRows()[parseInt(inp.dataset.r, 10)];
+  if (mRow && String(mRow[inp.dataset.k] == null ? '' : mRow[inp.dataset.k]) !== inp.value) {
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  }
   const cols = spbEnCols().map(c => c.k);
   let ci = cols.indexOf(inp.dataset.k) + dCol;
   if (ci < 0 || ci >= cols.length) return;         // stops at the edge, as Excel does
@@ -1290,9 +1798,8 @@ function spbEnAcPick(i) {
   spbEnDirty = true;
   spbEnInvalidate();
   spbEnValidateRow(idx);
-  spbEnApplyBook();
   spbEnPatchTotals();
-  spbEnRenderSummary();
+  spbEnScheduleApply();
   spbEnScheduleDraft();
   const target = document.querySelector(`#spb-en-row-${idx} input[data-k="taxable"]`);
   if (target) { target.focus(); target.select(); }
@@ -1333,6 +1840,7 @@ function spbEnOnInput(inp) {
 // ── TOOLBAR ACTIONS ─────────────────────────────────────────────────────────
 function spbEnSetSection(key) {
   if (!SPB_SECTIONS.some(s => s.key === key)) return;
+  spbEnFlushApply();
   spbEnSection = key;
   spbEnMonth = spbEnDefaultMonth();
   spbEnShowExtra = key === 'purchase' && spbEnRows.purchase.some(r =>
@@ -1341,6 +1849,7 @@ function spbEnSetSection(key) {
 }
 
 function spbEnSetMonth(fi) {
+  spbEnFlushApply();
   spbEnMonth = fi;
   spbRenderEntry();
 }
@@ -1471,7 +1980,76 @@ function spbEnAdoptImport() {
     // the wrong cell.
     if (spbEnAcOpen() && spbEnAc.input !== e.target) spbEnAcHide();
     if (e.target.matches && e.target.matches('.spb-en-in.spb-en-r')) e.target.select();
+    // Landing on a cell anchors the block selection there (Shift+arrows and
+    // Shift+click extend FROM the focused cell) and moves the fill handle.
+    if (e.target.matches && e.target.matches('.spb-en-in') && !spbEnDrag) {
+      spbEnSelCollapseTo(e.target);
+    }
   });
+  // Excel-style block interactions: Shift+click extends; a plain press arms a
+  // drag-select that begins only when the pointer crosses into ANOTHER cell
+  // (text selection inside one cell stays native); the fill handle drags a
+  // value down the column.
+  host.addEventListener('mousedown', e => {
+    if (e.target.closest && e.target.closest('.spb-en-fillh')) {
+      e.preventDefault();
+      spbEnDrag = 'fill';
+      spbEnFillRows = 0;
+      document.body.classList.add('spb-en-noselect');
+      return;
+    }
+    const inp = e.target.closest && e.target.closest('input.spb-en-in');
+    if (!inp) return;
+    if (e.shiftKey) {
+      e.preventDefault();                    // the anchor (focused cell) must not move
+      const at = spbEnPosOf(inp);
+      if (!at) return;
+      if (!spbEnSel) spbEnSel = { a: at, h: at };
+      else spbEnSel.h = at;
+      spbEnSelPaint();
+      return;
+    }
+    spbEnDrag = 'arm';
+    spbEnDragFrom = inp;
+  });
+  host.addEventListener('mouseover', e => {
+    if (!spbEnDrag) return;
+    const inp = e.target.closest && e.target.closest('input.spb-en-in');
+    if (!inp) return;
+    if (spbEnDrag === 'arm') {
+      if (inp === spbEnDragFrom) return;
+      spbEnDrag = 'range';
+      document.body.classList.add('spb-en-noselect');
+      const at = spbEnPosOf(spbEnDragFrom);
+      if (at) spbEnSel = { a: at, h: at };
+    }
+    const at = spbEnPosOf(inp);
+    if (!at) return;
+    if (spbEnDrag === 'range') {
+      if (spbEnSel) { spbEnSel.h = at; spbEnSelPaint(); }
+    } else if (spbEnDrag === 'fill') {
+      const rc = spbEnSelRect();
+      if (!rc) return;
+      spbEnFillRows = Math.max(0, at.pos - rc.p2);
+      spbEnPaintFillPreview(rc);
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    if (!spbEnDrag) return;
+    const mode = spbEnDrag;
+    spbEnDrag = null;
+    spbEnDragFrom = null;
+    document.body.classList.remove('spb-en-noselect');
+    if (mode === 'fill') {
+      document.querySelectorAll('.spb-en-fillp').forEach(el => el.classList.remove('spb-en-fillp'));
+      const rc = spbEnSelRect();
+      if (rc && spbEnFillRows > 0) spbEnApplyFill(rc, spbEnFillRows);
+      spbEnFillRows = 0;
+    }
+  });
+  // Paste through the native event — no clipboard permission needed, and a
+  // block copied in Excel arrives exactly as its TSV.
+  host.addEventListener('paste', spbEnOnPaste);
   // A fixed-position dropdown must not float free of a scrolled cell.
   host.addEventListener('scroll', spbEnAcHide, true);
   window.addEventListener('resize', spbEnAcHide);
@@ -1496,5 +2074,15 @@ function spbEnAdoptImport() {
   // also the landing section — a first tab that isn't the one you land on
   // reads as a mis-click.
   SPB_SECTION_TABS.unshift({ key: 'entry', label: 'Data Entry', panel: 'spb-sec-entry', onShow: 'spbRenderEntry' });
+
+  // The whole-book recompute rides a debounce (spbEnScheduleApply), so a
+  // section switch within that window must flush it first — Register, Parties
+  // and the rest read spbBook/spbGroups the moment their onShow runs.
+  if (typeof window.spbShowSection === 'function' && !window.spbShowSection.__spbEnWrapped) {
+    const orig = window.spbShowSection;
+    const wrapped = function (key) { spbEnFlushApply(); return orig(key); };
+    wrapped.__spbEnWrapped = true;
+    window.spbShowSection = wrapped;
+  }
   spbShowSection('entry');
 })();

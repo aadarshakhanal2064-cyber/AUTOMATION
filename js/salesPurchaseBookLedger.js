@@ -237,7 +237,15 @@ async function spbInsertChunked(table, rows, onProgress) {
   }));
 }
 
+// The save can be reached from FOUR buttons (Import tab, every gate screen,
+// and the Data Entry toolbar), and only the Import tab's was disabled during
+// a run. Two saves in flight is not a race that loses one — both delete the
+// regular lines and both insert, so every bill line lands TWICE. The guard
+// lives here, on the function, so no entry point can forget it.
+let spbSaving = false;
+
 async function spbSaveBook() {
+  if (spbSaving) return;
   const ident = spbBookIdentity();
   if (!ident) { spbLedgerStatus('❌ Choose a client and a fiscal year before saving.', 'error'); return; }
   if (!spbData || !SPB_SECTIONS.some(s => spbData[s.key])) {
@@ -245,6 +253,7 @@ async function spbSaveBook() {
   }
   const btn = document.getElementById('spb-save-btn');
   if (btn) btn.disabled = true;
+  spbSaving = true;
   spbLedgerStatus('⏳ Saving the book…', 'searching');
   try {
     spbStampGroupKeys();
@@ -313,6 +322,7 @@ async function spbSaveBook() {
     console.error('[Autobooks] save failed', err);
     spbLedgerStatus('❌ Could not save: ' + escHtml(friendlyDbError(err)), 'error');
   } finally {
+    spbSaving = false;
     if (btn) btn.disabled = false;
   }
 }

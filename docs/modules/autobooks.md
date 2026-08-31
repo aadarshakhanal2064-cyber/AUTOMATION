@@ -809,14 +809,17 @@ CommandPalette precedent — prefix intent, not fuzzy matching, is what "k" →
 
 ### Verification — `node tools/spbEntryVerify.mjs`
 
-60 assertions, vm-loading the REAL core + ledger + entry files (the
+128 assertions, vm-loading the REAL core + ledger + entry files (the
 `spbVerify.mjs` pattern): date normalization (16 forms including Devanagari),
 bill sequencing, synthetic-sheet column inclusion, directory weighting and
 ranking, typed rows through the real pipeline (VAT fill, month grouping,
 safeKey merging, capital-slice arithmetic, value-driven workbook columns), the
-book → sheet → book round trip, and per-row validation (PAN conflict, VAT
-deviation, F.Y. window). **Run it before and after touching the entry sheet or
-anything it feeds**, alongside `node tools/spbVerify.mjs` (still 36/36).
+book → sheet → book round trip, per-row validation (PAN conflict, VAT
+deviation, F.Y. window), the duplicate-bill rules, the Excel-import path, and
+(2026-08-31) the TSV interchange both ways, the header-row skip, the
+fill-handle series rules, and bulk writes normalizing like typing.
+**Run it before and after touching the entry sheet or anything it feeds**,
+alongside `node tools/spbVerify.mjs` (still 36/36).
 Browser-verified 2026-08-29 against the dev server: suggestion pick, PAN-first
 entry, conflict flagging, month pills, register totals, draft reload, and a
 full section/tab regression sweep with a clean console.
@@ -825,10 +828,11 @@ full section/tab regression sweep with a clean console.
 
 **⛶ Full screen** in the sheet's toolbar expands the card over the whole
 viewport (`.spb-en-full`, `position: fixed; inset: 0`), with the grid flexed
-to fill, the prose hidden, and the toolbar carrying what is otherwise out of
-sight: the client · F.Y. context chip and a **Save book** button
-(`spbEnSave()`, which mirrors `spbSaveBook()`'s outcome into a toast — the
-ledger status box lives on the Import tab and is invisible here). Esc exits,
+to fill, the prose and the whole card header hidden (since 2026-08-31), and
+the toolbar carrying the client · F.Y. context chip. (The **Save book**
+button — `spbEnSave()`, which mirrors `spbSaveBook()`'s outcome into a toast
+because the ledger status box lives on the Import tab — is since 2026-08-31
+in the toolbar in EVERY mode, not only full screen.) Esc exits,
 after the autocomplete has had its turn. **The choice is sticky**
 (`spbEntryFullscreen` in localStorage — a UI preference, not client data), so
 once chosen the sheet opens full screen on every visit.
@@ -918,6 +922,65 @@ Two bugs this surfaced, both real:
   ness is now read from the FIGURES as well as the flag: a VAT that is exactly
   13% of the amount being replaced was plainly derived from it and follows the
   correction. A hand-typed VAT is still never touched — it is flagged instead.
+
+### The 2026-08-31 rebuild — save, reflection, Excel reflexes, the findings drawer
+
+The user's report in five parts ("no save to database · it saved duplicates ·
+corrections must reflect on the other sheets · Excel-like copy/drag/Ctrl+D ·
+the findings pile buried the grid"), each of which was a real defect:
+
+- **Save is in the sheet's own toolbar, always** — not only in full screen.
+  `spbEnSave(btn)` runs through `WorkflowEngine.withBusyButton` (the CLAUDE.md
+  save contract) and flushes the debounced apply first; the button carries an
+  amber ● while anything on screen differs from the database.
+- **`spbSaveBook()` itself now holds an in-flight guard (`spbSaving`)** — the
+  duplicate-save bug. The save is delete-then-insert, and it is reachable from
+  FOUR buttons (Import tab, every gate screen, this toolbar) while only the
+  Import tab's was disabled during a run: two saves in flight both deleted
+  the regular lines and both inserted, so every bill line landed TWICE. The
+  guard lives on the function so no entry point can forget it. (Recovery for a
+  book already doubled: the next Save replaces the regular lines outright.)
+- **The whole-book recompute is debounced (300 ms), and flushed at every
+  boundary that reads the book** — `spbShowSection` is wrapped at boot, and
+  sheet/month switches and Save flush explicitly, so Register / Parties /
+  Monthly / Annexure always see the corrected figures the moment they render.
+  Before this, EVERY cell commit ran `spbParseRows` + `spbComputeBook` +
+  `spbComputeGroups` + the Monthly grid render synchronously — and
+  `spbEnMove` committed unchanged cells too, so merely arrowing across a
+  1,600-row book re-parsed it per keypress. A commit now costs ~2 ms (measured
+  on a 1,200-row book; the deferred apply is ~16 ms); an unchanged cell
+  commits nothing at all. The per-row validation, totals patch and draft
+  schedule stay immediate.
+- **The Excel reflexes** (all view-coordinate, cleared by every structural
+  render exactly like the autocomplete): Shift+arrows / Shift+click / a mouse
+  drag across cells select a block; **Ctrl+C** copies it as the TSV Excel
+  itself writes (so it pastes straight into a spreadsheet), **Ctrl+X** cuts,
+  **Ctrl+V** pastes a block back through the native paste event (no clipboard
+  permission; rows past the view append; `spbEnTsvHeaderRow` recognizes and
+  skips the header row "Copy view" emits), **Ctrl+D** fills down verbatim
+  (range: top row onto the rows below; single cell: the cell above — series
+  deliberately live on the drag handle, as in Excel), **Delete** clears the
+  block, **Ctrl+A** grows from cell text to the whole view, **Esc** drops the
+  selection before it exits full screen, and **Alt+↓** opens the party/PAN
+  suggestions (an empty cell offers the client's biggest parties). The **fill
+  handle** on the selection's corner drags a value down the column:
+  `spbEnFillValue` counts bill numbers on (padding preserved) and copies
+  everything else — a B.S. date is deliberately never day-stepped, since
+  walking past Ashadh 32 needs the calendar and "many bills, one date" is the
+  real entry pattern. A multi-row source cycles its pattern verbatim. Every
+  bulk write lands through `spbEnWriteCell`, so paste and fill normalize a
+  date and a PAN exactly the way typing does. **Copy view** in the toolbar
+  copies the current month (with headers) for Excel or for another month.
+- **The findings list is a bounded drawer, closed by default** — on a messy
+  file it piled above the grid until, in full screen (where the card cannot
+  scroll), the sheet was crushed to nothing and the screen read as stuck. The
+  chips keep the counts and open the drawer; open, it scrolls inside its own
+  `max-height` (120 px in full screen) and shows up to 200 located findings
+  instead of a truncated dozen. The grid always keeps the room.
+- **Full screen is fuller**: the whole card header hides (the ctx chip carries
+  whose book it is), and the explicit toggle also requests the BROWSER's
+  fullscreen best-effort — only the click path, since the API needs a user
+  gesture, so the sticky-pref auto-enter never tries.
 
 ### Data Entry is the FIRST tab, and the landing section (2026-08-29, user ask)
 

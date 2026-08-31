@@ -664,7 +664,14 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-en-notes { color: var(--yellow-dk); }
 /* Located findings — each names its month, row and party, and clicking jumps
    to the cell (spbEnGoToRow). */
-.spb-en-findings { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+/* The findings list is a bounded, scrolling drawer (closed by default) — on a
+   messy file it used to pile above the grid until, in full screen where the
+   card cannot scroll, the sheet itself was crushed out of reach. */
+.spb-en-findings { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; max-height: 176px; overflow: auto; overscroll-behavior: contain; padding-right: 2px; }
+.spb-en-issues-toggle { border: 1px solid var(--border); background: #fff; border-radius: 20px; padding: 3px 10px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: var(--trans-ctrl); }
+.spb-en-issues-toggle:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+.spb-en-chipbtn { cursor: pointer; }
+.spb-en-dot { color: var(--yellow); font-size: 9px; vertical-align: 2px; margin-left: 2px; }
 .spb-en-finding { font-size: 12.5px; line-height: 1.5; padding: 6px 10px; border-radius: 8px; cursor: pointer; background: var(--yellow-bg); border: 1px solid var(--yellow-border); color: var(--yellow-dk); transition: var(--trans-ctrl); }
 .spb-en-finding:hover { border-color: var(--accent-blue); }
 .spb-en-finding-err { background: var(--red-bg); border-color: var(--red-border); color: var(--red-dk); }
@@ -676,7 +683,12 @@ textarea { resize: vertical; min-height: 100px; }
 .spb-en-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .spb-en-table thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-page-alt); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 8px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .spb-en-table tfoot td { position: sticky; bottom: 0; background: var(--bg-page-alt); border-top: 1px solid var(--border); font-weight: 700; color: var(--brand-navy); padding: 7px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.spb-en-td { padding: 0; border-bottom: 1px solid var(--border-soft); }
+.spb-en-td { padding: 0; border-bottom: 1px solid var(--border-soft); position: relative; }
+/* Block selection + fill (the Excel reflexes, 2026-08-31) */
+.spb-en-in.spb-en-selc { background: rgba(37, 99, 235, 0.10); box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25); }
+.spb-en-in.spb-en-fillp { box-shadow: inset 0 0 0 1px var(--accent-blue); background: rgba(37, 99, 235, 0.05); }
+.spb-en-fillh { position: absolute; right: -4px; bottom: -4px; width: 8px; height: 8px; background: var(--accent-blue); border: 1px solid #fff; border-radius: 1px; cursor: crosshair; z-index: 3; }
+.spb-en-noselect, .spb-en-noselect * { user-select: none !important; }
 .spb-en-in { width: 100%; border: none; background: transparent; padding: 6px 8px; font-size: 12.5px; font-family: inherit; font-variant-numeric: tabular-nums; border-radius: 0; }
 .spb-en-in:focus { outline: 2px solid var(--accent-blue); outline-offset: -2px; background: #fff; }
 .spb-en-r { text-align: right; }
@@ -701,11 +713,16 @@ textarea { resize: vertical; min-height: 100px; }
    (The fadeIn keyframes animate translateY; frozen first frames in
    non-compositing tabs make this permanent, not just a 0.25s blink.) */
 .tab-panel.spb-en-fullhost { animation: none !important; transform: none !important; }
-.spb-en-full .card-header .card-desc { display: none; }          /* the prose yields to rows */
-.spb-en-full .card-header { margin-bottom: 8px; }
+.spb-en-full .card-header { display: none; }     /* every pixel goes to rows — the ctx chip carries whose book it is */
 .spb-en-full #spb-en-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 .spb-en-full .spb-en-wrap { flex: 1 1 auto; max-height: none; min-height: 0; }
 .spb-en-full .spb-en-help { display: none; }
+.card.spb-en-full { padding: 12px 16px 10px; }
+.spb-en-full .spb-en-toolbar { margin-bottom: 8px; }
+.spb-en-full .spb-en-pills { margin-bottom: 8px; }
+/* The grid always keeps the room — a long findings drawer scrolls inside its
+   own bounded box instead of crushing the sheet (the "stuck" full screen). */
+.spb-en-full .spb-en-findings { max-height: 120px; }
 .spb-en-ctx { font-size: 12.5px; font-weight: 600; color: var(--brand-navy); white-space: nowrap; }
 
 /* right:auto — the shared list class pins right:0 for in-form pickers, which
